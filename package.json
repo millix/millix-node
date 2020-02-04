@@ -1,0 +1,49 @@
+{
+  "name": "millix-core",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "babel-node index.js",
+    "debug": "babel-node debug index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "developer@millix.org",
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/cli": "7.8.3",
+    "@babel/core": "7.8.3",
+    "@babel/node": "7.8.3",
+    "@babel/plugin-proposal-class-properties": "7.8.3",
+    "@babel/preset-env": "7.8.3",
+    "better-queue": "^3.8.10",
+    "node-uuid": "^1.4.8"
+  },
+  "dependencies": {
+    "@babel/register": "7.8.3",
+    "async": "^2.6.2",
+    "bitcore-lib": "^8.1.1",
+    "bitcore-mnemonic": "^8.1.1",
+    "body-parser": "^1.19.0",
+    "bs58": "^4.0.1",
+    "bufferutil": "^4.0.1",
+    "cors": "^2.8.5",
+    "crypto-random-string": "^3.0.1",
+    "express": "^4.17.1",
+    "express-jwt": "^5.3.1",
+    "helmet": "^3.18.0",
+    "jsonwebtoken": "^8.5.1",
+    "jwks-rsa": "^1.5.1",
+    "lodash": "^4.17.11",
+    "moment": "^2.24.0",
+    "ntp-time-sync": "^0.1.0",
+    "request": "^2.88.0",
+    "secp256k1": "^3.6.2",
+    "socks": "^2.3.2",
+    "sqlite3": "^4.0.6",
+    "thirty-two": "^1.0.1",
+    "utf-8-validate": "^5.0.2",
+    "ws": "^6.2.1",
+    "yargs": "^13.2.2"
+  }
+}
