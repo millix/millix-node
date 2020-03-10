@@ -172,7 +172,7 @@
       "priority": 0,
       "option_list": {
         "run_always": 1,
-        "run_delay": 10000,
+        "run_delay": 5000,
         "enable": true
       }
     },

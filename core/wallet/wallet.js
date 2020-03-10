@@ -24,17 +24,18 @@ export const WALLET_MODE = {
 class Wallet {
 
     constructor() {
-        this.mode                            = WALLET_MODE.CONSOLE;
-        this._activeWallets                  = {};
-        this._activeConsensusRound           = {};
-        this._activeAuditPointUpdateRound    = {};
-        this._transactionReceivedFromNetwork = {};
-        this._transactionOnRoute             = {};
-        this._transactionRequested           = {};
-        this._transactionValidationRejected  = new Set();
-        this._transactionRetryValidation     = new Set();
-        this._transactionValidationNotFound  = new Set();
-        this.defaultKeyIdentifier            = undefined;
+        this.mode                                  = WALLET_MODE.CONSOLE;
+        this._activeWallets                        = {};
+        this._activeConsensusRound                 = {};
+        this._activeAuditPointUpdateRound          = {};
+        this._transactionReceivedFromNetwork       = {};
+        this._transactionOnRoute                   = {};
+        this._transactionRequested                 = {};
+        this._transactionValidationRejected        = new Set();
+        this._transactionRetryValidation           = new Set();
+        this._transactionValidationNotFound        = new Set();
+        this.defaultKeyIdentifier                  = undefined;
+        this.isProcessingNewTransactionFromNetwork = true;
     }
 
     getActiveWalletKey(wallet) {
@@ -602,6 +603,14 @@ class Wallet {
 
         if (this._transactionReceivedFromNetwork[transaction.transaction_id]) {
             delete this._transactionRequested[transaction.transaction_id];
+            return;
+        }
+
+        if (!this.isProcessingNewTransactionFromNetwork) {
+            walletSync.add(transaction.transaction_id, {
+                delay   : 5000,
+                priority: this.getTransactionSyncPriority(transaction)
+            });
             return;
         }
 
@@ -1831,6 +1840,14 @@ class Wallet {
     _doStateInspector() {
         let networkTransactions = _.keys(this._transactionReceivedFromNetwork);
         console.log('_transactionReceivedFromNetwork:', networkTransactions.length, ' | _transactionValidationRejected:', this._transactionValidationRejected.size, ' | _activeConsensusRound:', _.keys(this._activeConsensusRound).length);
+
+        if (this.isProcessingNewTransactionFromNetwork && mutex.getKeyQueuedSize(['transaction']) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+            this.isProcessingNewTransactionFromNetwork = false;
+        }
+        else if (!this.isProcessingNewTransactionFromNetwork && mutex.getKeyQueuedSize(['transaction']) <= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+            this.isProcessingNewTransactionFromNetwork = true;
+        }
+
         return Promise.resolve();
     }
 

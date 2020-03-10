@@ -21,6 +21,7 @@ class Network {
         this.nodeID              = null;
         this.nodeConnectionID    = this.generateNewID();
         this._selfConnectionNode = new Set();
+        this.initialized         = false;
         this.noop                = () => {
         };
     }
@@ -422,11 +423,13 @@ class Network {
         console.log('node id : ', this.nodeID);
         this.startAcceptingConnections();
         this.connectToNodes();
+        this.initialized = true;
         event_bus.on('node_handshake', this._onNodeHandshake.bind(this));
         event_bus.on('node_address_request', this._onGetNodeAddress.bind(this));
     }
 
     initialize() {
+        this.nodeConnectionID    = this.generateNewID();
         return new Promise(resolve => {
             console.log('[network] starting network');
             walletUtils.loadNodeKey()
@@ -448,10 +451,13 @@ class Network {
     }
 
     stopTasks() {
+        this.initialized = false;
         event_bus.removeAllListeners('node_handshake');
         event_bus.removeAllListeners('node_address_request');
         this.getWebSocket() && this.getWebSocket().close();
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
+        this._nodeRegistry = {};
+        this._connectionRegistry = {};
     }
 }
 
