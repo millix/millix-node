@@ -2,8 +2,7 @@ import WebSocket, {Server} from 'ws';
 import _ from 'lodash';
 import config from '../core/config/config';
 import database from '../database/database';
-import event_bus from '../core/event-bus';
-import task from '../core/task';
+import eventBus from '../core/event-bus';
 import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
@@ -92,7 +91,7 @@ class Network {
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
                 this._doHandshake(ws);
                 resolve();
-                event_bus.emit('node_status_update');
+                eventBus.emit('node_status_update');
             });
 
             ws.on('close', () => {
@@ -106,7 +105,7 @@ class Network {
                 }
 
                 this._unregisterWebsocket(ws);
-                event_bus.emit('node_status_update');
+                eventBus.emit('node_status_update');
             });
 
             ws.on('error', (e) => {
@@ -119,7 +118,7 @@ class Network {
                 }
 
                 this._unregisterWebsocket(ws);
-                event_bus.emit('node_status_update');
+                eventBus.emit('node_status_update');
             });
 
             ws.on('message', this._onWebsocketMessage);
@@ -150,7 +149,7 @@ class Network {
         const message_type = arrMessage.type;
         const content      = arrMessage.content;
 
-        event_bus.emit(message_type, content, ws);
+        eventBus.emit(message_type, content, ws);
     }
 
     getHostByNode(node) {
@@ -209,18 +208,18 @@ class Network {
             ws.on('close', () => {
                 console.log('[network income] client ' + ws.node + ' disconnected');
                 this._unregisterWebsocket(ws);
-                event_bus.emit('node_status_update');
+                eventBus.emit('node_status_update');
             });
 
             ws.on('error', (e) => {
                 console.log('[network income] error on client ' + ip + ': ' + e);
                 ws.close(1000, 'received error');
                 this._unregisterWebsocket(ws);
-                event_bus.emit('node_status_update');
+                eventBus.emit('node_status_update');
             });
 
             this._doHandshake(ws);
-            event_bus.emit('node_status_update');
+            eventBus.emit('node_status_update');
         });
 
         console.log('[network] wss running at port ' + config.NODE_PORT);
@@ -327,7 +326,7 @@ class Network {
                 this._nodeList[ws.node] = node;
                 database.getRepository('node')
                         .addNode(node)
-                        .then(() => event_bus.emit('node_list_update'))
+                        .then(() => eventBus.emit('node_list_update'))
                         .catch(() => {
                         });
             }
@@ -343,13 +342,13 @@ class Network {
                 this._nodeList[registry.node] = node;
                 database.getRepository('node')
                         .addNode(node)
-                        .then(() => event_bus.emit('node_list_update'))
+                        .then(() => eventBus.emit('node_list_update'))
                         .catch(() => {
                         });
             }
         }
 
-        event_bus.emit('node_status_update');
+        eventBus.emit('node_status_update');
     }
 
     _registerWebsocketToNodeID(ws) {
@@ -424,8 +423,8 @@ class Network {
         this.startAcceptingConnections();
         this.connectToNodes();
         this.initialized = true;
-        event_bus.on('node_handshake', this._onNodeHandshake.bind(this));
-        event_bus.on('node_address_request', this._onGetNodeAddress.bind(this));
+        eventBus.on('node_handshake', this._onNodeHandshake.bind(this));
+        eventBus.on('node_address_request', this._onGetNodeAddress.bind(this));
     }
 
     initialize() {
@@ -452,8 +451,8 @@ class Network {
 
     stopTasks() {
         this.initialized = false;
-        event_bus.removeAllListeners('node_handshake');
-        event_bus.removeAllListeners('node_address_request');
+        eventBus.removeAllListeners('node_handshake');
+        eventBus.removeAllListeners('node_address_request');
         this.getWebSocket() && this.getWebSocket().close();
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
         this._nodeRegistry = {};

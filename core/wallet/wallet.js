@@ -1,7 +1,7 @@
 import walletUtils from './wallet-utils';
 import walletSync from './wallet-sync';
 import database, {Database} from '../../database/database';
-import event_bus from '../event-bus';
+import eventBus from '../event-bus';
 import signature from '../crypto/signature';
 import objectHash from '../crypto/object-hash';
 import readline from 'readline';
@@ -88,8 +88,8 @@ class Wallet {
                 );
             }
             else if (this.mode === WALLET_MODE.APP) {
-                event_bus.once('wallet_key', resolve);
-                event_bus.emit('wallet_ready', {create: isNewMnemonic});
+                eventBus.once('wallet_key', resolve);
+                eventBus.emit('wallet_ready', {create: isNewMnemonic});
             }
         });
     }
@@ -147,7 +147,7 @@ class Wallet {
                        .addWallet(walletID, account)
                        .then(() => this.deriveAndSaveAddress(walletID, 0, 0))
                        .then(address => {
-                           event_bus.emit('newAddress', address);
+                           eventBus.emit('newAddress', address);
                            console.log('Primary address for wallet ' + walletID + ' is ' + address.address);
                            return address;
                        }).catch(() => Promise.resolve());
@@ -157,7 +157,7 @@ class Wallet {
         return database.getRepository('keychain').getNextAddressPosition(walletID)
                        .then((addressPosition) => this.deriveAndSaveAddress(walletID, 0, addressPosition))
                        .then(address => {
-                           event_bus.emit('newAddress', address);
+                           eventBus.emit('newAddress', address);
                            console.log('New address for wallet ' + walletID + ' is ' + address.address);
                            return address;
                        });
@@ -177,28 +177,28 @@ class Wallet {
                                    this.activateWallet(walletID, xPrivKey);
                                    return this.addWallet(walletID, account)
                                               .then(() => {
-                                                  event_bus.emit('wallet_unlock', walletID);
+                                                  eventBus.emit('wallet_unlock', walletID);
                                                   console.log('Wallet created and unlocked');
                                               })
                                               .then(() => walletID);
                                }
                                else {
-                                   event_bus.emit('wallet_authentication_error');
+                                   eventBus.emit('wallet_authentication_error');
                                    throw Error('wallet not found');
                                }
                            }
                            this.deactivateAllWallets();
                            this.activateWallet(walletID, xPrivKey);
-                           event_bus.emit('wallet_unlock', walletID);
+                           eventBus.emit('wallet_unlock', walletID);
                            console.log('Wallet unlocked');
                            return walletID;
                        });
     }
 
-    getWalletPrivateKey(mnemonic_phrase, isNewMnemonic) {
+    getWalletPrivateKey(mnemonicPhrase, isNewMnemonic) {
         return this.getWalletPassphrase(isNewMnemonic)
                    .then((passphrase) => {
-                       const mnemonic = new Mnemonic(mnemonic_phrase);
+                       const mnemonic = new Mnemonic(mnemonicPhrase);
                        return mnemonic.toHDPrivateKey(passphrase);
                    });
     }
@@ -519,7 +519,7 @@ class Wallet {
                 .then(addresses => {
                     let diff = _.difference(addressesList, _.map(addresses, e => e.address));
                     if (diff.length !== addressesList.length) {
-                        event_bus.emit('wallet_update', walletID);
+                        eventBus.emit('wallet_update', walletID);
                     }
                 });
     }
@@ -594,7 +594,7 @@ class Wallet {
         const transactionRepository = database.getRepository('transaction');
 
         if (data.routing && data.routing_request_node_id !== network.nodeID) {
-            event_bus.emit('transactionRoutingResponse:' + data.routing_request_node_id + ':' + transaction.transaction_id, data);
+            eventBus.emit('transactionRoutingResponse:' + data.routing_request_node_id + ':' + transaction.transaction_id, data);
             if (!config.MODE_NODE_FULL) {
                 delete this._transactionRequested[transaction.transaction_id];
                 return;
@@ -621,7 +621,7 @@ class Wallet {
                                  if (hasTransaction && !(isAuditPoint && this.transactionHasKeyIdentifier(transaction))) {
                                      delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                      delete this._transactionRequested[transaction.transaction_id];
-                                     return event_bus.emit('transaction_new:' + transaction.transaction_id);
+                                     return eventBus.emit('transaction_new:' + transaction.transaction_id);
                                  }
 
                                  return this.verifyTransaction(transaction, currentDepth)
@@ -629,7 +629,7 @@ class Wallet {
 
                                                 if (!validTransaction) {
                                                     console.log('Bad transaction object received from network');
-                                                    event_bus.emit('badTransaction:' + transaction.transaction_id);
+                                                    eventBus.emit('badTransaction:' + transaction.transaction_id);
                                                     delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                     delete this._transactionRequested[transaction.transaction_id];
                                                     return false;
@@ -641,10 +641,10 @@ class Wallet {
                                                 return transactionRepository.addTransactionFromObject(transaction)
                                                                             .then(() => {
                                                                                 console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
-                                                                                event_bus.emit('transaction_new:' + transaction.transaction_id);
+                                                                                eventBus.emit('transaction_new:' + transaction.transaction_id);
                                                                                 this._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier));
 
-                                                                                event_bus.emit('wallet_event_log', {
+                                                                                eventBus.emit('wallet_event_log', {
                                                                                     type   : 'transaction_new',
                                                                                     content: data,
                                                                                     from   : node
@@ -730,7 +730,7 @@ class Wallet {
         let connectionID            = ws.connectionID;
         const transactionRepository = database.getRepository('transaction');
 
-        event_bus.emit('wallet_event_log', {
+        eventBus.emit('wallet_event_log', {
             type   : 'transaction_sync',
             content: data,
             from   : node
@@ -773,7 +773,7 @@ class Wallet {
                                          }
 
                                          let self = this;
-                                         event_bus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, function(routedData) {
+                                         eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, function(routedData) {
                                              if (!self._transactionOnRoute[routedData.routing_request_node_id]) {
                                                  console.log('[Wallet] Routed package not requested ?!', routedData);
                                                  return;
@@ -797,7 +797,7 @@ class Wallet {
                                          });
 
                                          setTimeout(function() {
-                                             event_bus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
+                                             eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
                                          }, config.NETWORK_SHORT_TIME_WAIT_MAX);
 
                                          unlock();
@@ -820,7 +820,7 @@ class Wallet {
             let address = data.address;
             let updated = new Date(data.updated || 0);
             console.log('Transaction sync for address ', address, 'from', updated);
-            event_bus.emit('wallet_event_log', {
+            eventBus.emit('wallet_event_log', {
                 type   : 'address_transaction_sync',
                 content: data,
                 from   : node
@@ -849,7 +849,7 @@ class Wallet {
         let node         = ws.node;
         let connectionID = ws.connectionID;
         mutex.lock(['sync-transaction-spend'], unlock => {
-            event_bus.emit('wallet_event_log', {
+            eventBus.emit('wallet_event_log', {
                 type   : 'transaction_spend_request',
                 content: data,
                 from   : node
@@ -874,7 +874,7 @@ class Wallet {
     _onTransactionIncludePathRequest(data, ws) {
         let node         = ws.node;
         let connectionID = ws.connectionID;
-        event_bus.emit('wallet_event_log', {
+        eventBus.emit('wallet_event_log', {
             type   : 'transaction_include_path_request',
             content: data,
             from   : node
@@ -1023,7 +1023,7 @@ class Wallet {
                                                          consensus_round: self._activeConsensusRound[transactionID].consensus_round
                                                      }, ws);
 
-                                                     event_bus.on('transaction_validation_response:' + transactionID + ':' + self._activeConsensusRound[transactionID].consensus_round, (data, ws) => {
+                                                     eventBus.on('transaction_validation_response:' + transactionID + ':' + self._activeConsensusRound[transactionID].consensus_round, (data, ws) => {
                                                          if (!self._activeConsensusRound[transactionID] || !self._activeConsensusRound[transactionID].nodes ||
                                                              !self._activeConsensusRound[transactionID].nodes[ws.node] || data.consensus_round !== self._activeConsensusRound[transactionID].consensus_round ||
                                                              self._activeConsensusRound[transactionID].nodes[ws.node].replied) {
@@ -1032,7 +1032,7 @@ class Wallet {
 
                                                          console.log('[Consensus] Received reply for this consensus round from ', ws.node);
 
-                                                         event_bus.emit('wallet_event_log', {
+                                                         eventBus.emit('wallet_event_log', {
                                                              type   : 'transaction_validation_response',
                                                              content: data,
                                                              from   : ws.node
@@ -1045,7 +1045,7 @@ class Wallet {
                                                              self._activeConsensusRound[transactionID].double_spend_count++;
                                                              if (self._activeConsensusRound[transactionID].double_spend_count >= config.CONSENSUS_ROUND_DOUBLE_SPEND_MAX) {
                                                                  console.log('[Consensus] The transaction ', transactionID, ' was not validated (due to double spend) during consensus round number ', self._activeConsensusRound[transactionID].consensus_round);
-                                                                 event_bus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + self._activeConsensusRound[transactionID].consensus_round);
+                                                                 eventBus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + self._activeConsensusRound[transactionID].consensus_round);
                                                                  delete self._activeConsensusRound[transactionID];
                                                                  transactionRepository.setTransactionAsDoubleSpend(transaction)
                                                                                       .then(() => self._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier)))
@@ -1075,7 +1075,7 @@ class Wallet {
 
                                                          if (!valid) {
                                                              console.log('[Consensus] The transaction ', transactionID, ' was not validated during consensus round number ', self._activeConsensusRound[transactionID].consensus_round);
-                                                             event_bus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + self._activeConsensusRound[transactionID].consensus_round);
+                                                             eventBus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + self._activeConsensusRound[transactionID].consensus_round);
 
                                                              if (transactionNotFound) {
                                                                  if (self._transactionValidationNotFound[transactionID]) {
@@ -1109,7 +1109,7 @@ class Wallet {
                                                          console.log('[Consensus] Transaction ', transactionID, ' validated after receiving all replies for this consensus round');
                                                          transactionRepository.setPathAsStableFrom(transactionID)
                                                                               .then(() => self._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier)));
-                                                         event_bus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + self._activeConsensusRound[transactionID].consensus_round);
+                                                         eventBus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + self._activeConsensusRound[transactionID].consensus_round);
                                                          delete self._activeConsensusRound[transactionID];
                                                          delete self._transactionRetryValidation[transactionID];
                                                          setTimeout(() => this._doValidateTransactions(), 0);
@@ -1128,7 +1128,7 @@ class Wallet {
     }
 
     _onTransactionIncludePathResponse(data, ws) {
-        event_bus.emit('wallet_event_log', {
+        eventBus.emit('wallet_event_log', {
             type   : 'transaction_include_path_response',
             content: data,
             from   : ws.node
@@ -1256,9 +1256,9 @@ class Wallet {
 
                                   self._activeAuditPointUpdateRound[auditPointID].nodes = {};
 
-                                  event_bus.on('audit_point_validation_response:' + auditPointID, (data, ws) => {
+                                  eventBus.on('audit_point_validation_response:' + auditPointID, (data, ws) => {
                                       if (!self._activeAuditPointUpdateRound[auditPointID]) {
-                                          event_bus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+                                          eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
                                           return resolve();
                                       }
                                       else if (!self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] || self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node].replied) {
@@ -1392,12 +1392,12 @@ class Wallet {
                                                                return auditPoint.addTransactionToAuditPoint(newAuditPointTransactions);
                                                            })
                                                            .then(() => {
-                                                               event_bus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+                                                               eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
                                                                delete self._activeAuditPointUpdateRound[auditPointID];
                                                                console.log('[audit point] audit round ', auditPointID, ' finished after receiving all replies');
                                                                resolve();
                                                            }).catch((err) => {
-                                              event_bus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+                                              eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
                                               delete self._activeAuditPointUpdateRound[auditPointID];
                                               console.log('[audit point] Error on audit round ', auditPointID, '. [message]: ', err);
                                               resolve();
@@ -1530,7 +1530,7 @@ class Wallet {
             let transactionID  = data.transaction_id;
             let consensusRound = data.consensus_round;
             console.log('[Consensus Validation] Request received to validate transaction ', transactionID, ' for consensus round number ' + consensusRound);
-            event_bus.emit('wallet_event_log', {
+            eventBus.emit('wallet_event_log', {
                 type   : 'transaction_validation_request',
                 content: data,
                 from   : node
@@ -1737,7 +1737,7 @@ class Wallet {
         let transactionID = Object.keys(this._activeConsensusRound)[0];
         if (transactionID && (new Date().getTime() - this._activeConsensusRound[transactionID].timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
             console.log('[Consensus] killed by watch dog ', this._activeConsensusRound[transactionID].consensus_round);
-            event_bus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + this._activeConsensusRound[transactionID].consensus_round);
+            eventBus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + this._activeConsensusRound[transactionID].consensus_round);
             this._activeConsensusRound[transactionID].consensus_round += 1;
             if (this._activeConsensusRound[transactionID].consensus_round === config.CONSENSUS_ROUND_VALIDATION_MAX) {
                 delete this._activeConsensusRound[transactionID];
@@ -1759,7 +1759,7 @@ class Wallet {
             }
 
             console.log('[audit point] validation killed by watch dog ', auditPointID);
-            event_bus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+            eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
 
             if (this._activeAuditPointUpdateRound[auditPointID].resolve) {
                 this._activeAuditPointUpdateRound[auditPointID].resolve();
@@ -1877,22 +1877,24 @@ class Wallet {
     }
 
     _initializeEvents() {
-        walletSync.initialize().then(() => {
-            event_bus.on('transaction_new', this._onNewTransaction.bind(this));
-            event_bus.on('transaction_sync', this._onSyncTransaction.bind(this));
-            event_bus.on('address_transaction_sync', this._onSyncAddressBalance.bind(this));
-            event_bus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
-            event_bus.on('transaction_include_path_request', this._onTransactionIncludePathRequest.bind(this));
-            event_bus.on('transaction_spend_request', this._onSyncTransactionSpendTransaction.bind(this));
-            event_bus.on('audit_point_validation_request', this._onAuditPointValidationRequest.bind(this));
-        });
+        walletSync.initialize()
+                  .then(() => walletConsensus.initialize())
+                  .then(() => {
+                      eventBus.on('transaction_new', this._onNewTransaction.bind(this));
+                      eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
+                      eventBus.on('address_transaction_sync', this._onSyncAddressBalance.bind(this));
+                      eventBus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
+                      eventBus.on('transaction_include_path_request', this._onTransactionIncludePathRequest.bind(this));
+                      eventBus.on('transaction_spend_request', this._onSyncTransactionSpendTransaction.bind(this));
+                      eventBus.on('audit_point_validation_request', this._onAuditPointValidationRequest.bind(this));
+                  });
     }
 
     initialize(initializeEventsOnly) {
         if (!initializeEventsOnly) {
             return this.getMnemonic()
-                       .then(([mnemonic_phrase, isNewMnemonic]) =>
-                           this.getWalletPrivateKey(mnemonic_phrase, isNewMnemonic).then(xPrivkey => [
+                       .then(([mnemonicPhrase, isNewMnemonic]) =>
+                           this.getWalletPrivateKey(mnemonicPhrase, isNewMnemonic).then(xPrivkey => [
                                xPrivkey,
                                isNewMnemonic
                            ])
@@ -1900,7 +1902,7 @@ class Wallet {
                                .then(([xPrivkey, isCreated]) => this.activateWalletByMasterKey(xPrivkey, isCreated))
                                .then((walletID) => {
                                    if (isNewMnemonic) {
-                                       return walletUtils.storeMnemonic(mnemonic_phrase).then(() => walletID);
+                                       return walletUtils.storeMnemonic(mnemonicPhrase).then(() => walletID);
                                    }
                                    else {
                                        return Promise.resolve(walletID);
@@ -1928,13 +1930,13 @@ class Wallet {
 
     stopTasks() {
         walletSync.close().then(_ => _).catch(_ => _);
-        event_bus.removeAllListeners('transaction_new');
-        event_bus.removeAllListeners('transaction_sync');
-        event_bus.removeAllListeners('address_transaction_sync');
-        event_bus.removeAllListeners('transaction_validation_request');
-        event_bus.removeAllListeners('transaction_include_path_request');
-        event_bus.removeAllListeners('transaction_spend_request');
-        event_bus.removeAllListeners('audit_point_validation_request');
+        eventBus.removeAllListeners('transaction_new');
+        eventBus.removeAllListeners('transaction_sync');
+        eventBus.removeAllListeners('address_transaction_sync');
+        eventBus.removeAllListeners('transaction_validation_request');
+        eventBus.removeAllListeners('transaction_include_path_request');
+        eventBus.removeAllListeners('transaction_spend_request');
+        eventBus.removeAllListeners('audit_point_validation_request');
     }
 }
 

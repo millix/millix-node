@@ -1,7 +1,7 @@
 import mutex from '../../core/mutex';
 import _ from 'lodash';
 import ntp from '../../core/ntp';
-import event_bus from '../../core/event-bus';
+import eventBus from '../../core/event-bus';
 import config from '../../core/config/config';
 import genesisConfig from '../../core/genesis/genesis-config';
 import async from 'async';
@@ -145,7 +145,7 @@ export default class Transaction {
                     });
 
                     promise.then(() => this.database.run('COMMIT', () => {
-                        event_bus.emit('transaction_new:' + transaction.transaction_id, transaction);
+                        eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
                         resolve(transaction);
                         unlock();
                     }))

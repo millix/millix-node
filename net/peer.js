@@ -1,6 +1,5 @@
 import network from './network';
-import task from '../core/task';
-import event_bus from '../core/event-bus';
+import eventBus from '../core/event-bus';
 import config from '../core/config/config';
 import crypto from 'crypto';
 import _ from 'lodash';
@@ -28,7 +27,7 @@ class Peer {
             type   : 'node_address_response:' + messageID,
             content: {ip_address: ipAddress}
         };
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
         let data = JSON.stringify(payload);
         ws.nodeConnectionReady && ws.send(data);
     }
@@ -41,15 +40,15 @@ class Peer {
                 content: {request_id: id}
             };
 
-            event_bus.emit('node_event_log', payload);
-            event_bus.once('node_address_response:' + id, (data) => {
+            eventBus.emit('node_event_log', payload);
+            eventBus.once('node_address_response:' + id, (data) => {
                 resolve(data);
             });
 
             setTimeout(() => {
-                if (event_bus.listenerCount('node_address_response:' + id) > 0) {
+                if (eventBus.listenerCount('node_address_response:' + id) > 0) {
                     reject('get address timeout');
-                    event_bus.removeAllListeners('node_address_response:' + id);
+                    eventBus.removeAllListeners('node_address_response:' + id);
                 }
             }, config.NETWORK_LONG_TIME_WAIT_MAX);
 
@@ -94,7 +93,7 @@ class Peer {
                                content: nodes
                            };
 
-                           event_bus.emit('node_event_log', payload);
+                           eventBus.emit('node_event_log', payload);
 
                            let data = JSON.stringify(payload);
                            network.registeredClients.forEach(ws => {
@@ -114,7 +113,7 @@ class Peer {
             content: {transaction}
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         network.registeredClients.forEach(ws => {
@@ -137,7 +136,7 @@ class Peer {
             content: transaction
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         try {
@@ -156,7 +155,7 @@ class Peer {
             content: {transaction_id_list: transactions}
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         try {
@@ -188,7 +187,7 @@ class Peer {
 
             let data = JSON.stringify(payload);
 
-            event_bus.emit('node_event_log', payload);
+            eventBus.emit('node_event_log', payload);
 
             let nodesWS = _.shuffle(network.registeredClients);
 
@@ -198,8 +197,8 @@ class Peer {
                 try {
                     if (ws.nodeConnectionReady) {
 
-                        event_bus.removeAllListeners('transaction_include_path_response:' + transactionID);
-                        event_bus.once('transaction_include_path_response:' + transactionID, function(eventData, eventWS) {
+                        eventBus.removeAllListeners('transaction_include_path_response:' + transactionID);
+                        eventBus.once('transaction_include_path_response:' + transactionID, function(eventData, eventWS) {
                             console.log('[peer] stopping transaction spend sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
 
                             if (!callbackCalled) {
@@ -236,7 +235,7 @@ class Peer {
                     }
                 }
             }, (done) => {
-                event_bus.removeAllListeners('transaction_include_path_response:' + transactionID);
+                eventBus.removeAllListeners('transaction_include_path_response:' + transactionID);
                 delete this.pendingTransactionIncludePathSync[transactionID];
 
                 if (!done) {
@@ -254,7 +253,7 @@ class Peer {
             content: {transaction_id_list: transactions}
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         try {
@@ -282,7 +281,7 @@ class Peer {
 
             let data = JSON.stringify(payload);
 
-            event_bus.emit('node_event_log', payload);
+            eventBus.emit('node_event_log', payload);
 
             let nodesWS = _.shuffle(network.registeredClients);
 
@@ -292,8 +291,8 @@ class Peer {
                 try {
                     if (ws.nodeConnectionReady) {
 
-                        event_bus.removeAllListeners('transaction_spend_response:' + transactionID);
-                        event_bus.once('transaction_spend_response:' + transactionID, function(eventData) {
+                        eventBus.removeAllListeners('transaction_spend_response:' + transactionID);
+                        eventBus.once('transaction_spend_response:' + transactionID, function(eventData) {
                             console.log('[peer] stopping transaction spend sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
 
                             if (!callbackCalled) {
@@ -327,7 +326,7 @@ class Peer {
                     }
                 }
             }, (done) => {
-                event_bus.removeAllListeners('transaction_spend_response:' + transactionID);
+                eventBus.removeAllListeners('transaction_spend_response:' + transactionID);
                 delete this.pendingTransactionSpendSync[transactionID];
 
                 if (!done) {
@@ -345,7 +344,7 @@ class Peer {
             content: message
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         try {
@@ -364,7 +363,7 @@ class Peer {
             content: transaction
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         try {
@@ -383,7 +382,7 @@ class Peer {
             content
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         try {
@@ -402,7 +401,7 @@ class Peer {
             content: message
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         try {
@@ -430,7 +429,7 @@ class Peer {
             }
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         network.registeredClients.forEach(ws => {
@@ -451,7 +450,7 @@ class Peer {
             content
         };
 
-        event_bus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
         try {
@@ -488,7 +487,7 @@ class Peer {
                 }
             };
 
-            event_bus.emit('node_event_log', payload);
+            eventBus.emit('node_event_log', payload);
 
             let data = JSON.stringify(payload);
 
@@ -502,10 +501,10 @@ class Peer {
                 let nodeID         = ws.nodeID;
                 try {
                     if (ws.nodeConnectionReady) {
-                        event_bus.removeAllListeners('transaction_sync_response:' + transactionID);
-                        event_bus.once('transaction_sync_response:' + transactionID, function(eventData, eventWS) {
+                        eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
+                        eventBus.once('transaction_sync_response:' + transactionID, function(eventData, eventWS) {
                             console.log('[peer] stopping transaction sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
-                            event_bus.emit('transaction_new', eventData, eventWS, true);
+                            eventBus.emit('transaction_new', eventData, eventWS, true);
                             if (!callbackCalled) {
                                 callbackCalled = true;
                                 callback(true);
@@ -531,7 +530,7 @@ class Peer {
                     }
                 }
             }, (done) => {
-                event_bus.removeAllListeners('transaction_sync_response:' + transactionID);
+                eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
                 delete this.pendingTransactionSync[transactionID];
 
                 if (!done) {
@@ -559,23 +558,23 @@ class Peer {
                 }
             };
 
-            event_bus.emit('node_event_log', payload);
+            eventBus.emit('node_event_log', payload);
 
             let data = JSON.stringify(payload);
 
             try {
                 if (ws.nodeConnectionReady) {
-                    event_bus.removeAllListeners('transaction_sync_response:' + transactionID);
+                    eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
-                    event_bus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
-                        event_bus.emit('transaction_new', data, eventWS, true);
+                    eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
+                        eventBus.emit('transaction_new', data, eventWS, true);
                     });
 
                     ws.send(data);
                     ws = null;
                     setTimeout(() => {
                         if (!this.pendingTransactionSync[transactionID]) {
-                            event_bus.removeAllListeners('transaction_sync_response:' + transactionID);
+                            eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
                         }
                     }, config.NETWORK_SHORT_TIME_WAIT_MAX);
                 }
@@ -589,7 +588,7 @@ class Peer {
     }
 
     _onNodeList(nodes, ws) {
-        event_bus.emit('node_event_log', {
+        eventBus.emit('node_event_log', {
             type   : 'node_list',
             content: nodes,
             from   : ws.node
@@ -598,11 +597,11 @@ class Peer {
     }
 
     initialize() {
-        event_bus.on('node_list', this._onNodeList.bind(this));
+        eventBus.on('node_list', this._onNodeList.bind(this));
     }
 
     stopTasks() {
-        event_bus.removeAllListeners('node_list');
+        eventBus.removeAllListeners('node_list');
     }
 }
 
