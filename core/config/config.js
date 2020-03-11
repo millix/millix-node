@@ -23,7 +23,7 @@ export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ?
                                                              'ws://3.0.29.177:10001'
                                                          ];
 export const CONSENSUS_ROUND_NODE_COUNT                = 3;
-export const CONSENSUS_ROUND_PATH_LENGTH_MIN           = 10;
+export const CONSENSUS_ROUND_PATH_LENGTH_MIN           = 1;
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED       = 2;
 export const CONSENSUS_ROUND_VALIDATION_MAX            = 5;
 export const CONSENSUS_ROUND_NOT_FOUND_MAX             = 5;
@@ -49,8 +49,8 @@ export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT = 100;
 export const WALLET_LOG_SIZE_MAX                       = 1000;
 export const WALLET_TRANSACTION_DEFAULT_VERSION        = MODE_TEST_NETWORK ? 'lal' : '0a0';
 export const WALLET_SPENT_TRANSACTION_PRUNE            = false;
-export const WALLET_TRANSACTION_QUEUE_SIZE_MAX         = 2000;
-export const WALLET_TRANSACTION_QUEUE_SIZE_NORMAL      = 500;
+export const WALLET_TRANSACTION_QUEUE_SIZE_MAX         = 1000;
+export const WALLET_TRANSACTION_QUEUE_SIZE_NORMAL      = 250;
 export const NETWORK_LONG_TIME_WAIT_MAX                = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX               = 1500;
 export const DATABASE_ENGINE                           = 'sqlite';

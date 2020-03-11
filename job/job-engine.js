@@ -8,12 +8,13 @@ import ntp from '../core/ntp';
 import network from '../net/network';
 import peer from '../net/peer';
 import wallet from '../core/wallet/wallet';
+import walletTransactionConsensus from '../core/wallet/wallet-transaction-consensus';
 import config from '../core/config/config';
 import moment from 'moment';
 import fs from 'fs';
 import console from '../core/console';
-import path from "path";
-import os from "os";
+import path from 'path';
+import os from 'os';
 
 
 class JobEngine {
@@ -22,7 +23,8 @@ class JobEngine {
         this.modules         = {
             network,
             wallet,
-            peer
+            peer,
+            'wallet-transaction-consensus': walletTransactionConsensus
         };
     }
 

@@ -61,8 +61,8 @@ export class WalletSync {
                     cb(null, false);
                 }
             },
-            priority: function (entry, cb){
-              return cb(null, entry.priority || 0);
+            priority                : function(entry, cb) {
+                return cb(null, entry.priority || 0);
             },
             setImmediate            : global.setImmediate,
             preconditionRetryTimeout: 10 * 1000 // If we go offline, retry
@@ -73,7 +73,7 @@ export class WalletSync {
     }
 
     add(transactionID, options) {
-        const {delay, priority} = options;
+        const {delay, priority} = options || {};
 
         if (!this.queue || this.pendingTransactions[transactionID] || wallet.isProcessingTransaction(transactionID)) {
             return;
@@ -87,13 +87,19 @@ export class WalletSync {
 
                 this.pendingTransactions[transactionID] = true;
                 delete this.scheduledQueueAdd[transactionID];
-                this.queue.push({transaction_id: transactionID, priority});
+                this.queue.push({
+                    transaction_id: transactionID,
+                    priority
+                });
             }, delay);
         }
         else {
             this.removeSchedule(transactionID);
             this.pendingTransactions[transactionID] = true;
-            this.queue.push({transaction_id: transactionID, priority});
+            this.queue.push({
+                transaction_id: transactionID,
+                priority
+            });
         }
     }
 
