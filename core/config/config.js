@@ -1,6 +1,6 @@
 export const MODE_DEBUG                                = false;
 export const MODE_TEST_NETWORK                         = false;
-export const NODE_PORT                                 = MODE_TEST_NETWORK ? 20000 : 10000;
+export const NODE_PORT                                 = MODE_TEST_NETWORK ? 30000 : 10000;
 export const NODE_PORT_API                             = 5500;
 export const NODE_HOST                                 = 'localhost';
 export const WEBSOCKET_PROTOCOL                        = 'ws://';
@@ -9,10 +9,10 @@ export const NODE_PUBLIC                               = false;
 export const MODE_NODE_FULL                            = false;
 export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ?
                                                          [
-                                                             'ws://13.251.31.129:20000',
-                                                             'ws://13.251.31.129:20001',
-                                                             'ws://52.74.179.232:20000',
-                                                             'ws://52.74.179.232:20001'
+                                                             'ws://13.251.31.129:30000',
+                                                             'ws://13.251.31.129:30001',
+                                                             'ws://52.74.179.232:30000',
+                                                             'ws://52.74.179.232:30001'
                                                          ] :
                                                          [
                                                              'ws://18.136.162.158:10000',
