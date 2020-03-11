@@ -270,10 +270,11 @@ class Network {
         if (config.NODE_PUBLIC) {
             let url = config.WEBSOCKET_PROTOCOL + config.NODE_HOST + ':' + config.NODE_PORT;
             node    = {
-                node_prefix    : config.WEBSOCKET_PROTOCOL,
-                node_ip_address: config.NODE_HOST,
-                node_port      : config.NODE_PORT,
-                node           : url
+                node_prefix      : config.WEBSOCKET_PROTOCOL,
+                node_ip_address  : config.NODE_HOST,
+                node_port        : config.NODE_PORT,
+                node_network_test: config.MODE_TEST_NETWORK,
+                node             : url
             };
         }
         else {
@@ -310,6 +311,11 @@ class Network {
             }
 
             console.log('[network] closing self-connection');
+            ws.terminate();
+            return;
+        }
+        else if (registry.node_network_test !== config.MODE_TEST_NETWORK) {
+            console.log('[network] closing connection from main network');
             ws.terminate();
             return;
         }
@@ -428,7 +434,7 @@ class Network {
     }
 
     initialize() {
-        this.nodeConnectionID    = this.generateNewID();
+        this.nodeConnectionID = this.generateNewID();
         return new Promise(resolve => {
             console.log('[network] starting network');
             walletUtils.loadNodeKey()
@@ -455,7 +461,7 @@ class Network {
         eventBus.removeAllListeners('node_address_request');
         this.getWebSocket() && this.getWebSocket().close();
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
-        this._nodeRegistry = {};
+        this._nodeRegistry       = {};
         this._connectionRegistry = {};
     }
 }
