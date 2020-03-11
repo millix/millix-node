@@ -568,7 +568,7 @@ export default class Transaction {
     findUnstableTransaction(minIncludePathLength, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
             let search = (timestampAfter) => {
-                this.database.all('SELECT * FROM `transaction` WHERE +`transaction`.is_stable = 0 AND `transaction`.transaction_date < ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 100',
+                this.database.all('SELECT * FROM `transaction` WHERE +`transaction`.is_stable = 0 AND `transaction`.transaction_date < ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date LIMIT 100',
                     [timestampAfter].concat(excludeTransactionIDList), (err, rows) => {
                         if (err) {
                             console.log(err);
@@ -845,10 +845,10 @@ export default class Transaction {
                                     pathAsStableUnlock();
                                     callback();
                                 });
-                        });
+                        }, true);
                     });
                 }, () => {
-                    if (newTransactions.length === 0) {
+                    if (newTransactions.length === 0 || depth >= config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
                         console.log('[setPathAsStableFrom] max depth was', depth);
                         return resolve();
                     }
@@ -1123,8 +1123,12 @@ export default class Transaction {
                                 return reject();
                             }
                             let hasTransactionData = row.transaction_exists === 1;
-                            let transactionExists = isAuditPoint || hasTransactionData;
-                            resolve([transactionExists, isAuditPoint, hasTransactionData]);
+                            let transactionExists  = isAuditPoint || hasTransactionData;
+                            resolve([
+                                transactionExists,
+                                isAuditPoint,
+                                hasTransactionData
+                            ]);
                         });
                 });
         });

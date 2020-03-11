@@ -403,7 +403,8 @@ export class WalletTransactionConsensus {
                                              return transactionRepository.setTransactionAsStable(transactionID)
                                                                          .then(() => transactionRepository.setOutputAsStable(transactionID))
                                                                          .then(() => transactionRepository.setInputsAsSpend(transactionID))
-                                                                         .then(() => setTimeout(() => this.doValidateTransaction().then(() => resolve()), 0));
+                                                                         .then(() => setTimeout(() => this.doValidateTransaction().then(() => resolve()), 0))
+                                                                         .catch(() => setTimeout(() => this.doValidateTransaction().then(() => resolve()), 0));
                                          }
 
                                          let _runRound = () => {
@@ -511,20 +512,22 @@ export class WalletTransactionConsensus {
                                                              if (this._requestConsensusTransactionValidation.consensus_round === config.CONSENSUS_ROUND_VALIDATION_MAX) {
                                                                  this._requestConsensusTransactionValidation = null;
                                                                  this._transactionValidationRejected.add(transactionID);
-                                                                 resolve();
+                                                                 return resolve();
                                                              }
                                                              else {
-                                                                 setTimeout(() => this._requestConsensusTransactionValidation['run'](), 5000);
+                                                                 setTimeout(() => this._requestConsensusTransactionValidation['run'](), 0);
                                                              }
                                                          }
                                                          else {
+                                                             eventBus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + this._requestConsensusTransactionValidation.consensus_round);
                                                              console.log('[consensus][request] transaction ', transactionID, ' validated after receiving all replies for this consensus round');
                                                              transactionRepository.setPathAsStableFrom(transactionID)
-                                                                                  .then(() => wallet._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier)));
-                                                             eventBus.removeAllListeners('transaction_validation_response:' + transactionID + ':' + this._requestConsensusTransactionValidation.consensus_round);
-                                                             this._requestConsensusTransactionValidation = null;
-                                                             delete this._transactionRetryValidation[transactionID];
-                                                             resolve();
+                                                                                  .then(() => wallet._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier)))
+                                                                                  .then(() => {
+                                                                                      this._requestConsensusTransactionValidation = null;
+                                                                                      delete this._transactionRetryValidation[transactionID];
+                                                                                      resolve();
+                                                                                  });
                                                          }
                                                      });
 
