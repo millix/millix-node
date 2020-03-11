@@ -649,7 +649,7 @@ export default class Transaction {
                         return resolve(_.map(newBranches, branch => branch.path));
                     }
                     else {
-                        wallet.mode === WALLET_MODE.APP ? requestAnimationFrame(() => dfs(newBranches, depth + 1)) : dfs(newBranches, depth + 1);
+                        dfs(newBranches, depth + 1);
                     }
                 });
             };
@@ -852,7 +852,7 @@ export default class Transaction {
                         console.log('[setPathAsStableFrom] max depth was', depth);
                         return resolve();
                     }
-                    wallet.mode === WALLET_MODE.APP ? requestAnimationFrame(() => dfs(newTransactions, depth + 1)) : dfs(newTransactions, depth + 1);
+                    dfs(newTransactions, depth + 1);
                 });
             };
             dfs([transactionID], 0);

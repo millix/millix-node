@@ -104,7 +104,11 @@ export class WalletTransactionConsensus {
                                  .then(([transaction, auditPointID]) => {
 
                                      transactionVisitedList.add(transactionID);
-                                     if (auditPointID) {
+                                     if (transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
+                                         console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
+                                         return resolve();
+                                     }
+                                     else if (auditPointID) {
                                          console.log('[consensus][oracle] validated in consensus round after found in Local audit point ', auditPointID, ' at depth ', depth);
                                          return resolve();
                                      }
@@ -184,11 +188,11 @@ export class WalletTransactionConsensus {
 
                                                                                                    wallet.requestTransactionFromNetwork(input.output_transaction_id);
 
-                                                                                                   return reject({
+                                                                                                   return callback({
                                                                                                        cause              : 'transaction_not_found',
                                                                                                        transaction_id_fail: input.output_transaction_id,
                                                                                                        message            : 'no information found for ' + input.output_transaction_id
-                                                                                                   });
+                                                                                                   }, false);
                                                                                                }
                                                                                                inputTotalAmount += output.amount;
                                                                                                return callback(null, true);
@@ -225,13 +229,9 @@ export class WalletTransactionConsensus {
 
                                          // check inputs transactions
                                          async.everySeries(sourceTransactions, (srcTransaction, callback) => {
-                                             wallet.mode === WALLET_MODE.APP ? requestAnimationFrame(() => {
-                                                 this._validateTransaction(srcTransaction, connectionID, depth + 1, transactionVisitedList)
-                                                     .then(() => callback(null, true))
-                                                     .catch((err) => callback(err, false));
-                                             }) : this._validateTransaction(srcTransaction, connectionID, depth + 1, transactionVisitedList)
-                                                      .then(() => callback(null, true))
-                                                      .catch((err) => callback(err, false));
+                                             this._validateTransaction(srcTransaction, connectionID, depth + 1, transactionVisitedList)
+                                                 .then(() => callback(null, true))
+                                                 .catch((err) => callback(err, false));
                                          }, (err, valid) => {
                                              if (!valid) {
                                                  return reject(err);
@@ -284,24 +284,16 @@ export class WalletTransactionConsensus {
 
         this._validateTransaction(transactionID, connectionID, depth, transactionVisitedList)
             .then(() => {
-                transactionRepository.getTransactionIncludePaths(transactionID)
-                                     .then(paths => {
-                                         const maxLength = _.reduce(paths, (max, path) => path.length > max ? path.length : max, 0);
-                                         return _.find(paths, path => path.length === maxLength);
-                                     })
-                                     .then(path => {
-                                         console.log('[consensus][oracle] transaction ', transactionID, ' was validated for a consensus');
-                                         let ws = network.getWebSocketByID(connectionID);
-                                         if (ws) {
-                                             peer.transactionValidationResponse({
-                                                 transaction_id             : transactionID,
-                                                 transaction_id_include_list: path,
-                                                 consensus_round            : consensusRound,
-                                                 valid                      : true
-                                             }, ws);
-                                         }
-                                         this._receivedConsensusTransactionValidation = null;
-                                     });
+                console.log('[consensus][oracle] transaction ', transactionID, ' was validated for a consensus');
+                let ws = network.getWebSocketByID(connectionID);
+                if (ws) {
+                    peer.transactionValidationResponse({
+                        transaction_id : transactionID,
+                        consensus_round: consensusRound,
+                        valid          : true
+                    }, ws);
+                }
+                this._receivedConsensusTransactionValidation = null;
             })
             .catch((err) => {
                 console.log('[consensus][oracle] consensus error: ', err);

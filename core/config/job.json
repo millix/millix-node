@@ -2,6 +2,9 @@
   "processor_list": {
     "localhost": {
       "instances": 2
+    },
+    "localhost_watchdog": {
+      "instances": 2
     }
   },
   "object_list": {
@@ -134,7 +137,7 @@
     "consensus_watchdog_validation": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_watchdog",
       "payload": {
         "module": "wallet-transaction-consensus",
         "function_name": "doConsensusTransactionValidationWatchDog"
@@ -149,7 +152,7 @@
     "consensus_watchdog_audit_point": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_watchdog",
       "payload": {
         "module": "wallet",
         "function_name": "_doAuditPointWatchDog"
@@ -206,7 +209,7 @@
         "enable": true
       }
     },
-    "transaction_prunning": {
+    "transaction_pruning": {
       "type": "function",
       "group": "wallet",
       "processor": "localhost",

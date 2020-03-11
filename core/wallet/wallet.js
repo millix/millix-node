@@ -25,15 +25,28 @@ export const WALLET_MODE = {
 class Wallet {
 
     constructor() {
-        this.mode                                  = WALLET_MODE.CONSOLE;
-        this._activeWallets                        = {};
-        this._activeConsensusRound                 = {};
-        this._activeAuditPointUpdateRound          = {};
-        this._transactionReceivedFromNetwork       = {};
-        this._transactionOnRoute                   = {};
-        this._transactionRequested                 = {};
-        this.defaultKeyIdentifier                  = undefined;
-        this.isProcessingNewTransactionFromNetwork = true;
+        this.mode                            = WALLET_MODE.CONSOLE;
+        this._activeWallets                  = {};
+        this._activeConsensusRound           = {};
+        this._activeAuditPointUpdateRound    = {};
+        this._transactionReceivedFromNetwork = {};
+        this._transactionOnRoute             = {};
+        this._transactionRequested           = {};
+        this.defaultKeyIdentifier            = undefined;
+        this._lockProcessNewTransaction      = 0;
+        this._maxBacklogThresholdReached     = false;
+    }
+
+    get isProcessingNewTransactionFromNetwork() {
+        return this._lockProcessNewTransaction <= 0;
+    }
+
+    lockProcessNewTransaction() {
+        this._lockProcessNewTransaction++;
+    }
+
+    unlockProcessNewTransaction() {
+        this._lockProcessNewTransaction--;
     }
 
     getActiveWalletKey(wallet) {
@@ -844,7 +857,7 @@ class Wallet {
                                                                   if (transaction && ws) {
                                                                       peer.transactionSendToNode({transaction: transactionRepository.normalizeTransactionObject(transaction)}, ws);
                                                                   }
-                                                                  this.mode === WALLET_MODE.APP ? requestAnimationFrame(() => callback()) : callback();
+                                                                  callback();
                                                               });
                                      });
                                      unlock();
@@ -1288,17 +1301,25 @@ class Wallet {
     }
 
     _doTransactionPruning() {
+
+        if (mutex.getKeyQueuedSize(['transaction-pruning']) > 0) { // a prune task is running.
+            return Promise.resolve();
+        }
+
         return new Promise(resolve => {
             mutex.lock(['transaction-pruning'], unlock => {
+                this.lockProcessNewTransaction();
                 database.getRepository('audit_point')
                         .pruneTransaction()
                         .then(() => {
                             unlock();
                             resolve();
+                            this.unlockProcessNewTransaction();
                         })
                         .catch(() => {
                             unlock();
                             resolve();
+                            this.unlockProcessNewTransaction();
                         });
             });
         });
@@ -1329,11 +1350,13 @@ class Wallet {
         let networkTransactions = _.keys(this._transactionReceivedFromNetwork);
         console.log('_transactionReceivedFromNetwork:', networkTransactions.length, ' | _transactionValidationRejected:', walletTransactionConsensus.getRejectedTransactionList().size, ' | _activeConsensusRound:', _.keys(this._activeConsensusRound).length);
 
-        if (this.isProcessingNewTransactionFromNetwork && mutex.getKeyQueuedSize(['transaction']) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
-            this.isProcessingNewTransactionFromNetwork = false;
+        if (!this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction']) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+            this._maxBacklogThresholdReached = true;
+            this.lockProcessNewTransaction();
         }
-        else if (!this.isProcessingNewTransactionFromNetwork && mutex.getKeyQueuedSize(['transaction']) <= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
-            this.isProcessingNewTransactionFromNetwork = true;
+        else if (this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction']) <= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+            this._maxBacklogThresholdReached = false;
+            this.unlockProcessNewTransaction();
         }
 
         return Promise.resolve();

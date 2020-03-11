@@ -151,6 +151,12 @@ class JobEngine {
             console.log('[job-engine] starting processor', processorTag);
             task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, this.processors['localhost']), 0, false, true);
         }
+
+        for (let i = 0; i < this.configJobEngine.processor_list['localhost_watchdog'].instances; i++) {
+            const processorTag = `job-engine-processor [localhost-${i}-watchdog]`;
+            console.log('[job-engine] starting watchdog processor', processorTag);
+            task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, this.processors['localhost_watchdog']), 0, false, true);
+        }
     }
 
     _isJobEnabled(job) {
