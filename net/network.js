@@ -273,7 +273,6 @@ class Network {
                 node_prefix      : config.WEBSOCKET_PROTOCOL,
                 node_ip_address  : config.NODE_HOST,
                 node_port        : config.NODE_PORT,
-                node_network_test: config.MODE_TEST_NETWORK,
                 node             : url
             };
         }
@@ -283,6 +282,7 @@ class Network {
 
         let content = {
             node_id      : this.nodeID,
+            node_network_test: config.MODE_TEST_NETWORK,
             connection_id: this.nodeConnectionID, ...node
         };
         try {
