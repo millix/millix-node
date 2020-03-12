@@ -340,12 +340,14 @@ export class WalletTransactionConsensus {
 
     _replaceNodeInConsensusRound(ws) {
         _.pull(this._requestConsensusTransactionValidation['nodes_candidate'], ws);
-        const candidate = this._selectNodesForConsensusRound(1, this._requestConsensusTransactionValidation.nodes_candidate);
-        ws              = _.head(candidate);
-        if (ws) {
-            this._requestConsensusTransactionValidation['nodes_candidate'].push(ws);
-            this._askNodeToValidateTransaction(ws);
-        }
+        this._selectNodesForConsensusRound(1, this._requestConsensusTransactionValidation.nodes_candidate)
+            .then(candidate => {
+                ws = _.head(candidate);
+                if (ws) {
+                    this._requestConsensusTransactionValidation['nodes_candidate'].push(ws);
+                    this._askNodeToValidateTransaction(ws);
+                }
+            });
     }
 
     _startConsensusRound(transactionID) {
