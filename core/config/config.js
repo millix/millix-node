@@ -62,7 +62,7 @@ export const NODE_TEST_PORT                            = 5080;
 export const HASH_LENGTH                               = 44;
 export const PUBKEY_LENGTH                             = 44;
 export const SIG_LENGTH                                = 88;
-export const NODE_MILLIX_VERSION                       = '0.0.1';
+export const NODE_MILLIX_VERSION                       = '1.1.0';
 
 let DATA_BASE_DIR;
 if (MODE_TEST_NETWORK) {
