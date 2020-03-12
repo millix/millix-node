@@ -568,7 +568,7 @@ export default class Transaction {
     findUnstableTransaction(minIncludePathLength, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
             let search = (timestampAfter) => {
-                this.database.all('SELECT * FROM `transaction` WHERE +`transaction`.is_stable = 0 AND `transaction`.transaction_date < ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date LIMIT 100',
+                this.database.all('SELECT * FROM `transaction` WHERE +`transaction`.is_stable = 0 AND `transaction`.transaction_date < ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 100',
                     [timestampAfter].concat(excludeTransactionIDList), (err, rows) => {
                         if (err) {
                             console.log(err);
