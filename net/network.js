@@ -314,7 +314,7 @@ class Network {
             ws.terminate();
             return;
         }
-        else if (registry.node_network_test !== config.MODE_TEST_NETWORK) {
+        else if (!!registry.node_network_test !== config.MODE_TEST_NETWORK) {
             console.log('[network] closing connection from main network');
             ws.terminate();
             return;
