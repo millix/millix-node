@@ -133,7 +133,7 @@ export class Database {
 
         this.repositories['address'].setTransactionRepository(this.repositories['transaction']);
         this.repositories['transaction'].setAddressRepository(this.repositories['address']);
-        this.repositories['transaction'].setAuditPointRepository(this.repositories['audit-point']);
+        this.repositories['transaction'].setAuditPointRepository(this.repositories['audit_point']);
 
         return this.repositories['address'].loadAddressVersion();
     }
