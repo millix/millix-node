@@ -250,7 +250,7 @@
         "enable": true
       }
     },
-    "dag_progresss": {
+    "dag_progress": {
       "type": "function",
       "group": "wallet",
       "processor": "localhost",

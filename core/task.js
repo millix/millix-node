@@ -1,5 +1,6 @@
 class Task {
     constructor() {
+        this.debug = false;
         this.runningTask = {};
     }
 
@@ -16,7 +17,7 @@ class Task {
                 return;
             }
 
-            console.log(`Running task: ${taskName}`);
+            this.debug && console.log(`[task] running ${taskName}`);
             if (asyncTask) {
                 task().then(() => {
                     if (!once) {

@@ -840,7 +840,7 @@ class Wallet {
         mutex.lock(['sync-address-balance'], unlock => {
             let address = data.address;
             let updated = new Date(data.updated || 0);
-            console.log('Transaction sync for address ', address, 'from', updated);
+            console.log('[wallet] transaction sync for address ', address, 'from', updated);
             eventBus.emit('wallet_event_log', {
                 type   : 'address_transaction_sync',
                 content: data,
@@ -849,7 +849,7 @@ class Wallet {
             const transactionRepository = database.getRepository('transaction');
             transactionRepository.getTransactionByOutputAddress(address, updated)
                                  .then(transactions => {
-                                     console.log('>>', transactions.length, ' transaction will be synced to', address);
+                                     console.log('[wallet] >>', transactions.length, ' transaction will be synced to', address);
                                      async.eachSeries(transactions, (dbTransaction, callback) => {
                                          transactionRepository.getTransactionObject(dbTransaction.transaction_id)
                                                               .then(transaction => {
@@ -1251,6 +1251,14 @@ class Wallet {
         walletTransactionConsensus.validateTransactionInConsensusRound(data, ws);
     }
 
+    _onTransactionValidationNodeAllocate(data, ws) {
+        walletTransactionConsensus.allocateNodeToValidateTransaction(data, ws);
+    }
+
+    _onTransactionValidationNodeRelease(data, ws) {
+        walletTransactionConsensus.releaseNodeToValidateTransaction(data, ws);
+    }
+
     _doAuditPointWatchDog() {
         let auditPointID = Object.keys(this._activeAuditPointUpdateRound)[0];
         if (auditPointID && (new Date().getTime() - this._activeAuditPointUpdateRound[auditPointID].timestamp) >= config.AUDIT_POINT_VALIDATION_WAIT_TIME_MAX) {
@@ -1348,7 +1356,7 @@ class Wallet {
 
     _doStateInspector() {
         let networkTransactions = _.keys(this._transactionReceivedFromNetwork);
-        console.log('_transactionReceivedFromNetwork:', networkTransactions.length, ' | _transactionValidationRejected:', walletTransactionConsensus.getRejectedTransactionList().size, ' | _activeConsensusRound:', _.keys(this._activeConsensusRound).length);
+        console.log('[wallet] status (_transactionReceivedFromNetwork:', networkTransactions.length, ' | _transactionValidationRejected:', walletTransactionConsensus.getRejectedTransactionList().size, ' | _activeConsensusRound:', _.keys(this._activeConsensusRound).length + ')');
 
         if (!this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction']) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
             this._maxBacklogThresholdReached = true;
@@ -1392,6 +1400,8 @@ class Wallet {
                       eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
                       eventBus.on('address_transaction_sync', this._onSyncAddressBalance.bind(this));
                       eventBus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
+                      eventBus.on('transaction_validation_node_allocate', this._onTransactionValidationNodeAllocate.bind(this));
+                      eventBus.on('transaction_validation_node_release', this._onTransactionValidationNodeRelease.bind(this));
                       eventBus.on('transaction_include_path_request', this._onTransactionIncludePathRequest.bind(this));
                       eventBus.on('transaction_spend_request', this._onSyncTransactionSpendTransaction.bind(this));
                       eventBus.on('audit_point_validation_request', this._onAuditPointValidationRequest.bind(this));

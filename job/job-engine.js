@@ -19,6 +19,7 @@ import os from 'os';
 
 class JobEngine {
     constructor() {
+        this.debug = false;
         this.configJobEngine = null;
         this.modules         = {
             network,
@@ -73,7 +74,7 @@ class JobEngine {
             this._getJob(processorID)
                 .then(job => {
                     if (job) {
-                        console.log(`[job-engine] running job ${job.job_id} : ${job.job_name}`);
+                        this.debug && console.log(`[job-engine] running job ${job.job_id} : ${job.job_name}`);
                         let unlocked         = false;
                         const timestampBegin = ntp.now();
                         this.jobRepository.updateJobProgressStatus(job.job_id, 1, {last_date_begin: timestampBegin})
@@ -85,12 +86,12 @@ class JobEngine {
                                 if (job.job_type_id === this.types['function']) {
                                     const payload = JSON.parse(job.job_payload);
                                     const module  = this.modules[payload.module];
-                                    console.log(`[job-engine] running function ${payload.module}:${payload.function_name}`);
+                                    this.debug && console.log(`[job-engine] running function ${payload.module}:${payload.function_name}`);
 
                                     let postJob = () => {
                                         const timestampEnd = ntp.now();
                                         const lastElapse   = timestampEnd.getTime() - timestampBegin.getTime();
-                                        console.log(`[job-engine] done ${payload.module}:${payload.function_name} - ${lastElapse} ms`);
+                                        this.debug && console.log(`[job-engine] done ${payload.module}:${payload.function_name} - ${lastElapse} ms`);
                                         this.jobRepository.updateJobProgressStatus(job.job_id, 0, {
                                             last_date_end: timestampEnd,
                                             last_elapse  : lastElapse,
@@ -148,13 +149,13 @@ class JobEngine {
     _run() {
         for (let i = 0; i < this.configJobEngine.processor_list['localhost'].instances; i++) {
             const processorTag = `job-engine-processor [localhost-${i}]`;
-            console.log('[job-engine] starting processor', processorTag);
+            this.debug && console.log('[job-engine] starting processor', processorTag);
             task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, this.processors['localhost']), 0, false, true);
         }
 
         for (let i = 0; i < this.configJobEngine.processor_list['localhost_watchdog'].instances; i++) {
             const processorTag = `job-engine-processor [localhost-${i}-watchdog]`;
-            console.log('[job-engine] starting watchdog processor', processorTag);
+            this.debug && console.log('[job-engine] starting watchdog processor', processorTag);
             task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, this.processors['localhost_watchdog']), 0, false, true);
         }
     }
@@ -211,10 +212,10 @@ class JobEngine {
                 (callback) => this.loadConfig().then(callback),
                 (callback) => jobRepository.cleanAll().then(callback),
                 (callback) => { // add processors
-                    console.log('[job-engine] loading processors');
+                    this.debug && console.log('[job-engine] loading processors');
                     async.eachSeries(_.keys(this.configJobEngine.processor_list), (processorName, processorCallback) => {
                         const processor = this.configJobEngine.processor_list[processorName];
-                        console.log('[job-engine] loading processor', processorName);
+                        this.debug && console.log('[job-engine] loading processor', processorName);
                         jobRepository.getJobProcessor(processorName)
                                      .then(entry => {
                                          processors[processorName] = entry.processor_id;
@@ -230,9 +231,9 @@ class JobEngine {
                     }, callback);
                 },
                 (callback) => { // add objects
-                    console.log('[job-engine] loading objects');
+                    this.debug && console.log('[job-engine] loading objects');
                     async.eachSeries(_.keys(this.configJobEngine.object_list), (objectName, objectCallback) => {
-                        console.log('[job-engine] loading object', objectName);
+                        this.debug && console.log('[job-engine] loading object', objectName);
                         jobRepository.getObject(objectName)
                                      .then(entry => {
                                          objects[objectName] = entry.object_id;
@@ -248,11 +249,11 @@ class JobEngine {
                     }, callback);
                 },
                 (callback) => { // add groups
-                    console.log('[job-engine] loading groups');
+                    this.debug && console.log('[job-engine] loading groups');
                     const groupNames = new Set();
                     _.each(this.configJobEngine.job_list, jobEntry => groupNames.add(jobEntry.group));
                     async.eachSeries(Array.from(groupNames), (groupName, groupCallback) => {
-                        console.log('[job-engine] loading group', groupName);
+                        this.debug && console.log('[job-engine] loading group', groupName);
                         jobRepository.getJobGroup(groupName)
                                      .then(entry => {
                                          groups[groupName] = entry.job_group_id;
@@ -268,11 +269,11 @@ class JobEngine {
                     }, callback);
                 },
                 (callback) => { // add types
-                    console.log('[job-engine] loading types');
+                    this.debug && console.log('[job-engine] loading types');
                     const typeNames = new Set();
                     _.each(this.configJobEngine.job_list, jobEntry => typeNames.add(jobEntry.type));
                     async.eachSeries(Array.from(typeNames), (typeName, typeCallback) => {
-                        console.log('[job-engine] loading type', typeName);
+                        this.debug && console.log('[job-engine] loading type', typeName);
                         jobRepository.getJobTypeID(typeName)
                                      .then(entry => {
                                          types[typeName] = entry.job_type_id;
@@ -288,10 +289,10 @@ class JobEngine {
                     }, callback);
                 },
                 (callback) => { // add jobs
-                    console.log('[job-engine] loading jobs');
+                    this.debug && console.log('[job-engine] loading jobs');
                     async.eachSeries(_.keys(this.configJobEngine.job_list), (jobName, jobCallback) => {
                         const jobEntry = this.configJobEngine.job_list[jobName];
-                        console.log('[job-engine] loading job', jobName);
+                        this.debug && console.log('[job-engine] loading job', jobName);
                         jobRepository.getJob(jobName)
                                      .then(job => {
                                          jobs[jobName] = job.job_id;
@@ -309,11 +310,11 @@ class JobEngine {
                     }, callback);
                 },
                 (callback) => { // add job objects
-                    console.log('[job-engine] loading job objects');
+                    this.debug && console.log('[job-engine] loading job objects');
                     async.eachSeries(_.keys(this.configJobEngine.job_list), (jobName, jobCallback) => {
                         const jobEntry = this.configJobEngine.job_list[jobName];
                         async.eachSeries(jobEntry.object_list, (objectName, jobObjectCallback) => {
-                            console.log('[job-engine] loading job object', jobName, '-', objectName);
+                            this.debug && console.log('[job-engine] loading job object', jobName, '-', objectName);
                             jobRepository.addJobObject(jobs[jobName], objects[objectName])
                                          .then(() => jobObjectCallback())
                                          .catch(() => jobObjectCallback());

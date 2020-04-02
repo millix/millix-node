@@ -1,4 +1,4 @@
-import WebSocket, {Server} from 'ws';
+import WebSocket, { Server } from 'ws';
 import _ from 'lodash';
 import config from '../core/config/config';
 import database from '../database/database';
@@ -13,15 +13,15 @@ const WebSocketServer = Server;
 
 class Network {
     constructor() {
-        this._nodeList           = {};
+        this._nodeList = {};
         this._connectionRegistry = {};
-        this._nodeRegistry       = {};
-        this._ws                 = null;
-        this.nodeID              = null;
-        this.nodeConnectionID    = this.generateNewID();
+        this._nodeRegistry = {};
+        this._ws = null;
+        this.nodeID = null;
+        this.nodeConnectionID = this.generateNewID();
         this._selfConnectionNode = new Set();
-        this.initialized         = false;
-        this.noop                = () => {
+        this.initialized = false;
+        this.noop = () => {
         };
     }
 
@@ -45,10 +45,10 @@ class Network {
         let url = prefix + ip + ':' + port;
         if (!this._nodeList[url]) {
             this._nodeList[url] = {
-                node_prefix    : prefix,
+                node_prefix: prefix,
                 node_ip_address: ip,
-                node_port      : port,
-                node_id        : id
+                node_port: port,
+                node_id: id
             };
         }
     }
@@ -65,7 +65,7 @@ class Network {
             return Promise.resolve();
         }
 
-        return new Promise((function(resolve, reject) {
+        return new Promise((function (resolve, reject) {
 
             let url = prefix + ipAddress + ':' + port;
 
@@ -80,13 +80,13 @@ class Network {
             ws.once('open', () => {
                 console.log('[network outgoing] Open connection to ' + url);
 
-                ws.node                = url;
-                ws.nodePort            = port;
-                ws.nodePrefix          = prefix;
-                ws.nodeIPAddress       = ipAddress;
-                ws.createTime          = Date.now();
-                ws.lastMessageTime     = ws.createTime;
-                ws.outBound            = true;
+                ws.node = url;
+                ws.nodePort = port;
+                ws.nodePrefix = prefix;
+                ws.nodeIPAddress = ipAddress;
+                ws.createTime = Date.now();
+                ws.lastMessageTime = ws.createTime;
+                ws.outBound = true;
                 ws.nodeConnectionReady = false;
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
                 this._doHandshake(ws);
@@ -147,13 +147,13 @@ class Network {
         }
 
         const message_type = arrMessage.type;
-        const content      = arrMessage.content;
+        const content = arrMessage.content;
 
         eventBus.emit(message_type, content, ws);
     }
 
     getHostByNode(node) {
-        node        = node.replace('::ffff:', '');
+        node = node.replace('::ffff:', '');
         let matches = node.match(/^wss?:\/\/(.*)$/i);
         if (matches) {
             node = matches[1];
@@ -187,9 +187,9 @@ class Network {
                 ip = req.headers['x-real-ip'];
             }
 
-            ws.node                = config.WEBSOCKET_PROTOCOL + ip + ':' + req.connection.remotePort;
-            ws.createTime          = Date.now();
-            ws.lastMessageTime     = ws.createTime;
+            ws.node = config.WEBSOCKET_PROTOCOL + ip + ':' + req.connection.remotePort;
+            ws.createTime = Date.now();
+            ws.lastMessageTime = ws.createTime;
             ws.nodeConnectionReady = false;
 
 
@@ -227,24 +227,24 @@ class Network {
 
     connectToNodes() {
         database.getRepository('node')
-                .getNodes()
-                .then((nodes) => {
-                    async.eachSeries(nodes, (node, callback) => {
-                        this.addNode(node.node_prefix, node.node_ip_address, node.node_port, node.node_id);
-                        callback();
-                    }, () => {
-                        _.each(config.NODE_INITIAL_LIST, (url) => {
-                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[\w|\d|.]+):(?<port>\d+)$/);
-                            let prefix    = matches.groups['prefix'];
-                            let ipAddress = matches.groups['ip_address'];
-                            let port      = matches.groups['port'];
-                            if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && ipAddress && port)) {
-                                this.addNode(prefix, ipAddress, port);
-                            }
-                        });
-                        this.retryConnectToInactiveNodes();
+            .getNodes()
+            .then((nodes) => {
+                async.eachSeries(nodes, (node, callback) => {
+                    this.addNode(node.node_prefix, node.node_ip_address, node.node_port, node.node_id);
+                    callback();
+                }, () => {
+                    _.each(config.NODE_INITIAL_LIST, (url) => {
+                        let matches = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[\w|\d|.]+):(?<port>\d+)$/);
+                        let prefix = matches.groups['prefix'];
+                        let ipAddress = matches.groups['ip_address'];
+                        let port = matches.groups['port'];
+                        if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && ipAddress && port)) {
+                            this.addNode(prefix, ipAddress, port);
+                        }
                     });
+                    this.retryConnectToInactiveNodes();
                 });
+            });
     }
 
     retryConnectToInactiveNodes() {
@@ -269,11 +269,11 @@ class Network {
         let node;
         if (config.NODE_PUBLIC) {
             let url = config.WEBSOCKET_PROTOCOL + config.NODE_HOST + ':' + config.NODE_PORT;
-            node    = {
-                node_prefix      : config.WEBSOCKET_PROTOCOL,
-                node_ip_address  : config.NODE_HOST,
-                node_port        : config.NODE_PORT,
-                node             : url
+            node = {
+                node_prefix: config.WEBSOCKET_PROTOCOL,
+                node_ip_address: config.NODE_HOST,
+                node_port: config.NODE_PORT,
+                node: url
             };
         }
         else {
@@ -281,7 +281,7 @@ class Network {
         }
 
         let content = {
-            node_id      : this.nodeID,
+            node_id: this.nodeID,
             node_network_test: config.MODE_TEST_NETWORK,
             connection_id: this.nodeConnectionID, ...node
         };
@@ -290,7 +290,7 @@ class Network {
                 type: 'node_handshake',
                 content
             };
-            let data    = JSON.stringify(payload);
+            let data = JSON.stringify(payload);
             ws.send(data);
         }
         catch (e) {
@@ -299,8 +299,8 @@ class Network {
     }
 
     _onNodeHandshake(registry, ws) {
-        let nodeID      = registry.node_id;
-        ws.nodeID       = nodeID;
+        let nodeID = registry.node_id;
+        ws.nodeID = nodeID;
         ws.connectionID = registry.connection_id;
 
         if (nodeID === this.nodeID) {
@@ -323,22 +323,22 @@ class Network {
         if (this._registerWebsocketToNodeID(ws)) {
             this._registerWebsocketConnection(ws);
             if (ws.outBound) {
-                let node                = {
-                    node_prefix    : ws.nodePrefix,
+                let node = {
+                    node_prefix: ws.nodePrefix,
                     node_ip_address: ws.nodeIPAddress,
-                    node_port      : ws.nodePort,
-                    node_id        : ws.nodeID
+                    node_port: ws.nodePort,
+                    node_id: ws.nodeID
                 };
                 this._nodeList[ws.node] = node;
                 database.getRepository('node')
-                        .addNode(node)
-                        .then(() => eventBus.emit('node_list_update'))
-                        .catch(() => {
-                        });
+                    .addNode(node)
+                    .then(() => eventBus.emit('node_list_update'))
+                    .catch(() => {
+                    });
             }
 
             if (ws.inBound && registry.node_prefix && registry.node_ip_address && registry.node_port && registry.node) {
-                let node                      = _.pick(registry, [
+                let node = _.pick(registry, [
                     'node_prefix',
                     'node_ip_address',
                     'node_port',
@@ -347,10 +347,10 @@ class Network {
                 ]);
                 this._nodeList[registry.node] = node;
                 database.getRepository('node')
-                        .addNode(node)
-                        .then(() => eventBus.emit('node_list_update'))
-                        .catch(() => {
-                        });
+                    .addNode(node)
+                    .then(() => eventBus.emit('node_list_update'))
+                    .catch(() => {
+                    });
             }
         }
 
@@ -362,10 +362,10 @@ class Network {
         if (this.registeredClients.length >= config.NODE_CONNECTION_INBOUND_MAX || this.registeredClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
             console.log('[network income] inbound connections maxed out, rejecting new client ');
             ws.close(1000, '[network income] inbound connections maxed out'); // 1001
-                                                                              // doesn't
-                                                                              // work
-                                                                              // in
-                                                                              // cordova
+            // doesn't
+            // work
+            // in
+            // cordova
             return false;
         }
 
@@ -438,20 +438,20 @@ class Network {
         return new Promise(resolve => {
             console.log('[network] starting network');
             walletUtils.loadNodeKey()
-                       .then(key => {
-                           this.nodeID = walletUtils.getAddressFromPublicKey(key.hdPublicKey.publicKey.toBuffer().toString('hex'));
-                           this._initializeServer();
-                           resolve();
-                       })
-                       .catch(() => {
-                           let key = walletUtils.generateNodeKey();
-                           walletUtils.storeNodeKey(key)
-                                      .then(key => {
-                                          this.nodeID = walletUtils.getAddressFromPublicKey(key.hdPublicKey.publicKey.toBuffer().toString('hex'));
-                                          this._initializeServer();
-                                          resolve();
-                                      });
-                       });
+                .then(key => {
+                    this.nodeID = walletUtils.getAddressFromPublicKey(key.hdPublicKey.publicKey.toBuffer().toString('hex'));
+                    this._initializeServer();
+                    resolve();
+                })
+                .catch(() => {
+                    let key = walletUtils.generateNodeKey();
+                    walletUtils.storeNodeKey(key)
+                        .then(key => {
+                            this.nodeID = walletUtils.getAddressFromPublicKey(key.hdPublicKey.publicKey.toBuffer().toString('hex'));
+                            this._initializeServer();
+                            resolve();
+                        });
+                });
         });
     }
 
@@ -461,7 +461,7 @@ class Network {
         eventBus.removeAllListeners('node_address_request');
         this.getWebSocket() && this.getWebSocket().close();
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
-        this._nodeRegistry       = {};
+        this._nodeRegistry = {};
         this._connectionRegistry = {};
     }
 }

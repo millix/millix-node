@@ -4,6 +4,7 @@ import util from 'util';
 
 class Mutex {
     constructor() {
+        this.debug = false;
         this.arrQueuedJobs      = {};
         this.arrLockedKeyArrays = [];
     }
@@ -48,7 +49,7 @@ class Mutex {
 
     exec(arrKeys, proc, nextProc) {
         this.arrLockedKeyArrays.push(arrKeys);
-        console.log('lock acquired', arrKeys);
+        this.debug && console.log('[mutex] lock acquired', arrKeys);
         const lockTime = new Date().getTime();
         let bLocked  = true;
         const self     = this;
@@ -58,7 +59,7 @@ class Mutex {
             }
             bLocked = false;
             self.release(arrKeys);
-            console.log('lock released', arrKeys, ' in ', new Date().getTime() - lockTime, 'ms');
+            self.debug && console.log('[mutex] lock released', arrKeys, ' in ', new Date().getTime() - lockTime, 'ms');
             if (nextProc) {
                 nextProc.apply(nextProc, arguments);
             }
@@ -67,7 +68,7 @@ class Mutex {
     }
 
     handleQueue(key) {
-        console.log('handleQueue ' + this.arrQueuedJobs[key].length + ' items');
+        this.debug && console.log('[mutex] handleQueue ' + this.arrQueuedJobs[key].length + ' items');
         const now = Date.now();
         for (let i = 0; i < this.arrQueuedJobs[key].length; i++) {
             const job = this.arrQueuedJobs[key][i];
@@ -81,16 +82,16 @@ class Mutex {
                                                   // handleQueue called
 
             if (job.timestamp_max !== undefined && job.timestamp_max < now) {
-                console.log('skipping job ', job.arrKeys, ' due to timeout (', now - job.timestamp_max, 'ms ago)');
+                this.debug && console.log('[mutex] skipping job ', job.arrKeys, ' due to timeout (', now - job.timestamp_max, 'ms ago)');
                 i--; // we've just removed one item
                 continue;
             }
 
-            console.log('starting job held by keys', job.arrKeys);
+            this.debug && console.log('[mutex] starting job held by keys', job.arrKeys);
             this.exec(job.arrKeys, job.proc, job.next_proc);
             i--; // we've just removed one item
         }
-        console.log('handleQueue done ' + this.arrQueuedJobs[key].length + ' items');
+        this.debug && console.log('[mutex] handleQueue done ' + this.arrQueuedJobs[key].length + ' items');
     }
 
     lock(arrKeys, proc, nextProc, maxTimestamp) {
@@ -111,7 +112,7 @@ class Mutex {
         }
 
         if (this.isAnyOfKeysLocked(arrKeys)) {
-            //console.log("queuing job held by keys", arrKeys);
+            //this.debug && console.log("queuing job held by keys", arrKeys);
             if (!priority) {
                 this.arrQueuedJobs[key].push({
                     arrKeys      : arrKeys,
@@ -138,7 +139,7 @@ class Mutex {
 
     lockOrSkip(arrKeys, proc, nextProc) {
         if (this.isAnyOfKeysLocked(arrKeys)) {
-            console.log('skipping job held by keys', arrKeys);
+            this.debug && console.log('[mutex] skipping job held by keys', arrKeys);
             if (nextProc) {
                 next_proc();
             }

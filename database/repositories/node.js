@@ -29,7 +29,7 @@ export default class Node {
                 node.node_id
             ], (err) => {
                 if (err) {
-                    err.message.startsWith('SQLITE_CONSTRAINT') ? console.log(`Node ${url} already exits`) : console.error(err.message);
+                    err.message.startsWith('SQLITE_CONSTRAINT') ? console.log(`[database] node ${url} already exits`) : console.error(err.message);
                     if (!node.node_id) {
                         return reject(err.message);
                     }
@@ -41,7 +41,7 @@ export default class Node {
                             node.node_ip_address,
                             node.node_port
                         ], () => {
-                            console.log(`update node ${url} with id ${node.node_id}`);
+                            console.log(`[database] update node ${url} with id ${node.node_id}`);
                             return reject();
                         });
                         return;

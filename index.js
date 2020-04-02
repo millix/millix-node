@@ -8,6 +8,7 @@ import genesisConfig from './core/genesis/genesis-config';
 import server from './api/server';
 import request from 'request';
 import jobEngine from './job/job-engine';
+import eventBus from './core/event-bus';
 
 const argv = require('yargs')
     .options({
@@ -71,7 +72,6 @@ db.initialize()
   .then(() => wallet.initialize())
   .then(() => network.initialize())
   .then(() => peer.initialize())
-  .then(() => new Promise((resolve) => setTimeout(resolve, 10000)))
   .then(() => server.initialize())
   .then(() => jobEngine.initialize())
   .then(() => {
