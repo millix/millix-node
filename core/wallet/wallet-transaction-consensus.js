@@ -570,6 +570,7 @@ export class WalletTransactionConsensus {
         else {
             this._receivedConsensusTransactionValidation = {
                 ...data,
+                timestamp: Date.now(),
                 ws
             };
             peer.replyNodeAllocationRequest({
@@ -721,6 +722,11 @@ export class WalletTransactionConsensus {
                 this._requestConsensusTransactionValidation.run();
             }
         }
+
+        if (this._receivedConsensusTransactionValidation && (Date.now() - this._receivedConsensusTransactionValidation.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
+            this._receivedConsensusTransactionValidation = null;
+        }
+
         return Promise.resolve();
     }
 
