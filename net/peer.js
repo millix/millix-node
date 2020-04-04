@@ -365,6 +365,7 @@ class Peer {
             };
 
             eventBus.emit('node_event_log', payload);
+            console.log('[peer] validation request from node ', ws.node);
 
             let data = JSON.stringify(payload);
             try {
@@ -373,12 +374,16 @@ class Peer {
                     const messageID = 'transaction_validation_response:' + content.transaction_id + ':' + content.consensus_round + ':' + ws.nodeID;
                     eventBus.removeAllListeners(messageID);
                     eventBus.once(messageID, function (eventData, eventWS) {
+
+                        console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node);
+
                         if (eventWS.nodeID !== ws.nodeID || eventWS.connectionID !== ws.connectionID) {
                             return;
                         }
 
                         console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node);
                         if (!callbackCalled) {
+                            console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node, 'success');
                             callbackCalled = true;
                             resolve([eventData, eventWS]);
                         }
@@ -386,6 +391,7 @@ class Peer {
                     ws.send(data);
                     setTimeout(function () {
                         if (!callbackCalled) {
+                            console.log('[peer] validation response from node ', ws.node, 'timeout');
                             callbackCalled = true;
                             reject();
                         }
