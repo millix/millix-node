@@ -8,7 +8,7 @@ import console from '../core/console';
 import path from 'path';
 import {
     Address, AuditPoint, AuditVerification, Config, Keychain, Node,
-    Transaction, Wallet, Schema, Job
+    Transaction, Wallet, Schema, Job, API
 } from './repositories/repositories';
 
 
@@ -130,6 +130,7 @@ export class Database {
         this.repositories['address']            = new Address(this.databaseMillix);
         this.repositories['audit_verification'] = new AuditVerification(this.databaseMillix);
         this.repositories['job']                = new Job(this.databaseJobEngine);
+        this.repositories['api']                = new API(this.databaseMillix);
 
         this.repositories['address'].setTransactionRepository(this.repositories['transaction']);
         this.repositories['transaction'].setAddressRepository(this.repositories['address']);

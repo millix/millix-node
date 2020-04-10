@@ -8,8 +8,9 @@ import AuditVerification from './audit-verification';
 import Transaction from './transaction';
 import Schema from './schema';
 import Job from './job';
+import API from './api';
 
 export {
     Node, Keychain, Config, AuditPoint, Wallet, Address,
-    AuditVerification, Transaction, Schema, Job
+    AuditVerification, Transaction, Schema, Job, API
 };

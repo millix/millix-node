@@ -1,0 +1,193 @@
+{
+  "endpoint_list": [
+    {
+      "id": "0eoUqXNE715mBVqV",
+      "name": "list_peer",
+      "description": "list all peers",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": false,
+      "enable": true
+    },
+    {
+      "id": "DuOnf1Wqi29oJUaA",
+      "name": "new_peer",
+      "description": "add new peer",
+      "method": "POST",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "quIoaHsl8h6IwyEI",
+      "name": "list_keychain_address",
+      "description": "list addresses in the node keychain",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "ywTmt3C0nwk5k4c7",
+      "name": "get_keychain_address",
+      "description": "get information about an address in the node keychain",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "Lb2fuhVMDQm1DrLL",
+      "name": "new_keychain_address",
+      "description": "add a new address to the node keychain",
+      "method": "POST",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "zLsiAkocn90e3K6R",
+      "name": "get_balance",
+      "description": "get the node balance",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "72dlrjquBORj0rhx",
+      "name": "list_address",
+      "description": "list all known addresses",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "VnJIBrrM0KY3uQ9X",
+      "name": "transaction_new",
+      "description": "send a transaction",
+      "method": "POST",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "l4kaEhMnhjB5yseq",
+      "name": "transaction_list",
+      "description": "list all node transactions",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "C9rEOewwhQDijCnN",
+      "name": "get_node_summary",
+      "description": "get current node state",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "3XqkzNFzaTk1JPRf",
+      "name": "list_address_version_released",
+      "description": "list all supported address version_releaseds",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "hMrav9QMiMyLQosB",
+      "name": "new_address_version_released",
+      "description": "add a new supported address version_released",
+      "method": "POST",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "CZOTAF5LfusB1Ht5",
+      "name": "list_configuration",
+      "description": "list current node configurations",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "4wR3kjTwwC67R94Z",
+      "name": "maintain_database",
+      "description": "start database maintenance",
+      "method": "PUT",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "Fv9lheUpVYq5caRe",
+      "name": "reset_validation",
+      "description": "reset validation state",
+      "method": "PUT",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "PwwdU9lZbgMqS2DA",
+      "name": "get_authentication_token",
+      "description": "get authentication token",
+      "method": "POST",
+      "version_released": "1.2.0",
+      "permission": false,
+      "enable": true
+    },
+    {
+      "id": "GMDazQSouYWzLTCv",
+      "name": "list_log",
+      "description": "list log messages",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "5sgpSNaqnHIcfocl",
+      "name": "update_network_state",
+      "description": "update network state to online or offline",
+      "method": "PUT",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "yefPsK2TvkZmC6M4",
+      "name": "update_node",
+      "description": "stop node main job engine",
+      "method": "PUT",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "BPZZ0l2nTfMSmmpl",
+      "name": "get_mnemonic",
+      "description": "get wallet mnemonic",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    },
+    {
+      "id": "LLpSTquu4tZL8Nu5",
+      "name": "update_configuration",
+      "description": "update the node's configurations",
+      "method": "POST",
+      "version_released": "1.2.0",
+      "permission": true,
+      "enable": true
+    }
+  ]
+}

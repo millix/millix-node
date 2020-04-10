@@ -585,6 +585,10 @@ class Wallet {
         return false;
     }
 
+    getConsensus() {
+        return walletTransactionConsensus;
+    }
+
     getTransactionSyncPriority(transaction) {
         let isPriority = false;
 
@@ -1006,11 +1010,11 @@ class Wallet {
                                                      let maxLength = _.reduce(paths, (max, path) => path.length > max ? path.length : max, 0);
                                                      if (maxLength >= config.CONSENSUS_ROUND_PATH_LENGTH_MIN) {
                                                          return callback(); //dont
-                                                                            // need
-                                                                            // to
-                                                                            // sync
-                                                                            // more
-                                                                            // transactions
+                                                         // need
+                                                         // to
+                                                         // sync
+                                                         // more
+                                                         // transactions
                                                      }
 
                                                      let transactions = _.find(paths, path => path.length === maxLength);
@@ -1098,7 +1102,7 @@ class Wallet {
                                                             for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
                                                                 if (self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].replied === false) {
                                                                     return; //stop
-                                                                            // here
+                                                                    // here
                                                                 }
                                                             }
 

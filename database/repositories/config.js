@@ -17,14 +17,19 @@ export default class Config {
     }
 
     addConfig(name, value, type) {
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
             this.database.run('INSERT INTO config (config_id, config_name, value, type) VALUES (?,?,?,?)', [
                 Database.generateID(20),
                 name.toLowerCase(),
                 value,
                 type
             ], (err, row) => {
-                resolve(row);
+                if (err) {
+                    reject(row);
+                }
+                else {
+                    resolve(row);
+                }
             });
         });
     }
@@ -37,6 +42,19 @@ export default class Config {
                 name
             ] : [name]), (err, row) => {
                 resolve(row);
+            });
+        });
+    }
+
+    getAll() {
+        return new Promise(resolve => {
+            this.database.all('SELECT * FROM config', (err, rows) => {
+                if (rows) {
+                    rows.forEach(row => {
+                        row['config_name'] = row['config_name'].toUpperCase();
+                    });
+                }
+                resolve(rows);
             });
         });
     }

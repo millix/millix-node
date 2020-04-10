@@ -21,7 +21,7 @@ class _ConfigLoader {
             async.eachSeries(_.keys(config), (configName, callback) => {
                 if (configName === 'default' || this.reservedConfigNameList.has(configName)) {
                     dbConfigs.config[configName] = config[configName];
-                    dbConfigs.type[configName] = 'object';
+                    dbConfigs.type[configName]   = 'object';
                     callback();
                 }
                 else {
@@ -37,9 +37,9 @@ class _ConfigLoader {
                                   default:
                                       value = JSON.parse(data.value);
                               }
-                              config[configName] = value;
+                              config[configName]           = value;
                               dbConfigs.config[configName] = value;
-                              dbConfigs.type[configName] = data.type;
+                              dbConfigs.type[configName]   = data.type;
                               callback();
                           }
                           else {
@@ -55,7 +55,8 @@ class _ConfigLoader {
 
                               db.getRepository('config')
                                 .addConfig(configName, value, type)
-                                .then(() => callback());
+                                .then(() => callback())
+                                .catch(() => callback());
                           }
                       });
                 }

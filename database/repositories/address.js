@@ -23,7 +23,7 @@ export default class Address {
 
     getDefaultAddressVersion() {
 
-        if(!this.addressVersionList || this.addressVersionList.length === 0){
+        if (!this.addressVersionList || this.addressVersionList.length === 0) {
             throw Error('no address version defined');
         }
 
@@ -222,6 +222,21 @@ export default class Address {
                         return reject(err);
                     }
                     resolve(row.count);
+                }
+            );
+        });
+    }
+
+    getAllAddress() {
+        return new Promise((resolve, reject) => {
+            this.database.all(
+                'SELECT * FROM address',
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    resolve(rows);
                 }
             );
         });

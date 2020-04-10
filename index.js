@@ -1,14 +1,10 @@
 import console from './core/console';
-import network from './net/network';
 import db from './database/database';
-import peer from './net/peer';
 import wallet from './core/wallet/wallet';
 import config from './core/config/config';
 import genesisConfig from './core/genesis/genesis-config';
-import server from './api/server';
 import request from 'request';
-import jobEngine from './job/job-engine';
-import eventBus from './core/event-bus';
+import services from './core/serices/services';
 
 const argv = require('yargs')
     .options({
@@ -66,14 +62,10 @@ process.on('SIGINT', function() {
 process.on('exit', function() {
     return db.close();
 });
-let myWallet;
+
 console.log('starting millix-core');
 db.initialize()
-  .then(() => wallet.initialize())
-  .then(() => network.initialize())
-  .then(() => peer.initialize())
-  .then(() => server.initialize())
-  .then(() => jobEngine.initialize())
+  .then(() => services.initialize())
   .then(() => {
       if (config.MODE_TEST) {
           request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/register',
