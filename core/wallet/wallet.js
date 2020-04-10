@@ -765,12 +765,17 @@ class Wallet {
                                  if (transaction) {
                                      let ws = network.getWebSocketByID(connectionID);
                                      if (ws) {
-                                         peer.transactionSyncResponse({
-                                             transaction            : transactionRepository.normalizeTransactionObject(transaction),
-                                             depth                  : data.depth,
-                                             routing                : data.routing,
-                                             routing_request_node_id: data.routing_request_node_id
-                                         }, ws);
+                                         try {
+                                             peer.transactionSyncResponse({
+                                                 transaction            : transactionRepository.normalizeTransactionObject(transaction),
+                                                 depth                  : data.depth,
+                                                 routing                : data.routing,
+                                                 routing_request_node_id: data.routing_request_node_id
+                                             }, ws);
+                                         }
+                                         catch (e) {
+                                             console.log("[wallet] error sending transaction sync response. transaction normalization issue.")
+                                         }
                                      }
                                  }
                                  else {
