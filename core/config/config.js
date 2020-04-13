@@ -16,7 +16,7 @@ export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ?
                                                          ] :
                                                          [
                                                          ];
-export const CONSENSUS_ROUND_NODE_COUNT                = 3;
+export const CONSENSUS_ROUND_NODE_COUNT                = 1;
 export const CONSENSUS_ROUND_PATH_LENGTH_MIN           = 1;
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED       = 2;
 export const CONSENSUS_ROUND_VALIDATION_MAX            = 5;
@@ -26,7 +26,7 @@ export const CONSENSUS_VALIDATION_DEPTH_MAX            = 50;
 export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX    = 10000;
 export const CONSENSUS_VALIDATION_WAIT_TIME_MAX        = 30 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME      = 10 * 1000;
-export const AUDIT_POINT_NODE_COUNT                    = 3;
+export const AUDIT_POINT_NODE_COUNT                    = 1;
 export const AUDIT_POINT_VALIDATION_REQUIRED           = 2;
 export const AUDIT_POINT_ATTEMPT_MAX                   = 100;
 export const AUDIT_POINT_CANDIDATE_MAX                 = 512;

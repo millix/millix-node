@@ -2,7 +2,7 @@ import database from '../../database/database';
 import wallet from '../../core/wallet/wallet';
 
 
-// api transaction_list
+// api list_transaction
 class _l4kaEhMnhjB5yseq {
     constructor() {
         this.endpoint = 'l4kaEhMnhjB5yseq';

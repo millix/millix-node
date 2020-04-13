@@ -9,30 +9,30 @@ class _C9rEOewwhQDijCnN {
 
     register(app, apiURL) {
         const transactionRepository = database.getRepository('transaction');
-        const addressRepository = database.getRepository('address');
+        const addressRepository     = database.getRepository('address');
         app.get(apiURL + this.endpoint, (req, res) => {
             transactionRepository.getFreeTransactionsCount()
-                                 .then(transaction_free =>
+                                 .then(transactionFreeCount =>
                                      transactionRepository.getIncludedTransactionsCount()
-                                                          .then(transaction_included =>
+                                                          .then(transactionIncludedCount =>
                                                               transactionRepository.getInputsCount()
-                                                                                   .then(input =>
+                                                                                   .then(transactionInputCount =>
                                                                                        transactionRepository.getOutputsCount()
-                                                                                                            .then(output =>
+                                                                                                            .then(transactionOutputCount =>
                                                                                                                 addressRepository.getAddressesCount()
-                                                                                                                                 .then(address =>
+                                                                                                                                 .then(addressCount =>
                                                                                                                                      transactionRepository.getStableTransactionsCount()
-                                                                                                                                                          .then(transaction_stable =>
+                                                                                                                                                          .then(transactionStableCount =>
                                                                                                                                                               transactionRepository.getPendingTransactionsCount()
-                                                                                                                                                                                   .then(transaction_pending =>
+                                                                                                                                                                                   .then(transactionPendingCount =>
                                                                                                                                                                                        res.send({
-                                                                                                                                                                                           transaction_free,
-                                                                                                                                                                                           transaction_included,
-                                                                                                                                                                                           input,
-                                                                                                                                                                                           output,
-                                                                                                                                                                                           address,
-                                                                                                                                                                                           transaction_stable,
-                                                                                                                                                                                           transaction_pending
+                                                                                                                                                                                           transaction_free_count    : transactionFreeCount,
+                                                                                                                                                                                           transaction_included_count: transactionPendingCount,
+                                                                                                                                                                                           transaction_input_count   : transactionInputCount,
+                                                                                                                                                                                           transaction_output_count  : transactionOutputCount,
+                                                                                                                                                                                           address_count             : addressCount,
+                                                                                                                                                                                           transaction_stable_count  : transactionStableCount,
+                                                                                                                                                                                           transaction_pending_count : transactionPendingCount
                                                                                                                                                                                        }))))))));
         });
     }

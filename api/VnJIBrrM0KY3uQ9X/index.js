@@ -1,7 +1,7 @@
 import wallet from '../../core/wallet/wallet';
 
 
-// api transaction_new
+// api new_transaction
 class _VnJIBrrM0KY3uQ9X {
     constructor() {
         this.endpoint = 'VnJIBrrM0KY3uQ9X';

@@ -1,7 +1,7 @@
 import database from '../../database/database';
 
 
-// api list_configuration
+// api list_config
 class _CZOTAF5LfusB1Ht5 {
     constructor() {
         this.endpoint = 'CZOTAF5LfusB1Ht5';
