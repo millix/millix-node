@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+          "type": "node",
+          "request": "launch",
+          "name": "Debug",
+          "program": "${workspaceFolder}/index.js",
+          "args": ["--port", "8800", "--api-port", "5000", "--debug", "--folder", "./millix-testnet/"],
+          "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/babel-node",
+          "runtimeArgs": ["--nolazy"]
+        },
+        {
+          "type": "node",
+          "request": "launch",
+          "name": "Debug 2",
+          "program": "${workspaceFolder}/index.js",
+          "args": ["--port", "8801", "--api-port", "5001", "--debug", "--folder", "./millix-testnetx/"],
+          "runtimeExecutable": "${workspaceFolder}/node_modules/.bin/babel-node",
+          "runtimeArgs": ["--nolazy"]
+        }
+    ]
+}

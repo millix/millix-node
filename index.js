@@ -68,10 +68,10 @@ db.initialize()
   .then(() => services.initialize())
   .then(() => {
       if (config.MODE_TEST) {
-          request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/register',
+          request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
               {
                   json: true,
-                  body: {host: config.NODE_HOST + ':' + config.NODE_PORT_API}
+                  body: {ip_address: config.NODE_HOST, api_port: config.NODE_PORT_API, port: config.NODE_PORT, prefix: config.WEBSOCKET_PROTOCOL}
               },
               (err, res, data) => {
                   genesisConfig.genesis_transaction = data.genesis;
