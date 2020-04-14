@@ -2,7 +2,7 @@ import network from '../../net/network';
 import services from '../../core/serices/services';
 
 
-// api update_node
+// api update_job_engine
 class _yefPsK2TvkZmC6M4 {
     constructor() {
         this.endpoint = 'yefPsK2TvkZmC6M4';
