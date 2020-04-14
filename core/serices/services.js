@@ -13,7 +13,8 @@ class Service {
         this.initialized = false;
     }
 
-    initialize(mode) {
+    initialize(options = {}) {
+        const {mode, initialize_wallet_event: initializeWalletEvent} = options;
         if (this.initialized) {
             return;
         }
@@ -21,7 +22,8 @@ class Service {
         if (mode) {
             this.mode = mode;
         }
-        return wallet.setMode(this.mode).initialize()
+        return wallet.setMode(this.mode).initialize(initializeWalletEvent)
+                     .then(() => logManager.initialize())
                      .then(() => network.initialize())
                      .then(() => server.initialize())
                      .then(() => peer.initialize())
@@ -40,6 +42,7 @@ class Service {
         network.stopTasks();
         peer.stopTasks();
         logManager.stop();
+        jobEngine.stop();
     }
 }
 

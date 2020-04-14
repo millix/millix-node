@@ -164,8 +164,8 @@
     },
     {
       "id": "yefPsK2TvkZmC6M4",
-      "name": "update_job_engine",
-      "description": "stop node main job engine",
+      "name": "update_node_engine",
+      "description": "stop or start node services (i.e networking, job, log, wallet)",
       "method": "PUT",
       "version_released": "1.2.0",
       "permission": true,

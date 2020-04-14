@@ -11,7 +11,7 @@ class _yefPsK2TvkZmC6M4 {
         app.put(apiURL + this.endpoint, (req, res) => {
             const data = req.body;
             if (data.run && !services.initialized) {
-                services.initialize();
+                services.initialize({initialize_wallet_event: true});
                 res.send({error: false});
             }
             else if (!data.run && services.initialized) {

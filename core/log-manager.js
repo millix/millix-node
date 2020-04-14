@@ -18,12 +18,13 @@ class LogManager {
         this.logsCache = [];
     }
 
-    start() {
+    initialize() {
         if (this.started) {
-            return;
+            return Promise.resolve();
         }
         task.scheduleTask('update log', this._update.bind(this), this.updateFrequency);
         this.started = true;
+        return Promise.resolve();
     }
 
     stop() {

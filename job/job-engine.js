@@ -19,8 +19,10 @@ import os from 'os';
 
 class JobEngine {
     constructor() {
-        this.debug = false;
+        this.debug           = false;
         this.configJobEngine = null;
+        this.initialized     = false;
+        this.running         = false;
         this.modules         = {
             network,
             wallet,
@@ -98,8 +100,8 @@ class JobEngine {
                                             last_response: 'done'
                                         })
                                             .then(() => this.jobRepository.unlockJobObject(job.job_id))
-                                            .then(() => task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true))
-                                            .catch(() => task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true));
+                                            .then(() => this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true))
+                                            .catch(() => this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true));
                                     };
 
                                     module[payload.function_name]()
@@ -114,8 +116,8 @@ class JobEngine {
                                             last_response: 'fail'
                                         })
                                         .then(() => this.jobRepository.unlockJobObject(job.job_id))
-                                        .then(() => task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true))
-                                        .catch(() => task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true));
+                                        .then(() => this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true))
+                                        .catch(() => this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true));
 
                                 }
                             })
@@ -124,7 +126,7 @@ class JobEngine {
                                     if (!unlocked) {
                                         unlock();
                                     }
-                                    task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
+                                    this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
                                 };
 
                                 this.jobRepository
@@ -140,13 +142,17 @@ class JobEngine {
                     }
                     else {
                         unlock();
-                        task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
+                        this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
                     }
                 });
         });
     }
 
     _run() {
+        if (this.running) {
+            return Promise.resolve();
+        }
+        this.running = true;
         for (let i = 0; i < this.configJobEngine.processor_list['localhost'].instances; i++) {
             const processorTag = `job-engine-processor [localhost-${i}]`;
             this.debug && console.log('[job-engine] starting processor', processorTag);
@@ -158,6 +164,8 @@ class JobEngine {
             this.debug && console.log('[job-engine] starting watchdog processor', processorWatchdogTag);
             task.scheduleTask(processorWatchdogTag, this._getTask.bind(this, processorWatchdogTag, this.processors['localhost_watchdog']), 0, false, true);
         }
+
+        return Promise.resolve();
     }
 
     _isJobEnabled(job) {
@@ -201,6 +209,33 @@ class JobEngine {
     }
 
     initialize() {
+        return new Promise(resolve => {
+            this._initialize()
+                .then(() => resolve())
+                .catch(() => {
+                    this._run().then(() => resolve());
+                });
+        });
+    }
+
+    stop() {
+        this.running = false;
+        for (let i = 0; i < this.configJobEngine.processor_list['localhost'].instances; i++) {
+            const processorTag = `job-engine-processor [localhost-${i}]`;
+            task.removeTask(processorTag);
+        }
+
+        for (let i = 0; i < this.configJobEngine.processor_list['localhost_watchdog'].instances; i++) {
+            const processorWatchdogTag = `job-engine-processor [localhost-${i}-watchdog]`;
+            task.removeTask(processorWatchdogTag);
+        }
+    }
+
+    _initialize() {
+        if (this.initialized) {
+            return Promise.reject();
+        }
+        this.initialized  = true;
         let jobRepository = database.getRepository('job');
         const processors  = {};
         const objects     = {};
