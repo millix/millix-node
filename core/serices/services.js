@@ -16,7 +16,7 @@ class Service {
     initialize(options = {}) {
         const {mode, initialize_wallet_event: initializeWalletEvent} = options;
         if (this.initialized) {
-            return;
+            return Promise.resolve();
         }
         this.initialized = true;
         if (mode) {
@@ -38,9 +38,9 @@ class Service {
             return;
         }
         this.initialized = false;
-        wallet.stopTasks();
-        network.stopTasks();
-        peer.stopTasks();
+        wallet.stop();
+        network.stop();
+        peer.stop();
         logManager.stop();
         jobEngine.stop();
     }

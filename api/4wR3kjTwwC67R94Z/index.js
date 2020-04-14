@@ -12,9 +12,9 @@ class _4wR3kjTwwC67R94Z {
 
     register(app, apiURL) {
         app.put(apiURL + this.endpoint, (req, res) => {
-            wallet.stopTasks();
-            network.stopTasks();
-            peer.stopTasks();
+            wallet.stop();
+            network.stop();
+            peer.stop();
             database.runVacuum()
                     .then(() => database.runWallCheckpoint())
                     .then(() => {

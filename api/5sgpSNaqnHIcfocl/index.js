@@ -15,7 +15,7 @@ class _5sgpSNaqnHIcfocl {
                 res.send({error: false});
             }
             else if (!data.online && network.initialized === true) {
-                network.stopTasks();
+                network.stop();
                 res.send({error: false});
             }
             else {

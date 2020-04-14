@@ -219,6 +219,9 @@ class JobEngine {
     }
 
     stop() {
+        if(!this.running || !this.initialized){
+            return;
+        }
         this.running = false;
         for (let i = 0; i < this.configJobEngine.processor_list['localhost'].instances; i++) {
             const processorTag = `job-engine-processor [localhost-${i}]`;

@@ -1455,7 +1455,7 @@ class Wallet {
         }
     }
 
-    stopTasks() {
+    stop() {
         walletSync.close().then(_ => _).catch(_ => _);
         eventBus.removeAllListeners('transaction_new');
         eventBus.removeAllListeners('transaction_sync');

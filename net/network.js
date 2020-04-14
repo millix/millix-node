@@ -458,7 +458,7 @@ class Network {
         });
     }
 
-    stopTasks() {
+    stop() {
         this.initialized = false;
         eventBus.removeAllListeners('node_handshake');
         eventBus.removeAllListeners('node_address_request');

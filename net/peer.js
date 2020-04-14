@@ -758,7 +758,7 @@ class Peer {
         eventBus.on('node_list', this._onNodeList.bind(this));
     }
 
-    stopTasks() {
+    stop() {
         eventBus.removeAllListeners('node_list');
     }
 }
