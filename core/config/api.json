@@ -2,8 +2,8 @@
   "endpoint_list": [
     {
       "id": "0eoUqXNE715mBVqV",
-      "name": "list_peer",
-      "description": "list all peers",
+      "name": "list_node",
+      "description": "list all nodes",
       "method": "GET",
       "version_released": "1.2.0",
       "permission": false,
@@ -11,8 +11,8 @@
     },
     {
       "id": "DuOnf1Wqi29oJUaA",
-      "name": "new_peer",
-      "description": "add new peer",
+      "name": "new_node",
+      "description": "add a new node",
       "method": "POST",
       "version_released": "1.2.0",
       "permission": true,
@@ -65,7 +65,7 @@
     },
     {
       "id": "VnJIBrrM0KY3uQ9X",
-      "name": "transaction_new",
+      "name": "new_transaction",
       "description": "send a transaction",
       "method": "POST",
       "version_released": "1.2.0",
@@ -74,7 +74,7 @@
     },
     {
       "id": "l4kaEhMnhjB5yseq",
-      "name": "transaction_list",
+      "name": "list_transaction",
       "description": "list all node transactions",
       "method": "GET",
       "version_released": "1.2.0",
@@ -110,7 +110,7 @@
     },
     {
       "id": "CZOTAF5LfusB1Ht5",
-      "name": "list_configuration",
+      "name": "list_config",
       "description": "list current node configurations",
       "method": "GET",
       "version_released": "1.2.0",
@@ -164,7 +164,7 @@
     },
     {
       "id": "yefPsK2TvkZmC6M4",
-      "name": "update_node",
+      "name": "update_job_engine",
       "description": "stop node main job engine",
       "method": "PUT",
       "version_released": "1.2.0",
@@ -182,7 +182,7 @@
     },
     {
       "id": "LLpSTquu4tZL8Nu5",
-      "name": "update_configuration",
+      "name": "update_config",
       "description": "update the node's configurations",
       "method": "POST",
       "version_released": "1.2.0",

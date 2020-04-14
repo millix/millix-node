@@ -8,7 +8,7 @@ class _Fv9lheUpVYq5caRe {
     }
 
     register(app, apiURL) {
-        app.get(apiURL + this.endpoint, (req, res) => {
+        app.put(apiURL + this.endpoint, (req, res) => {
             wallet.getConsensus().resetTransactionValidationRejected();
             res.send({error: false});
         });

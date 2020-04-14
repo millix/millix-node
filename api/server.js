@@ -8,11 +8,8 @@ import config from '../core/config/config';
 import async from 'async';
 import database from '../database/database';
 import wallet from '../core/wallet/wallet';
-import walletUtils from '../core/wallet/wallet-utils';
 import apiConfig from '../core/config/api.json';
 import _ from 'lodash';
-import jwt from 'jsonwebtoken';
-import Mnemonic from 'bitcore-mnemonic';
 import base58 from 'bs58';
 
 
@@ -112,13 +109,6 @@ class Server {
                                 return;
                             }
                             next();
-                        });
-
-                        app.on('error', (e) => {
-                            if (e.code === 'EADDRINUSE') {
-                                console.log('Address in use, retrying...');
-                            }
-                            console.log('error...', e);
                         });
 
                         // starting the server
