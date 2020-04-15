@@ -1,6 +1,6 @@
-export const MODE_DEBUG                                = true;
-export const MODE_TEST_NETWORK                         = true;
-export const NODE_PORT                                 = MODE_TEST_NETWORK ? 30000 : null;
+export const MODE_DEBUG                                = false;
+export const MODE_TEST_NETWORK                         = false;
+export const NODE_PORT                                 = MODE_TEST_NETWORK ? 30000 : 10000;
 export const NODE_PORT_API                             = 5500;
 export const NODE_HOST                                 = 'localhost';
 export const WEBSOCKET_PROTOCOL                        = 'ws://';
@@ -15,8 +15,14 @@ export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ?
                                                              'ws://52.74.179.232:30001'
                                                          ] :
                                                          [
+                                                             'ws://18.136.162.158:10000',
+                                                             'ws://18.136.162.158:10001',
+                                                             'ws://18.138.163.22:10000',
+                                                             'ws://18.138.163.22:10001',
+                                                             'ws://3.0.29.177:10000',
+                                                             'ws://3.0.29.177:10001'
                                                          ];
-export const CONSENSUS_ROUND_NODE_COUNT                = 1;
+export const CONSENSUS_ROUND_NODE_COUNT                = 3;
 export const CONSENSUS_ROUND_PATH_LENGTH_MIN           = 1;
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED       = 2;
 export const CONSENSUS_ROUND_VALIDATION_MAX            = 5;
@@ -26,7 +32,7 @@ export const CONSENSUS_VALIDATION_DEPTH_MAX            = 50;
 export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX    = 10000;
 export const CONSENSUS_VALIDATION_WAIT_TIME_MAX        = 30 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME      = 10 * 1000;
-export const AUDIT_POINT_NODE_COUNT                    = 1;
+export const AUDIT_POINT_NODE_COUNT                    = 3;
 export const AUDIT_POINT_VALIDATION_REQUIRED           = 2;
 export const AUDIT_POINT_ATTEMPT_MAX                   = 100;
 export const AUDIT_POINT_CANDIDATE_MAX                 = 512;
@@ -41,7 +47,7 @@ export const HEARTBEAT_TIMEOUT                         = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT = 100;
 export const WALLET_LOG_SIZE_MAX                       = 1000;
-export const WALLET_TRANSACTION_DEFAULT_VERSION        = MODE_TEST_NETWORK ? 'lal' : null;
+export const WALLET_TRANSACTION_DEFAULT_VERSION        = MODE_TEST_NETWORK ? 'lal' : '0a0';
 export const WALLET_SPENT_TRANSACTION_PRUNE            = false;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX         = 1000;
 export const WALLET_TRANSACTION_QUEUE_SIZE_NORMAL      = 250;
@@ -63,7 +69,7 @@ if (MODE_TEST_NETWORK) {
     DATA_BASE_DIR = './millix-testnet';
 }
 else {
-    DATA_BASE_DIR = null;
+    DATA_BASE_DIR = './millix';
 }
 export const NODE_KEY_PATH   = DATA_BASE_DIR + '/node.json';
 export const KEY_PATH        = DATA_BASE_DIR + '/millix_private_key.json';
@@ -132,8 +138,3 @@ export default {
     NODE_TEST_PORT,
     JOB_CONFIG_PATH
 };
-
-// dev branch should be running in the test-network
-if(!MODE_TEST_NETWORK){
-    throw Error("develop branch should be running in the test-network");
-}
