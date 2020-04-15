@@ -9,7 +9,7 @@ CREATE TABLE api
     version_released   VARCHAR(10)  NOT NULL,
     version_deprecated VARCHAR(10)  NULL,
     version_removed    VARCHAR(10)  NULL,
-    permission         SMALLINT     NOT NULL DEFAULT 1,
+    permission         TEXT         NOT NULL DEFAULT "true",
     status             SMALLINT     NOT NULL DEFAULT 1,
     create_date        INT          NOT NULL DEFAULT (strftime('%s', 'now'))
 );

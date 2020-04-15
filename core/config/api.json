@@ -6,7 +6,7 @@
       "description": "list all nodes",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": false,
+      "permission": "false",
       "enable": true
     },
     {
@@ -15,7 +15,7 @@
       "description": "add a new node",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -24,7 +24,7 @@
       "description": "list addresses in the node keychain",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -33,7 +33,7 @@
       "description": "get information about an address in the node keychain",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -42,7 +42,7 @@
       "description": "add a new address to the node keychain",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -51,7 +51,7 @@
       "description": "get the node balance",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -60,7 +60,7 @@
       "description": "list all known addresses",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -69,7 +69,7 @@
       "description": "send a transaction",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -78,7 +78,7 @@
       "description": "list all node transactions",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -87,7 +87,7 @@
       "description": "get current node state",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -96,7 +96,7 @@
       "description": "list all supported address version_releaseds",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -105,7 +105,7 @@
       "description": "add a new supported address version_released",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -114,7 +114,7 @@
       "description": "list current node configurations",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -123,7 +123,7 @@
       "description": "start database maintenance",
       "method": "PUT",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -132,7 +132,7 @@
       "description": "reset validation state",
       "method": "PUT",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -141,7 +141,7 @@
       "description": "get authentication token",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": false,
+      "permission": "false",
       "enable": true
     },
     {
@@ -150,7 +150,7 @@
       "description": "list log messages",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -159,7 +159,7 @@
       "description": "update network state to online or offline",
       "method": "PUT",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -168,7 +168,7 @@
       "description": "stop or start node services (i.e networking, job, log, wallet)",
       "method": "PUT",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -177,7 +177,7 @@
       "description": "get wallet mnemonic",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     },
     {
@@ -186,7 +186,7 @@
       "description": "update the node's configurations",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": true,
+      "permission": "true",
       "enable": true
     }
   ]

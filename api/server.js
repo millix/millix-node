@@ -43,8 +43,8 @@ class Server {
             const keychainRepository = database.getRepository('keychain');
 
             this._loadAPI().then(apis => {
-                const secureAPIs = _.filter(apis, api => api.secure);
-                const insecureAPIs = _.filter(apis, api => !api.secure);
+                const secureAPIs = _.filter(apis, api => api.permission == "true");
+                const insecureAPIs = _.filter(apis, api => api.permission == "false");
                 console.log('secured', secureAPIs);
                 console.log('unsecured', insecureAPIs);
                 keychainRepository.getWalletAddresses(walletID)
