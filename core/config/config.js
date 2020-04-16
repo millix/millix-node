@@ -1,27 +1,29 @@
 export const MODE_DEBUG                                = false;
 export const MODE_TEST_NETWORK                         = false;
-export const NODE_PORT                                 = MODE_TEST_NETWORK ? 30000 : 10000;
+export const NODE_PORT_MAIN_NETWORK                    = 10000;
+export const NODE_PORT_TEST_NETWORK                    = 30000;
+export const NODE_PORT                                 = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                             = 5500;
 export const NODE_HOST                                 = 'localhost';
 export const WEBSOCKET_PROTOCOL                        = 'ws://';
 export const RPC_INTERFACE                             = '0.0.0.0';
 export const NODE_PUBLIC                               = false;
 export const MODE_NODE_FULL                            = false;
-export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ?
-                                                         [
-                                                             'ws://13.251.31.129:30000',
-                                                             'ws://13.251.31.129:30001',
-                                                             'ws://52.74.179.232:30000',
-                                                             'ws://52.74.179.232:30001'
-                                                         ] :
-                                                         [
-                                                             'ws://18.136.162.158:10000',
-                                                             'ws://18.136.162.158:10001',
-                                                             'ws://18.138.163.22:10000',
-                                                             'ws://18.138.163.22:10001',
-                                                             'ws://3.0.29.177:10000',
-                                                             'ws://3.0.29.177:10001'
-                                                         ];
+export const NODE_INITIAL_LIST_MAIN_NETWORK            = [
+    'ws://18.136.162.158:10000',
+    'ws://18.136.162.158:10001',
+    'ws://18.138.163.22:10000',
+    'ws://18.138.163.22:10001',
+    'ws://3.0.29.177:10000',
+    'ws://3.0.29.177:10001'
+];
+export const NODE_INITIAL_LIST_TEST_NETWORK            = [
+    'ws://13.251.31.129:30000',
+    'ws://13.251.31.129:30001',
+    'ws://52.74.179.232:30000',
+    'ws://52.74.179.232:30001'
+];
+export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
 export const CONSENSUS_ROUND_NODE_COUNT                = 3;
 export const CONSENSUS_ROUND_PATH_LENGTH_MIN           = 1;
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED       = 2;
@@ -63,14 +65,9 @@ export const HASH_LENGTH                               = 44;
 export const PUBKEY_LENGTH                             = 44;
 export const SIG_LENGTH                                = 88;
 export const NODE_MILLIX_VERSION                       = '1.2.0';
-
-let DATA_BASE_DIR;
-if (MODE_TEST_NETWORK) {
-    DATA_BASE_DIR = './millix-testnet';
-}
-else {
-    DATA_BASE_DIR = './millix';
-}
+export const DATA_BASE_DIR_MAIN_NETWORK                = './millix';
+export const DATA_BASE_DIR_TEST_NETWORK                = './millix-testnet';
+let DATA_BASE_DIR = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
 export const NODE_KEY_PATH   = DATA_BASE_DIR + '/node.json';
 export const KEY_PATH        = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH = DATA_BASE_DIR + '/job.json';
