@@ -5,7 +5,6 @@ import config from './core/config/config';
 import genesisConfig from './core/genesis/genesis-config';
 import request from 'request';
 import services from './core/serices/services';
-import bootstrap from './core/bootstrap';
 
 const argv = require('yargs')
     .options({
@@ -65,25 +64,24 @@ process.on('exit', function() {
 });
 
 console.log('starting millix-core');
-bootstrap.initialize()
-         .then(() => db.initialize())
-         .then(() => services.initialize())
-         .then(() => {
-             if (config.MODE_TEST) {
-                 request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
-                     {
-                         json: true,
-                         body: {
-                             ip_address: config.NODE_HOST,
-                             api_port  : config.NODE_PORT_API,
-                             port      : config.NODE_PORT,
-                             prefix    : config.WEBSOCKET_PROTOCOL
-                         }
-                     },
-                     (err, res, data) => {
-                         genesisConfig.genesis_transaction = data.genesis;
-                         console.log('registered new genesis: ', genesisConfig.genesis_transaction);
-                     });
-             }
-         })
-         .then(() => setTimeout(() => wallet.syncAddresses(), 2000));
+db.initialize()
+  .then(() => services.initialize())
+  .then(() => {
+      if (config.MODE_TEST) {
+          request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
+              {
+                  json: true,
+                  body: {
+                      ip_address: config.NODE_HOST,
+                      api_port  : config.NODE_PORT_API,
+                      port      : config.NODE_PORT,
+                      prefix    : config.WEBSOCKET_PROTOCOL
+                  }
+              },
+              (err, res, data) => {
+                  genesisConfig.genesis_transaction = data.genesis;
+                  console.log('registered new genesis: ', genesisConfig.genesis_transaction);
+              });
+      }
+  })
+  .then(() => setTimeout(() => wallet.syncAddresses(), 2000));
