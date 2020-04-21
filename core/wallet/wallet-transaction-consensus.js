@@ -337,7 +337,7 @@ export class WalletTransactionConsensus {
             this._requestConsensusTransactionValidation['nodes']     = {};
             this._requestConsensusTransactionValidation['resetting'] = true;
             setTimeout(() => {
-                if (!this._requestConsensusTransactionValidation) {
+                if (!this._requestConsensusTransactionValidation || !this._requestConsensusTransactionValidation['run']) {
                     return resolve();
                 }
                 this._requestConsensusTransactionValidation['resetting'] = false;
