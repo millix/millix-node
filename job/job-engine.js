@@ -19,11 +19,12 @@ import os from 'os';
 
 class JobEngine {
     constructor() {
-        this.debug           = false;
-        this.configJobEngine = null;
-        this.initialized     = false;
-        this.running         = false;
-        this.modules         = {
+        this.debug            = false;
+        this.configJobEngine  = null;
+        this.initialized      = false;
+        this.running          = false;
+        this.processorsStatus = {};
+        this.modules          = {
             network,
             wallet,
             peer,
@@ -72,10 +73,21 @@ class JobEngine {
     }
 
     _getTask(processorTag, processorID) {
+        if (this.debug) {
+            _.each(_.keys(this.processorsStatus), tag => {
+                const status = this.processorsStatus[tag];
+                console.log('tag: ', tag, ' | job: ', status.job, ' | last run: ', (Date.now() - status.timestamp) / 1000, 'seconds ago');
+            });
+        }
+        this.processorsStatus[processorTag] = {
+            running  : true,
+            timestamp: Date.now()
+        };
         mutex.lock(['job-engine'], (unlock) => {
             this._getJob(processorID)
                 .then(job => {
                     if (job) {
+                        this.processorsStatus[processorTag]['job'] = job.job_name;
                         this.debug && console.log(`[job-engine] running job ${job.job_id} : ${job.job_name}`);
                         let unlocked         = false;
                         const timestampBegin = ntp.now();
@@ -94,14 +106,24 @@ class JobEngine {
                                         const timestampEnd = ntp.now();
                                         const lastElapse   = timestampEnd.getTime() - timestampBegin.getTime();
                                         this.debug && console.log(`[job-engine] done ${payload.module}:${payload.function_name} - ${lastElapse} ms`);
-                                        this.jobRepository.updateJobProgressStatus(job.job_id, 0, {
-                                            last_date_end: timestampEnd,
-                                            last_elapse  : lastElapse,
-                                            last_response: 'done'
-                                        })
-                                            .then(() => this.jobRepository.unlockJobObject(job.job_id))
-                                            .then(() => this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true))
-                                            .catch(() => this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true));
+                                        mutex.lock(['job-engine'], (unlockUpdate) => {
+                                            this.jobRepository.updateJobProgressStatus(job.job_id, 0, {
+                                                last_date_end: timestampEnd,
+                                                last_elapse  : lastElapse,
+                                                last_response: 'done'
+                                            })
+                                                .then(() => this.jobRepository.unlockJobObject(job.job_id))
+                                                .then(() => {
+                                                    this.processorsStatus[processorTag]['running'] = false;
+                                                    unlockUpdate();
+                                                    this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
+                                                })
+                                                .catch(() => {
+                                                    this.processorsStatus[processorTag]['running'] = false;
+                                                    unlockUpdate();
+                                                    this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
+                                                });
+                                        });
                                     };
 
                                     module[payload.function_name]()
@@ -109,6 +131,38 @@ class JobEngine {
                                         .catch(postJob);
                                 }
                                 else {
+                                    mutex.lock(['job-engine'], (unlockUpdate) => {
+                                        this.jobRepository
+                                            .updateJobProgressStatus(job.job_id, 0, {
+                                                last_date_end: ntp.now(),
+                                                last_elapse  : 0,
+                                                last_response: 'fail'
+                                            })
+                                            .then(() => this.jobRepository.unlockJobObject(job.job_id))
+                                            .then(() => {
+                                                this.processorsStatus[processorTag]['running'] = false;
+                                                unlockUpdate();
+                                                this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
+                                            })
+                                            .catch(() => {
+                                                this.processorsStatus[processorTag]['running'] = false;
+                                                unlockUpdate();
+                                                this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
+                                            });
+                                    });
+                                }
+                            })
+                            .catch(() => {
+                                mutex.lock(['job-engine'], (unlockUpdate) => {
+                                    let postJob = () => {
+                                        this.processorsStatus[processorTag]['running'] = false;
+                                        unlockUpdate();
+                                        if (!unlocked) {
+                                            unlock();
+                                        }
+                                        this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
+                                    };
+
                                     this.jobRepository
                                         .updateJobProgressStatus(job.job_id, 0, {
                                             last_date_end: ntp.now(),
@@ -116,31 +170,13 @@ class JobEngine {
                                             last_response: 'fail'
                                         })
                                         .then(() => this.jobRepository.unlockJobObject(job.job_id))
-                                        .then(() => this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true))
-                                        .catch(() => this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true));
-
-                                }
-                            })
-                            .catch(() => {
-                                let postJob = () => {
-                                    if (!unlocked) {
-                                        unlock();
-                                    }
-                                    this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
-                                };
-
-                                this.jobRepository
-                                    .updateJobProgressStatus(job.job_id, 0, {
-                                        last_date_end: ntp.now(),
-                                        last_elapse  : 0,
-                                        last_response: 'fail'
-                                    })
-                                    .then(() => this.jobRepository.unlockJobObject(job.job_id))
-                                    .then(postJob)
-                                    .catch(postJob);
+                                        .then(postJob)
+                                        .catch(postJob);
+                                });
                             });
                     }
                     else {
+                        this.processorsStatus[processorTag]['running'] = false;
                         unlock();
                         this.running && task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, processorID), 500, false, true);
                     }
@@ -219,7 +255,7 @@ class JobEngine {
     }
 
     stop() {
-        if(!this.running || !this.initialized){
+        if (!this.running || !this.initialized) {
             return;
         }
         this.running = false;
