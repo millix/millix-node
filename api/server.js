@@ -3,7 +3,6 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import helmet from 'helmet';
-import expressjwt from 'express-jwt';
 import config from '../core/config/config';
 import async from 'async';
 import database from '../database/database';
@@ -89,14 +88,12 @@ class Server {
                             }
                         });
 
-                        app.use(expressjwt({ secret: secret }));
-
                         // secure apis
 
                         secureAPIs.forEach(secureAPI => {
                             const module = require('./' + secureAPI.api_id + '/index');
                             if (module) {
-                                module.default.register(app, '/api/');
+                                module.default.register(app, '/api/', true);
                             }
                             else {
                                 console.log('api source code not found');

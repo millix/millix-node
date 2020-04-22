@@ -2,32 +2,32 @@ import database from '../../database/database';
 import wallet from '../../core/wallet/wallet';
 import network from '../../net/network';
 import peer from '../../net/peer';
+import Endpoint from '../endpoint';
 
 
 // api maintain_database
-class _4wR3kjTwwC67R94Z {
+class _4wR3kjTwwC67R94Z extends Endpoint {
     constructor() {
-        this.endpoint = '4wR3kjTwwC67R94Z';
+        super('4wR3kjTwwC67R94Z');
     }
 
-    register(app, apiURL) {
-        app.put(apiURL + this.endpoint, (req, res) => {
-            wallet.stop();
-            network.stop();
-            peer.stop();
-            database.runVacuum()
-                    .then(() => database.runWallCheckpoint())
-                    .then(() => {
-                        wallet.initialize(true)
-                              .then(() => network.initialize())
-                              .then(() => peer.initialize())
-                              .then(() => {
-                                  res.send({error: false});
-                              });
-                    })
-                    .catch(() => res.send({error: true}));
-        });
+    handler(app, req, res) {
+        wallet.stop();
+        network.stop();
+        peer.stop();
+        database.runVacuum()
+                .then(() => database.runWallCheckpoint())
+                .then(() => {
+                    wallet.initialize(true)
+                          .then(() => network.initialize())
+                          .then(() => peer.initialize())
+                          .then(() => {
+                              res.send({success: true});
+                          });
+                })
+                .catch(() => res.send({success: false}));
     }
-};
+}
+
 
 export default new _4wR3kjTwwC67R94Z();

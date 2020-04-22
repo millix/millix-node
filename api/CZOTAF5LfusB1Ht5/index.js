@@ -1,18 +1,17 @@
 import database from '../../database/database';
+import Endpoint from '../endpoint';
 
 
 // api list_config
-class _CZOTAF5LfusB1Ht5 {
+class _CZOTAF5LfusB1Ht5 extends Endpoint {
     constructor() {
-        this.endpoint = 'CZOTAF5LfusB1Ht5';
+        super('CZOTAF5LfusB1Ht5');
     }
 
-    register(app, apiURL) {
+    handler(app, req, res) {
         const configurationRepository = database.getRepository('config');
-        app.get(apiURL + this.endpoint, (req, res) => {
-            configurationRepository.getAll()
-                                   .then(configurations => res.send(configurations));
-        });
+        configurationRepository.getAll()
+                               .then(configurations => res.send(configurations));
     }
 };
 

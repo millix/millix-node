@@ -1,24 +1,33 @@
 import database from '../../database/database';
+import Endpoint from '../endpoint';
 
 
 // api new_address_version
-class _hMrav9QMiMyLQosB {
+class _hMrav9QMiMyLQosB extends Endpoint {
     constructor() {
-        this.endpoint = 'hMrav9QMiMyLQosB';
+        super('hMrav9QMiMyLQosB');
     }
 
-    register(app, apiURL) {
+    handler(app, req, res) {
         const addressRepository = database.getRepository('address');
-        app.post(apiURL + this.endpoint, (req, res) => {
-            let data = req.body;
-            if (data) {
-                addressRepository.addAddressVersion(data.version, data.is_main_network, data.regex_pattern, data.is_default)
-                                 .then(() => res.send({error: false}));
-            }
-            else {
-                res.send({error: true});
-            }
-        });
+        let data;
+        try {
+            data = JSON.parse(req.query.p1);
+        }
+        catch (e) {
+            return res.status(400).send({
+                success: false,
+                message: 'address payload is missing or invalid'
+            });
+        }
+
+        if (data) {
+            addressRepository.addAddressVersion(data.version, data.is_main_network, data.regex_pattern, data.is_default)
+                             .then(() => res.send({success: true}));
+        }
+        else {
+            res.send({success: false});
+        }
     }
 };
 
