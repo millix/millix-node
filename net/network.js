@@ -7,6 +7,8 @@ import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
 import walletUtils from '../core/wallet/wallet-utils';
+import signature from '../core/crypto/signature';
+import objectHash from '../core/crypto/object-hash';
 
 const WebSocketServer = Server;
 
@@ -283,18 +285,38 @@ class Network {
             node = {};
         }
 
-        let content = {
+        let challenge = Database.generateID(10);
+        let content   = {
             node_id          : this.nodeID,
             node_network_test: config.MODE_TEST_NETWORK,
-            connection_id    : this.nodeConnectionID, ...node
+            connection_id    : this.nodeConnectionID, ...node,
+            challenge
         };
         try {
-            let payload = {
+            let payload        = {
                 type: 'node_handshake',
                 content
             };
-            let data    = JSON.stringify(payload);
+            let data           = JSON.stringify(payload);
+            let callbackCalled = false;
+            eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, function(eventData, _) {
+                if (!callbackCalled) {
+                    callbackCalled = true;
+                    if (!signature.verify(objectHash.getHashBuffer(challenge), eventData.signature, eventData.public_key)) {
+                        ws.terminate();
+                    }
+                }
+            });
+
             ws.send(data);
+
+            setTimeout(function() {
+                if (!callbackCalled) {
+                    callbackCalled = true;
+                    eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
+                    ws.terminate();
+                }
+            }, config.NETWORK_SHORT_TIME_WAIT_MAX);
         }
         catch (e) {
             console.log('[network warn]: try to send data over a closed connection.');
@@ -355,6 +377,19 @@ class Network {
                         .catch(() => {
                         });
             }
+
+            const content = {
+                public_key: this.nodePublicKey,
+                signature: signature.sign(objectHash.getHashBuffer(registry.challenge), this.nodePrivateKey),
+            }
+
+            const payload = {
+                type: 'node_handshake_challenge_response:' + registry.connection_id,
+                content
+            };
+
+            let data    = JSON.stringify(payload);
+            ws.send(data);
         }
 
         eventBus.emit('node_status_update');
@@ -442,7 +477,10 @@ class Network {
             console.log('[network] starting network');
             walletUtils.loadNodeKey()
                        .then(key => {
-                           this.nodeID = walletUtils.getAddressFromPublicKey(key.hdPublicKey.publicKey.toBuffer().toString('hex'));
+                           const data = walletUtils.deriveAddressFromKey(key, 0, 0);
+                           this.nodePrivateKey = key;
+                           this.nodePublicKey = data.address_attribute.public_key
+                           this.nodeID = data.address;
                            this._initializeServer();
                            resolve();
                        })
@@ -450,7 +488,10 @@ class Network {
                            let key = walletUtils.generateNodeKey();
                            walletUtils.storeNodeKey(key)
                                       .then(key => {
-                                          this.nodeID = walletUtils.getAddressFromPublicKey(key.hdPublicKey.publicKey.toBuffer().toString('hex'));
+                                          const data = walletUtils.deriveAddressFromKey(key, 0, 0);
+                                          this.nodePrivateKey = walletUtils.derivePrivateKey(key, 0, 0);
+                                          this.nodePublicKey = data.address_attribute.public_key
+                                          this.nodeID = data.address;
                                           this._initializeServer();
                                           resolve();
                                       });

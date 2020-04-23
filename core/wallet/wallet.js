@@ -143,14 +143,18 @@ class Wallet {
     }
 
     deriveAndSaveAddress(walletID, isChange, addressPosition) {
-        const keychain = database.getRepository('keychain');
-        return this.deriveAddress(walletID, isChange, addressPosition)
-                   .then(([addressBase, addressAttribute]) => keychain.getWalletDefaultKeyIdentifier(walletID).then(addressKeyIdentifier => [
-                       addressBase,
-                       addressAttribute,
-                       addressKeyIdentifier
-                   ]))
-                   .then(([addressBase, addressAttribute, addressKeyIdentifier]) => keychain.addAddress(walletID, isChange, addressPosition, addressBase, database.getRepository('address').getDefaultAddressVersion().version, addressKeyIdentifier || addressBase, addressAttribute));
+        const keychain                                                  = database.getRepository('keychain');
+        let {address: addressBase, address_attribute: addressAttribute} = this.deriveAddress(walletID, isChange, addressPosition);
+        return keychain.getWalletDefaultKeyIdentifier(walletID)
+                       .then(addressKeyIdentifier => [
+                           addressBase,
+                           addressAttribute,
+                           addressKeyIdentifier
+                       ])
+                       .then(([addressBase, addressAttribute, addressKeyIdentifier]) =>
+                           keychain.addAddress(walletID, isChange, addressPosition, addressBase,
+                               database.getRepository('address').getDefaultAddressVersion().version,
+                               addressKeyIdentifier || addressBase, addressAttribute));
     }
 
     addWallet(walletID, account) {
@@ -394,10 +398,9 @@ class Wallet {
     }
 
     sign(address, message) {
-        const exPrivKey  = this.getActiveWalletKey(address.wallet_id);
-        const privateKey = exPrivKey.derive(0, false).derive(address.address_position, false).privateKey;
-        const privKeyBuf = privateKey.toBuffer({size: 32});
-        return signature.sign(objectHash.getHashBuffer(message), privKeyBuf);
+        const extendedPrivateKey = this.getActiveWalletKey(address.wallet_id);
+        const privateKeyBuf      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
+        return signature.sign(objectHash.getHashBuffer(message), privateKeyBuf);
     }
 
     verify(publicKey, sign, message) {
@@ -774,7 +777,7 @@ class Wallet {
                                              }, ws);
                                          }
                                          catch (e) {
-                                             console.log("[wallet] error sending transaction sync response. transaction normalization issue.")
+                                             console.log('[wallet] error sending transaction sync response. transaction normalization issue.');
                                          }
                                      }
                                  }

@@ -6,6 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import base58 from 'bs58';
 import os from 'os';
+import signature from '../crypto/signature';
+import objectHash from '../crypto/object-hash';
 
 
 class WalletUtils {
@@ -15,15 +17,13 @@ class WalletUtils {
 
     // derives for wallet's private or public key
     deriveAddressFromKey(key, isChange, addressPosition) {
-        return new Promise(resolve => {
-            const addressKeyPublicBuffer = this.derivePubkey(key, 'm/' + isChange + '/' + addressPosition);
-            const address                = this.getAddressFromPublicKey(addressKeyPublicBuffer);
-            const addressAttribute       = {key_public: base58.encode(addressKeyPublicBuffer)};
-            resolve([
-                address,
-                addressAttribute
-            ]);
-        });
+        const addressKeyPublicBuffer = this.derivePubkey(key, 'm/' + isChange + '/' + addressPosition);
+        const address                = this.getAddressFromPublicKey(addressKeyPublicBuffer);
+        const addressAttribute       = {key_public: base58.encode(addressKeyPublicBuffer)};
+        return {
+            address,
+            address_attribute: addressAttribute
+        };
     }
 
     getAddressFromPublicKey(addressKeyPublicBuffer) {
@@ -65,6 +65,11 @@ class WalletUtils {
 
     deriveExtendedPrivateKey(xPrivKey, account) {
         return xPrivKey.derive(44, true).derive(0x1EE7, true).derive(account, true);
+    }
+
+    derivePrivateKey(extendedPrivateKey, isChange, addressPosition){
+        const privateKey = extendedPrivateKey.derive(isChange, false).derive(addressPosition, false).privateKey;
+        return privateKey.toBuffer({size: 32});
     }
 
     newMnemonic() {
