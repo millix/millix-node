@@ -60,7 +60,7 @@
       "description": "list all known addresses",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "false",
       "enable": true
     },
     {

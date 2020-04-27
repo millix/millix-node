@@ -7,14 +7,14 @@ export const WEBSOCKET_PROTOCOL                        = 'ws://';
 export const RPC_INTERFACE                             = '0.0.0.0';
 export const NODE_PUBLIC                               = false;
 export const MODE_NODE_FULL                            = false;
-export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ?
-                                                         [
-                                                             'ws://13.251.31.129:30000',
-                                                             'ws://13.251.31.129:30001',
-                                                             'ws://52.74.179.232:30000',
-                                                             'ws://52.74.179.232:30001'
-                                                         ] :
-                                                         [];
+export const NODE_INITIAL_LIST_MAIN_NETWORK            = [];
+export const NODE_INITIAL_LIST_TEST_NETWORK            = [
+    'ws://13.251.31.129:30000',
+    'ws://13.251.31.129:30001',
+    'ws://52.74.179.232:30000',
+    'ws://52.74.179.232:30001'
+];
+export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
 export const CONSENSUS_ROUND_NODE_COUNT                = 1;
 export const CONSENSUS_ROUND_PATH_LENGTH_MIN           = 1;
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED       = 2;
@@ -55,19 +55,14 @@ export const NODE_TEST_PORT                            = 5080;
 export const HASH_LENGTH                               = 44;
 export const PUBKEY_LENGTH                             = 44;
 export const SIG_LENGTH                                = 88;
-export const NODE_MILLIX_VERSION                       = '1.2.0';
-
-let DATA_BASE_DIR;
-if (MODE_TEST_NETWORK) {
-    DATA_BASE_DIR = './millix-testnet';
-}
-else {
-    DATA_BASE_DIR = null;
-}
-export const NODE_CERTIFICATE_PATH = DATA_BASE_DIR + '/node_cert.pem';
-export const NODE_KEY_PATH         = DATA_BASE_DIR + '/node_key.pem';
-export const KEY_PATH              = DATA_BASE_DIR + '/millix_private_key.json';
-export const JOB_CONFIG_PATH       = DATA_BASE_DIR + '/job.json';
+export const NODE_MILLIX_VERSION                       = '1.2.1';
+export const DATA_BASE_DIR_MAIN_NETWORK                = null;
+export const DATA_BASE_DIR_TEST_NETWORK                = './millix-testnet';
+let DATA_BASE_DIR                                      = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
+export const NODE_KEY_PATH                             = DATA_BASE_DIR + '/node_key.pem';
+export const NODE_CERTIFICATE_PATH                     = DATA_BASE_DIR + '/node_cert.pem';
+export const KEY_PATH                                  = DATA_BASE_DIR + '/millix_private_key.json';
+export const JOB_CONFIG_PATH                           = DATA_BASE_DIR + '/job.json';
 
 if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.MAX_CONNECTIONS        = 1;

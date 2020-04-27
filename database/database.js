@@ -215,6 +215,7 @@ export class Database {
                        .then(() => this._migrateTables())
                        .then(() => this._initializeTables());
         }
+        return Promise.resolve();
     }
 
     close() {

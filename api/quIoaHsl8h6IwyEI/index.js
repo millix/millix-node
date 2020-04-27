@@ -1,22 +1,21 @@
 import database from '../../database/database';
 import wallet from '../../core/wallet/wallet';
+import Endpoint from '../endpoint';
 
 
 // api list_keychain_address
-class _quIoaHsl8h6IwyEI {
+class _quIoaHsl8h6IwyEI extends Endpoint {
     constructor() {
-        this.endpoint = 'quIoaHsl8h6IwyEI';
+        super('quIoaHsl8h6IwyEI');
     }
 
-    register(app, apiURL) {
+    handler(app, req, res) {
         const keychainRepository = database.getRepository('keychain');
-        app.get(apiURL + this.endpoint, (_, res) => {
-            keychainRepository.getWalletAddresses(wallet.getDefaultActiveWallet())
-                              .then((addresses) => {
-                                  res.send(addresses);
-                              });
-        });
+        keychainRepository.getWalletAddresses(wallet.getDefaultActiveWallet())
+                          .then((addresses) => {
+                              res.send(addresses);
+                          });
     }
-};
+}
 
 export default new _quIoaHsl8h6IwyEI();

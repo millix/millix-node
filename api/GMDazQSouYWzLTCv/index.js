@@ -1,16 +1,15 @@
 import logManager from '../../core/log-manager';
+import Endpoint from '../endpoint';
 
 
 // api get_mnemonic
-class _GMDazQSouYWzLTCv {
+class _GMDazQSouYWzLTCv extends Endpoint {
     constructor() {
-        this.endpoint = 'GMDazQSouYWzLTCv';
+        super('GMDazQSouYWzLTCv');
     }
 
-    register(app, apiURL) {
-        app.get(apiURL + this.endpoint, (req, res) => {
-            res.send({log: logManager.logsCache});
-        });
+    handler(app, req, res) {
+        res.send({log: logManager.logsCache});
     }
 }
 

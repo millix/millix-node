@@ -86,7 +86,7 @@ class Server {
                 secureAPIs.forEach(secureAPI => {
                     const module = require('./' + secureAPI.api_id + '/index');
                     if (module) {
-                        module.default.register(app, '/api/');
+                        module.default.register(app, '/api/', true);
                     }
                     else {
                         console.log('api source code not found');

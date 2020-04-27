@@ -1,19 +1,19 @@
 import database from '../../database/database';
+import Endpoint from '../endpoint';
 
 
 // api list_address
-class _72dlrjquBORj0rhx {
+class _72dlrjquBORj0rhx extends Endpoint {
     constructor() {
-        this.endpoint = '72dlrjquBORj0rhx';
+        super('72dlrjquBORj0rhx');
     }
 
-    register(app, apiURL) {
+    handler(app, req, res) {
         const addressRepository = database.getRepository('address');
-        app.get(apiURL + this.endpoint, (_, res) => {
-            addressRepository.getAllAddress()
-                             .then(addresses => res.send(addresses));
-        });
+        addressRepository.getAllAddress()
+                         .then(addresses => res.send(addresses));
     }
-};
+}
+
 
 export default new _72dlrjquBORj0rhx();

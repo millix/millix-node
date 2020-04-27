@@ -1,21 +1,21 @@
 import database from '../../database/database';
+import Endpoint from '../endpoint';
 
 
 // api list_peer
-class _0eoUqXNE715mBVqV {
+class _0eoUqXNE715mBVqV extends Endpoint {
     constructor() {
-        this.endpoint = '0eoUqXNE715mBVqV';
+        super('0eoUqXNE715mBVqV');
     }
 
-    register(app, apiURL) {
+    handler(app, req, res) {
         const nodeRepository = database.getRepository('node');
-        app.get(apiURL + this.endpoint, (_, res) => {
-            nodeRepository.getNodes()
-                          .then(nodes => {
-                              res.send(nodes);
-                          });
-        });
+        nodeRepository.getNodes()
+                      .then(nodes => {
+                          res.send(nodes);
+                      });
     }
-};
+}
+
 
 export default new _0eoUqXNE715mBVqV();

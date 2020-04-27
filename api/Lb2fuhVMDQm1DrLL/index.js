@@ -1,19 +1,18 @@
 import wallet from '../../core/wallet/wallet';
+import Endpoint from '../endpoint';
 
 
 // api new_keychain_address
-class _Lb2fuhVMDQm1DrLL {
+class _Lb2fuhVMDQm1DrLL extends Endpoint {
     constructor() {
-        this.endpoint = 'Lb2fuhVMDQm1DrLL';
+        super('Lb2fuhVMDQm1DrLL');
     }
 
-    register(app, apiURL) {
-        app.post(apiURL + this.endpoint, (_, res) => {
-            wallet.addNewAddress(wallet.getDefaultActiveWallet())
-                  .then(address => {
-                      res.send(address);
-                  });
-        });
+    handler(app, req, res) {
+        wallet.addNewAddress(wallet.getDefaultActiveWallet())
+              .then(address => {
+                  res.send(address);
+              });
     }
 };
 

@@ -1,17 +1,16 @@
 import database from '../../database/database';
+import Endpoint from '../endpoint';
 
 
 // api list_address_version
-class _3XqkzNFzaTk1JPRf {
+class _3XqkzNFzaTk1JPRf extends Endpoint {
     constructor() {
-        this.endpoint = '3XqkzNFzaTk1JPRf';
+        super('3XqkzNFzaTk1JPRf');
     }
 
-    register(app, apiURL) {
+    handler(app, req, res) {
         const addressRepository = database.getRepository('address');
-        app.get(apiURL + this.endpoint, (_, res) => {
-            res.send(addressRepository.addressVersionList);
-        });
+        res.send(addressRepository.addressVersionList);
     }
 };
 

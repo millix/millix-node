@@ -1,20 +1,19 @@
 import walletUtils from '../../core/wallet/wallet-utils';
+import Endpoint from '../endpoint';
 
 
 // api get_mnemonic
-class _BPZZ0l2nTfMSmmpl {
+class _BPZZ0l2nTfMSmmpl extends Endpoint{
     constructor() {
-        this.endpoint = 'BPZZ0l2nTfMSmmpl';
+        super('BPZZ0l2nTfMSmmpl');
     }
 
-    register(app, apiURL) {
-        app.get(apiURL + this.endpoint, (req, res) => {
-            walletUtils.loadMnemonic()
-                       .then(([mnemonic, _]) => {
-                           res.send({mnemonic_phrase: mnemonic});
-                       })
-                       .catch(e => res.send({error: true}));
-        });
+    handler(app, req, res) {
+        walletUtils.loadMnemonic()
+                   .then(([mnemonic, _]) => {
+                       res.send({mnemonic_phrase: mnemonic});
+                   })
+                   .catch(e => res.send({success: true}));
     }
 }
 

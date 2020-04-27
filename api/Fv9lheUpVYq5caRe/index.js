@@ -1,18 +1,17 @@
 import wallet from '../../core/wallet/wallet';
+import Endpoint from '../endpoint';
 
 
 // api reset_validation
-class _Fv9lheUpVYq5caRe {
+class _Fv9lheUpVYq5caRe extends Endpoint {
     constructor() {
-        this.endpoint = 'Fv9lheUpVYq5caRe';
+        super('Fv9lheUpVYq5caRe');
     }
 
-    register(app, apiURL) {
-        app.put(apiURL + this.endpoint, (req, res) => {
-            wallet.getConsensus().resetTransactionValidationRejected();
-            res.send({error: false});
-        });
+    handler(app, req, res) {
+        wallet.getConsensus().resetTransactionValidationRejected();
+        res.send({success: true});
     }
-};
+}
 
 export default new _Fv9lheUpVYq5caRe();

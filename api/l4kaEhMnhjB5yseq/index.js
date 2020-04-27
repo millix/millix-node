@@ -1,19 +1,18 @@
-import database from '../../database/database';
 import wallet from '../../core/wallet/wallet';
+import Endpoint from '../endpoint';
 
 
 // api list_transaction
-class _l4kaEhMnhjB5yseq {
+class _l4kaEhMnhjB5yseq extends Endpoint {
     constructor() {
-        this.endpoint = 'l4kaEhMnhjB5yseq';
+        super('l4kaEhMnhjB5yseq');
     }
 
-    register(app, apiURL) {
-        app.get(apiURL + this.endpoint, (_, res) => {
-            wallet.getAllTransactions()
-                  .then(transactions => res.send(transactions));
-        });
+    handler(app, req, res) {
+        wallet.getAllTransactions()
+              .then(transactions => res.send(transactions));
     }
-};
+}
+
 
 export default new _l4kaEhMnhjB5yseq();
