@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import base58 from 'bs58';
 import os from 'os';
+import forge from 'node-forge';
 import signature from '../crypto/signature';
 import objectHash from '../crypto/object-hash';
 
@@ -67,7 +68,7 @@ class WalletUtils {
         return xPrivKey.derive(44, true).derive(0x1EE7, true).derive(account, true);
     }
 
-    derivePrivateKey(extendedPrivateKey, isChange, addressPosition){
+    derivePrivateKey(extendedPrivateKey, isChange, addressPosition) {
         const privateKey = extendedPrivateKey.derive(isChange, false).derive(addressPosition, false).privateKey;
         return privateKey.toBuffer({size: 32});
     }
@@ -129,6 +130,137 @@ class WalletUtils {
     generateNodeKey() {
         const mnemonic = this.newMnemonic();
         return mnemonic.toHDPrivateKey(crypto.randomBytes(20).toString('hex'));
+    }
+
+    loadNodeKeyAndCertificate() {
+        const pki = forge.pki;
+        return new Promise((resolve, reject) => {
+            new Promise((_, loadReject) => {
+                fs.readFile(path.join(os.homedir(), config.NODE_KEY_PATH), 'utf8', function(err, keyPem) {
+                    let key;
+                    if (err) {
+                        return loadReject('couldn\'t read node key');
+                    }
+                    try {
+                        key = pki.privateKeyFromPem(keyPem);
+                    }
+                    catch (e) {
+                        return loadReject('bad private key');
+                    }
+
+                    fs.readFile(path.join(os.homedir(), config.NODE_CERTIFICATE_PATH), 'utf8', function(err, certPem) {
+                        let cert;
+                        if (err) {
+                            return loadReject('couldn\'t read node key');
+                        }
+
+                        try {
+                            cert = pki.certificateFromPem(certPem);
+                        }
+                        catch (e) {
+                            return loadReject('bad private certificate');
+                        }
+
+                        resolve({
+                            key: keyPem,
+                            cert: certPem
+                        });
+                    });
+                });
+            }).catch(() => {
+                const keys              = pki.rsa.generateKeyPair(2048);
+                const cert              = pki.createCertificate();
+                cert.publicKey          = keys.publicKey;
+                cert.serialNumber       = '01';
+                cert.validity.notBefore = new Date();
+                cert.validity.notAfter  = new Date();
+                cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 50);
+                const attrs = [
+                    {
+                        shortName: 'CN',
+                        value    : 'millix.org'
+                    },
+                    {
+                        shortName: 'C',
+                        value    : 'millix network public'
+                    },
+                    {
+                        shortName: 'ST',
+                        value    : 'millix network'
+                    },
+                    {
+                        shortName: 'L',
+                        value    : 'internet'
+                    },
+                    {
+                        shortName: 'O',
+                        value    : 'millix foundation'
+                    },
+                    {
+                        shortName: 'OU',
+                        value    : 'millix node unit'
+                    }
+                ];
+                cert.setSubject(attrs);
+                cert.setIssuer(attrs);
+                cert.setExtensions([
+                    {
+                        name: 'basicConstraints',
+                        cA  : true
+                    },
+                    {
+                        name            : 'keyUsage',
+                        keyCertSign     : true,
+                        digitalSignature: true,
+                        nonRepudiation  : true,
+                        keyEncipherment : true,
+                        dataEncipherment: true
+                    },
+                    {
+                        name           : 'extKeyUsage',
+                        serverAuth     : true,
+                        clientAuth     : true,
+                        codeSigning    : true,
+                        emailProtection: true,
+                        timeStamping   : true
+                    },
+                    {
+                        name   : 'nsCertType',
+                        client : true,
+                        server : true,
+                        email  : true,
+                        objsign: true,
+                        sslCA  : true,
+                        emailCA: true,
+                        objCA  : true
+                    },
+                    {
+                        name: 'subjectKeyIdentifier'
+                    }
+                ]);
+                cert.sign(keys.privateKey);
+
+                // convert a Forge certificate to PEM
+                const certPem = pki.certificateToPem(cert);
+
+                const keyPem = pki.privateKeyToPem(keys.privateKey);
+
+                fs.writeFile(path.join(os.homedir(), config.NODE_KEY_PATH), keyPem, 'utf8', function(err) {
+                    if (err) {
+                        return reject('failed to write node key file');
+                    }
+                    fs.writeFile(path.join(os.homedir(), config.NODE_CERTIFICATE_PATH), certPem, 'utf8', function(err) {
+                        if (err) {
+                            return reject('failed to write node certificate file');
+                        }
+                        resolve({
+                            key : keyPem,
+                            cert: certPem
+                        });
+                    });
+                });
+            });
+        });
     }
 
     loadNodeKey() {

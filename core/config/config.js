@@ -14,8 +14,7 @@ export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ?
                                                              'ws://52.74.179.232:30000',
                                                              'ws://52.74.179.232:30001'
                                                          ] :
-                                                         [
-                                                         ];
+                                                         [];
 export const CONSENSUS_ROUND_NODE_COUNT                = 1;
 export const CONSENSUS_ROUND_PATH_LENGTH_MIN           = 1;
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED       = 2;
@@ -65,9 +64,10 @@ if (MODE_TEST_NETWORK) {
 else {
     DATA_BASE_DIR = null;
 }
-export const NODE_KEY_PATH   = DATA_BASE_DIR + '/node.json';
-export const KEY_PATH        = DATA_BASE_DIR + '/millix_private_key.json';
-export const JOB_CONFIG_PATH = DATA_BASE_DIR + '/job.json';
+export const NODE_CERTIFICATE_PATH = DATA_BASE_DIR + '/node_cert.pem';
+export const NODE_KEY_PATH         = DATA_BASE_DIR + '/node_key.pem';
+export const KEY_PATH              = DATA_BASE_DIR + '/millix_private_key.json';
+export const JOB_CONFIG_PATH       = DATA_BASE_DIR + '/job.json';
 
 if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.MAX_CONNECTIONS        = 1;
@@ -97,6 +97,7 @@ export default {
     MODE_TEST,
     NODE_TEST_HOST,
     NODE_KEY_PATH,
+    NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
     KEY_PATH,
@@ -134,6 +135,6 @@ export default {
 };
 
 // dev branch should be running in the test-network
-if(!MODE_TEST_NETWORK){
-    throw Error("develop branch should be running in the test-network");
+if (!MODE_TEST_NETWORK) {
+    throw Error('develop branch should be running in the test-network');
 }
