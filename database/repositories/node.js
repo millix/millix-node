@@ -1,9 +1,63 @@
 import ntp from '../../core/ntp';
 import console from '../../core/console';
+import {Database} from '../database';
+import async from 'async';
 
 export default class Node {
     constructor(database) {
         this.database = database;
+    }
+
+    addNodeAttributeType(attributeType) {
+        return new Promise(resolve => {
+            let nodeAttributeID = Database.generateID(20);
+            this.database.run('INSERT INTO node_attribute_type (attribute_type_id, attribute_type) VALUES (?, ?)',
+                [
+                    nodeAttributeID,
+                    attributeType
+                ], (err) => {
+                    if (err) {
+                        this.database.get('SELECT attribute_type_id FROM node_attribute_type WHERE attribute_type = ?',
+                            [attributeType], (_, row) => {
+                                resolve(row.attribute_type_id);
+                            });
+                        return;
+                    }
+                    resolve(nodeAttributeID);
+                });
+        });
+    }
+
+    getNodeAttribute(nodeID, attributeType) {
+        return new Promise((resolve, reject) => {
+            this.database.get('SELECT a.value FROM node_attribute a INNER JOIN node_attribute_type t on a.attribute_type_id = t.attribute_type_id WHERE t.attribute_type = ? AND a.node_id = ?',
+                [
+                    attributeType,
+                    nodeID
+                ], (err, row) => {
+                    if (err) {
+                        return reject();
+                    }
+                    resolve(row.value);
+                });
+        });
+    }
+
+    addNodeAttribute(nodeID, attributeType, attributeValue) {
+        return this.addNodeAttributeType(attributeType)
+                   .then(attributeTypeID => {
+                       this.database.run('INSERT OR REPLACE INTO node_attribute (node_id, attribute_type_id, value) VALUES (?,?,?)',
+                           [
+                               nodeID,
+                               attributeTypeID,
+                               attributeValue
+                           ],
+                           (err) => {
+                               if (err) {
+                                   throw Error(err.message);
+                               }
+                           });
+                   });
     }
 
     eachNode(callback) {

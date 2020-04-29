@@ -74,7 +74,7 @@ class Server {
                 insecureAPIs.forEach(insecureAPI => {
                     const module = require('./' + insecureAPI.api_id + '/index');
                     if (module) {
-                        module.default.register(app, '/api/');
+                        module.default.register(app);
                     }
                     else {
                         console.log('api source code not found');
@@ -86,7 +86,7 @@ class Server {
                 secureAPIs.forEach(secureAPI => {
                     const module = require('./' + secureAPI.api_id + '/index');
                     if (module) {
-                        module.default.register(app, '/api/', true);
+                        module.default.register(app, true);
                     }
                     else {
                         console.log('api source code not found');
@@ -102,7 +102,7 @@ class Server {
                 });
 
                 walletUtils.loadNodeKeyAndCertificate()
-                           .then(({key, cert}) => {
+                           .then(({private_key_pem: key, certificate_pem: cert}) => {
                                // starting the server
                                const httpsServer = https.createServer({
                                    key,

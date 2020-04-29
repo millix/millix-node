@@ -1,8 +1,13 @@
-import jwt from 'jsonwebtoken';
+import network from '../net/network';
+import forge from 'node-forge';
+import base58 from 'bs58';
+import database from '../database/database';
+import walletUtils from '../core/wallet/wallet-utils';
 
 export default class Endpoint {
     constructor(endpoint) {
         this.endpoint = endpoint;
+        this.baseURL  = '/api/:nodeID/:nodeSignature/';
     }
 
     handler() {
@@ -11,18 +16,30 @@ export default class Endpoint {
 
     onRequest(app, secure, req, res) {
         if (secure) {
-            try {
-                const decoded = jwt.verify(req.query.p0, app.secret);
-            }
-            catch (e) {
-                return res.status(400).send('invalid authentication token.');
-            }
+            const {nodeID, nodeSignature} = req.params;
+            database.getRepository('node')
+                    .getNodeAttribute(nodeID, 'node_public_key')
+                    .then(publicKeyPem => {
+                        const publicKey = walletUtils.publicKeyFromPem(publicKeyPem.match(/.{1,64}/g).join('\n'));
+                        const md        = forge.md.sha1.create();
+                        md.update(network.nodeID, 'utf8');
+                        if (!publicKey.verify(md.digest().bytes(), base58.decode(nodeSignature))) {
+                            return res.status(400).send({status: 'invalid_node_identity'});
+                        }
+
+                        this.handler(app, req, res);
+                    })
+                    .catch(() => {
+                        return res.status(400).send({status: 'node_identity_not_verified'});
+                    });
         }
-        this.handler(app, req, res);
+        else {
+            this.handler(app, req, res);
+        }
     }
 
-    register(app, apiURL, secure) {
-        app.post(apiURL + this.endpoint, this.onRequest.bind(this, app, secure));
-        app.get(apiURL + this.endpoint, this.onRequest.bind(this, app, secure));
+    register(app, secure) {
+        app.post(this.baseURL + this.endpoint, this.onRequest.bind(this, app, secure));
+        app.get(this.baseURL + this.endpoint, this.onRequest.bind(this, app, secure));
     }
 }

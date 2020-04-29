@@ -1,14 +1,12 @@
 import WebSocket, {Server} from 'ws';
 import _ from 'lodash';
 import config from '../core/config/config';
-import database from '../database/database';
+import database, {Database} from '../database/database';
 import eventBus from '../core/event-bus';
 import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
 import walletUtils from '../core/wallet/wallet-utils';
-import signature from '../core/crypto/signature';
-import objectHash from '../core/crypto/object-hash';
 
 const WebSocketServer = Server;
 
@@ -302,9 +300,9 @@ class Network {
             eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, function(eventData, _) {
                 if (!callbackCalled) {
                     callbackCalled = true;
-                    if (!signature.verify(objectHash.getHashBuffer(challenge), eventData.signature, eventData.public_key)) {
+                    /*if (!signature.verify(objectHash.getHashBuffer(challenge), eventData.signature, eventData.public_key)) {
                         ws.terminate();
-                    }
+                    }*/
                 }
             });
 
@@ -378,18 +376,25 @@ class Network {
                         });
             }
 
+            //var md = forge.md.sha1.create();
+            //md.update(registry.challenge || this.nodeID, 'utf8');
             const content = {
                 public_key: this.nodePublicKey,
-                signature: signature.sign(objectHash.getHashBuffer(registry.challenge), this.nodePrivateKey),
-            }
+                //signature : this.nodePrivateKey.sign(md)
+            };
 
             const payload = {
                 type: 'node_handshake_challenge_response:' + registry.connection_id,
                 content
             };
 
-            let data    = JSON.stringify(payload);
-            ws.send(data);
+            let data = JSON.stringify(payload);
+            try{
+                ws.send(data);
+            } catch(e){
+                console.log('[network warn]: try to send data over a closed connection.');
+            }
+            
         }
 
         eventBus.emit('node_status_update');
@@ -475,26 +480,13 @@ class Network {
         this.nodeConnectionID = this.generateNewID();
         return new Promise(resolve => {
             console.log('[network] starting network');
-            walletUtils.loadNodeKey()
-                       .then(key => {
-                           const data = walletUtils.deriveAddressFromKey(key, 0, 0);
-                           this.nodePrivateKey = key;
-                           this.nodePublicKey = data.address_attribute.public_key
-                           this.nodeID = data.address;
+            walletUtils.loadNodeKeyAndCertificate()
+                       .then(({private_key: privateKey, public_key_pem: publicKey, node_id: nodeID}) => {
+                           this.nodePrivateKey = privateKey;
+                           this.nodePublicKey  = publicKey;
+                           this.nodeID         = nodeID;
                            this._initializeServer();
                            resolve();
-                       })
-                       .catch(() => {
-                           let key = walletUtils.generateNodeKey();
-                           walletUtils.storeNodeKey(key)
-                                      .then(key => {
-                                          const data = walletUtils.deriveAddressFromKey(key, 0, 0);
-                                          this.nodePrivateKey = walletUtils.derivePrivateKey(key, 0, 0);
-                                          this.nodePublicKey = data.address_attribute.public_key
-                                          this.nodeID = data.address;
-                                          this._initializeServer();
-                                          resolve();
-                                      });
                        });
         });
     }
