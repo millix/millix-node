@@ -9,7 +9,6 @@ import os from 'os';
 import forge from 'node-forge';
 import async from 'async';
 import _ from 'lodash';
-import network from '../../net/network';
 
 
 class WalletUtils {
@@ -148,6 +147,22 @@ class WalletUtils {
             encoding : 'hex',
             delimiter: ''
         });
+    }
+
+    isValidNodeIdentity(nodeID, publicKeyPem, message, signature) {
+        const publicKey = this.publicKeyFromPem(publicKeyPem.match(/.{1,64}/g).join('\n'));
+        try {
+            return this.isValidNodeSignature(signature, message, publicKey) && (this.getNodeIdFromPublicKey(publicKey) === nodeID);
+        }
+        catch (e) {
+            return false;
+        }
+    }
+
+    signNodeMessage(nodePrivateKey, message) {
+        const md = forge.md.sha1.create();
+        md.update(message, 'utf8');
+        return base58.encode(Buffer.from(nodePrivateKey.sign(md), 'binary'));
     }
 
     loadNodeKeyAndCertificate() {

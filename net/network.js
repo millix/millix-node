@@ -1,12 +1,13 @@
 import WebSocket, {Server} from 'ws';
 import _ from 'lodash';
 import config from '../core/config/config';
-import database, {Database} from '../database/database';
+import database from '../database/database';
 import eventBus from '../core/event-bus';
 import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
 import walletUtils from '../core/wallet/wallet-utils';
+import https from 'https';
 
 const WebSocketServer = Server;
 
@@ -73,7 +74,7 @@ class Network {
                 return reject();
             }
 
-            const ws = new WebSocket(url);
+            const ws = new WebSocket(url, {rejectUnauthorized: false});
 
             ws.setMaxListeners(20); // avoid warning
 
@@ -163,66 +164,76 @@ class Network {
     }
 
     startAcceptingConnections() {
-        let wss = new WebSocketServer({
-            port: config.NODE_PORT
-        });
+        walletUtils.loadNodeKeyAndCertificate()
+                   .then(({private_key_pem: key, certificate_pem: cert}) => {
+                       // starting the server
+                       const server = https.createServer({
+                           key,
+                           cert
+                       });
 
-        this.setWebSocket(wss);
+                       server.listen(config.NODE_PORT);
 
-        wss.on('connection', (ws, req) => {
+                       let wss = new WebSocketServer({server});
 
-            let ip;
-            if (req.connection.remoteAddress) {
-                ip = req.connection.remoteAddress.replace('::ffff:', '');
-            }
+                       this.setWebSocket(wss);
 
-            if (!ip) {
-                console.log('[network income] no ip in accepted connection');
-                ws.terminate();
-                return;
-            }
+                       wss.on('connection', (ws, req) => {
 
-            if (req.headers['x-real-ip'] && (ip === '127.0.0.1' || ip.match(/^192\.168\./))) {
-                // we are behind a proxy
-                ip = req.headers['x-real-ip'];
-            }
+                           let ip;
+                           if (req.connection.remoteAddress) {
+                               ip = req.connection.remoteAddress.replace('::ffff:', '');
+                           }
 
-            ws.node                = config.WEBSOCKET_PROTOCOL + ip + ':' + req.connection.remotePort;
-            ws.createTime          = Date.now();
-            ws.lastMessageTime     = ws.createTime;
-            ws.nodeConnectionReady = false;
+                           if (!ip) {
+                               console.log('[network income] no ip in accepted connection');
+                               ws.terminate();
+                               return;
+                           }
+
+                           if (req.headers['x-real-ip'] && (ip === '127.0.0.1' || ip.match(/^192\.168\./))) {
+                               // we are behind a proxy
+                               ip = req.headers['x-real-ip'];
+                           }
+
+                           ws.node                = config.WEBSOCKET_PROTOCOL + ip + ':' + req.connection.remotePort;
+                           ws.createTime          = Date.now();
+                           ws.lastMessageTime     = ws.createTime;
+                           ws.nodeConnectionReady = false;
 
 
-            console.log('[network income] got connection from ' + ws.node + ', host ' + ip);
+                           console.log('[network income] got connection from ' + ws.node + ', host ' + ip);
 
-            if (this.registeredClients.length >= config.NODE_CONNECTION_INBOUND_MAX) {
-                console.log('[network income] inbound connections maxed out, rejecting new client ' + ip);
-                ws.close(1000, '[network income] inbound connections maxed out'); // 1001 doesn't work in cordova
-                return;
-            }
+                           if (this.registeredClients.length >= config.NODE_CONNECTION_INBOUND_MAX) {
+                               console.log('[network income] inbound connections maxed out, rejecting new client ' + ip);
+                               ws.close(1000, '[network income] inbound connections maxed out'); // 1001 doesn't work in cordova
+                               return;
+                           }
 
-            ws.inBound = true;
+                           ws.inBound = true;
 
-            ws.on('message', this._onWebsocketMessage);
+                           ws.on('message', this._onWebsocketMessage);
 
-            ws.on('close', () => {
-                console.log('[network income] client ' + ws.node + ' disconnected');
-                this._unregisterWebsocket(ws);
-                eventBus.emit('node_status_update');
-            });
+                           ws.on('close', () => {
+                               console.log('[network income] client ' + ws.node + ' disconnected');
+                               this._unregisterWebsocket(ws);
+                               eventBus.emit('node_status_update');
+                           });
 
-            ws.on('error', (e) => {
-                console.log('[network income] error on client ' + ip + ': ' + e);
-                ws.close(1000, 'received error');
-                this._unregisterWebsocket(ws);
-                eventBus.emit('node_status_update');
-            });
+                           ws.on('error', (e) => {
+                               console.log('[network income] error on client ' + ip + ': ' + e);
+                               ws.close(1000, 'received error');
+                               this._unregisterWebsocket(ws);
+                               eventBus.emit('node_status_update');
+                           });
 
-            this._doHandshake(ws);
-            eventBus.emit('node_status_update');
-        });
+                           this._doHandshake(ws, true);
+                           eventBus.emit('node_status_update');
+                       });
 
-        console.log('[network] wss running at port ' + config.NODE_PORT);
+                       console.log('[network] wss running at port ' + config.NODE_PORT);
+
+                   });
     }
 
     connectToNodes() {
@@ -267,46 +278,110 @@ class Network {
         return Promise.resolve();
     }
 
+    getNodeIdFromWebSocket(ws) {
+        const publicKeyBuffer = ws._socket.getPeerCertificate().pubkey;
+        const publicKeyPem    = walletUtils.publicKeyFromPem(publicKeyBuffer.toString('base64').match(/.{1,64}/g).join('\n'));
+        return walletUtils.getNodeIdFromPublicKey(publicKeyPem);
+    }
 
-    _doHandshake(ws) {
-        let node;
-        if (config.NODE_PUBLIC) {
-            let url = config.WEBSOCKET_PROTOCOL + config.NODE_HOST + ':' + config.NODE_PORT;
-            node    = {
-                node_prefix    : config.WEBSOCKET_PROTOCOL,
-                node_ip_address: config.NODE_HOST,
-                node_port      : config.NODE_PORT,
-                node           : url
-            };
-        }
-        else {
-            node = {};
-        }
+    _doHandshake(ws, forceRegistration) {
+        return new Promise((resolve) => {
+            let node;
+            if (config.NODE_PUBLIC) {
+                let url = config.WEBSOCKET_PROTOCOL + config.NODE_HOST + ':' + config.NODE_PORT;
+                node    = {
+                    node_prefix    : config.WEBSOCKET_PROTOCOL,
+                    node_ip_address: config.NODE_HOST,
+                    node_port      : config.NODE_PORT,
+                    node           : url
+                };
+            }
+            else {
+                node = {};
+            }
 
-        let challenge = Database.generateID(10);
-        let content   = {
-            node_id          : this.nodeID,
-            node_network_test: config.MODE_TEST_NETWORK,
-            connection_id    : this.nodeConnectionID, ...node,
-            challenge
-        };
-        try {
-            let payload        = {
-                type: 'node_handshake',
-                content
-            };
-            let data           = JSON.stringify(payload);
+            if (!forceRegistration) {
+                const peerNodeID = this.getNodeIdFromWebSocket(ws);
+                database.getRepository('node')
+                        .getNodeAttribute(peerNodeID, 'node_public_key')
+                        .then(_ => {
+                            let payload = {
+                                type   : 'node_handshake',
+                                content: {
+                                    node_id              : this.nodeID,
+                                    node_network_test    : config.MODE_TEST_NETWORK,
+                                    connection_id        : this.nodeConnectionID,
+                                    registration_required: false,
+                                    ...node
+                                }
+                            };
+                            resolve(payload);
+                        })
+                        .catch(() => {
+                            console.log('[network warn]: node public key not found.');
+                            let payload = {
+                                type   : 'node_handshake',
+                                content: {
+                                    node_id              : this.nodeID,
+                                    node_network_test    : config.MODE_TEST_NETWORK,
+                                    connection_id        : this.nodeConnectionID,
+                                    registration_required: true,
+                                    ...node
+                                }
+                            };
+                            resolve(payload);
+                        });
+            }
+            else {
+                let payload = {
+                    type   : 'node_handshake',
+                    content: {
+                        node_id              : this.nodeID,
+                        node_network_test    : config.MODE_TEST_NETWORK,
+                        connection_id        : this.nodeConnectionID,
+                        registration_required: true,
+                        ...node
+                    }
+                };
+                resolve(payload);
+            }
+        }).then(payload => {
             let callbackCalled = false;
-            eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, function(eventData, _) {
+            eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
+            eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, (eventData, _) => {
                 if (!callbackCalled) {
                     callbackCalled = true;
-                    /*if (!signature.verify(objectHash.getHashBuffer(challenge), eventData.signature, eventData.public_key)) {
-                        ws.terminate();
-                    }*/
+                    if (payload.content.registration_required) {
+                        let peerNodeID;
+                        if (forceRegistration) {
+                            peerNodeID = eventData.node_id;
+                        }
+                        else {
+                            try {
+                                peerNodeID = this.getNodeIdFromWebSocket(ws);
+                            }
+                            catch (e) {
+                                console.log('[network warn]: cannot get node identity.');
+                                ws.terminate();
+                                return;
+                            }
+                        }
+                        if (!walletUtils.isValidNodeIdentity(peerNodeID, eventData.public_key, this.nodeID, eventData.signature)) {
+                            console.log('[network warn]: invalid node identity.');
+                            ws.terminate();
+                            return;
+                        }
+                        const nodeRepository = database.getRepository('node');
+                        nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', eventData.public_key)
+                                      .catch(() => {
+                                          console.log('[network warn]: registration error.');
+                                          ws.terminate();
+                                      });
+                    }
                 }
             });
 
-            ws.send(data);
+            ws.send(JSON.stringify(payload));
 
             setTimeout(function() {
                 if (!callbackCalled) {
@@ -315,10 +390,10 @@ class Network {
                     ws.terminate();
                 }
             }, config.NETWORK_SHORT_TIME_WAIT_MAX);
-        }
-        catch (e) {
-            console.log('[network warn]: try to send data over a closed connection.');
-        }
+        }).catch(e => {
+            console.log('[network warn]: error on connection handshake.');
+            ws.terminate();
+        });
     }
 
     _onNodeHandshake(registry, ws) {
@@ -376,25 +451,26 @@ class Network {
                         });
             }
 
-            //var md = forge.md.sha1.create();
-            //md.update(registry.challenge || this.nodeID, 'utf8');
-            const content = {
-                public_key: this.nodePublicKey,
-                //signature : this.nodePrivateKey.sign(md)
-            };
+            const content = {};
+            if (registry.registration_required) {
+                content['node_id']    = this.nodeID;
+                content['public_key'] = this.nodePublicKey;
+                content['signature']  = walletUtils.signNodeMessage(this.nodePrivateKey, registry.node_id);
+            }
+
 
             const payload = {
                 type: 'node_handshake_challenge_response:' + registry.connection_id,
                 content
             };
 
-            let data = JSON.stringify(payload);
-            try{
-                ws.send(data);
-            } catch(e){
-                console.log('[network warn]: try to send data over a closed connection.');
+            try {
+                ws.send(JSON.stringify(payload));
             }
-            
+            catch (e) {
+                console.log('[network warn]: try to send data over a closed connection.');
+                ws.terminate();
+            }
         }
 
         eventBus.emit('node_status_update');
@@ -483,7 +559,7 @@ class Network {
             walletUtils.loadNodeKeyAndCertificate()
                        .then(({private_key: privateKey, public_key_pem: publicKey, node_id: nodeID}) => {
                            this.nodePrivateKey = privateKey;
-                           this.nodePublicKey  = publicKey;
+                           this.nodePublicKey  = publicKey.split(/\r\n/).splice(1, 4).join('');
                            this.nodeID         = nodeID;
                            this._initializeServer();
                            resolve();

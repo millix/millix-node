@@ -35,7 +35,7 @@ export default class Node {
                     attributeType,
                     nodeID
                 ], (err, row) => {
-                    if (err) {
+                    if (err || !row) {
                         return reject();
                     }
                     resolve(row.value);

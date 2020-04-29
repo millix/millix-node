@@ -11,9 +11,7 @@ class _PwwdU9lZbgMqS2DA extends Endpoint {
 
     handler(app, req, res) {
         try {
-            let publicKey = walletUtils.publicKeyFromPem(req.query.p0.match(/.{1,64}/g).join('\n'));
-            if (!walletUtils.isValidNodeSignature(req.params.nodeSignature, network.nodeID, publicKey)
-                || walletUtils.getNodeIdFromPublicKey(publicKey) !== req.params.nodeID) {
+            if (!walletUtils.isValidNodeIdentity(req.params.nodeID, req.query.p0, network.nodeID, req.params.nodeSignature)) {
                 return res.send({status: 'node_registration_error'});
             }
             const nodeRepository = database.getRepository('node');
