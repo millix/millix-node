@@ -20,7 +20,7 @@ CREATE TABLE node
 );
 
 INSERT INTO node (node_id, node_prefix, node_ip_address, node_port, node_port_api, status, update_date, create_date)
-  SELECT node_id, node_prefix, node_ip_address, node_port, 0, status, update_date, create_date
+  SELECT node_id, "wss://", node_ip_address, node_port, 0, status, update_date, create_date
   FROM _node_old;
 
 DROP TABLE _node_old;
