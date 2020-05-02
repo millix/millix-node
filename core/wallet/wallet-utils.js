@@ -140,13 +140,13 @@ class WalletUtils {
     }
 
     publicKeyFromPem(publicKey) {
-        return forge.pki.publicKeyFromPem('-----BEGIN PUBLIC KEY-----\n' + publicKey + '\n-----END PUBLIC KEY-----');
+        return forge.pki.publicKeyFromPem('-----BEGIN PUBLIC KEY-----\r\n' + publicKey + '\r\n-----END PUBLIC KEY-----');
     }
 
     isValidNodeSignature(signature, message, publicKey) {
         const md = forge.md.sha1.create();
         md.update(message, 'utf8');
-        return publicKey.verify(md.digest().bytes(), base58.decode(signature));
+        return publicKey.verify(md.digest().bytes(), base58.decode(signature).toString('binary'));
     }
 
     getNodeIdFromPublicKey(publicKey) {
@@ -157,7 +157,7 @@ class WalletUtils {
     }
 
     isValidNodeIdentity(nodeID, publicKeyPem, message, signature) {
-        const publicKey = this.publicKeyFromPem(publicKeyPem.match(/.{1,64}/g).join('\n'));
+        const publicKey = this.publicKeyFromPem(publicKeyPem.match(/.{1,64}/g).join('\r\n'));
         try {
             return this.isValidNodeSignature(signature, message, publicKey) && (this.getNodeIdFromPublicKey(publicKey) === nodeID);
         }
