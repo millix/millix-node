@@ -84,7 +84,7 @@ class Server {
                 });
 
                 walletUtils.loadNodeKeyAndCertificate()
-                           .then(({private_key_pem: key, certificate_pem: cert}) => {
+                           .then(({private_key_pem: key, private_key: privateKey, certificate_pem: cert, public_key: publicKey}) => {
                                // starting the server
                                const httpsServer = https.createServer({
                                    key,
@@ -92,7 +92,10 @@ class Server {
                                }, app);
 
                                httpsServer.listen(config.NODE_PORT_API, () => {
-                                   console.log('API: listening on port ' + config.NODE_PORT_API);
+                                   const nodeID = walletUtils.getNodeIdFromPublicKey(publicKey);
+                                   console.log(`[api] listening on port ${config.NODE_PORT_API}`);
+                                   console.log(`[api] node_id ${nodeID}`);
+                                   console.log(`[api] node_signature ${walletUtils.signNodeMessage(privateKey, nodeID)}`);
                                });
                                resolve();
                            });
