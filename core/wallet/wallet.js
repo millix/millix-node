@@ -674,7 +674,7 @@ class Wallet {
                                              }, ws);
                                          }
                                          catch (e) {
-                                             console.log('[wallet] error sending transaction sync response. transaction normalization issue.');
+                                             console.log('[wallet] error sending transaction sync response. transaction normalization issue. ' + e.message);
                                          }
                                      }
                                  }
