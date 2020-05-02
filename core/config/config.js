@@ -10,19 +10,19 @@ export const MODE_NODE_FULL                            = false;
 export const NODE_INITIAL_LIST_MAIN_NETWORK            = [];
 export const NODE_INITIAL_LIST_TEST_NETWORK            = [
     {
-        url     : 'ws://13.251.31.129:30000',
+        url     : 'wss://13.251.31.129:30000',
         port_api: 35500
     },
     {
-        url     : 'ws://13.251.31.129:30001',
+        url     : 'wss://13.251.31.129:30001',
         port_api: 35501
     },
     {
-        url     : 'ws://52.74.179.232:30000',
+        url     : 'wss://52.74.179.232:30000',
         port_api: 35500
     },
     {
-        url     : 'ws://52.74.179.232:30001',
+        url     : 'wss://52.74.179.232:30001',
         port_api: 35500
     }
 ];

@@ -122,7 +122,7 @@ export default class Address {
             };
         }
 
-        throw new Error('address version not supported');
+        throw new Error('address version not supported' + addressFull);
     }
 
     setTransactionRepository(repository) {
