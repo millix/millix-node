@@ -10,6 +10,7 @@ import {
     Address, AuditPoint, AuditVerification, Config, Keychain, Node,
     Transaction, Wallet, Schema, Job, API
 } from './repositories/repositories';
+import _ from 'lodash';
 
 
 export class Database {
@@ -26,6 +27,59 @@ export class Database {
             length,
             characters: Database.ID_CHARACTERS
         });
+    }
+
+    static buildQuery(sql, where, orderBy, limit, shardID) {
+        let parameters = [];
+        if (where) {
+            _.each(_.keys(where), key => {
+                if (where[key] === undefined) {
+                    return;
+                }
+
+                if (parameters.length > 0) {
+                    sql += ' AND ';
+                }
+                else {
+                    sql += ' WHERE ';
+                }
+
+                if (key === 'begin_date') {
+                    sql += `transaction_date >= ?`;
+                }
+                else if (key === 'end_date') {
+                    sql += `transaction_date <= ?`;
+                }
+                else {
+                    sql += `${key} = ?`;
+                }
+
+                parameters.push(where[key]);
+            });
+        }
+
+        if (shardID) {
+            if (parameters.length === 0) {
+                sql += ' WHERE shard_id = ?';
+            }
+            else {
+                sql += ' AND shard_id = ?';
+            }
+            parameters.push(shardID);
+        }
+
+        if (orderBy) {
+            sql += ' ORDER BY ' + orderBy;
+        }
+
+        if (limit) {
+            sql += ' LIMIT ?';
+            parameters.push(limit);
+        }
+        return {
+            sql,
+            parameters
+        };
     }
 
     _initializeMillixSqlite3() {

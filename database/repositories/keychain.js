@@ -1,4 +1,5 @@
 import console from '../../core/console';
+import {Database} from '../database';
 
 export default class Keychain {
     constructor(database) {
@@ -94,6 +95,28 @@ export default class Keychain {
             this.database.all(
                 'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.address_attribute, k.is_change \
                  FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base WHERE k.wallet_id = ?', [walletID],
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    rows.forEach(r => {
+                        r['address_attribute'] = JSON.parse(r.address_attribute);
+                    });
+
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
+    listWalletAddresses(where, orderBy, limit) {
+        return new Promise((resolve, reject) => {
+            const {sql, parameters} = Database.buildQuery('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.address_attribute, k.is_change \
+                 FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base', where, orderBy, limit);
+            this.database.all(
+                sql, parameters,
                 (err, rows) => {
                     if (err) {
                         console.log(err);

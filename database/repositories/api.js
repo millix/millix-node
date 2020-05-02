@@ -5,7 +5,7 @@ export default class API {
         this.database = database;
     }
 
-    getAll() {
+    list() {
         return new Promise(resolve => {
             this.database.all('select * from api', (err, rows) => {
                 resolve(rows);

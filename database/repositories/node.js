@@ -1,7 +1,7 @@
 import ntp from '../../core/ntp';
 import console from '../../core/console';
 import {Database} from '../database';
-import async from 'async';
+import _ from 'lodash';
 
 export default class Node {
     constructor(database) {
@@ -65,9 +65,19 @@ export default class Node {
         this.database.each(sql, callback);
     }
 
-    getNodes() {
+    listNodeAttribute(where, limit) {
         return new Promise(resolve => {
-            this.database.all('select * from node', (err, rows) => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM node_attribute', where, undefined, limit);
+            this.database.all(sql, parameters, (err, rows) => {
+                resolve(rows);
+            });
+        });
+    }
+
+    listNodes(where, limit) {
+        return new Promise(resolve => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM node', where, undefined, limit);
+            this.database.all(sql, parameters, (err, rows) => {
                 resolve(rows);
             });
         });
@@ -76,10 +86,11 @@ export default class Node {
     addNode(node) {
         let url = node.node_prefix + node.node_ip_address + ':' + node.node_port;
         return new Promise((resolve, reject) => {
-            this.database.run('INSERT INTO node (node_prefix, node_ip_address, node_port, node_id) VALUES (?,?,?,?)', [
+            this.database.run('INSERT INTO node (node_prefix, node_ip_address, node_port, node_port_api, node_id) VALUES (?,?,?,?,?)', [
                 node.node_prefix,
                 node.node_ip_address,
                 node.node_port,
+                node.node_port_api,
                 node.node_id
             ], (err) => {
                 if (err) {
@@ -88,12 +99,13 @@ export default class Node {
                         return reject(err.message);
                     }
                     else {
-                        this.database.run('UPDATE node SET node_id = ?, update_date = ? WHERE node_prefix = ? AND node_ip_address = ? AND node_port = ?', [
+                        this.database.run('UPDATE node SET node_id = ?, update_date = ? WHERE node_prefix = ? AND node_ip_address = ? AND node_port = ? AND node_port_api = ?', [
                             node.node_id,
                             Math.floor(ntp.now().getTime() / 1000),
                             node.node_prefix,
                             node.node_ip_address,
-                            node.node_port
+                            node.node_port,
+                            node.node_port_api
                         ], () => {
                             console.log(`[database] update node ${url} with id ${node.node_id}`);
                             return reject();

@@ -6,7 +6,7 @@
       "description": "list all nodes",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "false",
+      "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
     },
     {
@@ -15,7 +15,7 @@
       "description": "add a new node",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -24,7 +24,7 @@
       "description": "list addresses in the node keychain",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -33,7 +33,7 @@
       "description": "get information about an address in the node keychain",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -42,7 +42,7 @@
       "description": "add a new address to the node keychain",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -51,7 +51,7 @@
       "description": "get the node balance",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
     },
     {
@@ -60,16 +60,16 @@
       "description": "list all known addresses",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "false",
+      "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
     },
     {
       "id": "VnJIBrrM0KY3uQ9X",
-      "name": "new_transaction",
+      "name": "send_transaction",
       "description": "send a transaction",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
     },
     {
@@ -78,7 +78,16 @@
       "description": "list all node transactions",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "RVBqKlGdk9aEhi5J",
+      "name": "sign_transaction",
+      "description": "sign a transaction payload",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
     },
     {
@@ -87,7 +96,7 @@
       "description": "get current node state",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -96,7 +105,7 @@
       "description": "list all supported address version_releaseds",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
     },
     {
@@ -105,7 +114,7 @@
       "description": "add a new supported address version_released",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -114,7 +123,7 @@
       "description": "list current node configurations",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -123,7 +132,7 @@
       "description": "start database maintenance",
       "method": "PUT",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -132,16 +141,16 @@
       "description": "reset validation state",
       "method": "PUT",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
       "id": "PwwdU9lZbgMqS2DA",
-      "name": "get_authentication_token",
-      "description": "get authentication token",
-      "method": "POST",
+      "name": "register_node_identity",
+      "description": "register a new node identity",
+      "method": "GET",
       "version_released": "1.2.0",
-      "permission": "false",
+      "permission": "{\"require_identity\": false}",
       "enable": true
     },
     {
@@ -150,7 +159,7 @@
       "description": "list log messages",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
     },
     {
@@ -159,7 +168,7 @@
       "description": "update network state to online or offline",
       "method": "PUT",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -168,7 +177,7 @@
       "description": "stop or start node services (i.e networking, job, log, wallet)",
       "method": "PUT",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -177,7 +186,16 @@
       "description": "get wallet mnemonic",
       "method": "GET",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "PKUv2JfV87KpEZwE",
+      "name": "get_address_private_key",
+      "description": "get address private key in the hexa format",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
     {
@@ -186,7 +204,79 @@
       "description": "update the node's configurations",
       "method": "POST",
       "version_released": "1.2.0",
-      "permission": "true",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "AgsSNTSA0RHmWUkp",
+      "name": "list_node_attribute",
+      "description": "returns list of node_attribute records for provided node_id",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "hbBmFhIpJS87W1Fy",
+      "name": "get_transaction_input",
+      "description": "get single record from table transaction_input",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "KN2ZttYDEKzCulEZ",
+      "name": "get_transaction_output",
+      "description": "get single record from table transaction_output",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "FDLyQ5uo5t7jltiQ",
+      "name": "list_transaction_output",
+      "description": "list records from table transaction_output",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "I3EoELuQCmqwvp8C",
+      "name": "list_transaction_input",
+      "description": "list records from table transaction_input",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "DBkGHZX6rugdLon9",
+      "name": "get_audit_verification",
+      "description": "get information about the verification state of a transaction",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "VrLU9f2XYiMWfop4",
+      "name": "list_audit_verification",
+      "description": "returns list of audit_verification records",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "GktuwZlVP39gty6v",
+      "name": "new_session",
+      "description": "load a new wallet",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     }
   ]

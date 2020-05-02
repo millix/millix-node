@@ -9,6 +9,13 @@ import os from 'os';
 import forge from 'node-forge';
 import async from 'async';
 import _ from 'lodash';
+import database from '../../database/database';
+import peer from '../../net/peer';
+import ntp from '../ntp';
+import objectHash from '../crypto/object-hash';
+import network from '../../net/network';
+import genesisConfig from '../genesis/genesis-config';
+import signature from '../crypto/signature';
 
 
 class WalletUtils {
@@ -353,7 +360,225 @@ class WalletUtils {
         });
     }
 
+    verifyTransaction(transaction) {
+        return new Promise(resolve => {
+            if (transaction.transaction_id === genesisConfig.genesis_transaction) {
+                return resolve(true);
+            }
+            if (!this.isValidTransactionObject(transaction)) {
+                return resolve(false);
+            }
+            else {
+                return resolve(true);
+            }
+        });
+    }
 
+    verify(publicKey, sign, message) {
+        return signature.verify(objectHash.getHashBuffer(message), sign, publicKey);
+    }
+
+    isValidTransactionObject(transaction) {
+        //sort arrays
+        transaction['transaction_output_list'] = _.sortBy(transaction.transaction_output_list, 'output_position');
+        transaction['transaction_input_list']  = _.sortBy(transaction.transaction_input_list, 'input_position');
+        //verify addresses
+        if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
+            for (let i = 0; i < transaction.transaction_input_list.length; i++) {
+                if (!this.isValidAddress(transaction.transaction_input_list[i].address_base)
+                    || !this.isValidAddress(transaction.transaction_input_list[i].address_key_identifier)) {
+                    return false;
+                }
+            }
+        }
+
+        for (let i = 0; i < transaction.transaction_output_list.length; i++) {
+            if (!this.isValidAddress(transaction.transaction_output_list[i].address_base)
+                || !this.isValidAddress(transaction.transaction_output_list[i].address_key_identifier)) {
+                return false;
+            }
+
+            try {
+                let amount = Math.round(transaction.transaction_output_list[i].amount);
+                if (amount <= 0 || amount !== transaction.transaction_output_list[i].amount) {
+                    return false;
+                }
+            }
+            catch (e) {
+                return false;
+            }
+        }
+
+        for (let i = 0; i < transaction.transaction_signature_list.length; i++) {
+            if (!this.isValidAddress(transaction.transaction_signature_list[i].address_base)) {
+                return false;
+            }
+        }
+
+
+        // genesis transaction
+        if (transaction.transaction_id === genesisConfig.genesis_transaction) {
+            transaction['transaction_input_list']  = [
+                {
+                    type          : 'issue',
+                    amount        : config.MILLIX_CIRCULATION,
+                    input_position: 0
+                }
+            ];
+            transaction['transaction_parent_list'] = [];
+        }
+
+        // verify signature
+        let vTransaction = _.cloneDeep(_.omit(transaction, [
+            'payload_hash',
+            'transaction_id',
+            'transaction_date',
+            'node_id_origin',
+            'shard_id',
+            'version'
+        ]));
+        const sign       = vTransaction.transaction_signature_list[0]['signature'];
+        delete vTransaction.transaction_signature_list[0]['signature'];
+        if (transaction.transaction_id === genesisConfig.genesis_transaction) {
+            delete vTransaction['transaction_parent_list'];
+        }
+        vTransaction['payload_hash']                            = objectHash.getCHash288(vTransaction);
+        vTransaction['transaction_date']                        = transaction.transaction_date;
+        vTransaction['node_id_origin']                          = transaction.node_id_origin;
+        vTransaction['shard_id']                                = transaction.shard_id;
+        vTransaction['version']                                 = transaction.version;
+        const signatureVerified                                 = this.verify(vTransaction.transaction_signature_list[0].address_attribute.key_public, sign, vTransaction);
+        vTransaction.transaction_signature_list[0]['signature'] = sign;
+        vTransaction['transaction_id']                          = objectHash.getCHash288(vTransaction);
+        return !(signatureVerified === false || vTransaction['payload_hash'] !== transaction['payload_hash'] || vTransaction['transaction_id'] !== transaction['transaction_id']);
+    }
+
+
+    signTransaction(inputList, outputList, privateKeyMap) {
+        if (!inputList || inputList.length === 0) {
+            return Promise.reject('input list is required');
+        }
+
+        if (!outputList || outputList.length === 0) {
+            return Promise.reject('output list is required');
+        }
+
+        if (!privateKeyMap) {
+            return Promise.reject('private key set is required');
+        }
+
+        const transactionRepository = database.getRepository('transaction');
+        const addressRepository     = database.getRepository('address');
+        return new Promise((resolve, reject) => {
+            let allocatedFunds = 0;
+            const amount       = _.sum(_.map(outputList, o => o.amount));
+            async.eachSeries(inputList, (input, callback) => {
+                transactionRepository.getTransactionOutput({
+                    transaction_id : input.output_transaction_id,
+                    output_position: input.output_position
+                }).then(output => {
+                    allocatedFunds += output.amount;
+                    callback();
+                }).catch(() => {
+                    callback(`output_not_found: ${JSON.stringify(input)}`);
+                });
+            }, (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                else if (amount !== allocatedFunds) {
+                    return reject(`invalid_amount: allocated (${allocatedFunds}), spend (${amount})`);
+                }
+                resolve();
+            });
+        }).then(() => new Promise((resolve, reject) => {
+            const addressBaseList = _.uniq(_.map(inputList, i => i.address_base));
+            const signatureList   = [];
+            async.eachSeries(addressBaseList, (addressBase, callback) => {
+                addressRepository.getAddressBaseAttribute(addressBase)
+                                 .then(attribute => {
+                                     signatureList.push({
+                                         address_base     : addressBase,
+                                         address_attribute: attribute.address_attribute
+                                     });
+                                     callback();
+                                 })
+                                 .catch(() => {
+                                     callback('address_attribute_not_found: ' + addressBase);
+                                 });
+            }, (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                return resolve(signatureList);
+            });
+        }))
+          .then((signatureList) => peer.getNodeAddress()
+                                       .then(({ip_address: nodeIPAddress}) => ntp.getTime().then(time => [
+                                           signatureList,
+                                           nodeIPAddress,
+                                           new Date(Math.floor(time.now.getTime() / 1000) * 1000)
+                                       ])))
+          .then(([signatureList, nodeIPAddress, timeNow]) => {
+
+              let transaction = {
+                  transaction_input_list    : _.map(inputList, o => _.pick(o, [
+                      'output_transaction_id',
+                      'output_position',
+                      'output_transaction_date',
+                      'output_shard_id',
+                      'address_base',
+                      'address_version',
+                      'address_key_identifier'
+                  ])),
+                  transaction_output_list   : _.map(outputList, o => _.pick(o, [
+                      'address_base',
+                      'address_version',
+                      'address_key_identifier',
+                      'amount'
+                  ])),
+                  transaction_signature_list: signatureList
+              };
+
+              return transactionRepository.getFreeTransactions()
+                                          .then(parents => {
+                                              if (!parents) {
+                                                  throw Error('parent_transaction_not_available');
+                                              }
+
+                                              transaction['transaction_parent_list'] = _.map(parents, p => p.transaction_id).sort();
+                                              return [
+                                                  transaction,
+                                                  timeNow,
+                                                  nodeIPAddress
+                                              ];
+                                          });
+          })
+          .then(([transaction, timeNow]) => {
+              transaction.transaction_input_list.forEach((input, idx) => input['input_position'] = idx);
+              transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = idx);
+              transaction['payload_hash']     = objectHash.getCHash288(transaction);
+              transaction['transaction_date'] = timeNow.toISOString();
+              transaction['node_id_origin']   = network.nodeID;
+              transaction['shard_id']         = genesisConfig.genesis_shard_id;
+              transaction['version']          = config.WALLET_TRANSACTION_DEFAULT_VERSION;
+              for (let transactionSignature of transaction.transaction_signature_list) {
+                  const privateKeyHex = privateKeyMap[transactionSignature.address_base];
+                  if (!privateKeyHex) {
+                      return Promise.reject(`private_key_not_found: address<${transactionSignature.address_base}>`);
+                  }
+                  try {
+                      const privateKeyBuf               = Buffer.from(privateKeyHex, 'hex');
+                      transactionSignature['signature'] = signature.sign(objectHash.getHashBuffer(transaction), privateKeyBuf);
+                  }
+                  catch (e) {
+                      return Promise.reject(`sign_error: address<${transactionSignature.address_base}>`);
+                  }
+              }
+              transaction['transaction_id'] = objectHash.getCHash288(transaction);
+              return transaction;
+          });
+    }
 }
 
 

@@ -9,8 +9,10 @@ class _0eoUqXNE715mBVqV extends Endpoint {
     }
 
     handler(app, req, res) {
+        const status         = parseInt(req.query.p0) || 1;
+        const limit          = parseInt(req.query.p1) || 1000;
         const nodeRepository = database.getRepository('node');
-        nodeRepository.getNodes()
+        nodeRepository.listNodes({status}, limit)
                       .then(nodes => {
                           res.send(nodes);
                       });

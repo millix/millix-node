@@ -9,26 +9,20 @@ class _yefPsK2TvkZmC6M4 extends Endpoint {
     }
 
     handler(app, req, res) {
-        let data;
-        try {
-            data = JSON.parse(req.query.p1);
+        if (!req.query.p0) {
+            return res.status(400).send({status: 'p0<is_run> is required'});
         }
-        catch (e) {
-            return res.status(400).send({
-                success: false,
-                message: 'payload is missing or invalid'
-            });
-        }
-        if (data.run && !services.initialized) {
+        const isRun = req.query.p0 === 'true';
+        if (isRun && !services.initialized) {
             services.initialize({initialize_wallet_event: true});
-            res.send({success: true});
+            res.send({status: 'success'});
         }
-        else if (!data.run && services.initialized) {
+        else if (!isRun && services.initialized) {
             services.stop();
-            res.send({success: true});
+            res.send({status: 'success'});
         }
         else {
-            res.send({success: false});
+            res.send({status: 'not_updated'});
         }
     }
 }

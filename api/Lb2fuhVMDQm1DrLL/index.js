@@ -14,6 +14,6 @@ class _Lb2fuhVMDQm1DrLL extends Endpoint {
                   res.send(address);
               });
     }
-};
+}
 
 export default new _Lb2fuhVMDQm1DrLL();

@@ -24,7 +24,7 @@ class Server {
                 apiRepository.addAPI(api)
                              .then(() => callback());
             }, () => {
-                apiRepository.getAll()
+                apiRepository.list()
                              .then(apis => resolve(apis));
             });
         });
@@ -39,12 +39,7 @@ class Server {
             this.started = true;
 
             this._loadAPI().then(apis => {
-                const secureAPIs   = _.filter(apis, api => api.permission == 'true');
-                const insecureAPIs = _.filter(apis, api => api.permission == 'false');
-                console.log('secured', secureAPIs);
-                console.log('unsecured', insecureAPIs);
-
-
+                _.each(apis, api => api.permission = JSON.parse(api.permission));
                 // defining the Express app
                 const app = express();
 
@@ -69,24 +64,11 @@ class Server {
                     res.send(appInfo);
                 });
 
-                // insecure apis
-
-                insecureAPIs.forEach(insecureAPI => {
-                    const module = require('./' + insecureAPI.api_id + '/index');
+                // apis
+                apis.forEach(api => {
+                    const module = require('./' + api.api_id + '/index');
                     if (module) {
-                        module.default.register(app);
-                    }
-                    else {
-                        console.log('api source code not found');
-                    }
-                });
-
-                // secure apis
-
-                secureAPIs.forEach(secureAPI => {
-                    const module = require('./' + secureAPI.api_id + '/index');
-                    if (module) {
-                        module.default.register(app, true);
+                        module.default.register(app, api.permission);
                     }
                     else {
                         console.log('api source code not found');

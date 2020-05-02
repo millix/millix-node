@@ -9,26 +9,20 @@ class _5sgpSNaqnHIcfocl extends Endpoint {
     }
 
     handler(app, req, res) {
-        let data;
-        try {
-            data = JSON.parse(req.query.p1);
+        if (!req.query.p0) {
+            return res.status(400).send({status: 'p0<is_online> is required'});
         }
-        catch (e) {
-            return res.status(400).send({
-                success: false,
-                message: 'payload is missing or invalid'
-            });
-        }
-        if (data.online && network.initialized === false) {
+        const isOnline = req.query.p0 === 'true';
+        if (isOnline && network.initialized === false) {
             network.initialize();
-            res.send({success: true});
+            res.send({status: 'success'});
         }
-        else if (!data.online && network.initialized === true) {
+        else if (!isOnline && network.initialized === true) {
             network.stop();
-            res.send({success: true});
+            res.send({status: 'success'});
         }
         else {
-            res.send({success: false});
+            res.send({status: 'not_updated'});
         }
     }
 }

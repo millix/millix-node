@@ -10,8 +10,9 @@ class _Fv9lheUpVYq5caRe extends Endpoint {
 
     handler(app, req, res) {
         wallet.getConsensus().resetTransactionValidationRejected();
-        res.send({success: true});
+        res.send({status: 'success'});
     }
 }
+
 
 export default new _Fv9lheUpVYq5caRe();

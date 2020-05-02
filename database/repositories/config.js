@@ -46,9 +46,10 @@ export default class Config {
         });
     }
 
-    getAll() {
+    list(where, orderBy, limit) {
         return new Promise(resolve => {
-            this.database.all('SELECT * FROM config', (err, rows) => {
+            const {sql, parameters} = Database.buildQuery('SELECT * FROM config', where, orderBy, limit);
+            this.database.all(sql, parameters, (err, rows) => {
                 if (rows) {
                     rows.forEach(row => {
                         row['config_name'] = row['config_name'].toUpperCase();

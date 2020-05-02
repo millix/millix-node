@@ -1,10 +1,25 @@
 import genesisConfig from '../../core/genesis/genesis-config';
 import mutex from '../../core/mutex';
 import async from 'async';
+import {Database} from '../database';
 
 export default class AuditVerification {
     constructor(database) {
         this.database = database;
+    }
+
+    listAuditVerification(where, orderBy, limit, shardID) {
+        return new Promise((resolve, reject) => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM audit_verification', where, orderBy, limit, shardID);
+            this.database.all(sql,
+                parameters,
+                (err, rows) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(rows);
+                });
+        });
     }
 
     getAuditVerification(transactionID) {

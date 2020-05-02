@@ -22,10 +22,10 @@ class _4wR3kjTwwC67R94Z extends Endpoint {
                           .then(() => network.initialize())
                           .then(() => peer.initialize())
                           .then(() => {
-                              res.send({success: true});
+                              res.send({status: 'success'});
                           });
                 })
-                .catch(() => res.send({success: false}));
+                .catch(() => res.send({status: 'error'}));
     }
 }
 

@@ -42,22 +42,23 @@ class Network {
         return this._ws;
     }
 
-    addNode(prefix, ip, port, id) {
+    addNode(prefix, ip, port, portApi, id) {
         let url = prefix + ip + ':' + port;
         if (!this._nodeList[url]) {
             this._nodeList[url] = {
                 node_prefix    : prefix,
                 node_ip_address: ip,
                 node_port      : port,
+                node_port_api  : portApi,
                 node_id        : id
             };
         }
     }
 
     // general network functions
-    _connectTo(prefix, ipAddress, port, id) {
+    _connectTo(prefix, ipAddress, port, portApi, id) {
 
-        if (!prefix || !ipAddress || !port) {
+        if (!prefix || !ipAddress || !port || !portApi) {
             return Promise.resolve();
         }
 
@@ -83,6 +84,7 @@ class Network {
 
                 ws.node                = url;
                 ws.nodePort            = port;
+                ws.nodePortApi         = portApi;
                 ws.nodePrefix          = prefix;
                 ws.nodeIPAddress       = ipAddress;
                 ws.createTime          = Date.now();
@@ -238,19 +240,19 @@ class Network {
 
     connectToNodes() {
         database.getRepository('node')
-                .getNodes()
+                .listNodes()
                 .then((nodes) => {
                     async.eachSeries(nodes, (node, callback) => {
-                        this.addNode(node.node_prefix, node.node_ip_address, node.node_port, node.node_id);
+                        this.addNode(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id);
                         callback();
                     }, () => {
-                        _.each(config.NODE_INITIAL_LIST, (url) => {
+                        _.each(config.NODE_INITIAL_LIST, ({url, port_api: portApi}) => {
                             let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[\w|\d|.]+):(?<port>\d+)$/);
                             let prefix    = matches.groups['prefix'];
                             let ipAddress = matches.groups['ip_address'];
                             let port      = matches.groups['port'];
-                            if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && ipAddress && port)) {
-                                this.addNode(prefix, ipAddress, port);
+                            if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && ipAddress && port && portApi)) {
+                                this.addNode(prefix, ipAddress, port, portApi);
                             }
                         });
                         this.retryConnectToInactiveNodes();
@@ -273,7 +275,7 @@ class Network {
         console.log('[network] dead nodes size:', inactiveClients.size, ' | active nodes: (', this.registeredClients.length, '/', config.NODE_CONNECTION_INBOUND_MAX, ')');
 
         inactiveClients.forEach(node => {
-            this._connectTo(node.node_prefix, node.node_ip_address, node.node_port, node.node_id).catch(this.noop);
+            this._connectTo(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id).catch(this.noop);
         });
         return Promise.resolve();
     }
@@ -293,6 +295,7 @@ class Network {
                     node_prefix    : config.WEBSOCKET_PROTOCOL,
                     node_ip_address: config.NODE_HOST,
                     node_port      : config.NODE_PORT,
+                    node_port_api  : config.NODE_PORT_API,
                     node           : url
                 };
             }
@@ -425,6 +428,7 @@ class Network {
                     node_prefix    : ws.nodePrefix,
                     node_ip_address: ws.nodeIPAddress,
                     node_port      : ws.nodePort,
+                    node_port_api  : ws.nodePortApi,
                     node_id        : ws.nodeID
                 };
                 this._nodeList[ws.node] = node;
@@ -435,11 +439,12 @@ class Network {
                         });
             }
 
-            if (ws.inBound && registry.node_prefix && registry.node_ip_address && registry.node_port && registry.node) {
+            if (ws.inBound && registry.node_prefix && registry.node_ip_address && registry.node_port && registry.node_port_api && registry.node) {
                 let node                      = _.pick(registry, [
                     'node_prefix',
                     'node_ip_address',
                     'node_port',
+                    'node_port_api',
                     'node_id',
                     'node'
                 ]);
@@ -571,7 +576,12 @@ class Network {
         this.initialized = false;
         eventBus.removeAllListeners('node_handshake');
         eventBus.removeAllListeners('node_address_request');
-        this.getWebSocket() && this.getWebSocket().close();
+        const wss = this.getWebSocket();
+        if (wss) {
+            wss._server.close();
+            wss.close();
+        }
+
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
         this._nodeRegistry       = {};
         this._connectionRegistry = {};

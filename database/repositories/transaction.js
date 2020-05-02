@@ -5,7 +5,7 @@ import eventBus from '../../core/event-bus';
 import config from '../../core/config/config';
 import genesisConfig from '../../core/genesis/genesis-config';
 import async from 'async';
-import wallet, { WALLET_MODE } from '../../core/wallet/wallet';
+import {Database} from '../database';
 
 export default class Transaction {
     constructor(database) {
@@ -79,7 +79,7 @@ export default class Transaction {
                     }
 
                     let runPipeline = null;
-                    let promise = new Promise(r => {
+                    let promise     = new Promise(r => {
                         runPipeline = r;
                     });
                     let addressList = {};
@@ -89,18 +89,18 @@ export default class Transaction {
                     });
 
                     transaction.transaction_input_list.forEach(input => {
-                        input.address = input.address_base + input.address_version + input.address_key_identifier;
+                        input.address              = input.address_base + input.address_version + input.address_key_identifier;
                         addressList[input.address] = _.pick(input, [
                             'address',
                             'address_base',
                             'address_version',
                             'address_key_identifier'
                         ]);
-                        promise = promise.then(() => this.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now()));
+                        promise                    = promise.then(() => this.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now()));
                     });
 
                     promise = promise.then(() => this.getTransactionParentDate(transaction.transaction_id))
-                        .then(parentDate => this.addTransaction(transaction.transaction_id, transaction.payload_hash, new Date(transaction.transaction_date), transaction.node_id_origin, transaction.version, parentDate));
+                                     .then(parentDate => this.addTransaction(transaction.transaction_id, transaction.payload_hash, new Date(transaction.transaction_date), transaction.node_id_origin, transaction.version, parentDate));
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction));
@@ -114,18 +114,18 @@ export default class Transaction {
                     });
 
                     transaction.transaction_output_list.forEach(output => {
-                        output.address = output.address_base + output.address_version + output.address_key_identifier;
+                        output.address              = output.address_base + output.address_version + output.address_key_identifier;
                         addressList[output.address] = _.pick(output, [
                             'address',
                             'address_base',
                             'address_version',
                             'address_key_identifier'
                         ]);
-                        promise = promise.then(() => this.getOutputSpendDate(transaction.transaction_id, output.output_position))
-                            .then(spendDate => {
-                                this.addTransactionOutput(transaction.transaction_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate);
-                                delete output['address'];
-                            });
+                        promise                     = promise.then(() => this.getOutputSpendDate(transaction.transaction_id, output.output_position))
+                                                             .then(spendDate => {
+                                                                 this.addTransactionOutput(transaction.transaction_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate);
+                                                                 delete output['address'];
+                                                             });
                     });
 
                     transaction.transaction_signature_list.forEach(author => {
@@ -141,7 +141,7 @@ export default class Transaction {
 
                     _.each(_.keys(addressList), key => {
                         let address = addressList[key];
-                        promise = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier));
+                        promise     = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier));
                     });
 
                     promise.then(() => this.database.run('COMMIT', () => {
@@ -149,12 +149,12 @@ export default class Transaction {
                         resolve(transaction);
                         unlock();
                     }))
-                        .catch((err) => {
-                            this.database.run('ROLLBACK', () => {
-                                reject(err);
-                                unlock();
-                            });
-                        });
+                           .catch((err) => {
+                               this.database.run('ROLLBACK', () => {
+                                   reject(err);
+                                   unlock();
+                               });
+                           });
                     runPipeline();
                 });
             });
@@ -167,13 +167,13 @@ export default class Transaction {
             return null;
         }
         //TODO: check genesis case
-        let transaction = {};
-        transaction['transaction_id'] = transactionDB.transaction_id;
-        transaction['payload_hash'] = transactionDB.payload_hash;
+        let transaction                        = {};
+        transaction['transaction_id']          = transactionDB.transaction_id;
+        transaction['payload_hash']            = transactionDB.payload_hash;
         transaction['transaction_parent_list'] = transactionDB.transaction_parent_list.sort();
         transactionDB.transaction_output_list.forEach(output => {
-            const outputAddress = this.addressRepository.getAddressComponent(output.address);
-            output['address_base'] = outputAddress['address'];
+            const outputAddress       = this.addressRepository.getAddressComponent(output.address);
+            output['address_base']    = outputAddress['address'];
             output['address_version'] = outputAddress['version'];
         });
         transaction['transaction_output_list'] = _.sortBy(transactionDB.transaction_output_list.map(o => _.pick(o, [
@@ -184,11 +184,11 @@ export default class Transaction {
             'amount'
         ])), 'output_position');
         transactionDB.transaction_input_list.forEach(input => {
-            const inputAddress = this.addressRepository.getAddressComponent(input.address);
-            input['address_base'] = inputAddress['address'];
+            const inputAddress       = this.addressRepository.getAddressComponent(input.address);
+            input['address_base']    = inputAddress['address'];
             input['address_version'] = inputAddress['version'];
         });
-        transaction['transaction_input_list'] = _.sortBy(transactionDB.transaction_input_list.map(i => _.pick(i, [
+        transaction['transaction_input_list']     = _.sortBy(transactionDB.transaction_input_list.map(i => _.pick(i, [
             'input_position',
             'output_transaction_id',
             'output_transaction_date',
@@ -203,10 +203,10 @@ export default class Transaction {
             'address_attribute',
             'signature'
         ]));
-        transaction['transaction_date'] = transactionDB.transaction_date.toISOString();
-        transaction['version'] = transactionDB.version;
-        transaction['node_id_origin'] = transactionDB.node_id_origin;
-        transaction['shard_id'] = transactionDB.shard_id;
+        transaction['transaction_date']           = transactionDB.transaction_date.toISOString();
+        transaction['version']                    = transactionDB.version;
+        transaction['node_id_origin']             = transactionDB.node_id_origin;
+        transaction['shard_id']                   = transactionDB.shard_id;
         return transaction;
     }
 
@@ -220,40 +220,40 @@ export default class Transaction {
                     }
 
                     return this.getTransactionOutputs(transactionID)
-                        .then(outputs => {
-                            transaction.transaction_output_list = outputs;
-                            return transaction;
-                        });
+                               .then(outputs => {
+                                   transaction.transaction_output_list = outputs;
+                                   return transaction;
+                               });
                 })
                 .then(transaction => {
                     return this.getTransactionInputs(transactionID)
-                        .then(inputs => {
-                            transaction.transaction_input_list = inputs;
-                            return transaction;
-                        });
+                               .then(inputs => {
+                                   transaction.transaction_input_list = inputs;
+                                   return transaction;
+                               });
                 })
                 .then(transaction => {
                     return this.getTransactionSignatures(transactionID)
-                        .then(signatures => {
-                            transaction.transaction_signature_list = signatures;
-                            return transaction;
-                        });
+                               .then(signatures => {
+                                   transaction.transaction_signature_list = signatures;
+                                   return transaction;
+                               });
                 })
                 .then(transaction => {
                     return this.getTransactionParents(transactionID)
-                        .then(parents => {
-                            transaction.transaction_parent_list = parents;
+                               .then(parents => {
+                                   transaction.transaction_parent_list = parents;
 
-                            //TODO: check this... some data is missing
-                            if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
-                                (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
-                                    !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
-                                    !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0)) {
-                                return null;
-                            }
+                                   //TODO: check this... some data is missing
+                                   if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
+                                       (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
+                                        !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
+                                        !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0)) {
+                                       return null;
+                                   }
 
-                            return transaction;
-                        });
+                                   return transaction;
+                               });
                 })
                 .then(transaction => resolve(transaction))
                 .catch(() => resolve(null));
@@ -469,10 +469,62 @@ export default class Transaction {
         });
     }
 
+    listTransactionInput(where, orderBy, limit, shardID) {
+        return new Promise((resolve, reject) => {
+            let {sql, parameters} = Database.buildQuery('SELECT TI.*, T.transaction_date FROM `transaction_input` AS TI INNER JOIN `transaction` AS T ON TI.transaction_id = T.transaction_id', where, orderBy, limit, shardID);
+            this.database.all(sql,
+                parameters, (err, rows) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(rows);
+                });
+        });
+    }
+
+    listTransactionOutput(where, orderBy, limit, shardID) {
+        return new Promise((resolve, reject) => {
+            let {sql, parameters} = Database.buildQuery('SELECT O.*, T.transaction_date FROM `transaction_output` AS O INNER JOIN `transaction` AS T ON O.transaction_id = T.transaction_id', where, orderBy, limit, shardID);
+            this.database.all(sql,
+                parameters, (err, rows) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(rows);
+                });
+        });
+    }
+
+    getTransactionInput(where) {
+        return new Promise((resolve, reject) => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM `transaction_input`', where);
+            this.database.get(sql,
+                parameters, (err, row) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(row);
+                });
+        });
+    }
+
+    getTransactionOutput(where) {
+        return new Promise((resolve, reject) => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM `transaction_output`', where);
+            this.database.get(sql,
+                parameters, (err, row) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(row);
+                });
+        });
+    }
+
     getTransactionUnstableInputs(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT transaction_input.output_transaction_id FROM transaction_input INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.output_transaction_id ' +
-                'WHERE transaction_input.transaction_id = ? AND `transaction`.is_stable = 0',
+                              'WHERE transaction_input.transaction_id = ? AND `transaction`.is_stable = 0',
                 [transactionID], (err, rows) => {
                     if (err) {
                         return reject(err);
@@ -495,7 +547,7 @@ export default class Transaction {
                         this.addressRepository
                             .getAddressBaseAttribute(signature.address_base)
                             .then(addressAttribute => {
-                                authors.push({ ...addressAttribute, ...signature });
+                                authors.push({...addressAttribute, ...signature});
                                 callback();
                             });
                     }, () => resolve(authors));
@@ -611,9 +663,9 @@ export default class Transaction {
         maxDepth = maxDepth || config.CONSENSUS_ROUND_PATH_LENGTH_MIN;
         return new Promise((resolve) => {
             let visited = {};
-            const dfs = (branches, depth) => {
+            const dfs   = (branches, depth) => {
                 let hasTransactions = false;
-                let newBranches = [];
+                let newBranches     = [];
 
                 async.eachSeries(branches, (branch, branchCallback) => {
                     if (branch.transactions.length === 0) {
@@ -622,7 +674,7 @@ export default class Transaction {
                     }
 
                     async.eachSeries(branch.transactions, (transaction, callback) => {
-                        let newBranch = _.cloneDeep(branch);
+                        let newBranch          = _.cloneDeep(branch);
                         newBranch.transactions = [];
                         if (visited[transaction]) {
                             newBranches.push(newBranch);
@@ -639,7 +691,7 @@ export default class Transaction {
                                     return callback();
                                 }
                                 newBranch.transactions = children;
-                                hasTransactions = true;
+                                hasTransactions        = true;
                                 callback();
                             });
                     }, () => branchCallback());
@@ -657,7 +709,7 @@ export default class Transaction {
             dfs([
                 {
                     transactions: [transactionID],
-                    path: []
+                    path        : []
                 }
             ], 0);
         });
@@ -673,8 +725,8 @@ export default class Transaction {
 
             const dfs = (branches, depth) => {
                 let hasTransactions = false;
-                let targetFound = false;
-                let newBranches = [];
+                let targetFound     = false;
+                let newBranches     = [];
 
                 async.eachSeries(branches, (branch, branchCallback) => {
                     if (branch.transactions.length == 0) {
@@ -683,7 +735,7 @@ export default class Transaction {
                     }
 
                     async.eachSeries(branch.transactions, (transaction, callback) => {
-                        let newBranch = _.cloneDeep(branch);
+                        let newBranch          = _.cloneDeep(branch);
                         newBranch.transactions = [];
                         if (visited[transaction]) {
                             newBranches.push(newBranch);
@@ -698,17 +750,17 @@ export default class Transaction {
                             .then(parents => {
                                 if (parents.length === 0) {
                                     return this.getTransactionInputs(transaction)
-                                        .then(inputs => {
-                                            _.each(inputs, input => {
-                                                if (input.output_transaction_id === genesisConfig.genesis_transaction) {
-                                                    targetFound = true;
-                                                }
-                                            });
-                                        }).then(() => callback());
+                                               .then(inputs => {
+                                                   _.each(inputs, input => {
+                                                       if (input.output_transaction_id === genesisConfig.genesis_transaction) {
+                                                           targetFound = true;
+                                                       }
+                                                   });
+                                               }).then(() => callback());
                                 }
                                 newBranch.transactions = parents;
-                                hasTransactions = true;
-                                targetFound = _.includes(newBranch.transactions, targetTransactionID);
+                                hasTransactions        = true;
+                                targetFound            = _.includes(newBranch.transactions, targetTransactionID);
                                 if (!targetFound) {
                                     this.auditPointRepository.isAuditPoint(transaction)
                                         .then(foundAuditPointID => {
@@ -737,7 +789,7 @@ export default class Transaction {
             dfs([
                 {
                     transactions: [transactionID],
-                    path: []
+                    path        : []
                 }
             ], 0);
         });
@@ -886,7 +938,7 @@ export default class Transaction {
                         input.output_transaction_id,
                         input.output_position
                     ]);
-                    let now = ntp.now();
+                    let now     = ntp.now();
                     this.updateTransactionOutputs(outputs, now, now, undefined)
                         .then(() => resolve());
                 });
@@ -1042,10 +1094,10 @@ export default class Transaction {
     getOutputSpendDate(outputTransactionID, outputPosition) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT `transaction`.transaction_date FROM transaction_input INNER JOIN `transaction` on transaction_input.transaction_id = `transaction`.transaction_id ' +
-                'WHERE output_transaction_id = ? and output_position = ?', [
-                outputTransactionID,
-                outputPosition
-            ],
+                              'WHERE output_transaction_id = ? and output_position = ?', [
+                    outputTransactionID,
+                    outputPosition
+                ],
                 (err, row) => {
                     if (err) {
                         console.log(err);
@@ -1060,9 +1112,9 @@ export default class Transaction {
     getOutput(outputTransactionID, outputPosition) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT * FROM transaction_input where output_transaction_id = ? and output_position = ?', [
-                outputTransactionID,
-                outputPosition
-            ],
+                    outputTransactionID,
+                    outputPosition
+                ],
                 (err, row) => {
                     if (err) {
                         console.log(err);
@@ -1077,7 +1129,7 @@ export default class Transaction {
     getTransactionParentDate(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT transaction_date FROM transaction_parent INNER JOIN `transaction` on transaction_parent.transaction_id_child = `transaction`.transaction_id ' +
-                'WHERE transaction_id_parent = ?',
+                              'WHERE transaction_id_parent = ?',
                 [transactionID], (err, row) => {
                     if (err) {
                         console.log(err);
@@ -1109,6 +1161,27 @@ export default class Transaction {
         });
     }
 
+    listTransactions(where, orderBy, limit, shardID) {
+        return new Promise((resolve, reject) => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM `transaction`', where, orderBy, limit, shardID);
+            this.database.all(
+                sql,
+                parameters, (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    if (rows) {
+                        _.map(rows, row => row.transaction_date = new Date(row.transaction_date * 1000));
+                    }
+
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
     hasTransaction(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT EXISTS(select transaction_id from audit_point where transaction_id = ?) as transaction_exists',
@@ -1125,7 +1198,7 @@ export default class Transaction {
                                 return reject();
                             }
                             let hasTransactionData = row.transaction_exists === 1;
-                            let transactionExists = isAuditPoint || hasTransactionData;
+                            let transactionExists  = isAuditPoint || hasTransactionData;
                             resolve([
                                 transactionExists,
                                 isAuditPoint,
@@ -1139,12 +1212,12 @@ export default class Transaction {
     timeoutTransaction(transactionID) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction'], unlock => {
-                if(true){
+                if (true) {
                     unlock();
                     return resolve();
                 }
-                
-                this.database.run('BEGIN TRANSACTION', function (err) {
+
+                this.database.run('BEGIN TRANSACTION', function(err) {
                     if (err) {
                         reject(err);
                         return unlock();

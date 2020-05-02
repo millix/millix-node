@@ -5,6 +5,7 @@ import config from './core/config/config';
 import genesisConfig from './core/genesis/genesis-config';
 import request from 'request';
 import services from './core/serices/services';
+import logManager from './core/log-manager';
 
 const argv = require('yargs')
     .options({
@@ -69,6 +70,7 @@ console.log('starting millix-core');
 db.initialize()
   .then(() => services.initialize())
   .then(() => {
+      logManager.logSize = 1000;
       if (config.MODE_TEST) {
           request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
               {

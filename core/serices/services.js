@@ -22,15 +22,15 @@ class Service {
         if (mode) {
             this.mode = mode;
         }
-        return wallet.setMode(this.mode).initialize(initializeWalletEvent)
-                     .then(() => logManager.initialize())
-                     .then(() => network.initialize())
-                     .then(() => server.initialize())
-                     .then(() => peer.initialize())
-                     .then(() => jobEngine.initialize())
-                     .catch(e => {
-                         console.log(e);
-                     });
+        return logManager.initialize()
+                         .then(() => network.initialize())
+                         .then(() => peer.initialize())
+                         .then(() => server.initialize())
+                         .then(() => jobEngine.initialize())
+                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
+                         .catch(e => {
+                             console.log(e);
+                         });
     }
 
     stop() {

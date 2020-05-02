@@ -9,10 +9,22 @@ export const NODE_PUBLIC                               = false;
 export const MODE_NODE_FULL                            = false;
 export const NODE_INITIAL_LIST_MAIN_NETWORK            = [];
 export const NODE_INITIAL_LIST_TEST_NETWORK            = [
-    'ws://13.251.31.129:30000',
-    'ws://13.251.31.129:30001',
-    'ws://52.74.179.232:30000',
-    'ws://52.74.179.232:30001'
+    {
+        url     : 'ws://13.251.31.129:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'ws://13.251.31.129:30001',
+        port_api: 35501
+    },
+    {
+        url     : 'ws://52.74.179.232:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'ws://52.74.179.232:30001',
+        port_api: 35500
+    }
 ];
 export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
 export const CONSENSUS_ROUND_NODE_COUNT                = 1;

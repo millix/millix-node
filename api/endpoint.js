@@ -14,8 +14,8 @@ export default class Endpoint {
         throw new Error('You must to implement the method handler!');
     }
 
-    onRequest(app, secure, req, res) {
-        if (secure) {
+    onRequest(app, permission, req, res) {
+        if (permission.require_identity) {
             const {nodeID, nodeSignature} = req.params;
             database.getRepository('node')
                     .getNodeAttribute(nodeID, 'node_public_key')
@@ -24,13 +24,17 @@ export default class Endpoint {
                         const md        = forge.md.sha1.create();
                         md.update(network.nodeID, 'utf8');
                         if (!publicKey.verify(md.digest().bytes(), base58.decode(nodeSignature))) {
-                            return res.status(400).send({status: 'invalid_node_identity'});
+                            return res.status(401).send({status: 'invalid_node_identity'});
+                        }
+
+                        if (permission.private && network.nodeID !== nodeID) {
+                            return res.status(401).send({status: 'permission_denied'});
                         }
 
                         this.handler(app, req, res);
                     })
                     .catch(() => {
-                        return res.status(400).send({status: 'node_identity_not_verified'});
+                        return res.status(401).send({status: 'node_identity_not_verified'});
                     });
         }
         else {
@@ -38,8 +42,8 @@ export default class Endpoint {
         }
     }
 
-    register(app, secure) {
-        app.post(this.baseURL + this.endpoint, this.onRequest.bind(this, app, secure));
-        app.get(this.baseURL + this.endpoint, this.onRequest.bind(this, app, secure));
+    register(app, permission) {
+        app.post(this.baseURL + this.endpoint, this.onRequest.bind(this, app, permission));
+        app.get(this.baseURL + this.endpoint, this.onRequest.bind(this, app, permission));
     }
 }

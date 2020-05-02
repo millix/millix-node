@@ -1,6 +1,7 @@
 import _ from 'lodash';
 import async from 'async';
 import config from '../../core/config/config';
+import {Database} from '../database';
 
 export default class Address {
     constructor(database) {
@@ -18,6 +19,17 @@ export default class Address {
                     _.each(data, version => this.addressVersionList.push(version));
                     resolve();
                 });
+        });
+    }
+
+    listAddressVersion() {
+        return new Promise((resolve, reject) => {
+            this.database.all('SELECT * FROM address_version', (err, rows) => {
+                if (err) {
+                    return reject();
+                }
+                resolve(rows);
+            });
         });
     }
 
@@ -51,22 +63,22 @@ export default class Address {
                 });
 
         }).then(() => {
-            return new Promise(resolve => {
+            return new Promise((resolve, reject) => {
+                const parameters = [
+                    version,
+                    isMainNetwork,
+                    regexPattern,
+                    isDefault
+                ];
                 this.database.all('INSERT INTO address_version (version, is_main_network, regex_pattern, is_default) VALUES (?,?,?,?)',
-                    [
-                        version,
-                        isMainNetwork,
-                        regexPattern,
-                        isDefault
-                    ], (err) => {
+                    parameters, (err) => {
                         if (err) {
-                            return resolve();
+                            return reject();
                         }
-                        this.addressVersionList.push({
-                            version,
-                            regex_pattern  : regexPattern,
-                            is_main_network: isMainNetwork
-                        });
+                        if (config.MODE_TEST_NETWORK && !isMainNetwork || !config.MODE_TEST_NETWORK && isMainNetwork) {
+                            this.database.get('SELECT * from address_version WHERE version=? AND is_main_network=? AND regex_pattern=? AND is_default=?',
+                                parameters, (err, row) => this.addressVersionList.push(row));
+                        }
                         resolve();
                     });
             });
@@ -227,15 +239,19 @@ export default class Address {
         });
     }
 
-    getAllAddress() {
+    listAddress(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
+
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM address', where, orderBy, limit);
             this.database.all(
-                'SELECT * FROM address',
+                sql,
+                parameters,
                 (err, rows) => {
                     if (err) {
                         console.log(err);
                         return reject(err);
                     }
+                    _.map(rows, row => row.address_attribute = JSON.parse(row.address_attribute));
                     resolve(rows);
                 }
             );
