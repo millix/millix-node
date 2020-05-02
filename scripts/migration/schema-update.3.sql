@@ -46,7 +46,7 @@ INSERT INTO node_attribute (node_id, attribute_type_id, value, status, create_da
 DROP TABLE _node_attribute_old;
 
 DELETE FROM api;
-
+DELETE FROM config where config_name = 'node_initial_list';
 COMMIT;
 
 PRAGMA foreign_keys=on;
