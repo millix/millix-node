@@ -768,16 +768,15 @@ export class WalletTransactionConsensus {
 
         console.log('[consensus][request] get unstable transactions');
         return new Promise(resolve => {
+            const transactionRepository = database.getRepository('transaction');
             database.getRepository('keychain')
                     .getWalletAddresses(wallet.getDefaultActiveWallet())
-                    .then(addresses => database.getRepository('address')
-                                               .getAddressesUnstableTransactions(addresses.map(address => address.address), config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList))
-                    .then(pendingTransactions => pendingTransactions.length === 0 ? database.getRepository('transaction')
-                                                                                            .findUnstableTransaction(config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList)
-                                                                                            .then(transactions => [
-                                                                                                transactions,
-                                                                                                false
-                                                                                            ]) : [
+                    .then(addresses => transactionRepository.getAddressesUnstableTransactions(addresses.map(address => address.address), config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList))
+                    .then(pendingTransactions => pendingTransactions.length === 0 ? transactionRepository.findUnstableTransaction(config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList)
+                                                                                                         .then(transactions => [
+                                                                                                             transactions,
+                                                                                                             false
+                                                                                                         ]) : [
                         pendingTransactions,
                         true
                     ])

@@ -907,8 +907,7 @@ class Wallet {
         return new Promise(resolve => {
             database.getRepository('keychain')
                     .getWalletAddresses(this.getDefaultActiveWallet())
-                    .then(addresses => database.getRepository('address')
-                                               .getAddressesUnstableTransactions(addresses.map(address => address.address), 0, Array.from(walletTransactionConsensus.getRejectedTransactionList().keys())))
+                    .then(addresses => transactionRepository.getAddressesUnstableTransactions(addresses.map(address => address.address), 0, Array.from(walletTransactionConsensus.getRejectedTransactionList().keys())))
                     .then(pendingTransactions => {
                         async.eachSeries(pendingTransactions, (pendingTransaction, callback) => {
                             transactionRepository.getTransactionIncludePaths(pendingTransaction.transaction_id)

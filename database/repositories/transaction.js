@@ -20,6 +20,51 @@ export default class Transaction {
         this.auditPointRepository = repository;
     }
 
+    getAddressBalance(address, stable) {
+        return new Promise((resolve) => {
+            this.database.get('SELECT SUM(amount) as amount FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
+                              'WHERE address=? and `transaction`.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0', [address],
+                (err, row) => {
+                    resolve(row ? row.amount || 0 : 0);
+                });
+        });
+    }
+
+    getAddressesUnstableTransactions(addresses, minIncludePathLength, excludeTransactionIDList) {
+        return new Promise((resolve, reject) => {
+            this.database.all('SELECT `transaction`.* FROM `transaction` ' +
+                              'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
+                              'WHERE transaction_output.address IN ( ' + addresses.map(() => '?').join(',') + ' ) ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date DESC LIMIT 100', addresses.concat(excludeTransactionIDList),
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    if (minIncludePathLength === undefined) {
+                        return resolve(rows);
+                    }
+                    else {
+                        let filteredRows = [];
+                        async.eachSeries(rows, (row, callback) => {
+
+                            this.getTransactionIncludePaths(row.transaction_id)
+                                .then(paths => {
+                                    if (_.some(paths, path => path.length >= minIncludePathLength)) {
+                                        filteredRows.push(row);
+                                    }
+                                    callback();
+                                });
+
+                        }, () => {
+                            resolve(filteredRows);
+                        });
+                    }
+
+                });
+        });
+    }
+
     getTransactionByOutputAddress(address, fromTimestamp) {
         return new Promise((resolve, reject) => {
             let dateTime = Math.floor(fromTimestamp.getTime() / 1000);

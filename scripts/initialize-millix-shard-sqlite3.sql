@@ -1,47 +1,6 @@
 PRAGMA journal_mode= WAL;
 PRAGMA auto_vacuum= FULL;
 PRAGMA journal_size_limit = 4096;
--- -----------------------
--- wallet tables
--- wallet composed of a BIP44 key
-CREATE TABLE wallet
-(
-    wallet_id   CHAR(44)    NOT NULL PRIMARY KEY,
-    wallet_name VARCHAR(20) NULL,
-    account     SMALLINT    NOT NULL DEFAULT 0,
-    status      SMALLINT    NOT NULL DEFAULT 1,
-    create_date INT         NOT NULL DEFAULT (strftime('%s', 'now'))
-);
-
--- BIP44 addresses. Coin type and account are fixed and stored in credentials in localstorage.
--- derivation path is m/44'/0'/account'/is_change/address_position
-CREATE TABLE keychain
-(
-    address_base      CHAR(34) NOT NULL PRIMARY KEY,
-    address_position  INT      NOT NULL,
-    address_attribute TEXT     NOT NULL,
-    wallet_id         CHAR(44) NOT NULL,
-    is_change         TINYINT  NOT NULL,
-    status            SMALLINT NOT NULL DEFAULT 1,
-    create_date       INT      NOT NULL DEFAULT (strftime('%s', 'now')),
-    UNIQUE (wallet_id, is_change, address_position),
-    FOREIGN KEY (wallet_id) REFERENCES wallet (wallet_id)
-);
-
-CREATE TABLE keychain_address
-(
-    address                CHAR(71) NOT NULL,
-    address_base           CHAR(34) NOT NULL,
-    address_version        CHAR(3)  NOT NULL,
-    address_key_identifier CHAR(34) NOT NULL,
-    status                 SMALLINT NOT NULL DEFAULT 1,
-    create_date            INT      NOT NULL DEFAULT (strftime('%s', 'now')),
-    PRIMARY KEY (address_base, address_version, address_key_identifier),
-    FOREIGN KEY (address_base) REFERENCES keychain (address_base)
-);
-CREATE INDEX idx_keychain_address_address_base_address_key_identifier ON keychain_address (address, address_key_identifier);
-CREATE INDEX idx_keychain_address_address_key_identifier ON keychain_address (address_key_identifier);
-
 
 CREATE TABLE `transaction`
 (
@@ -79,21 +38,6 @@ CREATE TABLE transaction_parent
 );
 CREATE INDEX idx_transaction_parent_transaction_id_child ON transaction_parent (transaction_id_child);
 
--- current list of all known from-addresses
-CREATE TABLE address
-(
-    address                CHAR(71) NOT NULL,
-    address_base           CHAR(34) NOT NULL,
-    address_version        CHAR(3)  NOT NULL,
-    address_key_identifier CHAR(34) NOT NULL,
-    address_attribute      TEXT,
-    status                 SMALLINT NOT NULL DEFAULT 1,
-    create_date            INT      NOT NULL DEFAULT (strftime('%s', 'now')),
-    PRIMARY KEY (address_base, address_version, address_key_identifier)
-);
-CREATE INDEX idx_address_address_base_address_key_identifier ON address (address, address_key_identifier);
-CREATE INDEX idx_address_address_key_identifier ON address (address_key_identifier);
-
 CREATE TABLE transaction_signature
 (
     transaction_id CHAR(44) NOT NULL,
@@ -103,8 +47,7 @@ CREATE TABLE transaction_signature
     status         SMALLINT NOT NULL DEFAULT 1,
     create_date    INT      NOT NULL DEFAULT (strftime('%s', 'now')),
     PRIMARY KEY (transaction_id, address_base),
-    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id),
-    FOREIGN KEY (address_base) REFERENCES address (address_base)
+    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
 CREATE INDEX idx_transaction_signature_address ON transaction_signature (address_base);
 
@@ -124,8 +67,7 @@ CREATE TABLE transaction_input
     status                  SMALLINT NOT NULL DEFAULT 1,
     create_date             INT      NOT NULL DEFAULT (strftime('%s', 'now')),
     PRIMARY KEY (transaction_id, input_position),
-    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id),
-    FOREIGN KEY (address, address_key_identifier) REFERENCES address (address, address_key_identifier)
+    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
 CREATE INDEX idx_transaction_input_address_key_identifier ON transaction_input (address_key_identifier);
 CREATE INDEX idx_transaction_input_address_is_double_spend ON transaction_input (address, is_double_spend);
@@ -149,8 +91,7 @@ CREATE TABLE transaction_output
     status                 SMALLINT NOT NULL DEFAULT 1,
     create_date            INT      NOT NULL DEFAULT (strftime('%s', 'now')),
     PRIMARY KEY (transaction_id, output_position),
-    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id),
-    FOREIGN KEY (address, address_key_identifier) REFERENCES address (address, address_key_identifier)
+    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
 CREATE INDEX idx_transaction_output_address_key_identifier ON transaction_output (address_key_identifier);
 CREATE INDEX idx_transaction_output_address_is_spent ON transaction_output (address, is_spent);
@@ -169,16 +110,7 @@ CREATE TABLE transaction_output_attribute
     status                     SMALLINT NOT NULL DEFAULT 1,
     create_date                INT      NOT NULL DEFAULT (strftime('%s', 'now')),
     PRIMARY KEY (transaction_output_id, transaction_output_type_id),
-    FOREIGN KEY (transaction_output_id) REFERENCES transaction_output (transaction_id),
-    FOREIGN KEY (transaction_output_type_id) REFERENCES transaction_output_type (transaction_output_type_id)
-);
-
-CREATE TABLE transaction_output_type
-(
-    transaction_output_type_id CHAR(20)     NOT NULL PRIMARY KEY,
-    attribute_type             VARCHAR(255) NOT NULL UNIQUE,
-    status                     SMALLINT     NOT NULL DEFAULT 0,
-    create_date                INT          NOT NULL DEFAULT (strftime('%s', 'now'))
+    FOREIGN KEY (transaction_output_id) REFERENCES transaction_output (transaction_id)
 );
 
 CREATE TABLE audit_verification
@@ -210,50 +142,6 @@ CREATE INDEX idx_audit_point_transaction_id ON audit_point (transaction_id);
 CREATE INDEX idx_audit_point_status_transaction_id ON audit_point (status, transaction_id);
 CREATE INDEX idx_audit_point_id ON audit_point (audit_point_id);
 
-CREATE TABLE node
-(
-    node_id         VARCHAR(32) NULL,
-    node_prefix     VARCHAR(10) NOT NULL,
-    node_ip_address VARCHAR(45) NOT NULL,
-    node_port       INT         NOT NULL,
-    status          SMALLINT    NOT NULL DEFAULT 1,
-    update_date     INT         NOT NULL DEFAULT (strftime('%s', 'now')),
-    create_date     INT         NOT NULL DEFAULT (strftime('%s', 'now')),
-    PRIMARY KEY (node_prefix, node_ip_address, node_port)
-);
-
-CREATE TABLE node_attribute
-(
-    node_id           CHAR(20) NOT NULL,
-    attribute_type_id CHAR(20) NOT NULL,
-    value             TEXT     NOT NULL,
-    status            SMALLINT NOT NULL DEFAULT 1,
-    create_date       INT      NOT NULL DEFAULT (strftime('%s', 'now')),
-    PRIMARY KEY (node_id, attribute_type_id),
-    FOREIGN KEY (node_id) REFERENCES node (node_id),
-    FOREIGN KEY (attribute_type_id) REFERENCES node_attribute_type (attribute_type_id)
-);
-
-CREATE TABLE node_attribute_type
-(
-    attribute_type_id CHAR(20)     NOT NULL PRIMARY KEY,
-    attribute_type    VARCHAR(255) NOT NULL UNIQUE,
-    status            SMALLINT     NOT NULL DEFAULT 1,
-    create_date       INT          NOT NULL DEFAULT (strftime('%s', 'now'))
-);
-
--- to be optimized SELECT DISTINCT transactions.*, inputs.address as input_address, outputs.address as output_address, outputs.amount as amount FROM transactions LEFT JOIN outputs on outputs.transaction_id = transactions.transaction_id LEFT JOIN inputs on inputs.transaction_id = transactions.transaction_id WHERE (outputs.address in ( '', '', '') OR inputs.address in ( '', '') AND input_address != output_address
-
-CREATE TABLE config
-(
-    config_id   CHAR(20)     NOT NULL PRIMARY KEY,
-    config_name VARCHAR(255) NOT NULL UNIQUE,
-    value       VARCHAR(255) NOT NULL,
-    type        VARCHAR(50)  NOT NULL,
-    status      SMALLINT     NOT NULL DEFAULT 1,
-    create_date INT          NOT NULL DEFAULT (strftime('%s', 'now'))
-);
-
 CREATE TABLE schema_information
 (
     key         VARCHAR(255) NOT NULL UNIQUE,
@@ -262,18 +150,4 @@ CREATE TABLE schema_information
     create_date INT          NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
-INSERT INTO schema_information (key, value) VALUES ("version", "1");
-
-CREATE TABLE address_version
-(
-    version         CHAR(3)      NOT NULL UNIQUE,
-    is_main_network SMALLINT     NOT NULL DEFAULT 1,
-    regex_pattern   VARCHAR(255) NOT NULL,
-    is_default      SMALLINT     NOT NULL DEFAULT 0,
-    status          SMALLINT     NOT NULL DEFAULT 1,
-    create_date     INT          NOT NULL DEFAULT (strftime('%s', 'now'))
-);
-
-INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
-VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
-       ("lal", 0, 1, "(?<address>.*)(?<version>lal)(?<identifier>.*)");
+INSERT INTO schema_information (key, value) VALUES ("version", "4");

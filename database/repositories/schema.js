@@ -1,11 +1,10 @@
-import path from 'path';
-import os from 'os';
-import config, {DATABASE_CONNECTION} from '../../core/config/config';
-import fs from 'fs';
+import {DATABASE_CONNECTION} from '../../core/config/config';
+import Migration from '../../scripts/migration/migration';
 
 export default class Schema {
     constructor(database) {
-        this.database = database;
+        this.database    = database;
+        this.baseMigrate = new Migration();
     }
 
     getVersion() {
@@ -19,22 +18,17 @@ export default class Schema {
         });
     }
 
-    migrate(version) {
-        return new Promise((resolve, reject) => {
-            let migrationFile = `${DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR}/schema-update.${version}.sql`;
+    migrate(version, migrationDir) {
 
-            fs.readFile(migrationFile, 'utf8', (err, data) => {
-                if (err) {
-                    return reject(err.message);
-                }
-                this.database.exec(data, function(err) {
-                    if (err) {
-                        return reject(err.message);
-                    }
+        let migrationSQLFile = `${migrationDir}/schema-update-${version}.sql`;
+        let migrationJSFile  = `../../${migrationDir}/schema-update-${version}.js`;
 
-                    resolve();
-                });
-            });
-        });
+        try{
+            const module = require(migrationJSFile);
+            return module.default.migrate(this.database, migrationSQLFile);
+        } catch (e) {
+            return this.baseMigrate.runMigrateScript(this.database, migrationSQLFile);
+        }
+
     }
 }

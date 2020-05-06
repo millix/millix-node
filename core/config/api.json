@@ -278,6 +278,15 @@
       "version_released": "1.2.0",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "OMAlxmPq4rZs71K8",
+      "name": "list_shard",
+      "description": "returns list of shards",
+      "method": "GET",
+      "version_released": "1.3.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
     }
   ]
 }

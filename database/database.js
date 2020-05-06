@@ -6,10 +6,10 @@ import os from 'os';
 import wallet from '../core/wallet/wallet';
 import console from '../core/console';
 import path from 'path';
-import {
-    Address, AuditPoint, AuditVerification, Config, Keychain, Node,
-    Transaction, Wallet, Schema, Job, API
-} from './repositories/repositories';
+import async from 'async';
+import {Address, API, Config, Job, Keychain, Node, Schema, Shard as ShardRepository, Wallet} from './repositories/repositories';
+import Shard from './shard';
+import genesisConfig from '../core/genesis/genesis-config';
 import _ from 'lodash';
 
 
@@ -20,6 +20,12 @@ export class Database {
         this.databaseMillix    = null;
         this.databaseJobEngine = null;
         this.repositories      = {};
+        this.shards            = {};
+        this.shardRepositories = new Set([
+            'audit_point',
+            'transaction',
+            'audit_verification'
+        ]);
     }
 
     static generateID(length) {
@@ -152,7 +158,7 @@ export class Database {
 
                 if (doInitialize) {
                     console.log('Initializing database');
-                    fs.readFile(config.DATABASE_CONNECTION.SCRIPT_INIT_JOB_ENGINE, 'utf8', (err, data) => {
+                    fs.readFile(config.DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE, 'utf8', (err, data) => {
                         if (err) {
                             throw Error(err.message);
                         }
@@ -174,26 +180,48 @@ export class Database {
         });
     }
 
-    _initializeTables() {
-        this.repositories['node']               = new Node(this.databaseMillix);
-        this.repositories['keychain']           = new Keychain(this.databaseMillix);
-        this.repositories['config']             = new Config(this.databaseMillix);
-        this.repositories['audit_point']        = new AuditPoint(this.databaseMillix);
-        this.repositories['wallet']             = new Wallet(this.databaseMillix);
-        this.repositories['transaction']        = new Transaction(this.databaseMillix);
-        this.repositories['address']            = new Address(this.databaseMillix);
-        this.repositories['audit_verification'] = new AuditVerification(this.databaseMillix);
-        this.repositories['job']                = new Job(this.databaseJobEngine);
-        this.repositories['api']                = new API(this.databaseMillix);
+    _initializeShards() {
+        const shardRepository      = new ShardRepository(this.databaseMillix);
+        this.repositories['shard'] = shardRepository;
+        return shardRepository.listShard()
+                              .then((shardList) => {
+                                  return new Promise(resolve => {
+                                      async.eachSeries(shardList, (shard, callback) => {
+                                          const dbShard               = new Shard(shard.schema_path + shard.schema_name, shard.shard_id);
+                                          this.shards[shard.shard_id] = dbShard;
+                                          dbShard.initialize()
+                                                 .then(() => callback());
+                                      }, () => resolve());
+                                  });
+                              });
+    }
 
-        this.repositories['address'].setTransactionRepository(this.repositories['transaction']);
-        this.repositories['transaction'].setAddressRepository(this.repositories['address']);
-        this.repositories['transaction'].setAuditPointRepository(this.repositories['audit_point']);
+    _initializeTables() {
+        this.repositories['node']     = new Node(this.databaseMillix);
+        this.repositories['keychain'] = new Keychain(this.databaseMillix);
+        this.repositories['config']   = new Config(this.databaseMillix);
+        this.repositories['wallet']   = new Wallet(this.databaseMillix);
+        this.repositories['address']  = new Address(this.databaseMillix);
+        this.repositories['job']      = new Job(this.databaseJobEngine);
+        this.repositories['api']      = new API(this.databaseMillix);
+
+        _.each(_.keys(this.shards), shard => {
+            const transactionRepository = this.shards[shard].getRepository('transaction');
+            const auditPointRepository  = this.shards[shard].getRepository('audit_point');
+            transactionRepository.setAddressRepository(this.repositories['address']);
+            transactionRepository.setAuditPointRepository(auditPointRepository);
+        });
 
         return this.repositories['address'].loadAddressVersion();
     }
 
-    getRepository(repositoryName) {
+    getRepository(repositoryName, shardID) {
+        if (shardID) {
+            return this.shards[shardID].getRepository(repositoryName);
+        }
+        else if (this.shardRepositories.has(repositoryName)) {
+            return this.shards[genesisConfig.genesis_shard_id].getRepository(repositoryName);
+        }
         return this.repositories[repositoryName];
     }
 
@@ -236,13 +264,13 @@ export class Database {
     _migrateTables() {
         const schema                = new Schema(this.databaseMillix);
         this.repositories['schema'] = schema;
-        console.log('[database] check schema versions');
+        console.log('[database] check schema version');
         return new Promise(resolve => {
             schema.getVersion()
                   .then(version => {
                       if (parseInt(version) < parseInt(config.DATABASE_CONNECTION.SCHEMA_VERSION)) {
                           console.log('[database] migrating schema from version', version, ' to version ', config.DATABASE_CONNECTION.SCHEMA_VERSION);
-                          schema.migrate(config.DATABASE_CONNECTION.SCHEMA_VERSION)
+                          schema.migrate(config.DATABASE_CONNECTION.SCHEMA_VERSION, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
                                 .then(() => this._migrateTables())
                                 .then(() => resolve());
                       }
@@ -254,7 +282,7 @@ export class Database {
                   .catch((err) => {
                       if (err.message.indexOf('no such table') > -1) {
                           console.log('[database] migrating to version 1');
-                          schema.migrate(1)
+                          schema.migrate(1, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
                                 .then(() => this._migrateTables())
                                 .then(() => resolve());
                       }
@@ -267,6 +295,7 @@ export class Database {
             return this._initializeMillixSqlite3()
                        .then(() => this._initializeJobEngineSqlite3())
                        .then(() => this._migrateTables())
+                       .then(() => this._initializeShards())
                        .then(() => this._initializeTables());
         }
         return Promise.resolve();

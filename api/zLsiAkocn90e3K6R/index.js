@@ -9,9 +9,9 @@ class _zLsiAkocn90e3K6R extends Endpoint {
     }
 
     handler(app, req, res) {
-        const addressRepository = database.getRepository('address');
+        const transactionRepository = database.getRepository('transaction');
         const stable            = !(req.query.p1 === 'pending');
-        addressRepository.getAddressBalance(req.query.p0, stable)
+        transactionRepository.getAddressBalance(req.query.p0, stable)
                          .then(balance => res.send({
                              balance,
                              stable

@@ -48,5 +48,3 @@ DROP TABLE _node_attribute_old;
 DELETE FROM api;
 DELETE FROM config where config_name = 'node_initial_list';
 COMMIT;
-
-PRAGMA foreign_keys=on;

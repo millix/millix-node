@@ -67,8 +67,15 @@ export default class Node {
 
     listNodeAttribute(where, limit) {
         return new Promise(resolve => {
-            let {sql, parameters} = Database.buildQuery('SELECT * FROM node_attribute', where, undefined, limit);
+            let {sql, parameters} = Database.buildQuery('SELECT nat.attribute_type, na.* FROM node_attribute AS na INNER JOIN node_attribute_type AS nat ON na.attribute_type_id = nat.attribute_type_id', where, undefined, limit);
             this.database.all(sql, parameters, (err, rows) => {
+                rows.forEach(row => {
+                    try {
+                        row.value = JSON.parse(row.value);
+                    }
+                    catch (e) {
+                    }
+                });
                 resolve(rows);
             });
         });
