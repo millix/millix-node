@@ -3,13 +3,29 @@ import Endpoint from '../endpoint';
 import database from '../../database/database';
 
 
-// api get_authentication_token
+/**
+ * api register_node_identity
+ */
 class _PwwdU9lZbgMqS2DA extends Endpoint {
     constructor() {
         super('PwwdU9lZbgMqS2DA');
     }
 
+    /**
+     * this API pushes a value from the client node to the host node for it to
+     * apply to its database. it upserts a record in the host node's table
+     * node_attribute with attribute_type_id = node_public_key.  if a
+     * corresponding node_id does not exist in table node, that is inserted as
+     * well
+     * @param app
+     * @param req (p0: public_key<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
+        if (!req.query.p0) {
+            return res.status(400).send({status: 'p0<public_key> is required'});
+        }
         try {
             if (!walletUtils.isValidNodeIdentity(req.params.nodeID, req.query.p0, network.nodeID, req.params.nodeSignature)) {
                 return res.send({status: 'node_registration_error'});

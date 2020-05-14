@@ -50,11 +50,11 @@ export class Database {
                     sql += ' WHERE ';
                 }
 
-                if (key === 'begin_date') {
-                    sql += `transaction_date >= ?`;
+                if (key.endsWith('_begin') && key.endsWith('_min')) {
+                    sql += `${key.substring(0, key.lastIndexOf('_'))} >= ?`;
                 }
-                else if (key === 'end_date') {
-                    sql += `transaction_date <= ?`;
+                if (key.endsWith('_end') && key.endsWith('_max')) {
+                    sql += `${key.substring(0, key.lastIndexOf('_'))} <= ?`;
                 }
                 else {
                     sql += `${key} = ?`;

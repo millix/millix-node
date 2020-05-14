@@ -2,17 +2,26 @@ import network from '../../net/network';
 import Endpoint from '../endpoint';
 
 
-// api update_network_state
+/**
+ * api toggle_service_network
+ */
 class _5sgpSNaqnHIcfocl extends Endpoint {
     constructor() {
         super('5sgpSNaqnHIcfocl');
     }
 
+    /**
+     * toggles the network service for all networks (main or test networks) between running (true) and not running (false)
+     * @param app
+     * @param req (p0: is_running<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
         if (!req.query.p0) {
-            return res.status(400).send({status: 'p0<is_online> is required'});
+            return res.status(400).send({status: 'p0<is_running> is required'});
         }
-        const isOnline = req.query.p0 === 'true';
+        const isOnline = !!req.query.p0;
         if (isOnline && network.initialized === false) {
             network.initialize();
             res.send({status: 'success'});

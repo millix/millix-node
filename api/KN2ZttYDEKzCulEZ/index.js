@@ -8,9 +8,18 @@ class _KN2ZttYDEKzCulEZ extends Endpoint {
         super('KN2ZttYDEKzCulEZ');
     }
 
+    /**
+     * returns a single record from table transaction_output as indicated by
+     * transaction_id and output_position in the indicated shard
+     * @param app
+     * @param req (p0: transaction_id<required, p1: output_position<required>,
+     *     p2: shard_id<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
-        if (!req.query.p0 || !req.query.p1) {
-            return res.status(400).send({status: 'p0<transaction_id> and p1<output_position> are required'});
+        if (!req.query.p0 || !req.query.p1 || !req.query.p2) {
+            return res.status(400).send({status: 'p0<transaction_id>, p1<output_position> and p2<shard_id> are required'});
         }
         const transactionRepository = database.getRepository('transaction');
         transactionRepository.getTransactionOutput({

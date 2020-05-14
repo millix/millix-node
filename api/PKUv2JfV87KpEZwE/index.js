@@ -4,12 +4,21 @@ import walletUtils from '../../core/wallet/wallet-utils';
 import wallet from '../../core/wallet/wallet';
 
 
-// api get_address_private_key
+/**
+ * api get_address_private_key
+ */
 class _PKUv2JfV87KpEZwE extends Endpoint {
     constructor() {
         super('PKUv2JfV87KpEZwE');
     }
 
+    /**
+     * returns the private key for the indicated address that is derived from the master key that is temporarily stored in node memory for the active wallet
+     * @param app
+     * @param req (p0: address_base<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
         if (!req.query.p0) {
             return res.status(400).send({status: 'p0<address_base> is required'});

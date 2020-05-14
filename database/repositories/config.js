@@ -46,6 +46,20 @@ export default class Config {
         });
     }
 
+    updateConfigByID(configID, value) {
+        return new Promise((resolve, reject) => {
+            this.database.run('UPDATE config SET value=? WHERE config_id=?', [
+                configID,
+                value
+            ], (err, row) => {
+                if (err) {
+                    return reject(err.message);
+                }
+                resolve(row);
+            });
+        });
+    }
+
     list(where, orderBy, limit) {
         return new Promise(resolve => {
             const {sql, parameters} = Database.buildQuery('SELECT * FROM config', where, orderBy, limit);

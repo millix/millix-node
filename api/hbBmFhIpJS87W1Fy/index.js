@@ -2,15 +2,26 @@ import database from '../../database/database';
 import Endpoint from '../endpoint';
 
 
-// api get_transaction_input
+/**
+ * api get_transaction_input
+ */
 class _hbBmFhIpJS87W1Fy extends Endpoint {
     constructor() {
         super('hbBmFhIpJS87W1Fy');
     }
 
+    /**
+     * returns a single record from table transaction_input as indicated by
+     * transaction_id and input_position in the indicated shard
+     * @param app
+     * @param req (p0: transaction_id<required>, p1: input_position<required>,
+     *     p2: shard_id<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
-        if (!req.query.p0 || !req.query.p1) {
-            return res.status(400).send({status: 'p0<transaction_id> and p1<input_position> are required'});
+        if (!req.query.p0 || !req.query.p1 || !req.query.p2) {
+            return res.status(400).send({status: 'p0<transaction_id>, p1<input_position>, p2<shard_id> are required'});
         }
         const transactionRepository = database.getRepository('transaction');
         transactionRepository.getTransactionInput({

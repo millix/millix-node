@@ -93,6 +93,7 @@ class Server {
 
                                httpsServer.listen(config.NODE_PORT_API, () => {
                                    const nodeID = walletUtils.getNodeIdFromPublicKey(publicKey);
+                                   this.nodeID  = nodeID;
                                    console.log(`[api] listening on port ${config.NODE_PORT_API}`);
                                    console.log(`[api] node_id ${nodeID}`);
                                    console.log(`[api] node_signature ${walletUtils.signNodeMessage(privateKey, nodeID)}`);

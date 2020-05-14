@@ -1,29 +1,33 @@
 import database from '../../database/database';
-import async from 'async';
 import Endpoint from '../endpoint';
 
 
-// api update_configuration
+/**
+ * api update_config_value
+ */
 class _LLpSTquu4tZL8Nu5 extends Endpoint {
     constructor() {
         super('LLpSTquu4tZL8Nu5');
     }
 
+    /**
+     * updates table config value field for the indicated config_id record
+     * @param app
+     * @param req (p0: config_id<required>, p1:value<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
-        const {p0: configName, p1: type, p2: value} = req.query;
-        if (!configName || !type || value === undefined) {
-            return res.status(400).send({status: 'p0<config_name>, p1<type> and p2<value> are required'});
+        const {p0: configID, p1: value} = req.query;
+        if (!configID || value === undefined) {
+            return res.status(400).send({status: 'p0<config_id> and p1<value> are required'});
         }
 
         const configurationRepository = database.getRepository('config');
-        configurationRepository.addConfig(configName, value, type)
-                               .then(() => res.send({status: 'config_added'}))
+        configurationRepository.updateConfigByID(configID, value)
+                               .then(() => res.send({status: 'success'}))
                                .catch(() => {
-                                   configurationRepository.updateConfig(configName, value, type)
-                                                          .then(() => res.send({status: 'config_updated'}))
-                                                          .catch(() => {
-                                                              res.send({status: 'error_add_config'});
-                                                          });
+                                   res.send({status: 'fail'});
                                });
     }
 }

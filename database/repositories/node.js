@@ -65,9 +65,9 @@ export default class Node {
         this.database.each(sql, callback);
     }
 
-    listNodeAttribute(where, limit) {
+    listNodeAttribute(where, orderBy, limit) {
         return new Promise(resolve => {
-            let {sql, parameters} = Database.buildQuery('SELECT nat.attribute_type, na.* FROM node_attribute AS na INNER JOIN node_attribute_type AS nat ON na.attribute_type_id = nat.attribute_type_id', where, undefined, limit);
+            let {sql, parameters} = Database.buildQuery('SELECT nat.attribute_type, na.* FROM node_attribute AS na INNER JOIN node_attribute_type AS nat ON na.attribute_type_id = nat.attribute_type_id', where, orderBy, limit);
             this.database.all(sql, parameters, (err, rows) => {
                 rows.forEach(row => {
                     try {
@@ -81,9 +81,9 @@ export default class Node {
         });
     }
 
-    listNodes(where, limit) {
+    listNodes(where, orderBy, limit) {
         return new Promise(resolve => {
-            let {sql, parameters} = Database.buildQuery('SELECT * FROM node', where, undefined, limit);
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM node', where, orderBy, limit);
             this.database.all(sql, parameters, (err, rows) => {
                 resolve(rows);
             });

@@ -2,12 +2,21 @@ import database from '../../database/database';
 import Endpoint from '../endpoint';
 
 
-// api new_address_version
+/**
+ * api new_address_version
+ */
 class _hMrav9QMiMyLQosB extends Endpoint {
     constructor() {
         super('hMrav9QMiMyLQosB');
     }
 
+    /**
+     * inserts a new record to table address_version.  is_main_network indicates whether the new address version is on the main network or on a test network.  if the new record indicates is_default = true the previous address_version record set to is_default = true is updated to is_default = false.  there can only be a single record for each network that is set to is_default = true
+     * @param app
+     * @param req (p0: version<required>, p1: regex_pattern<required>, p2: is_main_network<required>, p3: is_default<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
         const {p0: version, p1: isMainNetwork, p2: regexPattern, p3: isDefault} = req.query;
         if (!version || isMainNetwork === undefined || !regexPattern || isDefault === undefined) {
@@ -15,7 +24,7 @@ class _hMrav9QMiMyLQosB extends Endpoint {
         }
 
         const addressRepository = database.getRepository('address');
-        addressRepository.addAddressVersion(version, isMainNetwork === 'true', regexPattern, isDefault === 'true')
+        addressRepository.addAddressVersion(version, !!isMainNetwork, regexPattern, !!isDefault)
                          .then(() => res.send({status: 'supported_version_added'}))
                          .catch(() => res.send({status: 'supported_version_not_added'}));
     }
