@@ -1,8 +1,6 @@
-import network from '../net/network';
-import forge from 'node-forge';
-import base58 from 'bs58';
 import database from '../database/database';
 import walletUtils from '../core/wallet/wallet-utils';
+import server from './server';
 
 export default class Endpoint {
     constructor(endpoint) {
@@ -19,15 +17,12 @@ export default class Endpoint {
             const {nodeID, nodeSignature} = req.params;
             database.getRepository('node')
                     .getNodeAttribute(nodeID, 'node_public_key')
-                    .then(publicKeyPem => {
-                        const publicKey = walletUtils.publicKeyFromPem(publicKeyPem.match(/.{1,64}/g).join('\n'));
-                        const md        = forge.md.sha1.create();
-                        md.update(network.nodeID, 'utf8');
-                        if (!publicKey.verify(md.digest().bytes(), base58.decode(nodeSignature))) {
+                    .then(publicKey => {
+                        if (!walletUtils.verify(publicKey, nodeSignature, server.nodeID)) {
                             return res.status(401).send({status: 'invalid_node_identity'});
                         }
 
-                        if (permission.private && network.nodeID !== nodeID) {
+                        if (permission.private && server.nodeID !== nodeID) {
                             return res.status(401).send({status: 'permission_denied'});
                         }
 

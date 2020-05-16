@@ -71,10 +71,10 @@ export const NODE_MILLIX_VERSION                       = '1.2.1';
 export const DATA_BASE_DIR_MAIN_NETWORK                = null;
 export const DATA_BASE_DIR_TEST_NETWORK                = './millix-testnet';
 let DATA_BASE_DIR                                      = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
-export const NODE_PRIVATE_KEY_PATH                     = DATA_BASE_DIR + '/node_private_key.pem';
-export const NODE_PUBLIC_KEY_PATH                      = DATA_BASE_DIR + '/node_public_key.pem';
-export const NODE_CERTIFICATE_PATH                     = DATA_BASE_DIR + '/node_cert.pem';
-export const KEY_PATH                                  = DATA_BASE_DIR + '/millix_private_key.json';
+export const NODE_KEY_PATH                             = DATA_BASE_DIR + '/node.json';
+export const NODE_CERTIFICATE_KEY_PATH                 = DATA_BASE_DIR + '/node_certificate_key.pem';
+export const NODE_CERTIFICATE_PATH                     = DATA_BASE_DIR + '/node_certificate.pem';
+export const WALLET_KEY_PATH                           = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH                           = DATA_BASE_DIR + '/job.json';
 
 if (DATABASE_ENGINE === 'sqlite') {
@@ -106,12 +106,12 @@ export default {
     NODE_MILLIX_VERSION,
     MODE_TEST,
     NODE_TEST_HOST,
-    NODE_PRIVATE_KEY_PATH,
-    NODE_PUBLIC_KEY_PATH,
+    NODE_KEY_PATH,
+    NODE_CERTIFICATE_KEY_PATH,
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
-    KEY_PATH,
+    WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
     CONSENSUS_ROUND_PATH_LENGTH_MIN,
     CONSENSUS_VALIDATION_DEPTH_MAX,

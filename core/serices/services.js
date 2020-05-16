@@ -41,9 +41,7 @@ class Service {
                                          'is_assigned'         : true,
                                          'fee_ask_request_byte': 20
                                      }
-                                 ]))
-                                               .then(() => resolve())
-                                               .catch(() => resolve());
+                                 ])).then(() => resolve()).catch(() => resolve());
                              });
                          })
                          .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))

@@ -10,8 +10,13 @@ export function signWithPrivateKeyObject(messageBuffer, exPrivKey) {
     return base58.encode(result.signature);
 }
 
-export function sign(hash, privKey) {
+export function sign(hash, privKey, format) {
     const result = ecdsa.sign(hash, privKey);
+    if(format === 'hex'){
+        return result.signature.toString('hex');
+    } else if(format === 'buffer'){
+        return result.signature;
+    }
     return base58.encode(result.signature);
 }
 

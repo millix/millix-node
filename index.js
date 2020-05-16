@@ -40,10 +40,10 @@ if (argv.testPort) {
 }
 
 if (argv.folder) {
-    config.KEY_PATH                   = argv.folder + 'millix_private_key.json';
-    config.NODE_PRIVATE_KEY_PATH      = argv.folder + 'node_private_key.pem';
-    config.NODE_PUBLIC_KEY_PATH       = argv.folder + 'node_public_key.pem';
-    config.NODE_CERTIFICATE_PATH      = argv.folder + 'node_cert.pem';
+    config.WALLET_KEY_PATH            = argv.folder + 'millix_private_key.json';
+    config.NODE_KEY_PATH              = argv.folder + 'node.json';
+    config.NODE_CERTIFICATE_KEY_PATH  = argv.folder + 'node_certificate_key.pem';
+    config.NODE_CERTIFICATE_PATH      = argv.folder + 'node_certificate.pem';
     config.JOB_CONFIG_PATH            = argv.folder + 'job.json';
     config.DATABASE_CONNECTION.FOLDER = argv.folder;
 }

@@ -9,6 +9,7 @@ import async from 'async';
 import database from '../database/database';
 import apiConfig from '../core/config/api.json';
 import _ from 'lodash';
+import base58 from 'bs58';
 import walletUtils from '../core/wallet/wallet-utils';
 
 
@@ -84,23 +85,23 @@ class Server {
                 });
 
                 walletUtils.loadNodeKeyAndCertificate()
-                           .then(({private_key_pem: key, private_key: privateKey, certificate_pem: cert, public_key: publicKey, public_key_pem: publicKeyPem}) => {
+                           .then(({certificate_private_key_pem: certificatePrivateKeyPem, certificate_pem: certificatePem, node_private_key: nodePrivateKey, node_public_key: nodePublicKey}) => {
                                // starting the server
                                const httpsServer = https.createServer({
-                                   key,
-                                   cert
+                                   key      : certificatePrivateKeyPem,
+                                   cert     : certificatePem,
+                                   ecdhCurve: 'prime256v1'
                                }, app);
 
                                httpsServer.listen(config.NODE_PORT_API, () => {
-                                   const nodeID = walletUtils.getNodeIdFromPublicKey(publicKey);
-                                   this.nodeID  = nodeID;
                                    console.log(`[api] listening on port ${config.NODE_PORT_API}`);
-                                   console.log(`[api] node_id ${nodeID}`);
-                                   console.log(`[api] node_signature ${walletUtils.signNodeMessage(privateKey, nodeID)}`);
+                                   this.nodeID = walletUtils.getNodeIdFromCertificate(certificatePem, 'pem');
+                                   console.log(`[api] node_id ${this.nodeID}`);
+                                   console.log(`[api] node_signature ${walletUtils.signMessage(nodePrivateKey, this.nodeID)}`);
                                    const nodeRepository = database.getRepository('node');
                                    const nop            = () => {
                                    };
-                                   nodeRepository.addNodeAttribute(nodeID, 'node_public_key', publicKeyPem.split(/\r\n/).splice(1, 4).join(''))
+                                   nodeRepository.addNodeAttribute(this.nodeID, 'node_public_key', base58.encode(nodePublicKey.toBuffer()))
                                                  .then(nop)
                                                  .catch(nop);
                                });

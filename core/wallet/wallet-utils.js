@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import base58 from 'bs58';
 import os from 'os';
-import forge from 'node-forge';
+import {KJUR, KEYUTIL, X509, ASN1HEX} from 'jsrsasign';
 import async from 'async';
 import _ from 'lodash';
 import database from '../../database/database';
@@ -16,6 +16,7 @@ import objectHash from '../crypto/object-hash';
 import network from '../../net/network';
 import genesisConfig from '../genesis/genesis-config';
 import signature from '../crypto/signature';
+import node from '../../database/repositories/node';
 
 
 class WalletUtils {
@@ -89,9 +90,9 @@ class WalletUtils {
     }
 
     loadMnemonic() {
-        console.log(path.join(os.homedir(), config.KEY_PATH));
+        console.log(path.join(os.homedir(), config.WALLET_KEY_PATH));
         return new Promise((resolve, reject) => {
-            fs.readFile(path.join(os.homedir(), config.KEY_PATH), 'utf8', (err, data) => {
+            fs.readFile(path.join(os.homedir(), config.WALLET_KEY_PATH), 'utf8', (err, data) => {
                 if (err) {
                     return reject('Couldn\'t read wallet mnemonic');
                 }
@@ -116,7 +117,7 @@ class WalletUtils {
                 mnemonic_phrase,
                 mnemonic_new
             };
-            fs.writeFile(path.join(os.homedir(), config.KEY_PATH), JSON.stringify(keys, null, '\t'), 'utf8', function(err) {
+            fs.writeFile(path.join(os.homedir(), config.WALLET_KEY_PATH), JSON.stringify(keys, null, '\t'), 'utf8', function(err) {
                 if (err) {
                     return reject('failed to write keys file');
                 }
@@ -127,7 +128,7 @@ class WalletUtils {
 
     removeMnemonic() {
         return new Promise(resolve => {
-            fs.unlink(path.join(os.homedir(), config.KEY_PATH), function() {
+            fs.unlink(path.join(os.homedir(), config.WALLET_KEY_PATH), function() {
                 resolve();
             });
         });
@@ -139,56 +140,75 @@ class WalletUtils {
         return mnemonic.toHDPrivateKey(crypto.randomBytes(20).toString('hex'));
     }
 
-    publicKeyFromPem(publicKey) {
-        return forge.pki.publicKeyFromPem('-----BEGIN PUBLIC KEY-----\r\n' + publicKey + '\r\n-----END PUBLIC KEY-----');
-    }
-
-    isValidNodeSignature(signature, message, publicKey) {
-        const md = forge.md.sha1.create();
-        md.update(message, 'utf8');
-        return publicKey.verify(md.digest().bytes(), base58.decode(signature).toString('binary'));
+    getNodeIdFromCertificate(certificateData, type) {
+        if (type === 'hex') {
+            const certificate = new X509();
+            certificate.readCertHex(certificateData);
+            return this.getNodeIdFromCertificate(certificate);
+        }
+        else if (type === 'pem') {
+            const certificate = new X509();
+            certificate.readCertPEM(certificateData);
+            return this.getNodeIdFromCertificate(certificate);
+        }
+        else {
+            const certificate = certificateData;
+            if (!certificate.verifySignature(certificate.getPublicKey())) {
+                throw Error('invalid node certificate');
+            }
+            const nodeIDInfo = certificate.getExtInfo('1.3.6.1.5.5.7.1.24.2');
+            if (nodeIDInfo === undefined) {
+                return null;
+            }
+            const nodeIDHex = ASN1HEX.getV(certificate.hex, nodeIDInfo.vidx);
+            return Buffer.from(nodeIDHex, 'hex').toString('utf8');
+        }
     }
 
     getNodeIdFromPublicKey(publicKey) {
-        return forge.pki.getPublicKeyFingerprint(publicKey, {
-            encoding : 'hex',
-            delimiter: ''
-        });
+        return this.getAddressFromPublicKey(base58.decode(publicKey));
     }
 
-    isValidNodeIdentity(nodeID, publicKeyPem, message, signature) {
-        const publicKey = this.publicKeyFromPem(publicKeyPem.match(/.{1,64}/g).join('\r\n'));
+    isValidNodeIdentity(nodeID, publicKey, message, signature) {
         try {
-            return this.isValidNodeSignature(signature, message, publicKey) && (this.getNodeIdFromPublicKey(publicKey) === nodeID);
+            return this.verify(publicKey, signature, message) && (this.getNodeIdFromPublicKey(publicKey) === nodeID);
         }
         catch (e) {
             return false;
         }
     }
 
-    signNodeMessage(nodePrivateKey, message) {
-        const md = forge.md.sha1.create();
-        md.update(message, 'utf8');
-        return base58.encode(Buffer.from(nodePrivateKey.sign(md), 'binary'));
+    signMessage(nodePrivateKey, message) {
+        return signature.sign(objectHash.getHashBuffer(message), nodePrivateKey.toBuffer());
+    }
+
+    _getCertificateExtension(oid, valueHex) {
+        const extension           = new KJUR.asn1.x509.Extension();
+        extension.oid             = oid;
+        extension.getExtnValueHex = () => valueHex;
+        return extension;
     }
 
     loadNodeKeyAndCertificate() {
-        const pki = forge.pki;
         return new Promise((resolve, reject) => {
             const elements = [
                 {
-                    file       : path.join(os.homedir(), config.NODE_PRIVATE_KEY_PATH),
-                    transformer: pki.privateKeyFromPem,
-                    key        : 'private_key'
+                    file       : path.join(os.homedir(), config.NODE_CERTIFICATE_KEY_PATH),
+                    transformer: KEYUTIL.getKey,
+                    key        : 'certificate_private_key'
                 },
                 {
-                    file       : path.join(os.homedir(), config.NODE_PUBLIC_KEY_PATH),
-                    transformer: pki.publicKeyFromPem,
-                    key        : 'public_key'
+                    file       : path.join(os.homedir(), config.NODE_KEY_PATH),
+                    transformer: (data) => new Bitcore.HDPrivateKey(data),
+                    key        : 'node'
                 },
                 {
                     file       : path.join(os.homedir(), config.NODE_CERTIFICATE_PATH),
-                    transformer: pki.certificateFromPem,
+                    transformer: (pem) => {
+                        const x509 = new X509();
+                        x509.readCertPEM(pem);
+                        return x509;
+                    },
                     key        : 'certificate'
                 }
             ];
@@ -198,11 +218,26 @@ class WalletUtils {
                         return callback(true);
                     }
                     try {
-                        const obj = element.transformer(pemData);
-                        return callback(false, {
-                            [element.key]         : obj,
-                            [element.key + '_pem']: pemData
-                        });
+                        if (element.key === 'node') {
+                            const data = JSON.parse(pemData);
+                            if (data.key) {
+                                const obj = element.transformer(data.key);
+                                return callback(false, {
+                                    [element.key + '_private_key']: obj.privateKey,
+                                    [element.key + '_public_key'] : obj.publicKey
+                                });
+                            }
+                            else {
+                                return callback(true);
+                            }
+                        }
+                        else {
+                            const obj = element.transformer(pemData);
+                            return callback(false, {
+                                [element.key]         : obj,
+                                [element.key + '_pem']: pemData
+                            });
+                        }
                     }
                     catch (e) {
                         return callback(true);
@@ -210,123 +245,79 @@ class WalletUtils {
                 });
             }, (error, data) => {
                 if (!error) {
-                    data            = _.reduce(data, (obj, item) => ({...obj, ...item}));
-                    data['node_id'] = pki.getPublicKeyFingerprint(data.public_key, {
-                        encoding : 'hex',
-                        delimiter: ''
-                    });
-                    return resolve(data);
+                    return resolve(_.reduce(data, (obj, item) => ({...obj, ...item})));
                 }
                 else {
-                    const keys              = pki.rsa.generateKeyPair(1024);
-                    const cert              = pki.createCertificate();
-                    cert.publicKey          = keys.publicKey;
-                    cert.serialNumber       = '01';
-                    cert.validity.notBefore = new Date();
-                    cert.validity.notAfter  = new Date();
-                    cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 50);
-                    const attrs = [
-                        {
-                            shortName: 'CN',
-                            value    : 'millix.org'
-                        },
-                        {
-                            shortName: 'C',
-                            value    : 'millix network public'
-                        },
-                        {
-                            shortName: 'ST',
-                            value    : 'millix network'
-                        },
-                        {
-                            shortName: 'L',
-                            value    : 'internet'
-                        },
-                        {
-                            shortName: 'O',
-                            value    : 'millix foundation'
-                        },
-                        {
-                            shortName: 'OU',
-                            value    : 'millix node unit'
-                        }
-                    ];
-                    cert.setSubject(attrs);
-                    cert.setIssuer(attrs);
-                    cert.setExtensions([
-                        {
-                            name: 'basicConstraints',
-                            cA  : true
-                        },
-                        {
-                            name            : 'keyUsage',
-                            keyCertSign     : true,
-                            digitalSignature: true,
-                            nonRepudiation  : true,
-                            keyEncipherment : true,
-                            dataEncipherment: true
-                        },
-                        {
-                            name           : 'extKeyUsage',
-                            serverAuth     : true,
-                            clientAuth     : true,
-                            codeSigning    : true,
-                            emailProtection: true,
-                            timeStamping   : true
-                        },
-                        {
-                            name   : 'nsCertType',
-                            client : true,
-                            server : true,
-                            email  : true,
-                            objsign: true,
-                            sslCA  : true,
-                            emailCA: true,
-                            objCA  : true
-                        },
-                        {
-                            name: 'subjectKeyIdentifier'
-                        }
-                    ]);
-                    cert.sign(keys.privateKey);
+                    const ecKeypair = KEYUTIL.generateKeypair('EC', 'secp256r1');
 
-                    // convert a Forge certificate to PEM
-                    const certPem = pki.certificateToPem(cert);
+                    // generate TBSCertificate
+                    const tbsc = new KJUR.asn1.x509.TBSCertificate();
 
-                    const privateKeyPem = pki.privateKeyToPem(keys.privateKey);
+                    // add basic fields
+                    tbsc.setSerialNumberByParam({'int': Date.now()});
+                    tbsc.setSignatureAlgByParam({'name': 'SHA1withECDSA'});
+                    tbsc.setIssuerByParam({'str': '/C=US/O=millix foundation/CN=mlx/ST=millix network'});
+                    tbsc.setNotBeforeByParam({'str': '200504235959Z'});
+                    tbsc.setNotAfterByParam({'str': '300504235959Z'});
+                    tbsc.setSubjectByParam({'str': '/C=US/O=millix foundation/CN=mlx/ST=millix network'});
+                    tbsc.setSubjectPublicKeyByGetKey(ecKeypair.pubKeyObj);
+                    // add extensions
+                    tbsc.appendExtension(new KJUR.asn1.x509.BasicConstraints({'cA': true}));
+                    const subjectKeyIdentifierHex = KJUR.crypto.Util.hashHex(ecKeypair.pubKeyObj.pubKeyHex, 'sha1');
+                    tbsc.appendExtension(new KJUR.asn1.x509.SubjectKeyIdentifier({kid: {hex: subjectKeyIdentifierHex}}));
+                    tbsc.appendExtension(new KJUR.asn1.x509.AuthorityKeyIdentifier({kid: {hex: subjectKeyIdentifierHex}}));
+                    this.loadOrCreateNodeKey().then(nodeKey => {
+                        const nodePublicKeyHex = nodeKey.publicKey.toString();
+                        const nodeID           = this.getAddressFromPublicKey(nodeKey.publicKey.toBuffer());
+                        tbsc.appendExtension(this._getCertificateExtension('1.3.6.1.5.5.7.1.24.1', KJUR.asn1.ASN1Util.newObject({'octstr': nodePublicKeyHex}).getEncodedHex()));
+                        tbsc.appendExtension(this._getCertificateExtension('1.3.6.1.5.5.7.1.24.2', KJUR.asn1.ASN1Util.newObject({'utf8str': nodeID}).getEncodedHex()));
+                        const tbscNodeSignatureHex = signature.sign(objectHash.getHashBuffer(Buffer.from(tbsc.getEncodedHex(), 'hex'), true), nodeKey.privateKey.toBuffer(), 'hex');
+                        tbsc.appendExtension(this._getCertificateExtension('1.3.6.1.5.5.7.1.24.3', KJUR.asn1.ASN1Util.newObject({'bitstr': '04' + tbscNodeSignatureHex}).getEncodedHex()));
 
-                    const publicKeyPem = pki.publicKeyToPem(keys.publicKey);
+                        // sign and get PEM certificate with CA private key
+                        const certificate = new KJUR.asn1.x509.Certificate({
+                            'tbscertobj': tbsc,
+                            'prvkeyobj' : ecKeypair.prvKeyObj
+                        });
+                        certificate.sign();
+                        const certificatePem = certificate.getPEMString();
 
-                    fs.writeFile(path.join(os.homedir(), config.NODE_PRIVATE_KEY_PATH), privateKeyPem, 'utf8', function(err) {
-                        if (err) {
-                            return reject('failed to write node private key file');
-                        }
-                        fs.writeFile(path.join(os.homedir(), config.NODE_PUBLIC_KEY_PATH), publicKeyPem, 'utf8', function(err) {
+                        const privateKeyPem = KEYUTIL.getPEM(ecKeypair.prvKeyObj, 'PKCS1PRV');
+
+                        fs.writeFile(path.join(os.homedir(), config.NODE_CERTIFICATE_KEY_PATH), privateKeyPem, 'utf8', function(err) {
                             if (err) {
-                                return reject('failed to write node public file');
+                                return reject('failed to write node private key file');
                             }
-                            fs.writeFile(path.join(os.homedir(), config.NODE_CERTIFICATE_PATH), certPem, 'utf8', function(err) {
+                            fs.writeFile(path.join(os.homedir(), config.NODE_CERTIFICATE_PATH), certificatePem, 'utf8', function(err) {
                                 if (err) {
                                     return reject('failed to write node certificate file');
                                 }
-                                const nodeID = pki.getPublicKeyFingerprint(keys.publicKey, {
-                                    encoding : 'hex',
-                                    delimiter: ''
-                                });
                                 resolve({
-                                    private_key    : keys.privateKey,
-                                    private_key_pem: privateKeyPem,
-                                    public_key     : keys.publicKey,
-                                    public_key_pem : publicKeyPem,
-                                    certificate    : cert,
-                                    certificate_pem: certPem,
-                                    node_id        : nodeID
+                                    certificate_private_key    : ecKeypair.prvKeyObj,
+                                    certificate_private_key_pem: privateKeyPem,
+                                    certificate                : certificate,
+                                    certificate_pem            : certificatePem,
+                                    node_private_key           : nodeKey.privateKey,
+                                    node_public_key            : nodeKey.publicKey
                                 });
                             });
                         });
-                    });
+                    }).catch(() => reject('failed to create node id file'));
                 }
             });
+        });
+    }
+
+    loadOrCreateNodeKey() {
+        return new Promise((resolve, reject) => {
+            this.loadNodeKey()
+                .then(nodeKey => resolve(nodeKey))
+                .catch(() => {
+                    const nodeKey = this.generateNodeKey();
+                    this.storeNodeKey(nodeKey)
+                        .then(() => resolve(nodeKey))
+                        .catch(() => reject());
+                });
         });
     }
 
@@ -337,12 +328,11 @@ class WalletUtils {
                     return reject('couldn\'t read node key');
                 }
 
-                const pki = forge.pki;
-
-                try {
-                    return resolve(pki.privateKeyFromPem(data));
+                data = JSON.parse(data);
+                if (data.key) {
+                    return resolve(new Bitcore.HDPrivateKey(data.key));
                 }
-                catch (e) {
+                else {
                     return reject('couldn\'t read node key');
                 }
             });

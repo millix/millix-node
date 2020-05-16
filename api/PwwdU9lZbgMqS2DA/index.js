@@ -1,6 +1,7 @@
 import walletUtils from '../../core/wallet/wallet-utils';
 import Endpoint from '../endpoint';
 import database from '../../database/database';
+import server from '../server';
 
 
 /**
@@ -27,7 +28,7 @@ class _PwwdU9lZbgMqS2DA extends Endpoint {
             return res.status(400).send({status: 'p0<public_key> is required'});
         }
         try {
-            if (!walletUtils.isValidNodeIdentity(req.params.nodeID, req.query.p0, network.nodeID, req.params.nodeSignature)) {
+            if (!walletUtils.isValidNodeIdentity(req.params.nodeID, req.query.p0, server.nodeID, req.params.nodeSignature)) {
                 return res.send({status: 'node_registration_error'});
             }
             const nodeRepository = database.getRepository('node');
