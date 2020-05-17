@@ -153,9 +153,11 @@ class WalletUtils {
         }
         else {
             const certificate = certificateData;
-            if (!certificate.verifySignature(certificate.getPublicKey())) {
+            if (!certificate.verifySignature(certificate.getPublicKey()) ||
+                !this._verifyTBSCertificate(certificate)) {
                 throw Error('invalid node certificate');
             }
+
             const nodeIDInfo = certificate.getExtInfo('1.3.6.1.5.5.7.1.24.2');
             if (nodeIDInfo === undefined) {
                 return null;
@@ -180,6 +182,85 @@ class WalletUtils {
 
     signMessage(nodePrivateKey, message) {
         return signature.sign(objectHash.getHashBuffer(message), nodePrivateKey.toBuffer());
+    }
+
+    /**
+     * verifies if the tbs certificate was associated to the @param nodeID
+     * @param certificate
+     * @param nodeID
+     * @private
+     * @return tbscertificate hex string
+     */
+    _verifyTBSCertificate(certificate) {
+        try {
+            let tbsHex       = ASN1HEX.getV(certificate.hex, 0, [0], '03');
+            const tbsIdxList = ASN1HEX.getChildIdx(tbsHex, 0);
+
+            const idxExtSeq = ASN1HEX.getIdxbyList(tbsHex, 0, [
+                7,
+                0
+            ], '30');
+
+            const extIdxList = ASN1HEX.getChildIdx(tbsHex, idxExtSeq);
+
+            if (extIdxList.length < 3) {
+                return false;
+            }
+
+            const lastExtensionIdx = extIdxList[extIdxList.length - 1];
+            const oid              = ASN1HEX.hextooidstr(ASN1HEX.getVbyList(tbsHex, lastExtensionIdx, [0], '06'));
+            if (oid !== '1.3.6.1.5.5.7.1.24.3') {
+                return false;
+            }
+            let sign = ASN1HEX.getVbyList(tbsHex, lastExtensionIdx, [
+                1,
+                0
+            ], '03', true);
+            sign     = base58.encode(Buffer.from(sign, 'hex'));
+
+            const extensionsArray = [];
+            let publicKeyBuffer, nodeID;
+            for (let i = 0; i < extIdxList.length - 1; i++) {
+                const idx    = extIdxList[i];
+                const extTLV = ASN1HEX.getTLV(tbsHex, idx);
+                extensionsArray.push({getEncodedHex: () => extTLV});
+
+                const oid = ASN1HEX.hextooidstr(ASN1HEX.getVbyList(tbsHex, idx, [0], '06'));
+                if (oid === '1.3.6.1.5.5.7.1.24.1') {
+                    publicKeyBuffer = Buffer.from(ASN1HEX.getVbyList(tbsHex, idx, [
+                        1,
+                        0
+                    ], '03', true), 'hex');
+                }
+                else if (oid === '1.3.6.1.5.5.7.1.24.2') {
+                    nodeID = Buffer.from(ASN1HEX.getVbyList(tbsHex, idx, [
+                        1,
+                        0
+                    ], '0c'), 'hex').toString();
+                }
+            }
+            const extSeq    = new KJUR.asn1.DERSequence({'array': extensionsArray});
+            const extTagObj = new KJUR.asn1.DERTaggedObject({
+                'explicit': true,
+                'tag'     : 'a3',
+                'obj'     : extSeq
+            });
+
+            const tbsCertificateArray = [];
+            for (let i = 0; i < tbsIdxList.length - 1; i++) {
+                const idx        = tbsIdxList[i];
+                const tbsItemTLV = ASN1HEX.getTLV(tbsHex, idx);
+                tbsCertificateArray.push({getEncodedHex: () => tbsItemTLV});
+            }
+            tbsCertificateArray.push(extTagObj);
+
+            tbsHex     = new KJUR.asn1.DERSequence({'array': tbsCertificateArray}).getEncodedHex();
+            const hash = objectHash.getHashBuffer(Buffer.from(tbsHex, 'hex'), true);
+            return signature.verify(hash, sign, base58.encode(publicKeyBuffer)) && this.getAddressFromPublicKey(publicKeyBuffer) === nodeID;
+        }
+        catch (e) {
+            return false;
+        }
     }
 
     _getCertificateExtension(oid, valueHex) {
@@ -269,7 +350,7 @@ class WalletUtils {
                     this.loadOrCreateNodeKey().then(nodeKey => {
                         const nodePublicKeyHex = nodeKey.publicKey.toString();
                         const nodeID           = this.getAddressFromPublicKey(nodeKey.publicKey.toBuffer());
-                        tbsc.appendExtension(this._getCertificateExtension('1.3.6.1.5.5.7.1.24.1', KJUR.asn1.ASN1Util.newObject({'octstr': nodePublicKeyHex}).getEncodedHex()));
+                        tbsc.appendExtension(this._getCertificateExtension('1.3.6.1.5.5.7.1.24.1', KJUR.asn1.ASN1Util.newObject({'bitstr': '04' + nodePublicKeyHex}).getEncodedHex()));
                         tbsc.appendExtension(this._getCertificateExtension('1.3.6.1.5.5.7.1.24.2', KJUR.asn1.ASN1Util.newObject({'utf8str': nodeID}).getEncodedHex()));
                         const tbscNodeSignatureHex = signature.sign(objectHash.getHashBuffer(Buffer.from(tbsc.getEncodedHex(), 'hex'), true), nodeKey.privateKey.toBuffer(), 'hex');
                         tbsc.appendExtension(this._getCertificateExtension('1.3.6.1.5.5.7.1.24.3', KJUR.asn1.ASN1Util.newObject({'bitstr': '04' + tbscNodeSignatureHex}).getEncodedHex()));
