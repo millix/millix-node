@@ -12,7 +12,10 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
     }
 
     /**
-     * submits a new transaction with a transaction payload, containing inputs, signatures, outputs and amounts to the node. this API is generally used in conjunction with the output from API RVBqKlGdk9aEhi5J (sign_transaction)
+     * submits a new transaction with a transaction payload, containing inputs,
+     * signatures, outputs and amounts to the node. this API is generally used
+     * in conjunction with the output from API RVBqKlGdk9aEhi5J
+     * (sign_transaction)
      * @param app
      * @param req (p0: transaction_payload_signed<require>)
      * @param res
@@ -20,7 +23,10 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
      */
     handler(app, req, res) {
         if (!req.query.p0) {
-            return res.status(400).send({status: 'p0<transaction_payload_signed> is required'});
+            return res.status(400).send({
+                status: 'fail',
+                message: 'p0<transaction_payload_signed> is required'
+            });
         }
 
         try {
@@ -28,15 +34,21 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
             walletUtils.verifyTransaction(transaction)
                        .then(valid => {
                            if (!valid) {
-                               return res.status(400).send({'status': 'bad_transaction_payload'});
+                               return res.status(400).send({
+                                   'status': 'fail',
+                                   message : 'bad_transaction_payload'
+                               });
                            }
 
                            peer.transactionSend(transaction);
-                           res.send({status: 'send_transaction_success'});
+                           res.send({status: 'success'});
                        });
         }
         catch (e) {
-            return res.send({status: 'send_transaction_error'});
+            return res.send({
+                status : 'fail',
+                message: 'send_transaction_error'
+            });
         }
     }
 }

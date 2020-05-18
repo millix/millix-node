@@ -12,15 +12,21 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
     }
 
     /**
-     * accepts an unsigned transaction payload and private keys to produce a signed version of the transaction_payload_unsigned that is used by API VnJIBrrM0KY3uQ9X to send a transaction
+     * accepts an unsigned transaction payload and private keys to produce a
+     * signed version of the transaction_payload_unsigned that is used by API
+     * VnJIBrrM0KY3uQ9X to send a transaction
      * @param app
-     * @param req (p0: transaction_payload_unsigned<required>, p1: private_key_hex<required>)
+     * @param req (p0: transaction_payload_unsigned<required>, p1:
+     *     private_key_hex<required>)
      * @param res
      * @returns {*}
      */
     handler(app, req, res) {
         if (!req.query.p0 || !req.query.p1) {
-            return res.status(400).send({status: 'p0<transaction_payload_unsigned> and p1<private_key_hex> are required'});
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> are required'
+            });
         }
 
         try {
@@ -28,10 +34,16 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
             const privateKeyMap      = JSON.parse(req.query.p1);
             walletUtils.signTransaction(transactionPayload.transaction_input_list, transactionPayload.transaction_output_list, privateKeyMap)
                        .then(signedTransaction => res.send(signedTransaction))
-                       .catch(status => res.send({status}));
+                       .catch(e => res.send({
+                           status : 'fail',
+                           message: e
+                       }));
         }
         catch (e) {
-            return res.send({status: 'transaction_sign_error'});
+            return res.send({
+                status : 'fail',
+                message: 'transaction_sign_error'
+            });
         }
     }
 }

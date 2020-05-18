@@ -19,12 +19,11 @@ class _DBkGHZX6rugdLon9 extends Endpoint {
      * @returns {*}
      */
     handler(app, req, res) {
-        if (!req.query.p0) {
-            return res.status(400).send({status: 'p0<transaction_id> is required'});
-        }
-
-        if (!req.query.p1) {
-            return res.status(400).send({status: 'p0<shard_id> is required'});
+        if (!req.query.p0 || !req.query.p1) {
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<transaction_id> and p1<shard_id> are required'
+            });
         }
 
         const auditVerificationRepository = database.getRepository('audit_verification');

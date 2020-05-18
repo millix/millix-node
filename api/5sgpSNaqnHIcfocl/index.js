@@ -11,7 +11,8 @@ class _5sgpSNaqnHIcfocl extends Endpoint {
     }
 
     /**
-     * toggles the network service for all networks (main or test networks) between running (true) and not running (false)
+     * toggles the network service for all networks (main or test networks)
+     * between running (true) and not running (false)
      * @param app
      * @param req (p0: is_running<required>)
      * @param res
@@ -31,7 +32,10 @@ class _5sgpSNaqnHIcfocl extends Endpoint {
             res.send({status: 'success'});
         }
         else {
-            res.send({status: 'not_updated'});
+            res.send({
+                status : 'fail',
+                message: 'not_updated'
+            });
         }
     }
 }

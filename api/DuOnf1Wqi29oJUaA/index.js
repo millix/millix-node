@@ -22,7 +22,10 @@ class _DuOnf1Wqi29oJUaA extends Endpoint {
     handler(app, req, res) {
         const {p0: nodePrefix, p1: nodeIpAddress, p2: nodePort, p3: nodePortApi} = req.query;
         if (!nodePrefix || !nodeIpAddress || !nodePort || !nodePortApi) {
-            return res.status(400).send({status: 'p0<node_prefix>, p1<node_ip_address>, p2<node_port> and p3<node_port_api> are required'});
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<node_prefix>, p1<node_ip_address>, p2<node_port> and p3<node_port_api> are required'
+            });
         }
 
         const nodeRepository = database.getRepository('node');
@@ -33,9 +36,12 @@ class _DuOnf1Wqi29oJUaA extends Endpoint {
             node_port_api  : nodePortApi
         }).then(() => {
             network.addNode(nodePrefix, nodeIpAddress, nodePort, nodePortApi);
-            res.send({status: 'node_added'});
+            res.send({status: 'success'});
         }).catch(() => {
-            res.send({status: 'node_already_exists'});
+            res.send({
+                status : 'fail',
+                message: 'node_already_exists'
+            });
         });
     }
 }

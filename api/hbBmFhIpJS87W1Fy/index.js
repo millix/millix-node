@@ -21,7 +21,10 @@ class _hbBmFhIpJS87W1Fy extends Endpoint {
      */
     handler(app, req, res) {
         if (!req.query.p0 || !req.query.p1 || !req.query.p2) {
-            return res.status(400).send({status: 'p0<transaction_id>, p1<input_position>, p2<shard_id> are required'});
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<transaction_id>, p1<input_position>, p2<shard_id> are required'
+            });
         }
         const transactionRepository = database.getRepository('transaction');
         transactionRepository.getTransactionInput({

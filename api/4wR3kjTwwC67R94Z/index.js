@@ -33,7 +33,7 @@ class _4wR3kjTwwC67R94Z extends Endpoint {
                               res.send({status: 'success'});
                           });
                 })
-                .catch(() => res.send({status: 'error'}));
+                .catch(() => res.send({status: 'fail'}));
     }
 }
 

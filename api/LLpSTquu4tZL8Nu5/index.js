@@ -20,7 +20,10 @@ class _LLpSTquu4tZL8Nu5 extends Endpoint {
     handler(app, req, res) {
         const {p0: configID, p1: value} = req.query;
         if (!configID || value === undefined) {
-            return res.status(400).send({status: 'p0<config_id> and p1<value> are required'});
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<config_id> and p1<value> are required'
+            });
         }
 
         const configurationRepository = database.getRepository('config');

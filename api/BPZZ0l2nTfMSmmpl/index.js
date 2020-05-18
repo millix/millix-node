@@ -22,7 +22,7 @@ class _BPZZ0l2nTfMSmmpl extends Endpoint {
                    .then(([mnemonic, _]) => {
                        res.send({mnemonic_phrase: mnemonic});
                    })
-                   .catch(e => res.send({success: true}));
+                   .catch(e => res.send({status: 'fail'}));
     }
 }
 

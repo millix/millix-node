@@ -19,7 +19,10 @@ class _yefPsK2TvkZmC6M4 extends Endpoint {
      */
     handler(app, req, res) {
         if (!req.query.p0) {
-            return res.status(400).send({status: 'p0<is_running> is required'});
+            return res.status(400).send({
+                status: 'fail',
+                message: 'p0<is_running> is required'
+            });
         }
         const isRun = !!req.query.p0;
         if (isRun && !services.initialized) {
@@ -31,7 +34,10 @@ class _yefPsK2TvkZmC6M4 extends Endpoint {
             res.send({status: 'success'});
         }
         else {
-            res.send({status: 'not_updated'});
+            res.send({
+                status : 'fail',
+                message: 'not_updated'
+            });
         }
     }
 }

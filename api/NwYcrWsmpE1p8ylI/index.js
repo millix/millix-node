@@ -46,7 +46,10 @@ class _NwYcrWsmpE1p8ylI extends Endpoint {
     handler(app, req, res) {
         const {p0: passPhrase, p1: mnemonicFilePath} = req.query;
         if (!passPhrase || !(mnemonicFilePath)) {
-            return res.status(400).send({status: 'p0<passphrase> and p1<mnemonic_file_path> are required'});
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<passphrase> and p1<mnemonic_file_path> are required'
+            });
         }
 
         this._getMnemonicPhrase(mnemonicFilePath)
@@ -59,21 +62,30 @@ class _NwYcrWsmpE1p8ylI extends Endpoint {
                                                    });
 
                                                    authenticationErrorHandler = () => {
-                                                       res.status(401).send({status: 'wallet_authentication_error'});
+                                                       res.status(401).send({
+                                                           status : 'fail',
+                                                           message: 'wallet_authentication_error'
+                                                       });
                                                        eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
                                                    };
                                                    eventBus.once('wallet_authentication_error', authenticationErrorHandler);
 
                                                    authenticationSuccessHandler = () => {
-                                                       res.send({status: 'wallet_unlock'});
+                                                       res.send({status: 'success'});
                                                        eventBus.removeListener('wallet_unlock', authenticationErrorHandler);
                                                    };
                                                    eventBus.once('wallet_unlock', authenticationSuccessHandler);
 
                                                    wallet.initialize(false)
-                                                         .catch(() => res.send({status: 'wallet_initialize_error'}));
+                                                         .catch(() => res.send({
+                                                             status : 'fail',
+                                                             message: 'wallet_initialize_error'
+                                                         }));
                                                }))
-            .catch(() => res.status(400).send({status: 'wallet_bad_mnemonic'}));
+            .catch(() => res.status(400).send({
+                status : 'fail',
+                message: 'wallet_bad_mnemonic'
+            }));
     }
 }
 

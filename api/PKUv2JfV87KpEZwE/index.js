@@ -13,7 +13,9 @@ class _PKUv2JfV87KpEZwE extends Endpoint {
     }
 
     /**
-     * returns the private key for the indicated address that is derived from the master key that is temporarily stored in node memory for the active wallet
+     * returns the private key for the indicated address that is derived from
+     * the master key that is temporarily stored in node memory for the active
+     * wallet
      * @param app
      * @param req (p0: address_base<required>)
      * @param res
@@ -21,10 +23,16 @@ class _PKUv2JfV87KpEZwE extends Endpoint {
      */
     handler(app, req, res) {
         if (!req.query.p0) {
-            return res.status(400).send({status: 'p0<address_base> is required'});
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<address_base> is required'
+            });
         }
         else if (!wallet.initialized) {
-            return res.status(401).send({status: 'wallet_not_initialized'});
+            return res.status(401).send({
+                status : 'fail',
+                message: 'wallet_not_initialized'
+            });
         }
 
         const keychainRepository = database.getRepository('keychain');
@@ -33,13 +41,19 @@ class _PKUv2JfV87KpEZwE extends Endpoint {
                               const walletID           = address.wallet_id;
                               const extendedPrivateKey = wallet.getActiveWallets()[walletID];
                               if (!extendedPrivateKey) {
-                                  return res.status(401).send({status: 'wallet_not_active'});
+                                  return res.status(401).send({
+                                      status : 'fail',
+                                      message: 'wallet_not_active'
+                                  });
                               }
 
                               const privateKey = walletUtils.derivePrivateKey(extendedPrivateKey, address.is_change, address.address_position);
                               res.send({private_key_hex: privateKey.toString('hex')});
                           })
-                          .catch(() => res.send({status: 'address_not_found'}));
+                          .catch(() => res.send({
+                              status : 'fail',
+                              message: 'address_not_found'
+                          }));
     }
 }
 

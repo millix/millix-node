@@ -25,23 +25,35 @@ class _PwwdU9lZbgMqS2DA extends Endpoint {
      */
     handler(app, req, res) {
         if (!req.query.p0) {
-            return res.status(400).send({status: 'p0<public_key> is required'});
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<public_key> is required'
+            });
         }
         try {
             if (!walletUtils.isValidNodeIdentity(req.params.nodeID, req.query.p0, server.nodeID, req.params.nodeSignature)) {
-                return res.send({status: 'node_registration_error'});
+                return res.send({
+                    status : 'fail',
+                    message: 'node_registration_error'
+                });
             }
             const nodeRepository = database.getRepository('node');
             nodeRepository.addNodeAttribute(req.params.nodeID, 'node_public_key', req.query.p0)
                           .then(() => {
-                              res.send({status: 'node_registration_success'});
+                              res.send({status: 'success'});
                           })
                           .catch(() => {
-                              res.send({status: 'node_registration_error'});
+                              res.send({
+                                  status : 'fail',
+                                  message: 'node_registration_error'
+                              });
                           });
         }
         catch (e) {
-            res.send({status: 'node_registration_error'});
+            res.send({
+                status : 'fail',
+                message: 'node_registration_error'
+            });
         }
 
     }

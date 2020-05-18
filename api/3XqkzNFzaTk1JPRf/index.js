@@ -20,7 +20,10 @@ class _3XqkzNFzaTk1JPRf extends Endpoint {
         const addressRepository = database.getRepository('address');
         addressRepository.listAddressVersion()
                          .then(addressVersionList => res.send(addressVersionList))
-                         .catch(() => res.send({status: 'error_list_supported_address_version'}));
+                         .catch(() => res.send({
+                             status : 'fail',
+                             message: 'error_list_supported_address_version'
+                         }));
     }
 };
 

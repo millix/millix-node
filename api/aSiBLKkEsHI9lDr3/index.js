@@ -27,7 +27,10 @@ class _aSiBLKkEsHI9lDr3 extends Endpoint {
      */
     handler(app, req, res) {
         if (!req.query.p0 || !req.query.p1 || req.query.p2 === undefined) {
-            return res.status(400).send({error: 'p0<shard_name>, p1<shard_type> and p2<is_required> are required'});
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<shard_name>, p1<shard_type> and p2<is_required> are required'
+            });
         }
 
         const shardDate      = Math.floor(Date.now() / 1000);
