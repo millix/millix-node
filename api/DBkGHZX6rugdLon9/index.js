@@ -26,7 +26,10 @@ class _DBkGHZX6rugdLon9 extends Endpoint {
             });
         }
 
-        const auditVerificationRepository = database.getRepository('audit_verification');
+        const auditVerificationRepository = database.getRepository('audit_verification', req.query.p1);
+        if (!auditVerificationRepository) {
+            return res.send({});
+        }
         auditVerificationRepository.getAuditVerification(req.query.p0)
                                    .then(auditVerification => res.send(auditVerification || {}));
     }

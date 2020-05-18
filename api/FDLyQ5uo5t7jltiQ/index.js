@@ -23,27 +23,30 @@ class _FDLyQ5uo5t7jltiQ extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        const orderBy               = req.query.p13 || "create_date desc";
-        const limit                 = parseInt(req.query.p14) || 1000;
-        const shardID               = req.query.p15;
-        const transactionRepository = database.getRepository('transaction');
-        transactionRepository.listTransactionOutput({
-            transaction_id         : req.query.p0,
-            date_begin             : req.query.p1,
-            date_end               : req.query.p2,
-            address_key_identifier : req.query.p3,
-            is_double_spend        : req.query.p4,
-            double_spend_date_begin: req.query.p5,
-            double_spend_date_end  : req.query.p6,
-            is_stable              : req.query.p7,
-            stable_date_begin      : req.query.p8,
-            stable_date_end        : req.query.p9,
-            is_spent               : req.query.p10,
-            spent_date_begin       : req.query.p11,
-            spent_date_end         : req.query.p12
-        }, orderBy, limit, shardID).then(transactionOutputList => {
-            res.send(transactionOutputList);
-        });
+        const orderBy = req.query.p13 || 'create_date desc';
+        const limit   = parseInt(req.query.p14) || 1000;
+        const shardID = req.query.p15;
+        database.applyToShards((dbShardID) => {
+            const transactionRepository = database.getRepository('transaction', dbShardID);
+            if (!transactionRepository) {
+                return Promise.resolve([]);
+            }
+            return transactionRepository.listTransactionOutput({
+                'transaction_output.transaction_id'   : req.query.p0,
+                transaction_date_begin                : req.query.p1,
+                transaction_date_end                  : req.query.p2,
+                address_key_identifier                : req.query.p3,
+                is_double_spend                       : req.query.p4,
+                double_spend_date_begin               : req.query.p5,
+                double_spend_date_end                 : req.query.p6,
+                'transaction_output.is_stable'        : req.query.p7,
+                'transaction_output.stable_date_begin': req.query.p8,
+                'transaction_output.stable_date_end'  : req.query.p9,
+                is_spent                              : req.query.p10,
+                spent_date_begin                      : req.query.p11,
+                spent_date_end                        : req.query.p12
+            }, orderBy, limit, shardID);
+        }, orderBy, limit, shardID).then(data => res.send(data));
     }
 }
 

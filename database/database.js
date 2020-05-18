@@ -50,10 +50,10 @@ export class Database {
                     sql += ' WHERE ';
                 }
 
-                if (key.endsWith('_begin') && key.endsWith('_min')) {
+                if (key.endsWith('_begin') || key.endsWith('_min')) {
                     sql += `${key.substring(0, key.lastIndexOf('_'))} >= ?`;
                 }
-                if (key.endsWith('_end') && key.endsWith('_max')) {
+                else if (key.endsWith('_end') || key.endsWith('_max')) {
                     sql += `${key.substring(0, key.lastIndexOf('_'))} <= ?`;
                 }
                 else {
@@ -219,13 +219,63 @@ export class Database {
     }
 
     getRepository(repositoryName, shardID) {
-        if (shardID) {
-            return this.shards[shardID].getRepository(repositoryName);
+        try {
+            if (this.shardRepositories.has(repositoryName)) {
+                if (shardID) {
+                    return this.shards[shardID].getRepository(repositoryName);
+                }
+                return this.shards[genesisConfig.genesis_shard_id].getRepository(repositoryName);
+            }
+            return this.repositories[repositoryName];
         }
-        else if (this.shardRepositories.has(repositoryName)) {
-            return this.shards[genesisConfig.genesis_shard_id].getRepository(repositoryName);
+        catch (e) {
+            console.log('[database] repository not found');
+            return null;
         }
-        return this.repositories[repositoryName];
+    }
+
+    applyToShards(func, orderBy, limit, shardID) {
+        return new Promise(resolve => {
+            async.waterfall([
+                callback => {
+                    if (shardID) {
+                        return callback(null, [shardID]);
+                    }
+                    else {
+                        const shardRepository = this.getRepository('shard');
+                        shardRepository.listShard()
+                                       .then(shardList => callback(null, _.map(shardList, shard => shard.shard_id)));
+                    }
+                },
+                (shardList, callback) => {
+                    async.mapSeries(shardList, (dbShardID, mapCallback) => {
+                        func(dbShardID).then(result => mapCallback(null, result));
+                    }, (error, data) => {
+                        if (data) {
+                            data = Array.prototype.concat.apply([], data);
+                        }
+                        else {
+                            data = [];
+                        }
+
+                        if (orderBy) {
+                            const regExp = /^(?<column>\w+) (?<order>asc|desc)$/.exec(orderBy);
+                            if (regExp && regExp.groups && regExp.groups.column && regExp.groups.order) {
+                                data = _.orderBy(data, regExp.groups.column, regExp.groups.order);
+                            }
+                        }
+
+                        if (limit !== undefined) {
+                            data = data.slice(0, limit);
+                        }
+
+                        callback(null, data);
+                    });
+                }
+            ], (error, data) => {
+                resolve(data);
+            });
+        });
     }
 
     runWallCheckpoint() {

@@ -26,7 +26,10 @@ class _hbBmFhIpJS87W1Fy extends Endpoint {
                 message: 'p0<transaction_id>, p1<input_position>, p2<shard_id> are required'
             });
         }
-        const transactionRepository = database.getRepository('transaction');
+        const transactionRepository = database.getRepository('transaction', req.query.p2);
+        if (!transactionRepository) {
+            return res.send({});
+        }
         transactionRepository.getTransactionInput({
             transaction_id: req.query.p0,
             input_position: req.query.p1

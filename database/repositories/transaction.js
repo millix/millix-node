@@ -516,7 +516,7 @@ export default class Transaction {
 
     listTransactionInput(where, orderBy, limit, shardID) {
         return new Promise((resolve, reject) => {
-            let {sql, parameters} = Database.buildQuery('SELECT TI.*, T.transaction_date FROM `transaction_input` AS TI INNER JOIN `transaction` AS T ON TI.transaction_id = T.transaction_id', where, orderBy, limit, shardID);
+            let {sql, parameters} = Database.buildQuery('SELECT transaction_input.*, `transaction`.transaction_date FROM `transaction_input` INNER JOIN `transaction` ON transaction_input.transaction_id = `transaction`.transaction_id', where, orderBy, limit, shardID);
             this.database.all(sql,
                 parameters, (err, rows) => {
                     if (err) {
@@ -529,7 +529,7 @@ export default class Transaction {
 
     listTransactionOutput(where, orderBy, limit, shardID) {
         return new Promise((resolve, reject) => {
-            let {sql, parameters} = Database.buildQuery('SELECT O.*, T.transaction_date FROM `transaction_output` AS O INNER JOIN `transaction` AS T ON O.transaction_id = T.transaction_id', where, orderBy, limit, shardID);
+            let {sql, parameters} = Database.buildQuery('SELECT transaction_output.*, `transaction`.transaction_date FROM `transaction_output` INNER JOIN `transaction` ON transaction_output.transaction_id = `transaction`.transaction_id', where, orderBy, limit, shardID);
             this.database.all(sql,
                 parameters, (err, rows) => {
                     if (err) {

@@ -24,7 +24,10 @@ class _KN2ZttYDEKzCulEZ extends Endpoint {
                 message: 'p0<transaction_id>, p1<output_position> and p2<shard_id> are required'
             });
         }
-        const transactionRepository = database.getRepository('transaction');
+        const transactionRepository = database.getRepository('transaction', req.query.p2);
+        if (!transactionRepository) {
+            return res.send({});
+        }
         transactionRepository.getTransactionOutput({
             transaction_id : req.query.p0,
             output_position: req.query.p1
