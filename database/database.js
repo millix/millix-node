@@ -180,6 +180,12 @@ export class Database {
         });
     }
 
+    addNewShard(shard) {
+        const dbShard               = new Shard(shard.schema_path + shard.schema_name, shard.shard_id);
+        this.shards[shard.shard_id] = dbShard;
+        return dbShard.initialize();
+    }
+
     _initializeShards() {
         const shardRepository      = new ShardRepository(this.databaseMillix);
         this.repositories['shard'] = shardRepository;
@@ -187,10 +193,7 @@ export class Database {
                               .then((shardList) => {
                                   return new Promise(resolve => {
                                       async.eachSeries(shardList, (shard, callback) => {
-                                          const dbShard               = new Shard(shard.schema_path + shard.schema_name, shard.shard_id);
-                                          this.shards[shard.shard_id] = dbShard;
-                                          dbShard.initialize()
-                                                 .then(() => callback());
+                                          this.addNewShard(shard).then(() => callback());
                                       }, () => resolve());
                                   });
                               });

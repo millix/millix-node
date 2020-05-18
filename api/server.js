@@ -96,6 +96,7 @@ class Server {
                                httpsServer.listen(config.NODE_PORT_API, () => {
                                    console.log(`[api] listening on port ${config.NODE_PORT_API}`);
                                    this.nodeID = walletUtils.getNodeIdFromCertificate(certificatePem, 'pem');
+                                   this.nodePrivateKey = nodePrivateKey;
                                    console.log(`[api] node_id ${this.nodeID}`);
                                    console.log(`[api] node_signature ${walletUtils.signMessage(nodePrivateKey, this.nodeID)}`);
                                    const nodeRepository = database.getRepository('node');

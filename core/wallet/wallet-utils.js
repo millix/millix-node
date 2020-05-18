@@ -126,6 +126,20 @@ class WalletUtils {
         });
     }
 
+    getShardInfo(nodeID, shardDate, shardType, nodePrivateKey) {
+        let baseShardInfo     = {
+            node_id_origin: nodeID,
+            shard_date    : shardDate,
+            shard_type    : shardType
+        };
+        let shardInfo         = {
+            ...baseShardInfo,
+            node_signature: signature.sign(objectHash.getHashBuffer(baseShardInfo), nodePrivateKey.toBuffer())
+        };
+        shardInfo['shard_id'] = objectHash.getCHash288(shardInfo);
+        return shardInfo;
+    }
+
     removeMnemonic() {
         return new Promise(resolve => {
             fs.unlink(path.join(os.homedir(), config.WALLET_KEY_PATH), function() {
