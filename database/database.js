@@ -17,11 +17,12 @@ export class Database {
     static ID_CHARACTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
     constructor() {
-        this.databaseMillix    = null;
-        this.databaseJobEngine = null;
-        this.repositories      = {};
-        this.shards            = {};
-        this.shardRepositories = new Set([
+        this.databaseMillix     = null;
+        this.databaseJobEngine  = null;
+        this.databaseRootFolder = null;
+        this.repositories       = {};
+        this.shards             = {};
+        this.shardRepositories  = new Set([
             'audit_point',
             'transaction',
             'audit_verification'
@@ -33,6 +34,10 @@ export class Database {
             length,
             characters: Database.ID_CHARACTERS
         });
+    }
+
+    getRootFolder() {
+        return this.databaseRootFolder;
     }
 
     static buildQuery(sql, where, orderBy, limit, shardID) {
@@ -92,11 +97,12 @@ export class Database {
         return new Promise(resolve => {
             const sqlite3 = require('sqlite3');
 
-            if (!fs.existsSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER))) {
-                fs.mkdirSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER));
+            this.databaseRootFolder = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
+            if (!fs.existsSync(this.databaseRootFolder)) {
+                fs.mkdirSync(path.join(this.databaseRootFolder));
             }
 
-            let dbFile = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_MILLIX);
+            let dbFile = path.join(this.databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_MILLIX);
 
             let doInitialize = false;
             if (!fs.existsSync(dbFile)) {
@@ -180,10 +186,16 @@ export class Database {
         });
     }
 
-    addNewShard(shard) {
+    addNewShard(shard, updateTables) {
         const dbShard               = new Shard(shard.schema_path + shard.schema_name, shard.shard_id);
         this.shards[shard.shard_id] = dbShard;
-        return dbShard.initialize();
+        return dbShard.initialize()
+                      .then(() => {
+                          if (updateTables) {
+                              const transactionRepository = this.shards[shard.shard_id].getRepository('transaction');
+                              transactionRepository.setAddressRepository(this.repositories['address']);
+                          }
+                      });
     }
 
     _initializeShards() {
@@ -210,12 +222,14 @@ export class Database {
 
         _.each(_.keys(this.shards), shard => {
             const transactionRepository = this.shards[shard].getRepository('transaction');
-            const auditPointRepository  = this.shards[shard].getRepository('audit_point');
             transactionRepository.setAddressRepository(this.repositories['address']);
-            transactionRepository.setAuditPointRepository(auditPointRepository);
         });
 
         return this.repositories['address'].loadAddressVersion();
+    }
+
+    getShard(shardID) {
+        return this.shards[shardID];
     }
 
     getRepository(repositoryName, shardID) {
@@ -343,8 +357,9 @@ export class Database {
             schema.getVersion()
                   .then(version => {
                       if (parseInt(version) < parseInt(config.DATABASE_CONNECTION.SCHEMA_VERSION)) {
-                          console.log('[database] migrating schema from version', version, ' to version ', config.DATABASE_CONNECTION.SCHEMA_VERSION);
-                          schema.migrate(config.DATABASE_CONNECTION.SCHEMA_VERSION, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
+                          const newVersion = parseInt(version) + 1;
+                          console.log('[database] migrating schema from version', version, ' to version ', newVersion);
+                          schema.migrate(newVersion, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
                                 .then(() => this._migrateTables())
                                 .then(() => resolve());
                       }

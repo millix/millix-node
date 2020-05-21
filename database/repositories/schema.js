@@ -21,12 +21,17 @@ export default class Schema {
     migrate(version, migrationDir) {
 
         let migrationSQLFile = `${migrationDir}/schema-update-${version}.sql`;
-        let migrationJSFile  = `../../${migrationDir}/schema-update-${version}.js`;
-
-        try{
-            const module = require(migrationJSFile);
+        try {
+            let module;
+            if (migrationDir.endsWith('shard')) {
+                module = require('../../scripts/migration/shard/schema-update-' + version + '.js');
+            }
+            else {
+                module = require('../../scripts/migration/schema-update-' + version + '.js');
+            }
             return module.default.migrate(this.database, migrationSQLFile);
-        } catch (e) {
+        }
+        catch (e) {
             return this.baseMigrate.runMigrateScript(this.database, migrationSQLFile);
         }
 

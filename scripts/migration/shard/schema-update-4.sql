@@ -4,16 +4,16 @@ BEGIN TRANSACTION;
 
 UPDATE schema_information SET value = "4" WHERE key = "version";
 
-DROP TABLE address;
-DROP TABLE address_version;
-DROP TABLE api;
-DROP TABLE config;
-DROP TABLE keychain;
-DROP TABLE keychain_address;
-DROP TABLE node;
-DROP TABLE node_attribute;
-DROP TABLE node_attribute_type;
-DROP TABLE transaction_output_type;
-DROP TABLE wallet;
+DROP TABLE IF EXISTS address;
+DROP TABLE IF EXISTS address_version;
+DROP TABLE IF EXISTS api;
+DROP TABLE IF EXISTS config;
+DROP TABLE IF EXISTS keychain;
+DROP TABLE IF EXISTS keychain_address;
+DROP TABLE IF EXISTS node;
+DROP TABLE IF EXISTS node_attribute;
+DROP TABLE IF EXISTS node_attribute_type;
+DROP TABLE IF EXISTS transaction_output_type;
+DROP TABLE IF EXISTS wallet;
 
 COMMIT;

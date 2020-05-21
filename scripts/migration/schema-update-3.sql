@@ -47,4 +47,5 @@ DROP TABLE _node_attribute_old;
 
 DELETE FROM api;
 DELETE FROM config where config_name = 'node_initial_list';
+UPDATE config SET value = 'wss://' where config_name = 'websocket_protocol';
 COMMIT;

@@ -552,15 +552,17 @@ class WalletUtils {
             return Promise.reject('private key set is required');
         }
 
-        const transactionRepository = database.getRepository('transaction');
-        const addressRepository     = database.getRepository('address');
+        const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
             let allocatedFunds = 0;
             const amount       = _.sum(_.map(outputList, o => o.amount));
             async.eachSeries(inputList, (input, callback) => {
-                transactionRepository.getTransactionOutput({
-                    transaction_id : input.output_transaction_id,
-                    output_position: input.output_position
+                database.firstShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return transactionRepository.getTransactionOutput({
+                        transaction_id : input.output_transaction_id,
+                        output_position: input.output_position
+                    });
                 }).then(output => {
                     allocatedFunds += output.amount;
                     callback();
@@ -625,19 +627,22 @@ class WalletUtils {
                   transaction_signature_list: signatureList
               };
 
-              return transactionRepository.getFreeTransactions()
-                                          .then(parents => {
-                                              if (!parents) {
-                                                  throw Error('parent_transaction_not_available');
-                                              }
+              return database.firstShards((shardID) => {
+                  const transactionRepository = database.getRepository('transaction', shardID);
+                  return new Promise((resolve, reject) => transactionRepository.getFreeTransactions()
+                                                                               .then(parents => parents.length ? resolve(parents) : reject()));
+              }).then(parents => {
+                  if (!parents) {
+                      throw Error('parent_transaction_not_available');
+                  }
 
-                                              transaction['transaction_parent_list'] = _.map(parents, p => p.transaction_id).sort();
-                                              return [
-                                                  transaction,
-                                                  timeNow,
-                                                  nodeIPAddress
-                                              ];
-                                          });
+                  transaction['transaction_parent_list'] = _.map(parents, p => p.transaction_id).sort();
+                  return [
+                      transaction,
+                      timeNow,
+                      nodeIPAddress
+                  ];
+              });
           })
           .then(([transaction, timeNow]) => {
               transaction.transaction_input_list.forEach((input, idx) => input['input_position'] = idx);
@@ -645,7 +650,7 @@ class WalletUtils {
               transaction['payload_hash']     = objectHash.getCHash288(transaction);
               transaction['transaction_date'] = timeNow.toISOString();
               transaction['node_id_origin']   = network.nodeID;
-              transaction['shard_id']         = genesisConfig.genesis_shard_id;
+              transaction['shard_id']         = _.sample(_.keys(database.shards));
               transaction['version']          = config.WALLET_TRANSACTION_DEFAULT_VERSION;
               for (let transactionSignature of transaction.transaction_signature_list) {
                   const privateKeyHex = privateKeyMap[transactionSignature.address_base];

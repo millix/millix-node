@@ -44,13 +44,13 @@ CREATE TABLE shard_attribute
     FOREIGN KEY (attribute_type_id) REFERENCES shard_attribute_type (attribute_type_id)
 );
 
-DROP TABLE `transaction`;
-DROP TABLE transaction_parent;
-DROP TABLE transaction_signature;
-DROP TABLE transaction_input;
-DROP TABLE transaction_output;
-DROP TABLE transaction_output_attribute;
-DROP TABLE audit_verification;
-DROP TABLE audit_point;
+DROP TABLE IF EXISTS `transaction`;
+DROP TABLE IF EXISTS transaction_parent;
+DROP TABLE IF EXISTS transaction_signature;
+DROP TABLE IF EXISTS transaction_input;
+DROP TABLE IF EXISTS transaction_output;
+DROP TABLE IF EXISTS transaction_output_attribute;
+DROP TABLE IF EXISTS audit_verification;
+DROP TABLE IF EXISTS audit_point;
 
 COMMIT;

@@ -4,6 +4,7 @@ import os from 'os';
 import config from '../../core/config/config';
 import Migration from './migration';
 import genesisConfig from '../../core/genesis/genesis-config';
+import console from '../../core/console';
 
 export default new (class Migrate extends Migration {
 
@@ -29,6 +30,36 @@ export default new (class Migrate extends Migration {
                     node_id_origin: 'mzPPDwP9BJvHXyvdoBSJJsCQViRTtPbcqA',
                     shard_date    : 1579648257,
                     node_signature: '66n8CxBweCDRZWdvrg9caX7ckCh3Bgz5eDsJQtKYDbgVSAnRZMHCp41dnD4P1gvc6fjocFRhxDDWwtNh8JtpDpbE'
+                }).then(() => {
+                    return new Promise(resolve => {
+                        db.serialize(() => {
+                            db.run('VACUUM', err => {
+                                if (err) {
+                                    console.log('[database] vacuum error', err);
+                                }
+                                else {
+                                    console.log('[database] vacuum success');
+                                }
+                            });
+                            db.run('PRAGMA wal_checkpoint(TRUNCATE)', err => {
+                                if (err) {
+                                    console.log('[database] wal_checkpoint error', err);
+                                }
+                                else {
+                                    console.log('[database] wal_checkpoint success');
+                                }
+                            });
+                            db.run('PRAGMA optimize', err => {
+                                if (err) {
+                                    console.log('[database] optimize error', err);
+                                }
+                                else {
+                                    console.log('[database] optimize success');
+                                }
+                                resolve();
+                            });
+                        });
+                    });
                 })
                     .then(() => resolve())
                     .catch((e) => reject(e));

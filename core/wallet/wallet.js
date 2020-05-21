@@ -15,6 +15,8 @@ import config from '../config/config';
 import network from '../../net/network';
 import mutex from '../mutex';
 import ntp from '../ntp';
+import path from 'path';
+import os from 'os';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -238,85 +240,72 @@ class Wallet {
     }
 
     addTransaction(srcAddress, dstOutputs, srcOutputs) {
-        const transactionRepository = database.getRepository('transaction');
-        const addressRepository     = database.getRepository('address');
+        const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
-                let dbAddress;
-                peer.getNodeAddress()
-                    .then(node => database.getRepository('keychain')
-                                          .getAddress(srcAddress)
-                                          .then(address => [
-                                              node.ip_address,
-                                              address
-                                          ]))
-                    .then(([nodeIPAddress, address]) => ntp.getTime().then(time => [
-                        nodeIPAddress,
-                        new Date(Math.floor(time.now.getTime() / 1000) * 1000),
-                        address
-                    ]))
-                    .then(([nodeIPAddress, timeNow, address]) => {
-                        dbAddress   = address;
-                        let privKey = this.getActiveWalletKey(dbAddress.wallet_id);
-                        if (!privKey) {
-                            return Promise.reject('wallet not active for address ' + srcAddress);
-                        }
-                        if (!srcOutputs) {
-                            return transactionRepository.getFreeStableOutput(srcAddress)
-                                                        .then(outputs => [
-                                                            nodeIPAddress,
-                                                            timeNow,
-                                                            outputs
-                                                        ]);
-                        }
-                        else {
-                            return [
-                                nodeIPAddress,
-                                timeNow,
-                                srcOutputs
-                            ];
-                        }
-                    })
-                    .then(([nodeIPAddress, timeNow, outputs]) => {
-                        if (!outputs || outputs.length == 0) {
-                            return Promise.reject('Do not have enough funds on address ' + srcAddress);
-                        }
-                        outputs = _.orderBy(outputs, ['amount'], ['desc']);
-
-                        let outputsToUse    = [];
-                        let amount          = _.sum(_.map(dstOutputs, o => o.amount));
-                        let remainingAmount = amount;
-
-                        let exactMatchOutput = _.find(outputs, o => o.amount == amount);
-                        if (exactMatchOutput) {
-                            remainingAmount                     = 0;
-                            const outputAddress                 = addressRepository.getAddressComponent(exactMatchOutput.address);
-                            exactMatchOutput['address_base']    = outputAddress['address'];
-                            exactMatchOutput['address_version'] = outputAddress['version'];
-                            outputsToUse.push(exactMatchOutput);
-                        }
-                        else {
-                            for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
-                                let output                = outputs[i];
-                                remainingAmount -= output.amount;
-                                const outputAddress       = addressRepository.getAddressComponent(output.address);
-                                output['address_base']    = outputAddress['address'];
-                                output['address_version'] = outputAddress['version'];
-                                outputsToUse.push(output);
+                database.getRepository('keychain')
+                        .getAddress(srcAddress)
+                        .then(address => {
+                            let privKey = this.getActiveWalletKey(address.wallet_id);
+                            if (!privKey) {
+                                return Promise.reject('wallet not active for address ' + srcAddress);
                             }
-                        }
+                            if (!srcOutputs) {
+                                return database.firstShards((shardID) => {
+                                    const transactionRepository = database.getRepository('transaction', shardID);
+                                    return new Promise((resolve, reject) => transactionRepository.getFreeStableOutput(srcAddress)
+                                                                                                 .then(outputs => outputs.length ? resolve(outputs) : reject()));
+                                }).then(outputs => [
+                                    outputs,
+                                    address
+                                ]);
+                            }
+                            else {
+                                return [
+                                    srcOutputs,
+                                    address
+                                ];
+                            }
+                        })
+                        .then(([outputs, address]) => {
+                            if (!outputs || outputs.length === 0) {
+                                return Promise.reject('Do not have enough funds on address ' + srcAddress);
+                            }
+                            outputs = _.orderBy(outputs, ['amount'], ['desc']);
 
-                        if (remainingAmount > 0) {
-                            return Promise.reject('Do not have enough funds on address ' + srcAddress);
-                        }
+                            let outputsToUse    = [];
+                            let amount          = _.sum(_.map(dstOutputs, o => o.amount));
+                            let remainingAmount = amount;
 
-                        let keyMap         = {
-                            'transaction_id'  : 'output_transaction_id',
-                            'transaction_date': 'output_transaction_date',
-                            'shard_id'        : 'output_shard_id'
-                        };
-                        let transaction    = {
-                            transaction_input_list    : _.map(outputsToUse, o => _.mapKeys(_.pick(o, [
+                            let exactMatchOutput = _.find(outputs, o => o.amount === amount);
+                            if (exactMatchOutput) {
+                                remainingAmount                     = 0;
+                                const outputAddress                 = addressRepository.getAddressComponent(exactMatchOutput.address);
+                                exactMatchOutput['address_base']    = outputAddress['address'];
+                                exactMatchOutput['address_version'] = outputAddress['version'];
+                                outputsToUse.push(exactMatchOutput);
+                            }
+                            else {
+                                for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
+                                    let output                = outputs[i];
+                                    remainingAmount -= output.amount;
+                                    const outputAddress       = addressRepository.getAddressComponent(output.address);
+                                    output['address_base']    = outputAddress['address'];
+                                    output['address_version'] = outputAddress['version'];
+                                    outputsToUse.push(output);
+                                }
+                            }
+
+                            if (remainingAmount > 0) {
+                                return Promise.reject('Do not have enough funds on address ' + srcAddress);
+                            }
+
+                            let keyMap      = {
+                                'transaction_id'  : 'output_transaction_id',
+                                'transaction_date': 'output_transaction_date',
+                                'shard_id'        : 'output_shard_id'
+                            };
+                            const srcInputs = _.map(outputsToUse, o => _.mapKeys(_.pick(o, [
                                 'transaction_id',
                                 'output_position',
                                 'transaction_date',
@@ -324,75 +313,54 @@ class Wallet {
                                 'address_base',
                                 'address_version',
                                 'address_key_identifier'
-                            ]), (v, k) => keyMap[k] ? keyMap[k] : k)),
-                            transaction_output_list   : dstOutputs,
-                            transaction_signature_list: [
-                                {
-                                    address_base     : dbAddress.address_base,
-                                    address_attribute: dbAddress.address_attribute
-                                }
-                            ]
-                        };
-                        let amountSent     = _.sum(_.map(dstOutputs, o => o.amount));
-                        let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
-                        let change         = totalUsedCoins - amountSent;
-                        if (change > 0) {
-                            transaction.transaction_output_list.push({
-                                address_base          : dbAddress.address_base,
-                                address_version       : dbAddress.address_version,
-                                address_key_identifier: dbAddress.address_key_identifier,
-                                amount                : change
+                            ]), (v, k) => keyMap[k] ? keyMap[k] : k));
+
+                            let amountSent     = _.sum(_.map(dstOutputs, o => o.amount));
+                            let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
+                            let change         = totalUsedCoins - amountSent;
+                            if (change > 0) {
+                                dstOutputs.push({
+                                    address_base          : address.address_base,
+                                    address_version       : address.address_version,
+                                    address_key_identifier: address.address_key_identifier,
+                                    amount                : change
+                                });
+                            }
+                            const extendedPrivateKey = this.getActiveWalletKey(address.wallet_id);
+                            const privateKeyBuf      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
+                            return walletUtils.signTransaction(srcInputs, dstOutputs, {[address.address_base]: privateKeyBuf.toString('hex')})
+                                              .then(transaction => {
+                                                  const transactionRepository = database.getRepository('transaction', transaction.shard_id);
+                                                  return transactionRepository.addTransactionFromObject(transaction);
+                                              })
+                                              .then(transaction => [
+                                                  transaction,
+                                                  address
+                                              ]);
+                        })
+                        .then(([transaction, address]) => {
+                            return new Promise(resolve => {
+                                async.eachSeries(transaction.transaction_output_list, (output, callback) => {
+                                    if (output.address_base === address.address_base) {
+                                        const transactionRepository = database.getRepository('transaction', output.output_shard_id);
+                                        transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, undefined, ntp.now(), undefined)
+                                                             .then(callback);
+                                    }
+                                    else {
+                                        callback();
+                                    }
+                                }, () => resolve(transaction));
                             });
-                        }
-
-                        return transactionRepository.getFreeTransactions()
-                                                    .then(parents => {
-                                                        if (!parents) {
-                                                            throw Error('No parent available');
-                                                        }
-
-                                                        transaction['transaction_parent_list'] = _.map(parents, p => p.transaction_id).sort();
-                                                        return [
-                                                            transaction,
-                                                            timeNow,
-                                                            nodeIPAddress
-                                                        ];
-                                                    });
-                    })
-                    .then(([transaction, timeNow, nodeIPAddress]) => {
-                        transaction.transaction_input_list.forEach((input, idx) => input['input_position'] = idx);
-                        transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = idx);
-                        transaction['payload_hash']                            = objectHash.getCHash288(transaction);
-                        transaction['transaction_date']                        = timeNow.toISOString();
-                        transaction['node_id_origin']                          = network.nodeID;
-                        transaction['shard_id']                                = genesisConfig.genesis_shard_id;
-                        transaction['version']                                 = config.WALLET_TRANSACTION_DEFAULT_VERSION;
-                        transaction.transaction_signature_list[0]['signature'] = this.sign(dbAddress, transaction);
-                        transaction['transaction_id']                          = objectHash.getCHash288(transaction);
-                        return transactionRepository.addTransactionFromObject(transaction);
-                    })
-                    .then((transaction) => {
-                        return new Promise(resolve => {
-                            async.eachSeries(transaction.transaction_output_list, (output, callback) => {
-                                if (output.address_base === dbAddress.address_base) {
-                                    transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, undefined, ntp.now(), undefined)
-                                                         .then(callback);
-                                }
-                                else {
-                                    callback();
-                                }
-                            }, () => resolve(transaction));
+                        })
+                        .then(transaction => peer.transactionSend(transaction))
+                        .then((transaction) => {
+                            resolve(transaction);
+                            unlock();
+                        })
+                        .catch((e) => {
+                            reject(e);
+                            unlock();
                         });
-                    })
-                    .then(transaction => peer.transactionSend(transaction))
-                    .then((transaction) => {
-                        resolve(transaction);
-                        unlock();
-                    })
-                    .catch((e) => {
-                        reject(e);
-                        unlock();
-                    });
             });
         });
     }
@@ -411,8 +379,10 @@ class Wallet {
                     database.getRepository('keychain').getWalletAddresses(walletID)
                             .then(addresses => {
                                 async.eachSeries(addresses, (address, callbackAddress) => {
-                                    database.getRepository('transaction')
-                                            .getLastTransactionByAddress(address.address)
+                                    database.applyShards((shardID) => {
+                                        return database.getRepository('transaction', shardID)
+                                                       .getLastTransactionByAddress(address.address);
+                                    }).then(lastUpdateByShard => _.max(lastUpdateByShard))
                                             .then(updated => peer.addressTransactionSync(address.address, updated ? updated.toISOString() : undefined))
                                             .then(() => callbackAddress());
                                 }, () => callback());
@@ -449,12 +419,13 @@ class Wallet {
                            ];
                        }).then(([addresses, addressKeyIdentifier]) => {
                 addresses = new Set(addresses);
-                return database.getRepository('transaction')
-                               .getTransactionsByAddressKeyIdentifier(addressKeyIdentifier)
-                               .then(transactions => {
-                                   _.each(transactions, transaction => _.assign(transaction, {'income': addresses.has(transaction.output_address)}));
-                                   return transactions;
-                               });
+                return database.applyShards((shardID) => {
+                    return database.getRepository('transaction', shardID)
+                                   .getTransactionsByAddressKeyIdentifier(addressKeyIdentifier);
+                }, 'transaction_date desc').then(transactions => {
+                    _.each(transactions, transaction => _.assign(transaction, {'income': addresses.has(transaction.output_address)}));
+                    return transactions;
+                });
             });
     }
 
@@ -490,6 +461,10 @@ class Wallet {
         return walletTransactionConsensus;
     }
 
+    resetTransactionValidationRejected() {
+        walletTransactionConsensus.resetTransactionValidationRejected();
+    }
+
     getTransactionSyncPriority(transaction) {
         let isPriority = false;
 
@@ -510,13 +485,18 @@ class Wallet {
         return isPriority ? 1 : 0;
     }
 
+    _onSyncShard(data, ws) {
+        const shardRepository = database.getRepository('shard');
+        shardRepository.getShard({shard_id: data.shard_id})
+                       .then(shardInfo => peer.shardSyncResponse(shardInfo, ws));
+    }
+
     _onNewTransaction(data, ws, isRequestedBySync) {
 
         let node         = ws.node;
         let connectionID = ws.connectionID;
 
-        let transaction             = _.cloneDeep(data.transaction);
-        const transactionRepository = database.getRepository('transaction');
+        let transaction = _.cloneDeep(data.transaction);
 
         if (data.routing && data.routing_request_node_id !== network.nodeID) {
             eventBus.emit('transactionRoutingResponse:' + data.routing_request_node_id + ':' + transaction.transaction_id, data);
@@ -541,101 +521,154 @@ class Wallet {
 
         this._transactionReceivedFromNetwork[transaction.transaction_id] = true;
 
-        transactionRepository.hasTransaction(transaction.transaction_id)
-                             .then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
-                                 if (hasTransaction && !(isAuditPoint && this.transactionHasKeyIdentifier(transaction))) {
-                                     delete this._transactionReceivedFromNetwork[transaction.transaction_id];
-                                     delete this._transactionRequested[transaction.transaction_id];
-                                     return eventBus.emit('transaction_new:' + transaction.transaction_id);
-                                 }
+        (() => {
+            if (!database.getShard(transaction.shard_id)) {
+                return peer.shardSync(transaction.shard_id, ws)
+                           .then(shardInfo => {
+                               const shardRepository    = database.getRepository('shard');
+                               const nodeRepository     = database.getRepository('node');
+                               shardInfo['shard_name']  = shardInfo.shard_id + '.sqlite';
+                               shardInfo['schema_path'] = path.join(database.getRootFolder(), 'shard/');
+                               return shardRepository.addShard(shardInfo.shard_id, shardInfo.shard_name, shardInfo.shard_type,
+                                   shardInfo.shard_name, shardInfo.schema_path, false, shardInfo.node_id_origin, shardInfo.shard_date, shardInfo.node_signature)
+                                                     .then(() => database.addNewShard(shardInfo, true))
+                                                     .then(() => nodeRepository.getNodeAttribute(network.nodeID, 'shard_' + shardInfo.shard_type))
+                                                     .then((shardAttributeList) => new Promise(resolve => {
+                                                         shardAttributeList = shardAttributeList ? JSON.parse(shardAttributeList) : [];
+                                                         nodeRepository.addNodeAttribute(network.nodeID, 'shard_' + shardInfo.shard_type, JSON.stringify([
+                                                             ...shardAttributeList,
+                                                             {
+                                                                 'shard_id'            : shardInfo.shard_id,
+                                                                 'transaction_count'   : 0,
+                                                                 'update_date'         : Math.floor(ntp.now().getTime() / 1000),
+                                                                 'is_assigned'         : true,
+                                                                 'fee_ask_request_byte': 20
+                                                             }
+                                                         ])).then(() => resolve()).catch(() => resolve());
+                                                     }));
+                           });
+            }
+            else {
+                return Promise.resolve();
+            }
+        })().then(() => {
+            const transactionRepository = database.getRepository('transaction', transaction.shard_id);
+            return transactionRepository.hasTransaction(transaction.transaction_id)
+                                        .then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
+                                            if (hasTransaction && !(isAuditPoint && this.transactionHasKeyIdentifier(transaction))) {
+                                                delete this._transactionReceivedFromNetwork[transaction.transaction_id];
+                                                delete this._transactionRequested[transaction.transaction_id];
+                                                return eventBus.emit('transaction_new:' + transaction.transaction_id);
+                                            }
 
-                                 return walletUtils.verifyTransaction(transaction)
-                                                   .then(validTransaction => {
+                                            return walletUtils.verifyTransaction(transaction)
+                                                              .then(validTransaction => {
 
-                                                       if (!validTransaction) {
-                                                           console.log('Bad transaction object received from network');
-                                                           eventBus.emit('badTransaction:' + transaction.transaction_id);
-                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
-                                                           delete this._transactionRequested[transaction.transaction_id];
-                                                           return false;
-                                                       }
+                                                                  if (!validTransaction) {
+                                                                      console.log('Bad transaction object received from network');
+                                                                      eventBus.emit('badTransaction:' + transaction.transaction_id);
+                                                                      delete this._transactionReceivedFromNetwork[transaction.transaction_id];
+                                                                      delete this._transactionRequested[transaction.transaction_id];
+                                                                      return false;
+                                                                  }
 
-                                                       let syncPriority = this.getTransactionSyncPriority(transaction);
+                                                                  let syncPriority = this.getTransactionSyncPriority(transaction);
 
-                                                       console.log('New Transaction from network ', transaction.transaction_id);
-                                                       return transactionRepository.addTransactionFromObject(transaction)
-                                                                                   .then(() => {
-                                                                                       console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
-                                                                                       eventBus.emit('transaction_new:' + transaction.transaction_id);
-                                                                                       this._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier));
+                                                                  console.log('New Transaction from network ', transaction.transaction_id);
+                                                                  return transactionRepository.addTransactionFromObject(transaction)
+                                                                                              .then(() => {
+                                                                                                  console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
+                                                                                                  eventBus.emit('transaction_new:' + transaction.transaction_id);
+                                                                                                  this._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier));
 
-                                                                                       eventBus.emit('wallet_event_log', {
-                                                                                           type   : 'transaction_new',
-                                                                                           content: data,
-                                                                                           from   : node
-                                                                                       });
-                                                                                       peer.transactionSpendRequest(transaction.transaction_id)
-                                                                                           .then(response => {
-                                                                                               _.each(response.transaction_id_list, spendTransactionID => {
-                                                                                                   if (!this._transactionReceivedFromNetwork[spendTransactionID]) {
-                                                                                                       transactionRepository.hasTransaction(spendTransactionID)
-                                                                                                                            .then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
-                                                                                                                                if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
-                                                                                                                                    console.log('[Wallet] request sync transaction ', spendTransactionID, 'spending from', transaction.transaction_id);
-                                                                                                                                    peer.transactionSyncRequest(spendTransactionID, {priority: syncPriority})
-                                                                                                                                        .then(() => this._transactionRequested[spendTransactionID] = Date.now())
-                                                                                                                                        .catch(_ => _);
-                                                                                                                                }
-                                                                                                                            });
-                                                                                                   }
-                                                                                               });
-                                                                                           })
-                                                                                           .catch(() => {
-                                                                                           });
+                                                                                                  eventBus.emit('wallet_event_log', {
+                                                                                                      type   : 'transaction_new',
+                                                                                                      content: data,
+                                                                                                      from   : node
+                                                                                                  });
+                                                                                                  peer.transactionSpendRequest(transaction.transaction_id)
+                                                                                                      .then(response => {
+                                                                                                          _.each(response.transaction_id_list, spendTransactionID => {
+                                                                                                              if (!this._transactionReceivedFromNetwork[spendTransactionID]) {
+                                                                                                                  database.firstShards((shardID) => {
+                                                                                                                      const transactionRepository = database.getRepository('transaction', shardID);
+                                                                                                                      return new Promise((resolve, reject) => transactionRepository.hasTransaction(spendTransactionID)
+                                                                                                                                                                                   .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
+                                                                                                                                                                                       hasTransaction,
+                                                                                                                                                                                       isAuditPoint,
+                                                                                                                                                                                       hasTransactionData
+                                                                                                                                                                                   ]) : reject()));
+                                                                                                                  }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
+                                                                                                                      if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
+                                                                                                                          console.log('[Wallet] request sync transaction ', spendTransactionID, 'spending from', transaction.transaction_id);
+                                                                                                                          peer.transactionSyncRequest(spendTransactionID, {priority: syncPriority})
+                                                                                                                              .then(() => this._transactionRequested[spendTransactionID] = Date.now())
+                                                                                                                              .catch(_ => _);
+                                                                                                                      }
+                                                                                                                  });
+                                                                                                              }
+                                                                                                          });
+                                                                                                      })
+                                                                                                      .catch(() => {
+                                                                                                      });
 
-                                                                                       if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
-                                                                                           _.each(transaction.transaction_input_list, inputTransaction => {
-                                                                                               if (!this._transactionReceivedFromNetwork[inputTransaction.output_transaction_id]) {
-                                                                                                   transactionRepository.hasTransaction(inputTransaction.output_transaction_id)
-                                                                                                                        .then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
-                                                                                                                            if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
-                                                                                                                                console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
-                                                                                                                                peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority})
-                                                                                                                                    .then(() => this._transactionRequested[inputTransaction.output_transaction_id] = Date.now())
-                                                                                                                                    .catch(_ => _);
-                                                                                                                            }
-                                                                                                                        });
-                                                                                               }
-                                                                                           });
-                                                                                           _.each(transaction.transaction_parent_list, parentTransactionID => {
-                                                                                               if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
-                                                                                                   transactionRepository.hasTransaction(parentTransactionID)
-                                                                                                                        .then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
-                                                                                                                            if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
-                                                                                                                                console.log('[Wallet] request sync parent transaction ', parentTransactionID);
-                                                                                                                                peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
-                                                                                                                                    .then(() => this._transactionRequested[parentTransactionID] = Date.now())
-                                                                                                                                    .catch(_ => _);
-                                                                                                                            }
-                                                                                                                        });
-                                                                                               }
-                                                                                           });
-                                                                                       }
-                                                                                       if (!isRequestedBySync) {
-                                                                                           let ws = network.getWebSocketByID(connectionID);
-                                                                                           peer.transactionSend(transaction, ws);
-                                                                                       }
-                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];
-                                                                                       delete this._transactionRequested[transaction.transaction_id];
-                                                                                   });
-                                                   });
+                                                                                                  if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
+                                                                                                      _.each(transaction.transaction_input_list, inputTransaction => {
+                                                                                                          if (!this._transactionReceivedFromNetwork[inputTransaction.output_transaction_id]) {
+                                                                                                              database.firstShards((shardID) => {
+                                                                                                                  const transactionRepository = database.getRepository('transaction', shardID);
+                                                                                                                  return new Promise((resolve, reject) => transactionRepository.hasTransaction(inputTransaction.output_transaction_id)
+                                                                                                                                                                               .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
+                                                                                                                                                                                   hasTransaction,
+                                                                                                                                                                                   isAuditPoint,
+                                                                                                                                                                                   hasTransactionData
+                                                                                                                                                                               ]) : reject()));
+                                                                                                              }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
+                                                                                                                  if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
+                                                                                                                      console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
+                                                                                                                      peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority})
+                                                                                                                          .then(() => this._transactionRequested[inputTransaction.output_transaction_id] = Date.now())
+                                                                                                                          .catch(_ => _);
+                                                                                                                  }
+                                                                                                              });
+                                                                                                          }
+                                                                                                      });
+                                                                                                      _.each(transaction.transaction_parent_list, parentTransactionID => {
+                                                                                                          if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
+                                                                                                              database.firstShards((shardID) => {
+                                                                                                                  const transactionRepository = database.getRepository('transaction', shardID);
+                                                                                                                  return new Promise((resolve, reject) => transactionRepository.hasTransaction(parentTransactionID)
+                                                                                                                                                                               .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
+                                                                                                                                                                                   hasTransaction,
+                                                                                                                                                                                   isAuditPoint,
+                                                                                                                                                                                   hasTransactionData
+                                                                                                                                                                               ]) : reject()));
+                                                                                                              }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
+                                                                                                                  if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
+                                                                                                                      console.log('[Wallet] request sync parent transaction ', parentTransactionID);
+                                                                                                                      peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
+                                                                                                                          .then(() => this._transactionRequested[parentTransactionID] = Date.now())
+                                                                                                                          .catch(_ => _);
+                                                                                                                  }
+                                                                                                              });
+                                                                                                          }
+                                                                                                      });
+                                                                                                  }
+                                                                                                  if (!isRequestedBySync) {
+                                                                                                      let ws = network.getWebSocketByID(connectionID);
+                                                                                                      peer.transactionSend(transaction, ws);
+                                                                                                  }
+                                                                                                  delete this._transactionReceivedFromNetwork[transaction.transaction_id];
+                                                                                                  delete this._transactionRequested[transaction.transaction_id];
+                                                                                              });
+                                                              });
 
-                             })
-                             .catch((err) => {
-                                 console.log('[Wallet] cleanup dangling transaction ', transaction.transaction_id, '. [message]: ', err);
-                                 delete this._transactionReceivedFromNetwork[transaction.transaction_id];
-                                 delete this._transactionRequested[transaction.transaction_id];
-                             });
+                                        });
+        }).catch((err) => {
+            console.log('[Wallet] cleanup dangling transaction ', transaction.transaction_id, '. [message]: ', err);
+            delete this._transactionReceivedFromNetwork[transaction.transaction_id];
+            delete this._transactionRequested[transaction.transaction_id];
+        });
     }
 
     _onSyncTransaction(data, ws) {
@@ -650,98 +683,106 @@ class Wallet {
             }
         }
 
-        let node                    = ws.node;
-        let nodeID                  = ws.nodeID;
-        let connectionID            = ws.connectionID;
-        const transactionRepository = database.getRepository('transaction');
+        let node         = ws.node;
+        let nodeID       = ws.nodeID;
+        let connectionID = ws.connectionID;
 
         eventBus.emit('wallet_event_log', {
             type   : 'transaction_sync',
             content: data,
             from   : node
         });
-        transactionRepository.getTransactionObject(data.transaction_id)
-                             .then(transaction => {
-                                 if (transaction) {
-                                     let ws = network.getWebSocketByID(connectionID);
-                                     if (ws) {
-                                         try {
-                                             peer.transactionSyncResponse({
-                                                 transaction            : transactionRepository.normalizeTransactionObject(transaction),
-                                                 depth                  : data.depth,
-                                                 routing                : data.routing,
-                                                 routing_request_node_id: data.routing_request_node_id
-                                             }, ws);
-                                         }
-                                         catch (e) {
-                                             console.log('[wallet] error sending transaction sync response. transaction normalization issue. ' + e.message);
-                                         }
-                                     }
-                                 }
-                                 else {
-                                     mutex.lock(['routing_transaction'], unlock => {
+        database.firstShards((shardID) => {
+            return new Promise((resolve, reject) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                transactionRepository.getTransactionObject(data.transaction_id)
+                                     .then(transaction => transaction ? resolve([
+                                         transaction,
+                                         transactionRepository
+                                     ]) : reject());
+            });
+        }).then(firstShardData => {
+            const [transaction, transactionRepository] = firstShardData || [];
+            if (transaction) {
+                let ws = network.getWebSocketByID(connectionID);
+                if (ws) {
+                    try {
+                        peer.transactionSyncResponse({
+                            transaction            : transactionRepository.normalizeTransactionObject(transaction),
+                            depth                  : data.depth,
+                            routing                : data.routing,
+                            routing_request_node_id: data.routing_request_node_id
+                        }, ws);
+                    }
+                    catch (e) {
+                        console.log('[wallet] error sending transaction sync response. transaction normalization issue. ' + e.message);
+                    }
+                }
+            }
+            else {
+                mutex.lock(['routing_transaction'], unlock => {
 
-                                         let requestNodeID = data.routing ? data.routing_request_node_id : nodeID;
-                                         let transactionID = data.transaction_id;
+                    let requestNodeID = data.routing ? data.routing_request_node_id : nodeID;
+                    let transactionID = data.transaction_id;
 
-                                         if (requestNodeID === undefined) {
-                                             return unlock();
-                                         }
+                    if (requestNodeID === undefined) {
+                        return unlock();
+                    }
 
-                                         let requestNodeList = this._transactionOnRoute[requestNodeID];
-                                         if (requestNodeList && requestNodeList[transactionID]) { // its being processed
-                                             return unlock();
-                                         }
+                    let requestNodeList = this._transactionOnRoute[requestNodeID];
+                    if (requestNodeList && requestNodeList[transactionID]) { // its being processed
+                        return unlock();
+                    }
 
-                                         if (this._transactionOnRoute[requestNodeID]) {
-                                             this._transactionOnRoute[requestNodeID][transactionID] = true;
-                                         }
-                                         else {
-                                             this._transactionOnRoute[requestNodeID] = {
-                                                 [transactionID]: true
-                                             };
-                                         }
+                    if (this._transactionOnRoute[requestNodeID]) {
+                        this._transactionOnRoute[requestNodeID][transactionID] = true;
+                    }
+                    else {
+                        this._transactionOnRoute[requestNodeID] = {
+                            [transactionID]: true
+                        };
+                    }
 
-                                         let self = this;
-                                         eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
-                                         eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, function(routedData) {
-                                             if (!self._transactionOnRoute[routedData.routing_request_node_id]) {
-                                                 console.log('[Wallet] Routed package not requested ?!', routedData);
-                                                 return;
-                                             }
+                    let self = this;
+                    eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
+                    eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, function(routedData) {
+                        if (!self._transactionOnRoute[routedData.routing_request_node_id]) {
+                            console.log('[Wallet] Routed package not requested ?!', routedData);
+                            return;
+                        }
 
-                                             delete self._transactionOnRoute[routedData.routing_request_node_id][routedData.transaction.transaction_id];
+                        delete self._transactionOnRoute[routedData.routing_request_node_id][routedData.transaction.transaction_id];
 
-                                             if (!routedData.transaction) {
-                                                 console.log('[Wallet] Routed package does not contain a transaction ?!', routedData);
-                                                 return;
-                                             }
+                        if (!routedData.transaction) {
+                            console.log('[Wallet] Routed package does not contain a transaction ?!', routedData);
+                            return;
+                        }
 
-                                             let ws = network.getWebSocketByID(connectionID);
+                        let ws = network.getWebSocketByID(connectionID);
 
-                                             if (!ws || !ws.nodeID) {
-                                                 console.log('[Wallet] Route destination not available', routedData);
-                                                 return;
-                                             }
+                        if (!ws || !ws.nodeID) {
+                            console.log('[Wallet] Route destination not available', routedData);
+                            return;
+                        }
 
-                                             peer.transactionSyncResponse(routedData, ws);
-                                         });
+                        peer.transactionSyncResponse(routedData, ws);
+                    });
 
-                                         setTimeout(function() {
-                                             eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
-                                         }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+                    setTimeout(function() {
+                        eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
+                    }, config.NETWORK_SHORT_TIME_WAIT_MAX);
 
-                                         unlock();
-                                         peer.transactionSyncRequest(transactionID, {
-                                             depth          : data.depth,
-                                             routing        : true,
-                                             request_node_id: requestNodeID
-                                         })
-                                             .then(() => this._transactionRequested[transactionID] = Date.now())
-                                             .catch(_ => _);
-                                     }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
-                                 }
-                             });
+                    unlock();
+                    peer.transactionSyncRequest(transactionID, {
+                        depth          : data.depth,
+                        routing        : true,
+                        request_node_id: requestNodeID
+                    })
+                        .then(() => this._transactionRequested[transactionID] = Date.now())
+                        .catch(_ => _);
+                }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
+            }
+        });
     }
 
     _onSyncAddressBalance(data, ws) {
@@ -756,22 +797,32 @@ class Wallet {
                 content: data,
                 from   : node
             });
-            const transactionRepository = database.getRepository('transaction');
-            transactionRepository.getTransactionByOutputAddress(address, updated)
-                                 .then(transactions => {
-                                     console.log('[wallet] >>', transactions.length, ' transaction will be synced to', address);
-                                     async.eachSeries(transactions, (dbTransaction, callback) => {
-                                         transactionRepository.getTransactionObject(dbTransaction.transaction_id)
-                                                              .then(transaction => {
-                                                                  let ws = network.getWebSocketByID(connectionID);
-                                                                  if (transaction && ws) {
-                                                                      peer.transactionSendToNode({transaction: transactionRepository.normalizeTransactionObject(transaction)}, ws);
-                                                                  }
-                                                                  callback();
-                                                              });
-                                     });
-                                     unlock();
-                                 }).catch(() => unlock());
+            database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.getTransactionByOutputAddress(address, updated);
+            }).then(transactions => {
+                console.log('[wallet] >>', transactions.length, ' transaction will be synced to', address);
+                async.eachSeries(transactions, (dbTransaction, callback) => {
+                    database.firstShards((shardID) => {
+                        return new Promise((resolve, reject) => {
+                            const transactionRepository = database.getRepository('transaction', shardID);
+                            transactionRepository.getTransactionObject(dbTransaction.transaction_id)
+                                                 .then(transaction => transaction ? resolve([
+                                                     transaction,
+                                                     transactionRepository
+                                                 ]) : reject());
+                        });
+                    }).then(data => {
+                        let ws                                     = network.getWebSocketByID(connectionID);
+                        const [transaction, transactionRepository] = data || [];
+                        if (transaction && ws) {
+                            peer.transactionSendToNode({transaction: transactionRepository.normalizeTransactionObject(transaction)}, ws);
+                        }
+                        callback();
+                    });
+                });
+                unlock();
+            }).catch(() => unlock());
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
     }
 
@@ -786,19 +837,23 @@ class Wallet {
                 from   : node
             });
             let transactionID = data.transaction_id;
-            database.getRepository('transaction')
-                    .getSpendTransactions(transactionID)
-                    .then(transactions => {
-                        if (transactions.length === 0) {
-                            unlock();
-                            return;
-                        }
+            database.firstShards((shardID) => {
+                return new Promise((resolve, reject) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    transactionRepository.getSpendTransactions(transactionID)
+                                         .then(transactions => transactions.length ? resolve(transactions) : reject());
+                });
+            }).then(transactions => {
+                if (!transactions || transactions.length === 0) {
+                    unlock();
+                    return;
+                }
 
-                        transactions = _.map(transactions, transaction => transaction.transaction_id);
-                        let ws       = network.getWebSocketByID(connectionID);
-                        peer.transactionSpendResponse(transactionID, transactions, ws);
-                        unlock();
-                    }).catch(() => unlock());
+                transactions = _.map(transactions, transaction => transaction.transaction_id);
+                let ws       = network.getWebSocketByID(connectionID);
+                peer.transactionSpendResponse(transactionID, transactions, ws);
+                unlock();
+            }).catch(() => unlock());
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
     }
 
@@ -842,6 +897,9 @@ class Wallet {
             database.getRepository('keychain').getWalletAddresses(this.getDefaultActiveWallet())
                     .then((addresses) => {
                         let address = _.sample(addresses);
+                        if (!address) {
+                            return resolve();
+                        }
                         this.addTransaction(address.address, [
                             {
                                 address_base          : address.address_base,
@@ -849,14 +907,17 @@ class Wallet {
                                 address_key_identifier: address.address_key_identifier,
                                 amount                : 1
                             }
-                        ])
-                            .then(transaction => {
-                                const transactionRepository = database.getRepository('transaction');
-                                return transactionRepository.setTransactionAsStable(transaction.transaction_id)
-                                                            .then(() => transactionRepository.setOutputAsStable(transaction.transaction_id))
-                                                            .then(() => transactionRepository.setInputsAsSpend(transaction.transaction_id))
-                                                            .then(() => resolve());
-                            }).catch(() => resolve());
+                        ]).then((transaction) => {
+                            this._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier));
+                            resolve();
+                        })
+                            /*.then(transaction => {
+                             const transactionRepository = database.getRepository('transaction', transaction.shard_id);
+                             return transactionRepository.setTransactionAsStable(transaction.transaction_id)
+                             .then(() => transactionRepository.setOutputAsStable(transaction.transaction_id))
+                             .then(() => transactionRepository.setInputsAsSpend(transaction.transaction_id))
+                             .then(() => resolve());
+                             })*/.catch(() => resolve());
                     });
         });
     }
@@ -870,29 +931,36 @@ class Wallet {
         let path = data.transaction_id_list;
         async.eachSeries(path, (transactionID, callback) => {
             if (!this._transactionReceivedFromNetwork[transactionID] && !this._transactionRequested[transactionID]) {
-                database.getRepository('transaction')
-                        .hasTransaction(transactionID)
-                        .then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
-                            if (hasTransactionData) {
-                                return callback();
-                            }
+                database.firstShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return new Promise((resolve, reject) => transactionRepository.hasTransaction(transactionID)
+                                                                                 .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
+                                                                                     hasTransaction,
+                                                                                     isAuditPoint,
+                                                                                     hasTransactionData,
+                                                                                     shardID
+                                                                                 ]) : reject()));
+                }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData, shardID]) => {
+                    if (hasTransactionData) {
+                        return callback();
+                    }
 
-                            (() => {
-                                if (isAuditPoint) {
-                                    return database.getRepository('audit_point')
-                                                   .deleteAuditPoint(transactionID);
-                                }
-                                else {
-                                    return Promise.resolve();
-                                }
-                            })().then(() => {
-                                peer.transactionSyncRequest(transactionID, {priority: 2})
-                                    .then(() => this._transactionRequested[transactionID] = Date.now())
-                                    .catch(_ => _);
-                            });
+                    (() => {
+                        if (isAuditPoint) {
+                            return database.getRepository('audit_point', shardID)
+                                           .deleteAuditPoint(transactionID);
+                        }
+                        else {
+                            return Promise.resolve();
+                        }
+                    })().then(() => {
+                        peer.transactionSyncRequest(transactionID, {priority: 2})
+                            .then(() => this._transactionRequested[transactionID] = Date.now())
+                            .catch(_ => _);
+                    });
 
-                            callback();
-                        });
+                    callback();
+                });
             }
         });
 
@@ -903,13 +971,18 @@ class Wallet {
     }
 
     _doSyncTransactionIncludePath() {
-        const transactionRepository = database.getRepository('transaction');
         return new Promise(resolve => {
             database.getRepository('keychain')
                     .getWalletAddresses(this.getDefaultActiveWallet())
-                    .then(addresses => transactionRepository.getAddressesUnstableTransactions(addresses.map(address => address.address), 0, Array.from(walletTransactionConsensus.getRejectedTransactionList().keys())))
+                    .then(addresses => {
+                        return database.applyShards((shardID) => {
+                            return database.getRepository('transaction', shardID)
+                                           .getAddressesUnstableTransactions(addresses.map(address => address.address), 0, Array.from(walletTransactionConsensus.getRejectedTransactionList().keys()));
+                        });
+                    })
                     .then(pendingTransactions => {
                         async.eachSeries(pendingTransactions, (pendingTransaction, callback) => {
+                            const transactionRepository = database.getRepository('transaction', pendingTransaction.shard_id);
                             transactionRepository.getTransactionIncludePaths(pendingTransaction.transaction_id)
                                                  .then(paths => {
                                                      let maxLength = _.reduce(paths, (max, path) => path.length > max ? path.length : max, 0);
@@ -967,191 +1040,199 @@ class Wallet {
             this._activeAuditPointUpdateRound[auditPointID].timestamp = new Date().getTime();
             this._activeAuditPointUpdateRound[auditPointID].resolve   = resolve;
 
-            const auditPoint        = database.getRepository('audit_point');
-            const auditVerification = database.getRepository('audit_verification');
-            auditPoint.getAuditPointCandidateTransactions()
-                      .then(pendingAuditPointTransactions => {
-                          if (!pendingAuditPointTransactions || pendingAuditPointTransactions.length === 0) {
-                              console.log('No transactions to add to audit point available.');
-                              delete this._activeAuditPointUpdateRound[auditPointID];
-                              return resolve();
-                          }
+            database.firstShards((shardID) => {
+                return new Promise((resolve, reject) => {
+                    const auditPoint = database.getRepository('audit_point', shardID);
+                    auditPoint.getAuditPointCandidateTransactions()
+                              .then(pendingAuditPointTransactions => pendingAuditPointTransactions &&
+                                                                     pendingAuditPointTransactions.length > 0 ? resolve([
+                                  pendingAuditPointTransactions,
+                                  shardID
+                              ]) : reject());
+                });
+            }).then(data => data || [])
+                    .then(([pendingAuditPointTransactions, shardID]) => {
+                        if (!pendingAuditPointTransactions || pendingAuditPointTransactions.length === 0) {
+                            console.log('No transactions to add to audit point available.');
+                            delete this._activeAuditPointUpdateRound[auditPointID];
+                            return resolve();
+                        }
 
-                          console.log('[audit point] audit round for ', auditPointID, ' with ', pendingAuditPointTransactions.length, ' transactions');
+                        console.log('[audit point] audit round for ', auditPointID, ' with ', pendingAuditPointTransactions.length, ' transactions');
+                        const auditVerification = database.getRepository('audit_verification', shardID);
+                        const auditPoint        = database.getRepository('audit_point', shardID);
+                        walletTransactionConsensus._selectNodesForConsensusRound()
+                                                  .then(selectedNodeList => {
+                                                      if (selectedNodeList.length !== config.AUDIT_POINT_NODE_COUNT || !self._activeAuditPointUpdateRound[auditPointID]) {
+                                                          console.log('[audit point] No node ready for this audit round');
+                                                          delete this._activeAuditPointUpdateRound[auditPointID];
+                                                          return resolve();
+                                                      }
 
-                          walletTransactionConsensus._selectNodesForConsensusRound()
-                                                    .then(selectedNodeList => {
-                                                        if (selectedNodeList.length !== config.AUDIT_POINT_NODE_COUNT || !self._activeAuditPointUpdateRound[auditPointID]) {
-                                                            console.log('[audit point] No node ready for this audit round');
-                                                            delete this._activeAuditPointUpdateRound[auditPointID];
-                                                            return resolve();
-                                                        }
+                                                      self._activeAuditPointUpdateRound[auditPointID].nodes = {};
 
-                                                        self._activeAuditPointUpdateRound[auditPointID].nodes = {};
+                                                      eventBus.on('audit_point_validation_response:' + auditPointID, (data, ws) => {
+                                                          if (!self._activeAuditPointUpdateRound[auditPointID]) {
+                                                              eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+                                                              return resolve();
+                                                          }
+                                                          else if (!self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] || self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node].replied) {
+                                                              return;
+                                                          }
 
-                                                        eventBus.on('audit_point_validation_response:' + auditPointID, (data, ws) => {
-                                                            if (!self._activeAuditPointUpdateRound[auditPointID]) {
-                                                                eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
-                                                                return resolve();
-                                                            }
-                                                            else if (!self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] || self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node].replied) {
-                                                                return;
-                                                            }
+                                                          console.log('[audit point] Received reply for audit round', auditPointID, ' from ', ws.node, ' with ', data.transaction_id_list.length, ' validated out of ', pendingAuditPointTransactions.length);
 
-                                                            console.log('[audit point] Received reply for audit round', auditPointID, ' from ', ws.node, ' with ', data.transaction_id_list.length, ' validated out of ', pendingAuditPointTransactions.length);
+                                                          self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node]['transactions'] = data.transaction_id_list;
+                                                          self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node]['replied']      = true;
 
-                                                            self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node]['transactions'] = data.transaction_id_list;
-                                                            self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node]['replied']      = true;
+                                                          // check if done
+                                                          for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
+                                                              if (self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].replied === false) {
+                                                                  return; //stop
+                                                                  // here
+                                                              }
+                                                          }
 
-                                                            // check if done
-                                                            for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
-                                                                if (self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].replied === false) {
-                                                                    return; //stop
-                                                                    // here
-                                                                }
-                                                            }
+                                                          self._activeAuditPointUpdateRound[auditPointID].updatingDB = true;
 
-                                                            self._activeAuditPointUpdateRound[auditPointID].updatingDB = true;
+                                                          // here we have all
+                                                          // replies
 
-                                                            // here we have all
-                                                            // replies
+                                                          console.log('[audit point] audit round ', auditPointID, ' is being processed');
 
-                                                            console.log('[audit point] audit round ', auditPointID, ' is being processed');
-
-                                                            let newTransactions           = [];
-                                                            let updateTransactions        = [];
-                                                            let newAuditPointTransactions = [];
+                                                          let newTransactions           = [];
+                                                          let updateTransactions        = [];
+                                                          let newAuditPointTransactions = [];
 
 
-                                                            // check if done
-                                                            async.eachSeries(Array.from(new Set(pendingAuditPointTransactions)), (pendingTransaction, callback) => {
+                                                          // check if done
+                                                          async.eachSeries(Array.from(new Set(pendingAuditPointTransactions)), (pendingTransaction, callback) => {
 
-                                                                if (!self._activeAuditPointUpdateRound[auditPointID]) {
-                                                                    return callback();
-                                                                }
+                                                              if (!self._activeAuditPointUpdateRound[auditPointID]) {
+                                                                  return callback();
+                                                              }
 
-                                                                let validationCount = 0;
-                                                                for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
-                                                                    if (_.includes(self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].transactions, pendingTransaction)) {
-                                                                        validationCount += 1;
-                                                                    }
-                                                                }
-                                                                let validated = validationCount >= 2 / 3 * config.AUDIT_POINT_NODE_COUNT;
+                                                              let validationCount = 0;
+                                                              for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
+                                                                  if (_.includes(self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].transactions, pendingTransaction)) {
+                                                                      validationCount += 1;
+                                                                  }
+                                                              }
+                                                              let validated = validationCount >= 2 / 3 * config.AUDIT_POINT_NODE_COUNT;
+                                                              auditVerification.getAuditVerification(pendingTransaction)
+                                                                               .then(auditVerification => {
 
-                                                                auditVerification.getAuditVerification(pendingTransaction)
-                                                                                 .then(auditVerification => {
+                                                                                   let newInfo = false;
+                                                                                   if (!auditVerification) {
+                                                                                       auditVerification = {
+                                                                                           verification_count: 0,
+                                                                                           attempt_count     : 0,
+                                                                                           verified_date     : null,
+                                                                                           transaction_id    : pendingTransaction
+                                                                                       };
+                                                                                       newInfo           = true;
+                                                                                   }
 
-                                                                                     let newInfo = false;
-                                                                                     if (!auditVerification) {
-                                                                                         auditVerification = {
-                                                                                             verification_count: 0,
-                                                                                             attempt_count     : 0,
-                                                                                             verified_date     : null,
-                                                                                             transaction_id    : pendingTransaction
-                                                                                         };
-                                                                                         newInfo           = true;
-                                                                                     }
+                                                                                   if (auditVerification.is_verified && auditVerification.is_verified === 1) {
+                                                                                       return callback();
+                                                                                   }
 
-                                                                                     if (auditVerification.is_verified && auditVerification.is_verified === 1) {
-                                                                                         return callback();
-                                                                                     }
+                                                                                   if (validated) {
+                                                                                       auditVerification.verification_count++;
+                                                                                       auditVerification.attempt_count++;
+                                                                                       if (auditVerification.verification_count >= config.AUDIT_POINT_VALIDATION_REQUIRED) {
+                                                                                           newInfo ? newTransactions.push([
+                                                                                                       auditVerification.transaction_id,
+                                                                                                       auditVerification.verification_count,
+                                                                                                       auditVerification.attempt_count,
+                                                                                                       ntp.now()
+                                                                                                   ])
+                                                                                                   : updateTransactions.push([
+                                                                                                       auditVerification.verification_count,
+                                                                                                       auditVerification.attempt_count,
+                                                                                                       ntp.now(),
+                                                                                                       1,
+                                                                                                       auditVerification.transaction_id
+                                                                                                   ]);
+                                                                                           newAuditPointTransactions.push([
+                                                                                               auditPointID,
+                                                                                               auditVerification.transaction_id
+                                                                                           ]);
+                                                                                       }
+                                                                                       else {
+                                                                                           newInfo ? newTransactions.push([
+                                                                                                       auditVerification.transaction_id,
+                                                                                                       auditVerification.verification_count,
+                                                                                                       auditVerification.attempt_count,
+                                                                                                       null
+                                                                                                   ])
+                                                                                                   : updateTransactions.push([
+                                                                                                       auditVerification.verification_count,
+                                                                                                       auditVerification.attempt_count,
+                                                                                                       null,
+                                                                                                       0,
+                                                                                                       auditVerification.transaction_id
+                                                                                                   ]);
+                                                                                       }
+                                                                                   }
+                                                                                   else {
+                                                                                       auditVerification.attempt_count++;
+                                                                                       newInfo ? newTransactions.push([
+                                                                                                   auditVerification.transaction_id,
+                                                                                                   auditVerification.verification_count,
+                                                                                                   auditVerification.attempt_count,
+                                                                                                   null
+                                                                                               ])
+                                                                                               : updateTransactions.push([
+                                                                                                   auditVerification.verification_count,
+                                                                                                   auditVerification.attempt_count,
+                                                                                                   null,
+                                                                                                   0,
+                                                                                                   auditVerification.transaction_id
+                                                                                               ]);
+                                                                                   }
 
-                                                                                     if (validated) {
-                                                                                         auditVerification.verification_count++;
-                                                                                         auditVerification.attempt_count++;
-                                                                                         if (auditVerification.verification_count >= config.AUDIT_POINT_VALIDATION_REQUIRED) {
-                                                                                             newInfo ? newTransactions.push([
-                                                                                                         auditVerification.transaction_id,
-                                                                                                         auditVerification.verification_count,
-                                                                                                         auditVerification.attempt_count,
-                                                                                                         ntp.now()
-                                                                                                     ])
-                                                                                                     : updateTransactions.push([
-                                                                                                         auditVerification.verification_count,
-                                                                                                         auditVerification.attempt_count,
-                                                                                                         ntp.now(),
-                                                                                                         1,
-                                                                                                         auditVerification.transaction_id
-                                                                                                     ]);
-                                                                                             newAuditPointTransactions.push([
-                                                                                                 auditPointID,
-                                                                                                 auditVerification.transaction_id
-                                                                                             ]);
-                                                                                         }
-                                                                                         else {
-                                                                                             newInfo ? newTransactions.push([
-                                                                                                         auditVerification.transaction_id,
-                                                                                                         auditVerification.verification_count,
-                                                                                                         auditVerification.attempt_count,
-                                                                                                         null
-                                                                                                     ])
-                                                                                                     : updateTransactions.push([
-                                                                                                         auditVerification.verification_count,
-                                                                                                         auditVerification.attempt_count,
-                                                                                                         null,
-                                                                                                         0,
-                                                                                                         auditVerification.transaction_id
-                                                                                                     ]);
-                                                                                         }
-                                                                                     }
-                                                                                     else {
-                                                                                         auditVerification.attempt_count++;
-                                                                                         newInfo ? newTransactions.push([
-                                                                                                     auditVerification.transaction_id,
-                                                                                                     auditVerification.verification_count,
-                                                                                                     auditVerification.attempt_count,
-                                                                                                     null
-                                                                                                 ])
-                                                                                                 : updateTransactions.push([
-                                                                                                     auditVerification.verification_count,
-                                                                                                     auditVerification.attempt_count,
-                                                                                                     null,
-                                                                                                     0,
-                                                                                                     auditVerification.transaction_id
-                                                                                                 ]);
-                                                                                     }
+                                                                                   callback();
 
-                                                                                     callback();
+                                                                               });
+                                                          }, () => {
 
-                                                                                 });
-                                                            }, () => {
+                                                              console.log('[audit point] audit round ', auditPointID, ' add ', newTransactions.length, ' audit verifications');
+                                                              auditVerification.addAuditVerification(newTransactions)
+                                                                               .then(() => {
+                                                                                   console.log('[audit point] audit round ', auditPointID, ' update ', updateTransactions.length, ' audit verifications');
+                                                                                   return auditVerification.updateAuditVerification(updateTransactions);
+                                                                               })
+                                                                               .then(() => {
+                                                                                   console.log('[audit point] audit round ', auditPointID, '  add ', newAuditPointTransactions.length, ' transactions to audit point');
+                                                                                   return auditPoint.addTransactionToAuditPoint(newAuditPointTransactions);
+                                                                               })
+                                                                               .then(() => {
+                                                                                   eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+                                                                                   delete self._activeAuditPointUpdateRound[auditPointID];
+                                                                                   console.log('[audit point] audit round ', auditPointID, ' finished after receiving all replies');
+                                                                                   resolve();
+                                                                               }).catch((err) => {
+                                                                  eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+                                                                  delete self._activeAuditPointUpdateRound[auditPointID];
+                                                                  console.log('[audit point] Error on audit round ', auditPointID, '. [message]: ', err);
+                                                                  resolve();
+                                                              });
+                                                          });
 
-                                                                console.log('[audit point] audit round ', auditPointID, ' add ', newTransactions.length, ' audit verifications');
-                                                                auditVerification.addAuditVerification(newTransactions)
-                                                                                 .then(() => {
-                                                                                     console.log('[audit point] audit round ', auditPointID, ' update ', updateTransactions.length, ' audit verifications');
-                                                                                     return auditVerification.updateAuditVerification(updateTransactions);
-                                                                                 })
-                                                                                 .then(() => {
-                                                                                     console.log('[audit point] audit round ', auditPointID, '  add ', newAuditPointTransactions.length, ' transactions to audit point');
-                                                                                     return auditPoint.addTransactionToAuditPoint(newAuditPointTransactions);
-                                                                                 })
-                                                                                 .then(() => {
-                                                                                     eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
-                                                                                     delete self._activeAuditPointUpdateRound[auditPointID];
-                                                                                     console.log('[audit point] audit round ', auditPointID, ' finished after receiving all replies');
-                                                                                     resolve();
-                                                                                 }).catch((err) => {
-                                                                    eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
-                                                                    delete self._activeAuditPointUpdateRound[auditPointID];
-                                                                    console.log('[audit point] Error on audit round ', auditPointID, '. [message]: ', err);
-                                                                    resolve();
-                                                                });
-                                                            });
+                                                      });
 
-                                                        });
+                                                      _.each(selectedNodeList, ws => {
+                                                          console.log('[audit point] Ask ', ws.node, ' for audit point validation');
+                                                          self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] = {replied: false};
+                                                          peer.auditPointValidationRequest({
+                                                              audit_point_id     : auditPointID,
+                                                              transaction_id_list: pendingAuditPointTransactions
+                                                          }, ws);
+                                                      });
+                                                  });
 
-                                                        _.each(selectedNodeList, ws => {
-                                                            console.log('[audit point] Ask ', ws.node, ' for audit point validation');
-                                                            self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] = {replied: false};
-                                                            peer.auditPointValidationRequest({
-                                                                audit_point_id     : auditPointID,
-                                                                transaction_id_list: pendingAuditPointTransactions
-                                                            }, ws);
-                                                        });
-                                                    });
-
-                      });
+                    });
         });
 
     }
@@ -1193,26 +1274,30 @@ class Wallet {
         mutex.lock(['audit-point-validation-request'], unlock => {
             let transactions = data.transaction_id_list;
             let auditPointID = data.audit_point_id;
-            database.getRepository('audit_point')
-                    .getValidAuditPoints(transactions)
-                    .then(validAuditPoints => {
-                        let ws = network.getWebSocketByID(connectionID);
-                        if (ws) {
-                            peer.auditPointValidationResponse(_.map(validAuditPoints, transactions => transactions.transaction_id), auditPointID, ws);
-                        }
-                        unlock();
-                    });
+            database.applyShards((shardID) => {
+                const auditPointRepository = database.getRepository('audit_point', shardID);
+                return auditPointRepository.getValidAuditPoints(transactions);
+            }).then(validAuditPoints => {
+                validAuditPoints = Array.from(new Set(validAuditPoints));
+                let ws           = network.getWebSocketByID(connectionID);
+                if (ws) {
+                    peer.auditPointValidationResponse(_.map(validAuditPoints, transactions => transactions.transaction_id), auditPointID, ws);
+                }
+                unlock();
+            });
         }, undefined, Date.now() + config.AUDIT_POINT_VALIDATION_WAIT_TIME_MAX);
     }
 
     _doTransactionSetForPruning() {
         return new Promise(resolve => {
             mutex.lock(['transaction-set-pruning'], unlock => {
-                database.getRepository('audit_point').updateTransactionToPrune(this.defaultKeyIdentifier)
-                        .then(() => {
-                            unlock();
-                            resolve();
-                        });
+                database.applyShards((shardID) => {
+                    return database.getRepository('audit_point', shardID)
+                                   .updateTransactionToPrune(this.defaultKeyIdentifier);
+                }).then(() => {
+                    unlock();
+                    resolve();
+                });
             });
         });
     }
@@ -1226,18 +1311,18 @@ class Wallet {
         return new Promise(resolve => {
             mutex.lock(['transaction-pruning'], unlock => {
                 this.lockProcessNewTransaction();
-                database.getRepository('audit_point')
-                        .pruneTransaction()
-                        .then(() => {
-                            unlock();
-                            resolve();
-                            this.unlockProcessNewTransaction();
-                        })
-                        .catch(() => {
-                            unlock();
-                            resolve();
-                            this.unlockProcessNewTransaction();
-                        });
+                database.applyShards((shardID) => {
+                    return new Promise(resolve => {
+                        database.getRepository('audit_point', shardID)
+                                .pruneTransaction()
+                                .then(() => resolve())
+                                .catch(() => resolve());
+                    });
+                }).then(() => {
+                    unlock();
+                    resolve();
+                    this.unlockProcessNewTransaction();
+                });
             });
         });
     }
@@ -1245,16 +1330,17 @@ class Wallet {
     _doAuditPointPruning() {
         return new Promise(resolve => {
             mutex.lock(['audit-point-pruning'], unlock => {
-                database.getRepository('audit_point')
-                        .pruneAuditPoint()
-                        .then(() => {
-                            unlock();
-                            resolve();
-                        })
-                        .catch(() => {
-                            unlock();
-                            resolve();
-                        });
+                database.applyShards((shardID) => {
+                    return new Promise(resolve => {
+                        database.getRepository('audit_point', shardID)
+                                .pruneAuditPoint()
+                                .then(() => resolve())
+                                .catch(() => resolve());
+                    });
+                }).then(() => {
+                    unlock();
+                    resolve();
+                });
             });
         });
     }
@@ -1307,6 +1393,7 @@ class Wallet {
                   .then(() => {
                       eventBus.on('transaction_new', this._onNewTransaction.bind(this));
                       eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
+                      eventBus.on('shard_sync_request', this._onSyncShard.bind(this));
                       eventBus.on('address_transaction_sync', this._onSyncAddressBalance.bind(this));
                       eventBus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
                       eventBus.on('transaction_validation_node_allocate', this._onTransactionValidationNodeAllocate.bind(this));
@@ -1362,6 +1449,7 @@ class Wallet {
         walletSync.close().then(_ => _).catch(_ => _);
         eventBus.removeAllListeners('transaction_new');
         eventBus.removeAllListeners('transaction_sync');
+        eventBus.removeAllListeners('shard_sync_request');
         eventBus.removeAllListeners('address_transaction_sync');
         eventBus.removeAllListeners('transaction_validation_request');
         eventBus.removeAllListeners('transaction_include_path_request');

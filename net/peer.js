@@ -578,6 +578,58 @@ class Peer {
         return message;
     }
 
+    shardSyncResponse(content, ws) {
+        let payload = {
+            type: 'shard_sync_response:' + content.shard_id,
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+
+    }
+
+    shardSync(shardID, ws) {
+        return new Promise((resolve, reject) => {
+            let payload = {
+                type   : 'shard_sync_request',
+                content: {shard_id: shardID}
+            };
+
+            eventBus.emit('node_event_log', payload);
+
+            let data = JSON.stringify(payload);
+            try {
+                if (ws.nodeConnectionReady) {
+                    let timeoutID;
+                    let listener = function(data) {
+                        resolve(data);
+                        clearTimeout(timeoutID);
+                    };
+
+                    eventBus.once('shard_sync_response:' + shardID, listener);
+
+                    ws.send(data);
+                    ws        = null;
+                    timeoutID = setTimeout(() => {
+                        eventBus.removeListener('shard_sync_response:' + shardID, listener);
+                        reject('shard_sync_response_timeout');
+                    }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+                }
+            }
+            catch (e) {
+                reject('[WARN]: try to send data over a closed connection.');
+            }
+        });
+    }
+
     addressTransactionSync(address, updated) {
 
         if (network.registeredClients.length === 0) {

@@ -5,7 +5,7 @@ import eventBus from '../../core/event-bus';
 import config from '../../core/config/config';
 import genesisConfig from '../../core/genesis/genesis-config';
 import async from 'async';
-import {Database} from '../database';
+import database, {Database} from '../database';
 
 export default class Transaction {
     constructor(database) {
@@ -14,10 +14,6 @@ export default class Transaction {
 
     setAddressRepository(repository) {
         this.addressRepository = repository;
-    }
-
-    setAuditPointRepository(repository) {
-        this.auditPointRepository = repository;
     }
 
     getAddressBalance(address, stable) {
@@ -130,7 +126,26 @@ export default class Transaction {
                     let addressList = {};
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
-                        promise = promise.then(() => this.updateTransactionParentDate(parentTransaction, new Date(transaction.transaction_date)));
+                        promise = promise.then(() => {
+                            return new Promise((resolve, reject) => {
+                                database.firstShards((shardID) => {
+                                    return new Promise((resolve, reject) => {
+                                        const transactionRepository = database.getRepository('transaction', shardID);
+                                        transactionRepository.getTransaction(parentTransaction)
+                                                             .then(foundParentTransaction => foundParentTransaction ? resolve(transactionRepository) : reject());
+                                    });
+                                }).then(parentRepository => {
+                                    if (parentRepository) {
+                                        parentRepository.updateTransactionParentDate(parentTransaction, new Date(transaction.transaction_date))
+                                                        .then(() => resolve())
+                                                        .catch(() => reject());
+                                    }
+                                    else {
+                                        resolve();
+                                    }
+                                });
+                            });
+                        });
                     });
 
                     transaction.transaction_input_list.forEach(input => {
@@ -141,19 +156,28 @@ export default class Transaction {
                             'address_version',
                             'address_key_identifier'
                         ]);
-                        promise                    = promise.then(() => this.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now()));
+                        promise                    = promise.then(() => {
+                            const transactionOutputRepository = database.getRepository('transaction', input.output_shard_id);
+                            return transactionOutputRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now());
+                        });
                     });
 
-                    promise = promise.then(() => this.getTransactionParentDate(transaction.transaction_id))
-                                     .then(parentDate => this.addTransaction(transaction.transaction_id, transaction.payload_hash, new Date(transaction.transaction_date), transaction.node_id_origin, transaction.version, parentDate));
+                    promise = promise.then(() => {
+                        return new Promise(resolve => {
+                            database.applyShards((shardID) => {
+                                const transactionRepository = database.getRepository('transaction', shardID);
+                                return transactionRepository.getTransactionParentDate(transaction.transaction_id);
+                            }).then(dates => resolve(_.min(dates)));
+                        });
+                    }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, new Date(transaction.transaction_date), transaction.node_id_origin, transaction.version, parentDate));
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
-                        promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction));
+                        promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id));
                     });
 
                     transaction.transaction_input_list.forEach(input => {
                         promise = promise.then(() => {
-                            this.addTransactionInput(transaction.transaction_id, input.input_position, input.address, input.address_key_identifier, input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id);
+                            this.addTransactionInput(transaction.transaction_id, transaction.shard_id, input.input_position, input.address, input.address_key_identifier, input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id);
                             delete input['address'];
                         });
                     });
@@ -166,11 +190,17 @@ export default class Transaction {
                             'address_version',
                             'address_key_identifier'
                         ]);
-                        promise                     = promise.then(() => this.getOutputSpendDate(transaction.transaction_id, output.output_position))
-                                                             .then(spendDate => {
-                                                                 this.addTransactionOutput(transaction.transaction_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate);
-                                                                 delete output['address'];
-                                                             });
+                        promise                     = promise.then(() => {
+                            return new Promise(resolve => {
+                                database.applyShards((shardID) => {
+                                    const transactionRepository = database.getRepository('transaction', shardID);
+                                    return transactionRepository.getOutputSpendDate(transaction.transaction_id, output.output_position);
+                                }).then(dates => resolve(_.min(dates)));
+                            });
+                        }).then(spendDate => {
+                            this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate);
+                            delete output['address'];
+                        });
                     });
 
                     transaction.transaction_signature_list.forEach(author => {
@@ -181,7 +211,7 @@ export default class Transaction {
                                 promise = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier, author.address_attribute));
                             }
                         });
-                        promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, author));
+                        promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, author));
                     });
 
                     _.each(_.keys(addressList), key => {
@@ -306,11 +336,11 @@ export default class Transaction {
     }
 
 
-    addTransactionSignature(transactionID, author) {
+    addTransactionSignature(transactionID, shardID, author) {
         return new Promise((resolve) => {
             this.database.run('INSERT INTO transaction_signature (transaction_id, shard_id, address_base, signature) VALUES (?,?,?,?)', [
                 transactionID,
-                genesisConfig.genesis_shard_id,
+                shardID,
                 author.address_base,
                 author.signature
             ], _ => {
@@ -319,12 +349,12 @@ export default class Transaction {
         });
     }
 
-    addTransactionParent(transactionIDChild, transactionIDParent) {
+    addTransactionParent(transactionIDChild, transactionIDParent, shardID) {
         return new Promise((resolve, reject) => {
             this.database.run('INSERT INTO transaction_parent (transaction_id_child, transaction_id_parent, shard_id) VALUES (?,?,?)', [
                 transactionIDChild,
                 transactionIDParent,
-                genesisConfig.genesis_shard_id
+                shardID
             ], (err) => {
                 if (err) {
                     return reject(err);
@@ -389,45 +419,29 @@ export default class Transaction {
         });
     }
 
-    updateTransactionOutputs(outputs, spentDate, stableDate, doubleSpendDate) {
-        if (outputs.length === 0) {
-            return Promise.resolve();
-        }
+    updateTransactionInput(transactionID, inputPosition, doubleSpendDate) {
         return new Promise((resolve, reject) => {
-            let sql = 'UPDATE transaction_output SET ';
-
-            if (spentDate === null) {
-                sql += ' spent_date = NULL, is_spent = 0,';
-            }
-            else if (spentDate) {
-                sql += ' spent_date = ' + Math.floor(spentDate.getTime() / 1000) + ', is_spent = 1,';
-            }
+            let sql = 'UPDATE transaction_input SET';
 
             if (doubleSpendDate === null) {
                 sql += ' double_spend_date = NULL, is_double_spend = 0,';
             }
             else if (doubleSpendDate) {
-                sql += ' double_spend_date = ' + Math.floor(doubleSpendDate.getTime() / 1000) + ', is_double_spend = 1,';
+                sql += ' double_spend_date = ' + Math.floor(doubleSpendDate.getTime() / 1000) + ', is_double_spend = 1';
             }
 
-            if (stableDate === null) {
-                sql += ' stable_date = NULL, is_stable = 0,';
-            }
-            else if (stableDate) {
-                sql += ' stable_date = ' + Math.floor(stableDate.getTime() / 1000) + ', is_stable = 1,';
-            }
-
-            sql = sql.substring(0, sql.length - 1);
-
-            this.database.run(sql + ' WHERE ' + outputs.map(() => '(transaction_id = ? AND output_position =?)').join(' OR '), outputs.flatMap(x => x),
-                (err) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve();
-                });
+            this.database.run(sql + ' WHERE transaction_id = ? and input_position = ?', [
+                transactionID,
+                inputPosition
+            ], (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                resolve();
+            });
         });
     }
+
 
     updateAllTransactionOutput(transactionID, spentDate, stableDate, doubleSpendDate) {
         return new Promise((resolve, reject) => {
@@ -600,12 +614,12 @@ export default class Transaction {
         });
     }
 
-    addTransaction(transactionID, payloadHash, transactionDate, ipAddressOrigin, version, parentDate) {
+    addTransaction(transactionID, shardID, payloadHash, transactionDate, ipAddressOrigin, version, parentDate) {
         return new Promise((resolve, reject) => {
             this.database.run('INSERT INTO `transaction` (transaction_id, version, shard_id, payload_hash, transaction_date, node_id_origin, parent_date, is_parent) VALUES (?,?,?,?,?,?,?,?)', [
                 transactionID,
                 version,
-                genesisConfig.genesis_shard_id,
+                shardID,
                 payloadHash,
                 Math.floor(transactionDate.getTime() / 1000),
                 ipAddressOrigin,
@@ -621,11 +635,11 @@ export default class Transaction {
         });
     }
 
-    addTransactionInput(transactionID, inputPosition, address, addressKeyIdentifier, outputTransactionID, outputPosition, outputTransactionDate, outputShardID) {
+    addTransactionInput(transactionID, shardID, inputPosition, address, addressKeyIdentifier, outputTransactionID, outputPosition, outputTransactionDate, outputShardID) {
         return new Promise((resolve, reject) => {
             this.database.run('INSERT INTO transaction_input (transaction_id, shard_id, input_position, address, address_key_identifier, output_transaction_id, output_position, output_transaction_date, output_shard_id) VALUES (?,?,?,?,?,?,?,?,?)', [
                 transactionID,
-                genesisConfig.genesis_shard_id,
+                shardID,
                 inputPosition,
                 address,
                 addressKeyIdentifier,
@@ -642,11 +656,11 @@ export default class Transaction {
         });
     }
 
-    addTransactionOutput(transactionID, outputPosition, address, addressKeyIdentifier, amount, spentDate) {
+    addTransactionOutput(transactionID, shardID, outputPosition, address, addressKeyIdentifier, amount, spentDate) {
         return new Promise((resolve, reject) => {
             this.database.run('INSERT INTO transaction_output (transaction_id, shard_id, output_position, address, address_key_identifier, amount, spent_date, is_spent) VALUES (?,?,?,?,?,?,?,?)', [
                 transactionID,
-                genesisConfig.genesis_shard_id,
+                shardID,
                 outputPosition,
                 address,
                 addressKeyIdentifier,
@@ -730,15 +744,17 @@ export default class Transaction {
                         newBranch.path.push(transaction);
                         newBranches.push(newBranch);
 
-                        this.getTransactionChildren(transaction)
-                            .then(children => {
-                                if (children.length === 0) {
-                                    return callback();
-                                }
-                                newBranch.transactions = children;
-                                hasTransactions        = true;
-                                callback();
-                            });
+                        database.applyShards((shardID) => {
+                            const transactionRepository = database.getRepository('transaction', shardID);
+                            return transactionRepository.getTransactionChildren(transaction);
+                        }).then(children => {
+                            if (children.length === 0) {
+                                return callback();
+                            }
+                            newBranch.transactions = children;
+                            hasTransactions        = true;
+                            callback();
+                        });
                     }, () => branchCallback());
                 }, () => {
                     if (!hasTransactions || depth >= maxDepth) {
@@ -774,7 +790,7 @@ export default class Transaction {
                 let newBranches     = [];
 
                 async.eachSeries(branches, (branch, branchCallback) => {
-                    if (branch.transactions.length == 0) {
+                    if (branch.transactions.length === 0) {
                         // newBranches.push(branch);
                         return branchCallback();
                     }
@@ -790,33 +806,47 @@ export default class Transaction {
                         visited[transaction] = true;
                         newBranch.path.push(transaction);
                         newBranches.push(newBranch);
-
-                        this.getTransactionParents(transaction)
-                            .then(parents => {
-                                if (parents.length === 0) {
-                                    return this.getTransactionInputs(transaction)
-                                               .then(inputs => {
-                                                   _.each(inputs, input => {
-                                                       if (input.output_transaction_id === genesisConfig.genesis_transaction) {
-                                                           targetFound = true;
-                                                       }
-                                                   });
-                                               }).then(() => callback());
-                                }
-                                newBranch.transactions = parents;
-                                hasTransactions        = true;
-                                targetFound            = _.includes(newBranch.transactions, targetTransactionID);
-                                if (!targetFound) {
-                                    this.auditPointRepository.isAuditPoint(transaction)
-                                        .then(foundAuditPointID => {
-                                            targetFound = foundAuditPointID;
-                                            callback();
-                                        });
-                                }
-                                else {
-                                    callback();
-                                }
+                        database.firstShards((shardID) => {
+                            return new Promise((resolve, reject) => {
+                                const transactionRepository = database.getRepository('transaction', shardID);
+                                transactionRepository.getTransaction(transaction)
+                                                     .then(dbTransaction => dbTransaction ? resolve([
+                                                         transactionRepository,
+                                                         shardID
+                                                     ]) : reject());
                             });
+                        }).then(data => data || []).then(([transactionRepository, shardID]) => {
+                            if (!transactionRepository) {
+                                hasTransactions = false;
+                                return callback(true);
+                            }
+                            transactionRepository.getTransactionParents(transaction)
+                                                 .then(parents => {
+                                                     if (parents.length === 0) {
+                                                         return transactionRepository.getTransactionInputs(transaction)
+                                                                                     .then(inputs => {
+                                                                                         _.each(inputs, input => {
+                                                                                             if (input.output_transaction_id === genesisConfig.genesis_transaction) {
+                                                                                                 targetFound = true;
+                                                                                             }
+                                                                                         });
+                                                                                     }).then(() => callback(targetFound));
+                                                     }
+                                                     newBranch.transactions = parents;
+                                                     hasTransactions        = true;
+                                                     targetFound            = _.includes(newBranch.transactions, targetTransactionID);
+                                                     if (!targetFound) {
+                                                         database.getRepository('audit_point', shardID).isAuditPoint(transaction)
+                                                                 .then(isAuditPoint => {
+                                                                     targetFound = isAuditPoint;
+                                                                     callback(targetFound);
+                                                                 });
+                                                     }
+                                                     else {
+                                                         callback(true);
+                                                     }
+                                                 });
+                        });
                     }, () => branchCallback());
                 }, () => {
                     if (targetFound === true) {
@@ -840,22 +870,46 @@ export default class Transaction {
         });
     }
 
-    setTransactionAsDoubleSpend(rootTransaction) {
+    setTransactionAsDoubleSpend(rootTransaction, doubleSpendTransaction) {
+        let now = ntp.now();
         return new Promise(resolve => {
             let depth = 0;
-            const dfs = (transactions) => {
-                let allNewTransactions = [];
-                async.eachSeries(transactions, (transaction, callback) => {
-                    this.setTransactionAsStable(transaction.transaction_id)
-                        .then(() => this.getTransactionsObjectByInputTransaction(transaction.transaction_id))
-                        .then(newTransactions => allNewTransactions.push(newTransactions))
-                        .then(() => {
-                            async.eachSeries(transaction.transaction_output_list, (output, callbackOutputs) => {
-                                let now = ntp.now();
-                                this.updateTransactionOutput(transaction.transaction_id, output.output_position, now, now, now)
-                                    .then(() => callbackOutputs());
-                            }, () => callback());
-                        });
+            const dfs = (transactions, doubleSpendTransactions) => {
+                let allNewTransactions       = [];
+                let allNewDoubleTransactions = [];
+                async.eachOfSeries(transactions, (transaction, idx, callback) => {
+                    const doubleSpendTransaction = doubleSpendTransactions[idx];
+                    const transactionRepository  = database.getRepository('transaction', transaction.shard_id);
+                    transactionRepository.setTransactionAsStable(transaction.transaction_id)
+                                         .then(() => {
+                                             return new Promise(resolve => {
+                                                 async.eachSeries(transaction.transaction_output_list, (output, callbackOutputs) => {
+                                                     transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, now, now, now)
+                                                                          .then(() => callbackOutputs());
+                                                 }, () => {
+                                                     async.eachSeries(transaction.transaction_input_list, (input, callbackInputs) => {
+                                                         if (input.output_transaction_id === doubleSpendTransaction) {
+                                                             transactionRepository.updateTransactionInput(transaction.transaction_id, input.input_position, now)
+                                                                                  .then(() => callbackInputs(true));
+                                                         }
+                                                         else {
+                                                             callbackInputs();
+                                                         }
+                                                     }, () => resolve());
+                                                 });
+                                             });
+                                         })
+                                         .then(() => database.applyShards((shardID) => {
+                                             return database.getRepository('transaction', shardID)
+                                                            .getTransactionObjectBySpentOutputTransaction(transaction.transaction_id);
+                                         }))
+                                         .then(newTransactions => {
+                                             if (newTransactions && newTransactions.length) {
+                                                 allNewTransactions.push(newTransactions);
+                                                 allNewDoubleTransactions.push(Array(newTransactions.length).fill(transaction.transaction_id));
+                                             }
+                                             callback();
+                                         });
                 }, () => {
                     if (allNewTransactions.length === 0 || depth >= config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
                         return resolve();
@@ -865,14 +919,14 @@ export default class Transaction {
                 });
 
             };
-            dfs([rootTransaction]);
+            dfs([rootTransaction], [doubleSpendTransaction]);
         });
     }
 
-    getTransactionsObjectByInputTransaction(inputTransaction) {
+    getTransactionObjectBySpentOutputTransaction(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT transaction_id from transaction_input WHERE output_transaction_id = ?',
-                [inputTransaction], (err, rows) => {
+                [transactionID], (err, rows) => {
                     if (err) {
                         console.log(err);
                         return reject(err);
@@ -979,13 +1033,20 @@ export default class Transaction {
         return new Promise((resolve) => {
             this.getTransactionInputs(transactionID)
                 .then(inputs => {
-                    let outputs = _.map(inputs, input => [
-                        input.output_transaction_id,
-                        input.output_position
-                    ]);
+                    let outputs = _.map(inputs, input => ({
+                        transaction_id : input.output_transaction_id,
+                        output_position: input.output_position,
+                        output_shard_id: input.output_shard_id
+                    }));
                     let now     = ntp.now();
-                    this.updateTransactionOutputs(outputs, now, now, undefined)
-                        .then(() => resolve());
+                    async.eachSeries(outputs, (output, callback) => {
+                        const transactionOutputRepository = database.getRepository('transaction', output.output_shard_id);
+                        transactionOutputRepository.updateTransactionOutput(output.transaction_id, output.output_position, now, now, undefined)
+                                                   .then(() => callback())
+                                                   .catch(() => callback());
+                    }, () => {
+                        resolve();
+                    });
                 });
         });
     }
@@ -1257,7 +1318,7 @@ export default class Transaction {
     timeoutTransaction(transactionID) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction'], unlock => {
-                if (true) {
+                if (true) { //TODO: enable transaction timeout
                     unlock();
                     return resolve();
                 }
