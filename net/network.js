@@ -59,7 +59,7 @@ class Network {
     // general network functions
     _connectTo(prefix, ipAddress, port, portApi, id) {
 
-        if (!prefix || !ipAddress || !port || !portApi) {
+        if (!prefix || !ipAddress || !port || portApi === undefined) {
             return Promise.resolve();
         }
 
