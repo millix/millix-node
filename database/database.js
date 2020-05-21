@@ -234,7 +234,7 @@ export class Database {
         }
     }
 
-    applyToShards(func, orderBy, limit, shardID) {
+    applyShards(func, orderBy, limit, shardID) {
         return new Promise(resolve => {
             async.waterfall([
                 callback => {
@@ -273,6 +273,27 @@ export class Database {
                     });
                 }
             ], (error, data) => {
+                resolve(data);
+            });
+        });
+    }
+
+    firstShards(func) {
+        return new Promise((resolve) => {
+            async.waterfall([
+                callback => {
+                    const shardRepository = this.getRepository('shard');
+                    shardRepository.listShard()
+                                   .then(shardList => callback(null, _.shuffle(_.map(shardList, shard => shard.shard_id))));
+                },
+                (shardList, callback) => {
+                    async.eachSeries(shardList, (dbShardID, mapCallback) => {
+                        func(dbShardID)
+                            .then(result => mapCallback(result))
+                            .catch(() => mapCallback());
+                    }, (data) => callback(data));
+                }
+            ], (data) => {
                 resolve(data);
             });
         });

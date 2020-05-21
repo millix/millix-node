@@ -25,7 +25,7 @@ class _VrLU9f2XYiMWfop4 extends Endpoint {
         const orderBy = req.query.p7 || 'create_date desc';
         const limit   = parseInt(req.query.p8) || 1000;
         const shardID = req.query.p9;
-        database.applyToShards((dbShardID) => {
+        database.applyShards((dbShardID) => {
             const auditVerificationRepository = database.getRepository('audit_verification', dbShardID);
             if (!auditVerificationRepository) {
                 return Promise.resolve([]);

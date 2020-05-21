@@ -49,7 +49,7 @@ class _aSiBLKkEsHI9lDr3 extends Endpoint {
         const shardRepository = database.getRepository('shard');
         const nodeRepository  = database.getRepository('node');
         shardRepository.addShard(shardInfo.shard_id, shardName, shardType, schemaName, schemaPath, isRequired, nodeID, shardDate, shardInfo.node_signature)
-                       .then(() => database.addNewShard(shardInfo))
+                       .then(() => database.addNewShard(shardInfo, true))
                        .then(() => nodeRepository.getNodeAttribute(nodeID, 'shard_' + shardType))
                        .then(shardAttributeList => new Promise(resolve => {
                            if (shardAttributeList) {

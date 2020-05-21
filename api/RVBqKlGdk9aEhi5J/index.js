@@ -36,7 +36,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                        .then(signedTransaction => res.send(signedTransaction))
                        .catch(e => res.send({
                            status : 'fail',
-                           message: e
+                           message: e.message
                        }));
         }
         catch (e) {

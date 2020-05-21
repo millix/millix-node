@@ -23,7 +23,7 @@ class _l4kaEhMnhjB5yseq extends Endpoint {
         const limit   = parseInt(req.query.p8) || 1000;
         const shardID = req.query.p9;
 
-        database.applyToShards((dbShardID) => {
+        database.applyShards((dbShardID) => {
             const transactionRepository = database.getRepository('transaction', dbShardID);
             if (!transactionRepository) {
                 return Promise.resolve([]);
