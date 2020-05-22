@@ -531,7 +531,7 @@ class Wallet {
                                shardInfo['schema_path'] = path.join(database.getRootFolder(), 'shard/');
                                return shardRepository.addShard(shardInfo.shard_id, shardInfo.shard_name, shardInfo.shard_type,
                                    shardInfo.shard_name, shardInfo.schema_path, false, shardInfo.node_id_origin, shardInfo.shard_date, shardInfo.node_signature)
-                                                     .then(() => database.addNewShard(shardInfo, true))
+                                                     .then(() => database.addShard(shardInfo, true))
                                                      .then(() => nodeRepository.getNodeAttribute(network.nodeID, 'shard_' + shardInfo.shard_type))
                                                      .then((shardAttributeList) => new Promise(resolve => {
                                                          shardAttributeList = shardAttributeList ? JSON.parse(shardAttributeList) : [];

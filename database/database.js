@@ -186,11 +186,11 @@ export class Database {
         });
     }
 
-    addNewShard(shard, updateTables) {
-        const dbShard               = new Shard(shard.schema_path + shard.schema_name, shard.shard_id);
-        this.shards[shard.shard_id] = dbShard;
+    addShard(shard, updateTables) {
+        const dbShard = new Shard(shard.schema_path + shard.schema_name, shard.shard_id);
         return dbShard.initialize()
                       .then(() => {
+                          this.shards[shard.shard_id] = dbShard;
                           if (updateTables) {
                               const transactionRepository = this.shards[shard.shard_id].getRepository('transaction');
                               transactionRepository.setAddressRepository(this.repositories['address']);
@@ -205,7 +205,7 @@ export class Database {
                               .then((shardList) => {
                                   return new Promise(resolve => {
                                       async.eachSeries(shardList, (shard, callback) => {
-                                          this.addNewShard(shard).then(() => callback());
+                                          this.addShard(shard).then(() => callback());
                                       }, () => resolve());
                                   });
                               });
@@ -256,9 +256,7 @@ export class Database {
                         return callback(null, [shardID]);
                     }
                     else {
-                        const shardRepository = this.getRepository('shard');
-                        shardRepository.listShard()
-                                       .then(shardList => callback(null, _.map(shardList, shard => shard.shard_id)));
+                        return callback(null, _.keys(this.shards));
                     }
                 },
                 (shardList, callback) => {
@@ -296,9 +294,7 @@ export class Database {
         return new Promise((resolve) => {
             async.waterfall([
                 callback => {
-                    const shardRepository = this.getRepository('shard');
-                    shardRepository.listShard()
-                                   .then(shardList => callback(null, _.shuffle(_.map(shardList, shard => shard.shard_id))));
+                    return callback(null, _.shuffle(_.keys(this.shards)));
                 },
                 (shardList, callback) => {
                     async.eachSeries(shardList, (dbShardID, mapCallback) => {
