@@ -457,6 +457,46 @@ class Wallet {
         return false;
     }
 
+    transactionSpendRequest(transaction) {
+        return new Promise((resolve, reject) => {
+            peer.transactionSpendRequest(transaction)
+                .then(response => {
+                    async.eachSeries(response.transaction_id_list, (spendTransactionID, callback) => {
+                        if (!this._transactionReceivedFromNetwork[spendTransactionID]) {
+                            database.firstShards((shardID) => {
+                                const transactionRepository = database.getRepository('transaction', shardID);
+                                return new Promise((resolve, reject) => transactionRepository.hasTransaction(spendTransactionID)
+                                                                                             .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
+                                                                                                 hasTransaction,
+                                                                                                 isAuditPoint,
+                                                                                                 hasTransactionData
+                                                                                             ]) : reject()));
+                            }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
+                                if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
+                                    console.log('[Wallet] request sync transaction ', spendTransactionID, 'spending from', transaction.transaction_id);
+                                    peer.transactionSyncRequest(spendTransactionID, {priority: this.getTransactionSyncPriority(transaction)})
+                                        .then(() => {
+                                            this._transactionRequested[spendTransactionID] = Date.now();
+                                            callback();
+                                        })
+                                        .catch(_ => callback());
+                                }
+                                else {
+                                    callback();
+                                }
+                            });
+                        }
+                        else {
+                            callback();
+                        }
+                    }, () => resolve());
+                })
+                .catch(() => {
+                    reject();
+                });
+        });
+    }
+
     getConsensus() {
         return walletTransactionConsensus;
     }
@@ -586,31 +626,8 @@ class Wallet {
                                                                                                       content: data,
                                                                                                       from   : node
                                                                                                   });
-                                                                                                  peer.transactionSpendRequest(transaction.transaction_id)
-                                                                                                      .then(response => {
-                                                                                                          _.each(response.transaction_id_list, spendTransactionID => {
-                                                                                                              if (!this._transactionReceivedFromNetwork[spendTransactionID]) {
-                                                                                                                  database.firstShards((shardID) => {
-                                                                                                                      const transactionRepository = database.getRepository('transaction', shardID);
-                                                                                                                      return new Promise((resolve, reject) => transactionRepository.hasTransaction(spendTransactionID)
-                                                                                                                                                                                   .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
-                                                                                                                                                                                       hasTransaction,
-                                                                                                                                                                                       isAuditPoint,
-                                                                                                                                                                                       hasTransactionData
-                                                                                                                                                                                   ]) : reject()));
-                                                                                                                  }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
-                                                                                                                      if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
-                                                                                                                          console.log('[Wallet] request sync transaction ', spendTransactionID, 'spending from', transaction.transaction_id);
-                                                                                                                          peer.transactionSyncRequest(spendTransactionID, {priority: syncPriority})
-                                                                                                                              .then(() => this._transactionRequested[spendTransactionID] = Date.now())
-                                                                                                                              .catch(_ => _);
-                                                                                                                      }
-                                                                                                                  });
-                                                                                                              }
-                                                                                                          });
-                                                                                                      })
-                                                                                                      .catch(() => {
-                                                                                                      });
+
+                                                                                                  this.transactionSpendRequest(transaction).then(_ => _).catch(_ => _);
 
                                                                                                   if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
                                                                                                       _.each(transaction.transaction_input_list, inputTransaction => {
