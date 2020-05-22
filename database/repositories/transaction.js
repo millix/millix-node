@@ -65,7 +65,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             let dateTime = Math.floor(fromTimestamp.getTime() / 1000);
             this.database.all(
-                'SELECT DISTINCT `transaction`.transaction_id FROM `transaction` \
+                'SELECT DISTINCT `transaction`.* FROM `transaction` \
                 INNER JOIN transaction_output on `transaction`.transaction_id = transaction_output.transaction_id \
                 WHERE address=?' + (fromTimestamp ? ' AND `transaction`.transaction_date > ?' : '') + ' ORDER BY transaction_output.create_date LIMIT 100',
                 [
@@ -158,6 +158,9 @@ export default class Transaction {
                         ]);
                         promise                    = promise.then(() => {
                             const transactionOutputRepository = database.getRepository('transaction', input.output_shard_id);
+                            if (!transactionOutputRepository) {
+                                return Promise.resolve();
+                            }
                             return transactionOutputRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now());
                         });
                     });
@@ -580,17 +583,43 @@ export default class Transaction {
         });
     }
 
-    getTransactionUnstableInputs(transactionID) {
+    isTransactionStable(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT transaction_input.output_transaction_id FROM transaction_input INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.output_transaction_id ' +
-                              'WHERE transaction_input.transaction_id = ? AND `transaction`.is_stable = 0',
-                [transactionID], (err, rows) => {
+            this.database.get('SELECT transaction_id FROM `transaction` WHERE transaction_id = ? AND is_stable = 0',
+                [transactionID], (err, row) => {
                     if (err) {
                         return reject(err);
                     }
-                    resolve(rows);
+                    resolve(!!row);
                 });
         });
+    }
+
+    getTransactionUnstableInputs(transactionID) {
+        return this.getTransactionInputs(transactionID)
+                   .then(inputs => {
+                       const unstableInputs = [];
+                       return new Promise(resolve => {
+                           async.eachSeries(inputs, (input, callback) => {
+                               const transactionRepository = database.getRepository('transaction', input.output_shard_id);
+                               if (transactionRepository) {
+                                   transactionRepository.isTransactionStable(input.output_transaction_id)
+                                                        .then((isStable) => {
+                                                            if (!isStable) {
+                                                                unstableInputs.push(input);
+                                                            }
+                                                            callback();
+                                                        })
+                                                        .catch(() => callback());
+                               }
+                               else {
+                                   callback();
+                               }
+                           }, () => {
+                               resolve(unstableInputs);
+                           });
+                       });
+                   });
     }
 
     getTransactionSignatures(transactionID) {
@@ -988,16 +1017,20 @@ export default class Transaction {
                 async.eachSeries(transactions, (transaction, callback) => {
                     mutex.lock(['path-as-stable'], pathAsStableUnlock => {
                         mutex.lock(['transaction'], transactionUnlock => {
-                            this.setTransactionAsStable(transaction)
-                                .then(() => this.setOutputAsStable(transaction))
-                                .then(() => this.setInputsAsSpend(transaction))
-                                .then(() => this.getTransactionUnstableInputs(transaction))
-                                .then(inputs => {
-                                    _.each(inputs, input => newTransactions.push(input.output_transaction_id));
-                                    transactionUnlock();
-                                    pathAsStableUnlock();
-                                    callback();
-                                });
+                            const transactionRepository = transaction.repository;
+                            transactionRepository.setTransactionAsStable(transaction.transaction_id)
+                                                 .then(() => transactionRepository.setOutputAsStable(transaction.transaction_id))
+                                                 .then(() => transactionRepository.setInputsAsSpend(transaction.transaction_id))
+                                                 .then(() => transactionRepository.getTransactionUnstableInputs(transaction.transaction_id))
+                                                 .then(inputs => {
+                                                     _.each(inputs, input => newTransactions.push({
+                                                         transaction_id: input.output_transaction_id,
+                                                         repository    : database.getRepository('transaction', input.output_shard_id)
+                                                     }));
+                                                     transactionUnlock();
+                                                     pathAsStableUnlock();
+                                                     callback();
+                                                 });
                         }, true);
                     });
                 }, () => {
@@ -1008,7 +1041,12 @@ export default class Transaction {
                     dfs(newTransactions, depth + 1);
                 });
             };
-            dfs([transactionID], 0);
+            dfs([
+                {
+                    transaction_id: transactionID,
+                    repository    : this
+                }
+            ], 0);
         });
     }
 
@@ -1041,6 +1079,9 @@ export default class Transaction {
                     let now     = ntp.now();
                     async.eachSeries(outputs, (output, callback) => {
                         const transactionOutputRepository = database.getRepository('transaction', output.output_shard_id);
+                        if (!transactionOutputRepository) {
+                            return callback();
+                        }
                         transactionOutputRepository.updateTransactionOutput(output.transaction_id, output.output_position, now, now, undefined)
                                                    .then(() => callback())
                                                    .catch(() => callback());

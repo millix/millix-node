@@ -803,23 +803,20 @@ class Wallet {
             }).then(transactions => {
                 console.log('[wallet] >>', transactions.length, ' transaction will be synced to', address);
                 async.eachSeries(transactions, (dbTransaction, callback) => {
-                    database.firstShards((shardID) => {
-                        return new Promise((resolve, reject) => {
-                            const transactionRepository = database.getRepository('transaction', shardID);
-                            transactionRepository.getTransactionObject(dbTransaction.transaction_id)
-                                                 .then(transaction => transaction ? resolve([
-                                                     transaction,
-                                                     transactionRepository
-                                                 ]) : reject());
-                        });
-                    }).then(data => {
-                        let ws                                     = network.getWebSocketByID(connectionID);
-                        const [transaction, transactionRepository] = data || [];
-                        if (transaction && ws) {
-                            peer.transactionSendToNode({transaction: transactionRepository.normalizeTransactionObject(transaction)}, ws);
-                        }
-                        callback();
-                    });
+                    const transactionRepository = database.getRepository('transaction', dbTransaction.shard_id);
+                    if (!transactionRepository) {
+                        return callback();
+                    }
+                    else {
+                        transactionRepository.getTransactionObject(dbTransaction.transaction_id)
+                                             .then(transaction => {
+                                                 let ws = network.getWebSocketByID(connectionID);
+                                                 if (transaction && ws) {
+                                                     peer.transactionSendToNode({transaction: transactionRepository.normalizeTransactionObject(transaction)}, ws);
+                                                 }
+                                                 callback();
+                                             });
+                    }
                 });
                 unlock();
             }).catch(() => unlock());
@@ -837,19 +834,16 @@ class Wallet {
                 from   : node
             });
             let transactionID = data.transaction_id;
-            database.firstShards((shardID) => {
-                return new Promise((resolve, reject) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    transactionRepository.getSpendTransactions(transactionID)
-                                         .then(transactions => transactions.length ? resolve(transactions) : reject());
-                });
+            database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.getSpendTransactions(transactionID);
             }).then(transactions => {
                 if (!transactions || transactions.length === 0) {
                     unlock();
                     return;
                 }
 
-                transactions = _.map(transactions, transaction => transaction.transaction_id);
+                transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
                 let ws       = network.getWebSocketByID(connectionID);
                 peer.transactionSpendResponse(transactionID, transactions, ws);
                 unlock();

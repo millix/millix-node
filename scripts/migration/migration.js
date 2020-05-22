@@ -1,4 +1,5 @@
 import fs from 'fs';
+import console from '../../core/console';
 
 export default class Migration {
     constructor() {
@@ -19,7 +20,34 @@ export default class Migration {
                     if (err) {
                         return reject(err);
                     }
-                    resolve();
+
+                    db.serialize(() => {
+                        db.run('VACUUM', err => {
+                            if (err) {
+                                console.log('[database] vacuum error', err);
+                            }
+                            else {
+                                console.log('[database] vacuum success');
+                            }
+                        });
+                        db.run('PRAGMA wal_checkpoint(TRUNCATE)', err => {
+                            if (err) {
+                                console.log('[database] wal_checkpoint error', err);
+                            }
+                            else {
+                                console.log('[database] wal_checkpoint success');
+                            }
+                        });
+                        db.run('PRAGMA optimize', err => {
+                            if (err) {
+                                console.log('[database] optimize error', err);
+                            }
+                            else {
+                                console.log('[database] optimize success');
+                            }
+                            resolve();
+                        });
+                    });
                 });
             });
         });
