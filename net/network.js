@@ -9,6 +9,7 @@ import peer from './peer';
 import walletUtils from '../core/wallet/wallet-utils';
 import https from 'https';
 import base58 from 'bs58';
+import publicIp from 'public-ip';
 
 const WebSocketServer = Server;
 
@@ -286,19 +287,15 @@ class Network {
     _doHandshake(ws, forceRegistration) {
         return new Promise((resolve) => {
             let node;
-            if (config.NODE_PUBLIC) {
-                let url = config.WEBSOCKET_PROTOCOL + config.NODE_HOST + ':' + config.NODE_PORT;
-                node    = {
-                    node_prefix    : config.WEBSOCKET_PROTOCOL,
-                    node_ip_address: config.NODE_HOST,
-                    node_port      : config.NODE_PORT,
-                    node_port_api  : config.NODE_PORT_API,
-                    node           : url
-                };
-            }
-            else {
-                node = {};
-            }
+
+            let url = config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT;
+            node    = {
+                node_prefix    : config.WEBSOCKET_PROTOCOL,
+                node_ip_address: this.nodePublicIp,
+                node_port      : config.NODE_PORT,
+                node_port_api  : config.NODE_PORT_API,
+                node           : url
+            };
 
             if (!forceRegistration) {
                 let peerNodeID;
@@ -567,14 +564,22 @@ class Network {
         this.nodeConnectionID = this.generateNewID();
         return new Promise(resolve => {
             console.log('[network] starting network');
-            walletUtils.loadNodeKeyAndCertificate()
-                       .then(({certificate_private_key_pem: certificatePrivateKeyPem, certificate_pem: certificatePem, node_private_key: privateKey, node_public_key: publicKey}) => {
-                           this.nodePrivateKey = privateKey;
-                           this.nodePublicKey  = base58.encode(publicKey.toBuffer());
-                           this.nodeID         = walletUtils.getNodeIdFromPublicKey(this.nodePublicKey);
-                           this._initializeServer(certificatePem, certificatePrivateKeyPem);
-                           resolve();
-                       });
+            publicIp.v4()
+                    .then(ip => {
+                        console.log('[network] node public-ip', ip);
+                        this.nodePublicIp = ip;
+                        walletUtils.loadNodeKeyAndCertificate()
+                                   .then(({certificate_private_key_pem: certificatePrivateKeyPem, certificate_pem: certificatePem, node_private_key: privateKey, node_public_key: publicKey}) => {
+                                       this.nodePrivateKey = privateKey;
+                                       this.nodePublicKey  = base58.encode(publicKey.toBuffer());
+                                       this.nodeID         = walletUtils.getNodeIdFromPublicKey(this.nodePublicKey);
+                                       this._initializeServer(certificatePem, certificatePrivateKeyPem);
+                                       resolve();
+                                   });
+                    })
+                    .catch(() => {
+                        setTimeout(() => this.initialize().then(() => resolve()), 1000);
+                    });
         });
     }
 

@@ -75,14 +75,12 @@ class Peer {
                                'node_id'
                            ]));
 
-                           if (config.NODE_PUBLIC) {
-                               nodes.push({
-                                   node_prefix    : config.WEBSOCKET_PROTOCOL,
-                                   node_ip_address: config.NODE_HOST,
-                                   node_port      : config.NODE_PORT,
-                                   node_id        : network.nodeID
-                               }); // add self
-                           }
+                           nodes.push({
+                               node_prefix    : config.WEBSOCKET_PROTOCOL,
+                               node_ip_address: network.nodePublicIp,
+                               node_port      : config.NODE_PORT,
+                               node_id        : network.nodeID
+                           }); // add self
 
                            if (nodes.length === 0) {
                                return;
