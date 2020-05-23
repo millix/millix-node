@@ -178,13 +178,13 @@ export default class Address {
     getAddressesCount() {
         return new Promise((resolve, reject) => {
             this.database.get(
-                'SELECT count(*) as count FROM address',
+                'SELECT COUNT(DISTINCT address) AS address_count, COUNT(DISTINCT address_key_identifier) AS address_key_identifier_count FROM address',
                 (err, row) => {
                     if (err) {
                         console.log(err);
                         return reject(err);
                     }
-                    resolve(row.count);
+                    resolve(row);
                 }
             );
         });

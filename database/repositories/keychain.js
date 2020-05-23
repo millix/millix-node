@@ -66,7 +66,7 @@ export default class Keychain {
     getAddress(address) {
         return new Promise((resolve, reject) => {
             this.database.get(
-                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.address_attribute, k.is_change \
+                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.address_attribute, k.is_change, ka.create_date \
                  FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base WHERE ka.address = ?', [address],
                 (err, row) => {
                     if (err) {
@@ -113,8 +113,8 @@ export default class Keychain {
 
     listWalletAddresses(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
-            const {sql, parameters} = Database.buildQuery('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.address_attribute, k.is_change \
-                 FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base', where, orderBy, limit);
+            const {sql, parameters} = Database.buildQuery('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.address_attribute, k.is_change, ka.create_date \
+                 FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base', where, 'ka.' + orderBy, limit);
             this.database.all(
                 sql, parameters,
                 (err, rows) => {

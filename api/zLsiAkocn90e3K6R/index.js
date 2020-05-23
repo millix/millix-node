@@ -1,5 +1,6 @@
 import database from '../../database/database';
 import Endpoint from '../endpoint';
+import _ from 'lodash';
 
 
 /**
@@ -26,15 +27,20 @@ class _zLsiAkocn90e3K6R extends Endpoint {
             });
         }
 
-        const transactionRepository = database.getRepository('transaction');
-        transactionRepository.getAddressBalance(req.query.p0, true)
-                             .then(stable => {
-                                 transactionRepository.getAddressBalance(req.query.p0, false)
-                                                      .then(unstable => res.send({
-                                                          stable,
-                                                          unstable
-                                                      }));
-                             });
+        database.applyShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.getAddressBalance(req.query.p0, true);
+        }).then(balances => _.sum(balances))
+                .then(stable => {
+                    database.applyShards((shardID) => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.getAddressBalance(req.query.p0, false);
+                    }).then(balances => _.sum(balances))
+                            .then(unstable => res.send({
+                                stable,
+                                unstable
+                            }));
+                });
     }
 }
 

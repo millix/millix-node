@@ -21,6 +21,12 @@ class _Lb2fuhVMDQm1DrLL extends Endpoint {
         wallet.addNewAddress(wallet.getDefaultActiveWallet())
               .then(address => {
                   res.send(address);
+              })
+              .catch(() => {
+                  return res.status(400).send({
+                      status: 'fail',
+                      message: 'wallet_not_activated'
+                  });
               });
     }
 }

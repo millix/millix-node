@@ -89,4 +89,4 @@ class LogManager {
 }
 
 
-export default new LogManager(250, 0);
+export default new LogManager(250, 1000);

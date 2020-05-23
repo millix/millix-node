@@ -109,6 +109,15 @@
       "enable": true
     },
     {
+      "id": "Bz73Dm7u3dKlXDS8",
+      "name": "get_node_address_stat_summary",
+      "description": "returns a summary of address statistics from the host",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "3XqkzNFzaTk1JPRf",
       "name": "list_address_version",
       "description": "return records from table address_version",
