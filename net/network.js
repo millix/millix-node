@@ -404,7 +404,7 @@ class Network {
                     peer.nodeAttributeRequest({
                         node_id       : peerNodeID,
                         attribute_type: 'shard_protocol'
-                    });
+                    }, ws);
                 }
             });
 
@@ -575,7 +575,7 @@ class Network {
                 peer.nodeAttributeRequest({
                     node_id       : ws.nodeID,
                     attribute_type: 'shard_protocol'
-                });
+                }, ws);
             }
         }
     }
