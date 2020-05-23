@@ -284,6 +284,11 @@ class Network {
         return walletUtils.getNodeIdFromCertificate(peerCertificate.raw.toString('hex'), 'hex');
     }
 
+    getNodePublicKeyFromWebSocket(ws) {
+        const peerCertificate = ws._socket.getPeerCertificate();
+        return walletUtils.getNodePublicKeyFromCertificate(peerCertificate.raw.toString('hex'), 'hex');
+    }
+
     _doHandshake(ws, forceRegistration) {
         return new Promise((resolve) => {
             let node;
@@ -356,34 +361,49 @@ class Network {
             eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
             eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, (eventData, _) => {
                 if (!callbackCalled) {
-                    callbackCalled = true;
+                    callbackCalled       = true;
+                    let peerNodeID;
+                    const nodeRepository = database.getRepository('node');
+
                     if (payload.content.registration_required) {
-                        let peerNodeID;
-                        if (forceRegistration) {
-                            peerNodeID = eventData.node_id;
-                        }
-                        else {
-                            try {
-                                peerNodeID = this.getNodeIdFromWebSocket(ws);
-                            }
-                            catch (e) {
-                                console.log('[network warn]: cannot get node identity.' + e.message);
-                                ws.terminate();
-                                return;
-                            }
-                        }
+                        peerNodeID = eventData.node_id;
                         if (!walletUtils.isValidNodeIdentity(peerNodeID, eventData.public_key, this.nodeID, eventData.signature)) {
                             console.log('[network warn]: invalid node identity.');
                             ws.terminate();
                             return;
                         }
-                        const nodeRepository = database.getRepository('node');
                         nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', eventData.public_key)
                                       .catch(() => {
                                           console.log('[network warn]: registration error.');
                                           ws.terminate();
                                       });
                     }
+                    else {
+                        try {
+                            peerNodeID = this.getNodeIdFromWebSocket(ws);
+                        }
+                        catch (e) {
+                            console.log('[network warn]: cannot get node identity.' + e.message);
+                            ws.terminate();
+                            return;
+                        }
+                        let nodePublicKey = this.getNodePublicKeyFromWebSocket(ws);
+                        if (!nodePublicKey) {
+                            console.log('[network warn]: cannot get node identity from certificate. ');
+                            ws.terminate();
+                            return;
+                        }
+                        nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', nodePublicKey)
+                                      .catch(() => {
+                                          console.log('[network warn]: registration error.');
+                                          ws.terminate();
+                                      });
+                    }
+
+                    peer.nodeAttributeRequest({
+                        node_id       : peerNodeID,
+                        attribute_type: 'shard_protocol'
+                    });
                 }
             });
 

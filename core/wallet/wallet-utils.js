@@ -181,6 +181,58 @@ class WalletUtils {
         }
     }
 
+    /**
+     * get node id from the certificate
+     * @param certificate
+     * @return {boolean|boolean|undefined}
+     */
+    getNodePublicKeyFromCertificate(certificateData, type) {
+        if (type === 'hex') {
+            const certificate = new X509();
+            certificate.readCertHex(certificateData);
+            return this.getNodePublicKeyFromCertificate(certificate);
+        }
+        else if (type === 'pem') {
+            const certificate = new X509();
+            certificate.readCertPEM(certificateData);
+            return this.getNodePublicKeyFromCertificate(certificate);
+        }
+        else {
+            const certificate = certificateData;
+            let nodePublicKey;
+            try {
+                let tbsHex      = ASN1HEX.getV(certificate.hex, 0, [0], '03');
+                const idxExtSeq = ASN1HEX.getIdxbyList(tbsHex, 0, [
+                    7,
+                    0
+                ], '30');
+
+                const extIdxList = ASN1HEX.getChildIdx(tbsHex, idxExtSeq);
+
+                if (extIdxList.length < 3) {
+                    return false;
+                }
+
+                for (let i = 0; i < extIdxList.length - 1; i++) {
+                    const idx = extIdxList[i];
+                    const oid = ASN1HEX.hextooidstr(ASN1HEX.getVbyList(tbsHex, idx, [0], '06'));
+                    if (oid === '1.3.6.1.5.5.7.1.24.1') {
+                        const publicKeyBuffer = Buffer.from(ASN1HEX.getVbyList(tbsHex, idx, [
+                            1,
+                            0
+                        ], '03', true), 'hex');
+                        nodePublicKey         = base58.encode(publicKeyBuffer);
+                        break;
+                    }
+                }
+
+            }
+            catch (e) {
+            }
+            return nodePublicKey;
+        }
+    }
+
     getNodeIdFromPublicKey(publicKey) {
         return this.getAddressFromPublicKey(base58.decode(publicKey));
     }

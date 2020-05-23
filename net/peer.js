@@ -6,6 +6,8 @@ import _ from 'lodash';
 import database from '../database/database';
 import async from 'async';
 import walletSync from '../core/wallet/wallet-sync';
+import walletUtils from '../core/wallet/wallet-utils';
+import server from '../api/server';
 
 
 class Peer {
@@ -810,8 +812,66 @@ class Peer {
         nodes.forEach(data => network.addNode(data.node_prefix, data.node_ip_address, data.node_port, data.node_id));
     }
 
+    nodeAttributeRequest(content, ws) {
+        let payload = {
+            type: 'node_attribute_request',
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    nodeAttributeResponse(content, ws) {
+        let payload = {
+            type: 'node_attribute_response',
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    _onNodeAttributeRequest(content, ws) {
+        database.getRepository('node')
+                .getNodeAttribute(content.node_id, content.attribute_type)
+                .then(attributeValue => {
+                    this.nodeAttributeResponse({
+                        node_id       : content.node_id,
+                        attribute_type: content.attribute_type,
+                        value         : attributeValue
+                    }, ws);
+                })
+                .catch(_ => _);
+    }
+
+    _onNodeAttributeResponse(content) {
+        if (content.node_id && content.attribute_type && content.value !== undefined) {
+            const nodeRepository = database.getRepository('node');
+            nodeRepository.addNodeAttribute(content.node_id, content.attribute_type, content.value)
+                          .then(_ => _)
+                          .catch(_ => _);
+        }
+    }
+
     initialize() {
         eventBus.on('node_list', this._onNodeList.bind(this));
+        eventBus.on('node_attribute_request', this._onNodeAttributeRequest.bind(this));
+        eventBus.on('node_attribute_response', this._onNodeAttributeResponse.bind(this));
     }
 
     stop() {
