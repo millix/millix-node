@@ -812,6 +812,26 @@ class Peer {
         nodes.forEach(data => network.addNode(data.node_prefix, data.node_ip_address, data.node_port, data.node_id));
     }
 
+    sendConnectionReady(ws) {
+        ws.nodeConnectionState = !ws.nodeConnectionState ? 'waiting' : 'open';
+        if (ws.nodeConnectionState === 'open') {
+            ws.nodeConnectionReady = true;
+        }
+        let payload = {
+            type: 'connection_ready'
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
     nodeAttributeRequest(content, ws) {
         let payload = {
             type: 'node_attribute_request',

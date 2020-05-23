@@ -20,11 +20,18 @@ class _GMDazQSouYWzLTCv extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        //TODO: filter the logs, make max log size a config, write logs to file as config too
+        //TODO: filter the logs, make max log size a config, write logs to file
+        // as config too
         const orderBy = req.query.p4 || 'create_date desc';
         const limit   = parseInt(req.query.p5) || 1000;
         let log       = logManager.log.slice(0, limit);
-        _.each(log, entry => entry.content = JSON.parse(entry.content));
+        _.each(log, entry => {
+            try {
+                entry.content = JSON.parse(entry.content);
+            }
+            catch (e) {
+            }
+        });
         res.send({log});
     }
 }

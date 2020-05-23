@@ -399,7 +399,8 @@ class Network {
                                           ws.terminate();
                                       });
                     }
-
+                    ws.nodeID = peerNodeID;
+                    peer.sendConnectionReady(ws);
                     peer.nodeAttributeRequest({
                         node_id       : peerNodeID,
                         attribute_type: 'shard_protocol'
@@ -545,11 +546,6 @@ class Network {
         else {
             console.log('[network] node ' + ws.node + ' registered with connection id ' + connectionID);
             this._connectionRegistry[connectionID] = [ws];
-            setTimeout(() => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    ws.nodeConnectionReady = true;
-                }
-            }, 1500);
         }
     }
 
@@ -571,6 +567,19 @@ class Network {
         }
     }
 
+    _onConnectionReady(content, ws) {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.nodeConnectionState = !ws.nodeConnectionState ? 'waiting' : 'open';
+            if (ws.nodeConnectionState === 'open') {
+                ws.nodeConnectionReady = true;
+                peer.nodeAttributeRequest({
+                    node_id       : ws.nodeID,
+                    attribute_type: 'shard_protocol'
+                });
+            }
+        }
+    }
+
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
         console.log('node id : ', this.nodeID);
         this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem);
@@ -578,6 +587,7 @@ class Network {
         this.initialized = true;
         eventBus.on('node_handshake', this._onNodeHandshake.bind(this));
         eventBus.on('node_address_request', this._onGetNodeAddress.bind(this));
+        eventBus.on('connection_ready', this._onConnectionReady.bind(this));
     }
 
     initialize() {
@@ -607,6 +617,7 @@ class Network {
         this.initialized = false;
         eventBus.removeAllListeners('node_handshake');
         eventBus.removeAllListeners('node_address_request');
+        eventBus.removeAllListeners('connection_ready');
         const wss = this.getWebSocket();
         if (wss) {
             wss._server.close();
