@@ -67,7 +67,12 @@ class Server {
 
                 // apis
                 apis.forEach(api => {
-                    const module = require('./' + api.api_id + '/index');
+                    let module;
+                    try{
+                        module = require('./' + api.api_id + '/index');
+                    }catch (e) {
+                    }
+
                     if (module) {
                         module.default.register(app, api.permission);
                     }
