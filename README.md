@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <a href="#"><img src="https://raw.githubusercontent.com/millix/millix-wallet/master/app/icon.png?token=AJHQD5KIYI7X4E2NJHOJVZ26PYPSK" alt="millix node" width="200"></a>
+  <a href="#"><img src="https://github.com/millix/millix-wallet/blob/master/app/icon.png?raw=true" alt="millix node" width="200"></a>
   <br>
   millix node
   <br>
