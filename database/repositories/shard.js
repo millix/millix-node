@@ -63,4 +63,18 @@ export default class Shard {
         });
     }
 
+    updateShardRequired(shardID, isRequired) {
+        return new Promise((resolve, reject) => {
+            this.database.run('UPDATE shard SET is_required = ? WHERE shard_id = ?', [
+                isRequired,
+                shardID
+            ], (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                return resolve();
+            });
+        });
+    }
+
 }

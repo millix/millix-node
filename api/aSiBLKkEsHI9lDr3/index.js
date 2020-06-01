@@ -64,7 +64,7 @@ class _aSiBLKkEsHI9lDr3 extends Endpoint {
                                    'shard_id'         : shardInfo.shard_id,
                                    'transaction_count': 0,
                                    'update_date'      : Math.floor(ntp.now().getTime() / 1000),
-                                   'is_assigned'      : true,
+                                   'is_required'      : true,
                                    ...shardAttribute
                                }
                            ])).then(() => resolve()).catch(() => resolve());

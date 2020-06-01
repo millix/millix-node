@@ -323,6 +323,15 @@
       "version_released": "1.3.0",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "FAow0eot8ZejZUTJ",
+      "name": "support_shard",
+      "description": "adds support to an existent shard",
+      "method": "GET",
+      "version_released": "1.3.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
     }
   ]
 }
