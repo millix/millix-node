@@ -34,14 +34,34 @@ export default class AuditVerification {
         });
     }
 
-    addAuditVerification(entries) {
+    addAuditVerification(auditVerification) {
+        return new Promise((resolve, reject) => {
+            this.database.run('INSERT INTO audit_verification (transaction_id, shard_id, verification_count, attempt_count, verified_date, is_verified) VALUES (?, ?, ?, ?, ?, ?)',
+                [
+                    auditVerification.transaction_id,
+                    auditVerification.shard_id,
+                    auditVerification.verification_count,
+                    auditVerification.attempt_count,
+                    auditVerification.verified_date,
+                    auditVerification.is_verified
+                ],
+                (err) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve();
+                });
+        });
+    }
+
+    addAuditVerificationEntries(entries) {
         if (entries.length === 0) {
             return Promise.resolve();
         }
 
         return new Promise((resolve, reject) => {
-            let placeholders = entries.map((entry) => '("' + entry[0] + '", "' + genesisConfig.genesis_shard_id + '", ' + entry[1] + ', ' + entry[2] + (entry[3] ? ', ' + Math.floor(entry[3].getTime() / 1000) + ', 1)' : ', NULL, 0)')).join(',');
-            mutex.lock(['transaction'], (unlock) => {
+            let placeholders = entries.map((entry) => '("' + entry[0] + '", "' + entry[4] + '", ' + entry[1] + ', ' + entry[2] + (entry[3] ? ', ' + Math.floor(entry[3].getTime() / 1000) + ', 1)' : ', NULL, 0)')).join(',');
+            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
                 this.database.run('BEGIN TRANSACTION', (err) => {
                     if (err) {
                         reject(err);
@@ -90,7 +110,7 @@ export default class AuditVerification {
         }
 
         return new Promise((resolve, reject) => {
-            mutex.lock(['transaction'], (unlock) => {
+            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
                 this.database.run('BEGIN TRANSACTION', (err) => {
                     if (err) {
                         reject(err);

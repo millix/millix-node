@@ -1,5 +1,5 @@
 import fs from 'fs';
-import config from '../core/config/config';
+import config, {SHARD_ZERO_NAME} from '../core/config/config';
 import console from '../core/console';
 import {AuditPoint, AuditVerification, Schema, Transaction} from './repositories/repositories';
 
@@ -38,8 +38,9 @@ export default class Shard {
             schema.getVersion()
                   .then(version => {
                       if (parseInt(version) < parseInt(config.DATABASE_CONNECTION.SCHEMA_VERSION)) {
-                          console.log('[shard] migrating schema from version', version, ' to version ', config.DATABASE_CONNECTION.SCHEMA_VERSION);
-                          schema.migrate(config.DATABASE_CONNECTION.SCHEMA_VERSION, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR)
+                          const newVersion = parseInt(version) + 1;
+                          console.log('[shard] migrating schema from version', version, ' to version ', newVersion);
+                          schema.migrate(newVersion, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR)
                                 .then(() => this._migrateTables())
                                 .then(() => resolve());
                       }
@@ -56,7 +57,17 @@ export default class Shard {
 
     _initializeMillixShardSqlite3() {
         return new Promise(resolve => {
-            const sqlite3 = require('sqlite3');
+            const sqlite3                       = require('sqlite3');
+            sqlite3.Database.prototype.runAsync = function(sql, ...params) {
+                return new Promise((resolve, reject) => {
+                    this.run(sql, params, function(err) {
+                        if (err) {
+                            return reject(err);
+                        }
+                        resolve(this);
+                    });
+                });
+            };
 
             let doInitialize = false;
             if (!fs.existsSync(this.databaseFile)) {
@@ -76,11 +87,12 @@ export default class Shard {
                         if (err) {
                             throw Error(err.message);
                         }
-                        this.database.exec(data, function(err) {
+                        this.database.exec(data, (err) => {
                             if (err) {
                                 throw Error(err.message);
                             }
                             console.log('[shard] database initialized');
+                            this.database.shardID = this.shardID;
                             resolve();
                         });
                     });

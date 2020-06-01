@@ -41,7 +41,7 @@ class Service {
                                                         'shard_id'            : shard.shard_id,
                                                         'transaction_count'   : 0,
                                                         'update_date'         : Math.floor(ntp.now().getTime() / 1000),
-                                                        'is_assigned'         : true,
+                                                        'is_required'         : !!shard.is_required,
                                                         'fee_ask_request_byte': 20
                                                     }));
                                                     return nodeRepository.addNodeAttribute(network.nodeID, 'shard_protocol', JSON.stringify(shardAttributeList));

@@ -1,4 +1,4 @@
-import config from '../core/config/config';
+import config, {SHARD_ZERO_NAME} from '../core/config/config';
 import fs from 'fs';
 import mutex from '../core/mutex';
 import cryptoRandomString from 'crypto-random-string';
@@ -9,7 +9,6 @@ import path from 'path';
 import async from 'async';
 import {Address, API, Config, Job, Keychain, Node, Schema, Shard as ShardRepository, Wallet} from './repositories/repositories';
 import Shard from './shard';
-import genesisConfig from '../core/genesis/genesis-config';
 import _ from 'lodash';
 
 
@@ -21,6 +20,7 @@ export class Database {
         this.databaseJobEngine  = null;
         this.databaseRootFolder = null;
         this.repositories       = {};
+        this.knownShards        = new Set();
         this.shards             = {};
         this.shardRepositories  = new Set([
             'audit_point',
@@ -95,7 +95,17 @@ export class Database {
 
     _initializeMillixSqlite3() {
         return new Promise(resolve => {
-            const sqlite3 = require('sqlite3');
+            const sqlite3                       = require('sqlite3');
+            sqlite3.Database.prototype.runAsync = function(sql, ...params) {
+                return new Promise((resolve, reject) => {
+                    this.run(sql, params, function(err) {
+                        if (err) {
+                            return reject(err);
+                        }
+                        resolve(this);
+                    });
+                });
+            };
 
             this.databaseRootFolder = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
             if (!fs.existsSync(this.databaseRootFolder)) {
@@ -122,7 +132,7 @@ export class Database {
                         if (err) {
                             throw Error(err.message);
                         }
-                        this.databaseMillix.exec(data, function(err) {
+                        this.databaseMillix.exec(data, (err) => {
                             if (err) {
                                 return console.log(err.message);
                             }
@@ -191,6 +201,7 @@ export class Database {
         return dbShard.initialize()
                       .then(() => {
                           this.shards[shard.shard_id] = dbShard;
+                          this.knownShards.add(shard.shard_id);
                           if (updateTables) {
                               const transactionRepository = this.shards[shard.shard_id].getRepository('transaction');
                               transactionRepository.setAddressRepository(this.repositories['address']);
@@ -205,7 +216,13 @@ export class Database {
                               .then((shardList) => {
                                   return new Promise(resolve => {
                                       async.eachSeries(shardList, (shard, callback) => {
-                                          this.addShard(shard).then(() => callback());
+                                          if (shard.is_required) {
+                                              this.addShard(shard).then(() => callback());
+                                          }
+                                          else {
+                                              this.addKnownShard(shard.shard_id);
+                                              callback();
+                                          }
                                       }, () => resolve());
                                   });
                               });
@@ -220,6 +237,14 @@ export class Database {
         this.repositories['job']      = new Job(this.databaseJobEngine);
         this.repositories['api']      = new API(this.databaseMillix);
 
+        // initialize shard 0 (root)
+        const dbShard            = new Shard();
+        dbShard.database         = this.databaseMillix;
+        dbShard.database.shardID = SHARD_ZERO_NAME;
+        dbShard._initializeTables().then(_ => _);
+        this.shards[SHARD_ZERO_NAME] = dbShard;
+        this.knownShards.add(SHARD_ZERO_NAME);
+
         _.each(_.keys(this.shards), shard => {
             const transactionRepository = this.shards[shard].getRepository('transaction');
             transactionRepository.setAddressRepository(this.repositories['address']);
@@ -232,13 +257,21 @@ export class Database {
         return this.shards[shardID];
     }
 
+    addKnownShard(shardID) {
+        this.knownShards.add(shardID);
+    }
+
+    shardExists(shardID) {
+        return this.knownShards.has(shardID);
+    }
+
     getRepository(repositoryName, shardID) {
         try {
             if (this.shardRepositories.has(repositoryName)) {
                 if (shardID) {
                     return this.shards[shardID].getRepository(repositoryName);
                 }
-                return this.shards[genesisConfig.genesis_shard_id].getRepository(repositoryName);
+                return this.shards[SHARD_ZERO_NAME].getRepository(repositoryName);
             }
             return this.repositories[repositoryName];
         }
@@ -246,6 +279,44 @@ export class Database {
             console.log('[database] repository not found');
             return null;
         }
+    }
+
+    firstShardZeroORShardRepository(repositoryName, shardID, func) {
+        return new Promise(resolve => {
+            async.eachSeries([
+                SHARD_ZERO_NAME,
+                shardID
+            ], (shardID, callback) => {
+                const repository = this.getRepository(repositoryName, shardID);
+                if (repository) {
+                    func(repository)
+                        .then(() => callback(true))
+                        .catch(() => callback());
+                }
+                else {
+                    callback();
+                }
+            }, () => resolve());
+        });
+    }
+
+    applyShardZeroAndShardRepository(repositoryName, shardID, func) {
+        return new Promise(resolve => {
+            async.eachSeries([
+                SHARD_ZERO_NAME,
+                shardID
+            ], (shardID, callback) => {
+                const repository = this.getRepository(repositoryName, shardID);
+                if (repository) {
+                    func(repository)
+                        .then(() => callback())
+                        .catch(() => callback());
+                }
+                else {
+                    callback();
+                }
+            }, () => resolve());
+        });
     }
 
     applyShards(func, orderBy, limit, shardID) {
@@ -260,7 +331,7 @@ export class Database {
                     }
                 },
                 (shardList, callback) => {
-                    async.mapSeries(shardList, (dbShardID, mapCallback) => {
+                    async.mapSeries([SHARD_ZERO_NAME].concat(_.without(shardList, SHARD_ZERO_NAME)), (dbShardID, mapCallback) => {
                         func(dbShardID).then(result => mapCallback(null, result));
                     }, (error, data) => {
                         if (data) {
@@ -297,7 +368,7 @@ export class Database {
                     return callback(null, _.shuffle(_.keys(this.shards)));
                 },
                 (shardList, callback) => {
-                    async.eachSeries(shardList, (dbShardID, mapCallback) => {
+                    async.eachSeries([SHARD_ZERO_NAME].concat(_.without(shardList, SHARD_ZERO_NAME)), (dbShardID, mapCallback) => {
                         func(dbShardID)
                             .then(result => mapCallback(result))
                             .catch(() => mapCallback());

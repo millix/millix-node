@@ -1,5 +1,6 @@
 import console from '../../core/console';
 import {Database} from '../database';
+import _ from 'lodash';
 
 export default class Keychain {
     constructor(database) {
@@ -86,6 +87,14 @@ export default class Keychain {
         return new Promise(resolve => {
             this.database.get('SELECT address_base as address_key_identifier FROM keychain WHERE wallet_id = ? AND is_change=0 AND address_position=0', [walletID], (err, row) => {
                 return resolve(row ? row.address_key_identifier : null);
+            });
+        });
+    }
+
+    getWalletKnownKeyIdentifier() {
+        return new Promise(resolve => {
+            this.database.all('SELECT DISTINCT  address_base as address_key_identifier FROM keychain WHERE is_change=0 AND address_position=0', (err, rows) => {
+                return resolve(rows ? new Set(_.map(rows, row => row.address_key_identifier)) : new Set());
             });
         });
     }

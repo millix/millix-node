@@ -44,8 +44,8 @@ export const AUDIT_POINT_CANDIDATE_MAX                 = 512;
 export const AUDIT_POINT_VALIDATION_WAIT_TIME_MAX      = 60 * 1000;
 export const AUDIT_POINT_PRUNE_AGE_MIN                 = 1440;
 export const AUDIT_POINT_PRUNE_COUNT                   = 250;
-export const AUDIT_POINT_TRANSACTION_PRUNE_AGE_MIN     = 1440;
-export const AUDIT_POINT_TRANSACTION_PRUNE_COUNT       = 250;
+export const TRANSACTION_PRUNE_AGE_MIN                 = 1440;
+export const TRANSACTION_PRUNE_COUNT                   = 1000;
 export const NODE_CONNECTION_INBOUND_MAX               = 10;
 export const NODE_CONNECTION_OUTBOUND_MAX              = 10;
 export const HEARTBEAT_TIMEOUT                         = 10 * 1000;
@@ -76,6 +76,7 @@ export const NODE_CERTIFICATE_KEY_PATH                 = DATA_BASE_DIR + '/node_
 export const NODE_CERTIFICATE_PATH                     = DATA_BASE_DIR + '/node_certificate.pem';
 export const WALLET_KEY_PATH                           = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH                           = DATA_BASE_DIR + '/job.json';
+export const SHARD_ZERO_NAME                           = 'shard_zero';
 
 if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.MAX_CONNECTIONS               = 1;
@@ -88,7 +89,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR          = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR    = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                = '5';
+    DATABASE_CONNECTION.SCHEMA_VERSION                = '6';
 }
 
 export default {
@@ -128,8 +129,8 @@ export default {
     AUDIT_POINT_ATTEMPT_MAX,
     AUDIT_POINT_CANDIDATE_MAX,
     AUDIT_POINT_VALIDATION_WAIT_TIME_MAX,
-    AUDIT_POINT_TRANSACTION_PRUNE_AGE_MIN,
-    AUDIT_POINT_TRANSACTION_PRUNE_COUNT,
+    TRANSACTION_PRUNE_AGE_MIN,
+    TRANSACTION_PRUNE_COUNT,
     AUDIT_POINT_PRUNE_AGE_MIN,
     AUDIT_POINT_PRUNE_COUNT,
     NETWORK_LONG_TIME_WAIT_MAX,
