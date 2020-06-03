@@ -179,7 +179,7 @@ export default class AuditPoint {
 
                     transactions = transactions.map(transaction => transaction.transaction_id);
 
-                    this.database.run('UPDATE `transaction` SET status = 0 WHERE transaction_id IND (' + transactions.map(() => '?').join(',') + ')', transactions, (err) => {
+                    this.database.run('UPDATE `transaction` SET status = 0 WHERE transaction_id IN (' + transactions.map(() => '?').join(',') + ')', transactions, (err) => {
                         if (err) {
                             console.log(err);
                             return reject();
@@ -226,7 +226,7 @@ export default class AuditPoint {
             else {
                 this.database.all('SELECT audit_point.transaction_id FROM audit_point  \
                 INNER JOIN `transaction` on `transaction`.transaction_id = audit_point.transaction_id  \
-                WHERE audit_point.status = 1 AND +`transaction`.status = 1  AND +`transaction`.transaction_date < ? \
+                WHERE audit_point.status = 1 AND +`transaction`.status = 2  AND +`transaction`.transaction_date < ? \
                 AND audit_point.transaction_id NOT IN (SELECT transaction_id FROM transaction_output \
                 WHERE address_key_identifier=?) \
                 LIMIT 100', [
