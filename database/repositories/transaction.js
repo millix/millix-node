@@ -1517,52 +1517,52 @@ export default class Transaction {
                     }
                     const supportedShardIDList            = _.keys(database.shards);
                     const supportedShardAuditTransactions = {};
-                    const transactions                    = [];
                     _.each(supportedShardIDList, shardID => supportedShardAuditTransactions[shardID] = []);
                     async.eachSeries(transactionList, (transaction, callback) => {
-                        transactions.push(transaction.transaction_id);
                         this.getTransactionObject(transaction.transaction_id)
                             .then(transaction => {
                                 if (supportedShardAuditTransactions[transaction.shard_id]) {
-                                    //is supported shard? move transaction to
+                                    // is supported shard? move transaction to
                                     // shard
-                                    auditPointRepository.getAuditPoint(transaction.transaction_id)
-                                                        .then(auditPoint => auditVerificationRepository.getAuditVerification(transaction.transaction_id).then(auditVerification => [
-                                                            auditPoint,
-                                                            auditVerification
-                                                        ]))
-                                                        .then(([auditPoint, auditVerification]) => {
-                                                            const transactionRepository = database.getRepository('transaction', transaction.shard_id);
-                                                            return transactionRepository.addTransactionFromShardObject(transaction)
-                                                                                        .then(() => {
-                                                                                            if (auditVerification) {
-                                                                                                const auditVerificationRepository = database.getRepository('audit_verification', transaction.shard_id);
-                                                                                                return auditVerificationRepository.addAuditVerification(auditVerification);
-                                                                                            }
-                                                                                        })
-                                                                                        .then(() => {
-                                                                                            if (auditPoint) {
-                                                                                                const auditPointRepository = database.getRepository('audit_point', transaction.shard_id);
-                                                                                                return auditPointRepository.addTransactionToAuditPoint(auditPoint);
-                                                                                            }
-                                                                                        })
-                                                                                        .then(() => {
-                                                                                            return this.deleteTransaction(transaction.transaction_id);
-                                                                                        });
-                                                        })
-                                                        .then(() => callback())
-                                                        .catch(() => callback());
+                                    return auditPointRepository.getAuditPoint(transaction.transaction_id)
+                                                               .then(auditPoint => auditVerificationRepository.getAuditVerification(transaction.transaction_id).then(auditVerification => [
+                                                                   auditPoint,
+                                                                   auditVerification
+                                                               ]))
+                                                               .then(([auditPoint, auditVerification]) => {
+                                                                   const transactionRepository = database.getRepository('transaction', transaction.shard_id);
+                                                                   return transactionRepository.addTransactionFromShardObject(transaction)
+                                                                                               .then(() => {
+                                                                                                   if (auditVerification) {
+                                                                                                       const auditVerificationRepository = database.getRepository('audit_verification', transaction.shard_id);
+                                                                                                       return auditVerificationRepository.addAuditVerification(auditVerification);
+                                                                                                   }
+                                                                                               })
+                                                                                               .then(() => {
+                                                                                                   if (auditPoint) {
+                                                                                                       const auditPointRepository = database.getRepository('audit_point', transaction.shard_id);
+                                                                                                       return auditPointRepository.addTransactionToAuditPoint(auditPoint);
+                                                                                                   }
+                                                                                               })
+                                                                                               .then(() => {
+                                                                                                   return this.deleteTransaction(transaction.transaction_id);
+                                                                                               });
+                                                               });
                                 }
                                 else {
                                     if (_.some(_.map(transaction.transaction_input_list, input => keyIdentifierSet.has(input.address_key_identifier)))
                                         || _.some(_.map(transaction.transaction_output_list, output => keyIdentifierSet.has(output.address_key_identifier)))) {
-                                        this.setTransactionAsPrunable(transaction.transaction_id)
-                                            .then(() => callback());
+                                        return this.setTransactionAsPrunable(transaction.transaction_id);
                                     }
                                     else {
-                                        this.deleteTransaction(transaction.transaction_id).then(() => callback());
+                                        return this.deleteTransaction(transaction.transaction_id);
                                     }
                                 }
+                            })
+                            .then(() => callback())
+                            .catch((err) => {
+                                console.error(err);
+                                callback();
                             });
                     }, () => resolve());
                 });

@@ -1348,11 +1348,15 @@ class Wallet {
                                .getWalletKnownKeyIdentifier()
                                .then(knownKeyIdentifierSet => {
                                    return database.getRepository('transaction') // shard zero
-                                                  .pruneShardZero(knownKeyIdentifierSet)
-                                                  .then(() => {
-                                                      unlock();
-                                                      resolve();
-                                                  });
+                                                  .pruneShardZero(knownKeyIdentifierSet);
+                               })
+                               .then(() => {
+                                   unlock();
+                                   resolve();
+                               })
+                               .catch(() => {
+                                   unlock();
+                                   resolve();
                                });
             });
         });
