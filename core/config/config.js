@@ -6,7 +6,6 @@ export const NODE_HOST                                 = 'localhost';
 export const WEBSOCKET_PROTOCOL                        = 'wss://';
 export const RPC_INTERFACE                             = '0.0.0.0';
 export const NODE_PUBLIC                               = false;
-export const MODE_NODE_FULL                            = false;
 export const NODE_INITIAL_LIST_MAIN_NETWORK            = [];
 export const NODE_INITIAL_LIST_TEST_NETWORK            = [
     {
@@ -103,7 +102,6 @@ export default {
     NODE_CONNECTION_INBOUND_MAX,
     NODE_CONNECTION_OUTBOUND_MAX,
     NODE_PUBLIC,
-    MODE_NODE_FULL,
     NODE_MILLIX_VERSION,
     MODE_TEST,
     NODE_TEST_HOST,

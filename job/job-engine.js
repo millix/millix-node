@@ -213,10 +213,6 @@ class JobEngine {
             return false;
         }
 
-        if (job.option_list.enable === '!MODE_NODE_FULL') {
-            return !config.MODE_NODE_FULL;
-        }
-
         return true;
     }
 

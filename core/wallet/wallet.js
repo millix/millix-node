@@ -487,9 +487,9 @@ class Wallet {
         return false;
     }
 
-    transactionSpendRequest(transaction) {
+    transactionSpendRequest(transactionID, hasKeyIdentifier, priority) {
         return new Promise((resolve, reject) => {
-            peer.transactionSpendRequest(transaction)
+            peer.transactionSpendRequest(transactionID)
                 .then(response => {
                     async.eachSeries(response.transaction_id_list, (spendTransactionID, callback) => {
                         if (!this._transactionReceivedFromNetwork[spendTransactionID]) {
@@ -502,9 +502,9 @@ class Wallet {
                                                                                                  hasTransactionData
                                                                                              ]) : reject()));
                             }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
-                                if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
-                                    console.log('[Wallet] request sync transaction ', spendTransactionID, 'spending from', transaction.transaction_id);
-                                    peer.transactionSyncRequest(spendTransactionID, {priority: this.getTransactionSyncPriority(transaction)})
+                                if (!hasTransaction || isAuditPoint && hasKeyIdentifier) {
+                                    console.log('[Wallet] request sync transaction ', spendTransactionID, 'spending from', transactionID);
+                                    peer.transactionSyncRequest(spendTransactionID, {priority})
                                         .then(() => {
                                             this._transactionRequested[spendTransactionID] = Date.now();
                                             callback();
@@ -570,10 +570,6 @@ class Wallet {
 
         if (data.routing && data.routing_request_node_id !== network.nodeID) {
             eventBus.emit('transactionRoutingResponse:' + data.routing_request_node_id + ':' + transaction.transaction_id, data);
-            if (!config.MODE_NODE_FULL) {
-                delete this._transactionRequested[transaction.transaction_id];
-                return;
-            }
         }
 
         if (this._transactionReceivedFromNetwork[transaction.transaction_id]) {
@@ -659,7 +655,7 @@ class Wallet {
                                                                                                                           from   : node
                                                                                                                       });
 
-                                                                                                                      this.transactionSpendRequest(transaction).then(_ => _).catch(_ => _);
+                                                                                                                      this.transactionSpendRequest(transaction.transaction_id, hasKeyIdentifier, syncPriority).then(_ => _).catch(_ => _);
 
                                                                                                                       if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
                                                                                                                           _.each(transaction.transaction_input_list, inputTransaction => {
@@ -673,7 +669,7 @@ class Wallet {
                                                                                                                                                                                                        hasTransactionData
                                                                                                                                                                                                    ]) : reject()));
                                                                                                                                   }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
-                                                                                                                                      if (!hasTransaction || isAuditPoint && this.transactionHasKeyIdentifier(transaction)) {
+                                                                                                                                      if (!hasTransaction || isAuditPoint && hasKeyIdentifier) {
                                                                                                                                           console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
                                                                                                                                           peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority})
                                                                                                                                               .then(() => this._transactionRequested[inputTransaction.output_transaction_id] = Date.now())
