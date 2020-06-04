@@ -1086,205 +1086,232 @@ class Wallet {
             this._activeAuditPointUpdateRound[auditPointID]           = {};
             this._activeAuditPointUpdateRound[auditPointID].timestamp = new Date().getTime();
             this._activeAuditPointUpdateRound[auditPointID].resolve   = resolve;
-
+            const pendingAuditPointTransactions                       = [];
             database.firstShards((shardID) => {
                 return new Promise((resolve, reject) => {
                     const auditPoint = database.getRepository('audit_point', shardID);
                     auditPoint.getAuditPointCandidateTransactions()
-                              .then(pendingAuditPointTransactions => pendingAuditPointTransactions &&
-                                                                     pendingAuditPointTransactions.length > 0 ? resolve([
-                                  pendingAuditPointTransactions,
-                                  shardID
-                              ]) : reject());
-                });
-            }).then(data => data || [])
-                    .then(([pendingAuditPointTransactions, shardID]) => {
-                        if (!pendingAuditPointTransactions || pendingAuditPointTransactions.length === 0) {
-                            console.log('No transactions to add to audit point available.');
-                            delete this._activeAuditPointUpdateRound[auditPointID];
-                            return resolve();
-                        }
+                              .then(pending => {
+                                  if (pending && pending.length > 0) {
+                                      for (let i = 0; i < pending.length && pendingAuditPointTransactions.length < config.AUDIT_POINT_CANDIDATE_MAX; i++) {
+                                          pendingAuditPointTransactions.push({
+                                              transaction: pending[i],
+                                              shard_id   : shardID
+                                          });
+                                      }
 
-                        console.log('[audit point] audit round for ', auditPointID, ' with ', pendingAuditPointTransactions.length, ' transactions');
-                        const auditVerification = database.getRepository('audit_verification', shardID);
-                        const auditPoint        = database.getRepository('audit_point', shardID);
-                        walletTransactionConsensus._selectNodesForConsensusRound()
-                                                  .then(selectedNodeList => {
-                                                      if (selectedNodeList.length !== config.AUDIT_POINT_NODE_COUNT || !self._activeAuditPointUpdateRound[auditPointID]) {
-                                                          console.log('[audit point] No node ready for this audit round');
-                                                          delete this._activeAuditPointUpdateRound[auditPointID];
-                                                          return resolve();
+                                      if (pendingAuditPointTransactions.length >= config.AUDIT_POINT_CANDIDATE_MAX) {
+                                          return resolve();
+                                      }
+                                  }
+                                  reject();
+                              });
+                });
+            }).then(() => {
+                if (pendingAuditPointTransactions.length === 0) {
+                    console.log('No transactions to add to audit point available.');
+                    delete this._activeAuditPointUpdateRound[auditPointID];
+                    return resolve();
+                }
+
+                console.log('[audit point] audit round for ', auditPointID, ' with ', pendingAuditPointTransactions.length, ' transactions');
+                walletTransactionConsensus._selectNodesForConsensusRound()
+                                          .then(selectedNodeList => {
+                                              if (selectedNodeList.length !== config.AUDIT_POINT_NODE_COUNT || !self._activeAuditPointUpdateRound[auditPointID]) {
+                                                  console.log('[audit point] No node ready for this audit round');
+                                                  delete this._activeAuditPointUpdateRound[auditPointID];
+                                                  return resolve();
+                                              }
+
+                                              self._activeAuditPointUpdateRound[auditPointID].nodes = {};
+
+                                              eventBus.on('audit_point_validation_response:' + auditPointID, (data, ws) => {
+                                                  if (!self._activeAuditPointUpdateRound[auditPointID]) {
+                                                      eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+                                                      return resolve();
+                                                  }
+                                                  else if (!self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] || self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node].replied) {
+                                                      return;
+                                                  }
+
+                                                  console.log('[audit point] Received reply for audit round', auditPointID, ' from ', ws.node, ' with ', data.transaction_id_list.length, ' validated out of ', pendingAuditPointTransactions.length);
+
+                                                  self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node]['transactions'] = data.transaction_id_list;
+                                                  self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node]['replied']      = true;
+
+                                                  // check if done
+                                                  for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
+                                                      if (self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].replied === false) {
+                                                          return; //stop
+                                                          // here
+                                                      }
+                                                  }
+
+                                                  self._activeAuditPointUpdateRound[auditPointID].updatingDB = true;
+
+                                                  // here we have all
+                                                  // replies
+
+                                                  console.log('[audit point] audit round ', auditPointID, ' is being processed');
+
+                                                  let newTransactions           = {};
+                                                  let updateTransactions        = {};
+                                                  let newAuditPointTransactions = {};
+
+
+                                                  // check if done
+                                                  async.eachSeries(Array.from(new Set(pendingAuditPointTransactions)), (data, callback) => {
+                                                      const pendingTransaction = data.transaction;
+                                                      const shardID            = data.shard_id;
+                                                      const auditVerification  = database.getRepository('audit_verification', shardID);
+
+                                                      if (!newTransactions[shardID]) {
+                                                          newTransactions[shardID] = [];
                                                       }
 
-                                                      self._activeAuditPointUpdateRound[auditPointID].nodes = {};
+                                                      if (!updateTransactions[shardID]) {
+                                                          updateTransactions[shardID] = [];
+                                                      }
 
-                                                      eventBus.on('audit_point_validation_response:' + auditPointID, (data, ws) => {
-                                                          if (!self._activeAuditPointUpdateRound[auditPointID]) {
-                                                              eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
-                                                              return resolve();
+                                                      if (!newAuditPointTransactions[shardID]) {
+                                                          newAuditPointTransactions[shardID] = [];
+                                                      }
+
+                                                      if (!self._activeAuditPointUpdateRound[auditPointID]) {
+                                                          return callback();
+                                                      }
+
+                                                      let validationCount = 0;
+                                                      for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
+                                                          if (_.includes(self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].transactions, pendingTransaction.transaction_id)) {
+                                                              validationCount += 1;
                                                           }
-                                                          else if (!self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] || self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node].replied) {
-                                                              return;
-                                                          }
+                                                      }
+                                                      let validated = validationCount >= 2 / 3 * config.AUDIT_POINT_NODE_COUNT;
+                                                      auditVerification.getAuditVerification(pendingTransaction.transaction_id)
+                                                                       .then(auditVerification => {
 
-                                                          console.log('[audit point] Received reply for audit round', auditPointID, ' from ', ws.node, ' with ', data.transaction_id_list.length, ' validated out of ', pendingAuditPointTransactions.length);
+                                                                           let newInfo = false;
+                                                                           if (!auditVerification) {
+                                                                               auditVerification = {
+                                                                                   verification_count: 0,
+                                                                                   attempt_count     : 0,
+                                                                                   verified_date     : null,
+                                                                                   transaction_id    : pendingTransaction.transaction_id,
+                                                                                   shard_id          : pendingTransaction.shard_id
+                                                                               };
+                                                                               newInfo           = true;
+                                                                           }
 
-                                                          self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node]['transactions'] = data.transaction_id_list;
-                                                          self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node]['replied']      = true;
+                                                                           if (auditVerification.is_verified && auditVerification.is_verified === 1) {
+                                                                               return callback();
+                                                                           }
 
-                                                          // check if done
-                                                          for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
-                                                              if (self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].replied === false) {
-                                                                  return; //stop
-                                                                  // here
-                                                              }
-                                                          }
-
-                                                          self._activeAuditPointUpdateRound[auditPointID].updatingDB = true;
-
-                                                          // here we have all
-                                                          // replies
-
-                                                          console.log('[audit point] audit round ', auditPointID, ' is being processed');
-
-                                                          let newTransactions           = [];
-                                                          let updateTransactions        = [];
-                                                          let newAuditPointTransactions = [];
-
-
-                                                          // check if done
-                                                          async.eachSeries(Array.from(new Set(pendingAuditPointTransactions)), (pendingTransaction, callback) => {
-
-                                                              if (!self._activeAuditPointUpdateRound[auditPointID]) {
-                                                                  return callback();
-                                                              }
-
-                                                              let validationCount = 0;
-                                                              for (let wsNode of _.keys(self._activeAuditPointUpdateRound[auditPointID].nodes)) {
-                                                                  if (_.includes(self._activeAuditPointUpdateRound[auditPointID].nodes[wsNode].transactions, pendingTransaction.transaction_id)) {
-                                                                      validationCount += 1;
-                                                                  }
-                                                              }
-                                                              let validated = validationCount >= 2 / 3 * config.AUDIT_POINT_NODE_COUNT;
-                                                              auditVerification.getAuditVerification(pendingTransaction.transaction_id)
-                                                                               .then(auditVerification => {
-
-                                                                                   let newInfo = false;
-                                                                                   if (!auditVerification) {
-                                                                                       auditVerification = {
-                                                                                           verification_count: 0,
-                                                                                           attempt_count     : 0,
-                                                                                           verified_date     : null,
-                                                                                           transaction_id    : pendingTransaction.transaction_id,
-                                                                                           shard_id          : pendingTransaction.shard_id
-                                                                                       };
-                                                                                       newInfo           = true;
-                                                                                   }
-
-                                                                                   if (auditVerification.is_verified && auditVerification.is_verified === 1) {
-                                                                                       return callback();
-                                                                                   }
-
-                                                                                   if (validated) {
-                                                                                       auditVerification.verification_count++;
-                                                                                       auditVerification.attempt_count++;
-                                                                                       if (auditVerification.verification_count >= config.AUDIT_POINT_VALIDATION_REQUIRED) {
-                                                                                           newInfo ? newTransactions.push([
-                                                                                                       auditVerification.transaction_id,
-                                                                                                       auditVerification.verification_count,
-                                                                                                       auditVerification.attempt_count,
-                                                                                                       ntp.now(),
-                                                                                                       auditVerification.shard_id
-                                                                                                   ])
-                                                                                                   : updateTransactions.push([
-                                                                                                       auditVerification.verification_count,
-                                                                                                       auditVerification.attempt_count,
-                                                                                                       ntp.now(),
-                                                                                                       1,
-                                                                                                       auditVerification.transaction_id
-                                                                                                   ]);
-                                                                                           newAuditPointTransactions.push([
-                                                                                               auditPointID,
+                                                                           if (validated) {
+                                                                               auditVerification.verification_count++;
+                                                                               auditVerification.attempt_count++;
+                                                                               if (auditVerification.verification_count >= config.AUDIT_POINT_VALIDATION_REQUIRED) {
+                                                                                   newInfo ? newTransactions[shardID].push([
                                                                                                auditVerification.transaction_id,
+                                                                                               auditVerification.verification_count,
+                                                                                               auditVerification.attempt_count,
+                                                                                               ntp.now(),
                                                                                                auditVerification.shard_id
+                                                                                           ])
+                                                                                           : updateTransactions[shardID].push([
+                                                                                               auditVerification.verification_count,
+                                                                                               auditVerification.attempt_count,
+                                                                                               ntp.now(),
+                                                                                               1,
+                                                                                               auditVerification.transaction_id
                                                                                            ]);
-                                                                                       }
-                                                                                       else {
-                                                                                           newInfo ? newTransactions.push([
-                                                                                                       auditVerification.transaction_id,
-                                                                                                       auditVerification.verification_count,
-                                                                                                       auditVerification.attempt_count,
-                                                                                                       null,
-                                                                                                       auditVerification.shard_id
-                                                                                                   ])
-                                                                                                   : updateTransactions.push([
-                                                                                                       auditVerification.verification_count,
-                                                                                                       auditVerification.attempt_count,
-                                                                                                       null,
-                                                                                                       0,
-                                                                                                       auditVerification.transaction_id
-                                                                                                   ]);
-                                                                                       }
-                                                                                   }
-                                                                                   else {
-                                                                                       auditVerification.attempt_count++;
-                                                                                       newInfo ? newTransactions.push([
-                                                                                                   auditVerification.transaction_id,
-                                                                                                   auditVerification.verification_count,
-                                                                                                   auditVerification.attempt_count,
-                                                                                                   null,
-                                                                                                   auditVerification.shard_id
-                                                                                               ])
-                                                                                               : updateTransactions.push([
-                                                                                                   auditVerification.verification_count,
-                                                                                                   auditVerification.attempt_count,
-                                                                                                   null,
-                                                                                                   0,
-                                                                                                   auditVerification.transaction_id
-                                                                                               ]);
-                                                                                   }
+                                                                                   newAuditPointTransactions[shardID].push([
+                                                                                       auditPointID,
+                                                                                       auditVerification.transaction_id,
+                                                                                       auditVerification.shard_id
+                                                                                   ]);
+                                                                               }
+                                                                               else {
+                                                                                   newInfo ? newTransactions[shardID].push([
+                                                                                               auditVerification.transaction_id,
+                                                                                               auditVerification.verification_count,
+                                                                                               auditVerification.attempt_count,
+                                                                                               null,
+                                                                                               auditVerification.shard_id
+                                                                                           ])
+                                                                                           : updateTransactions[shardID].push([
+                                                                                               auditVerification.verification_count,
+                                                                                               auditVerification.attempt_count,
+                                                                                               null,
+                                                                                               0,
+                                                                                               auditVerification.transaction_id
+                                                                                           ]);
+                                                                               }
+                                                                           }
+                                                                           else {
+                                                                               auditVerification.attempt_count++;
+                                                                               newInfo ? newTransactions[shardID].push([
+                                                                                           auditVerification.transaction_id,
+                                                                                           auditVerification.verification_count,
+                                                                                           auditVerification.attempt_count,
+                                                                                           null,
+                                                                                           auditVerification.shard_id
+                                                                                       ])
+                                                                                       : updateTransactions[shardID].push([
+                                                                                           auditVerification.verification_count,
+                                                                                           auditVerification.attempt_count,
+                                                                                           null,
+                                                                                           0,
+                                                                                           auditVerification.transaction_id
+                                                                                       ]);
+                                                                           }
 
-                                                                                   callback();
+                                                                           callback();
 
-                                                                               });
-                                                          }, () => {
+                                                                       });
+                                                  }, () => {
 
-                                                              console.log('[audit point] audit round ', auditPointID, ' add ', newTransactions.length, ' audit verifications');
-                                                              auditVerification.addAuditVerificationEntries(newTransactions)
-                                                                               .then(() => {
-                                                                                   console.log('[audit point] audit round ', auditPointID, ' update ', updateTransactions.length, ' audit verifications');
-                                                                                   return auditVerification.updateAuditVerification(updateTransactions);
-                                                                               })
-                                                                               .then(() => {
-                                                                                   console.log('[audit point] audit round ', auditPointID, '  add ', newAuditPointTransactions.length, ' transactions to audit point');
-                                                                                   return auditPoint.addTransactionToAuditPointEntries(newAuditPointTransactions);
-                                                                               })
-                                                                               .then(() => {
-                                                                                   eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
-                                                                                   delete self._activeAuditPointUpdateRound[auditPointID];
-                                                                                   console.log('[audit point] audit round ', auditPointID, ' finished after receiving all replies');
-                                                                                   resolve();
-                                                                               }).catch((err) => {
-                                                                  eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
-                                                                  delete self._activeAuditPointUpdateRound[auditPointID];
-                                                                  console.log('[audit point] Error on audit round ', auditPointID, '. [message]: ', err);
-                                                                  resolve();
-                                                              });
-                                                          });
-
-                                                      });
-
-                                                      _.each(selectedNodeList, ws => {
-                                                          console.log('[audit point] Ask ', ws.node, ' for audit point validation');
-                                                          self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] = {replied: false};
-                                                          peer.auditPointValidationRequest({
-                                                              audit_point_id     : auditPointID,
-                                                              transaction_id_list: _.map(pendingAuditPointTransactions, transaction => transaction.transaction_id)
-                                                          }, ws);
+                                                      async.eachSeries(_.keys(newTransactions), (shardID, callback) => {
+                                                          const auditVerification = database.getRepository('audit_verification', shardID);
+                                                          const auditPoint        = database.getRepository('audit_point', shardID);
+                                                          console.log('[audit point] audit round ', auditPointID, ' add ', newTransactions[shardID].length, ' audit verifications');
+                                                          auditVerification.addAuditVerificationEntries(newTransactions[shardID])
+                                                                           .then(() => {
+                                                                               console.log('[audit point] audit round ', auditPointID, ' update ', updateTransactions[shardID].length, ' audit verifications');
+                                                                               return auditVerification.updateAuditVerification(updateTransactions[shardID]);
+                                                                           })
+                                                                           .then(() => {
+                                                                               console.log('[audit point] audit round ', auditPointID, '  add ', newAuditPointTransactions[shardID].length, ' transactions to audit point');
+                                                                               return auditPoint.addTransactionToAuditPointEntries(newAuditPointTransactions[shardID]);
+                                                                           })
+                                                                           .then(() => {
+                                                                               console.log('[audit point] audit round ', auditPointID, ' finished after receiving all replies');
+                                                                               callback();
+                                                                           })
+                                                                           .catch((err) => {
+                                                                               console.err('[audit point] Error on audit round ', auditPointID, '. [message]: ', err);
+                                                                               callback();
+                                                                           });
+                                                      }, () => {
+                                                          eventBus.removeAllListeners('audit_point_validation_response:' + auditPointID);
+                                                          delete self._activeAuditPointUpdateRound[auditPointID];
+                                                          resolve();
                                                       });
                                                   });
 
-                    });
+                                              });
+
+                                              _.each(selectedNodeList, ws => {
+                                                  console.log('[audit point] Ask ', ws.node, ' for audit point validation');
+                                                  self._activeAuditPointUpdateRound[auditPointID].nodes[ws.node] = {replied: false};
+                                                  peer.auditPointValidationRequest({
+                                                      audit_point_id     : auditPointID,
+                                                      transaction_id_list: _.map(pendingAuditPointTransactions, data => data.transaction.transaction_id)
+                                                  }, ws);
+                                              });
+                                          });
+
+            });
         });
 
     }
