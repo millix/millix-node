@@ -1,4 +1,4 @@
-import services from '../../core/serices/services';
+import services from '../../core/services/services';
 import Endpoint from '../endpoint';
 
 

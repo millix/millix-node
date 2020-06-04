@@ -4,7 +4,7 @@ import wallet from './core/wallet/wallet';
 import config from './core/config/config';
 import genesisConfig from './core/genesis/genesis-config';
 import request from 'request';
-import services from './core/serices/services';
+import services from './core/services/services';
 import logManager from './core/log-manager';
 
 const argv = require('yargs')
