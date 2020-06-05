@@ -1618,30 +1618,35 @@ export default class Transaction {
 
     deleteTransaction(transactionID) {
         return new Promise((resolve) => {
-            this.database.serialize(() => {
-                this.database.run('BEGIN TRANSACTION');
-                this.database.run('DELETE FROM transaction_input WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning inputs. [message] ', err);
-                });
-                this.database.run('DELETE FROM transaction_output WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning outputs. [message] ', err);
-                });
-                this.database.run('DELETE FROM transaction_signature WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning signatures. [message] ', err);
-                });
-                this.database.run('DELETE FROM transaction_parent WHERE transaction_id_child = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning parents. [message] ', err);
-                });
-                this.database.run('DELETE FROM audit_verification WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning audit verifications. [message] ', err);
-                });
-                this.database.run('DELETE FROM audit_point WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning audit point. [message] ', err);
-                });
-                this.database.run('DELETE FROM `transaction` WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning transactions. [message] ', err);
-                });
-                this.database.run('COMMIT', () => resolve());
+            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], unlock => {
+                this.database.serialize(() => {
+                    this.database.run('BEGIN TRANSACTION');
+                    this.database.run('DELETE FROM transaction_input WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning inputs. [message] ', err);
+                    });
+                    this.database.run('DELETE FROM transaction_output WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning outputs. [message] ', err);
+                    });
+                    this.database.run('DELETE FROM transaction_signature WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning signatures. [message] ', err);
+                    });
+                    this.database.run('DELETE FROM transaction_parent WHERE transaction_id_child = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning parents. [message] ', err);
+                    });
+                    this.database.run('DELETE FROM audit_verification WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning audit verifications. [message] ', err);
+                    });
+                    this.database.run('DELETE FROM audit_point WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning audit point. [message] ', err);
+                    });
+                    this.database.run('DELETE FROM `transaction` WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
+                    });
+                    this.database.run('COMMIT', () => {
+                        resolve();
+                        unlock();
+                    });
+                }, true);
             });
         });
     }
