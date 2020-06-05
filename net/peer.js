@@ -680,16 +680,19 @@ class Peer {
     }
 
     transactionSyncRequest(transactionID, options = {}) {
-        const {depth: currentDepth, request_node_id: requestNodeID, routing, priority} = options;
+        const {depth: currentDepth, request_node_id: requestNodeID, routing, priority, dispatch_request: dispatchRequest} = options;
         return new Promise((resolve, reject) => {
 
             walletSync.add(transactionID, {
-                delay: config.NETWORK_LONG_TIME_WAIT_MAX * 10,
+                delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
                 priority
             });
 
             if (network.registeredClients.length === 0 || this.pendingTransactionSync[transactionID]) {
                 return reject();
+            }
+            else if (!dispatchRequest) {
+                return resolve();
             }
 
             console.log('[peer] requesting transaction sync for :', transactionID);
