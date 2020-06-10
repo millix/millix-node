@@ -19,6 +19,8 @@ class Network {
         this._nodeList           = {};
         this._connectionRegistry = {};
         this._nodeRegistry       = {};
+        this._inboundRegistry    = {};
+        this._outboundRegistry   = {};
         this._ws                 = null;
         this.nodeID              = null;
         this.nodeConnectionID    = this.generateNewID();
@@ -64,7 +66,7 @@ class Network {
             return Promise.resolve();
         }
 
-        if (this.registeredClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        if (_.keys(this._outboundRegistry).length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
             console.log('[network outgoing] outbound connections maxed out, rejecting new client ');
             return Promise.resolve();
         }
@@ -207,7 +209,7 @@ class Network {
 
             console.log('[network income] got connection from ' + ws.node + ', host ' + ip);
 
-            if (this.registeredClients.length >= config.NODE_CONNECTION_INBOUND_MAX) {
+            if (_.keys(this._inboundRegistry).length >= config.NODE_CONNECTION_INBOUND_MAX) {
                 console.log('[network income] inbound connections maxed out, rejecting new client ' + ip);
                 ws.close(1000, '[network income] inbound connections maxed out'); // 1001 doesn't work in cordova
                 return;
@@ -507,17 +509,19 @@ class Network {
 
     _registerWebsocketToNodeID(ws) {
 
-        if (this.registeredClients.length >= config.NODE_CONNECTION_INBOUND_MAX || this.registeredClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
-            console.log('[network income] inbound connections maxed out, rejecting new client ');
-            ws.close(1000, '[network income] inbound connections maxed out'); // 1001
-            // doesn't
-            // work
-            // in
-            // cordova
+        if (ws.inBound && _.keys(this._inboundRegistry).length >= config.NODE_CONNECTION_INBOUND_MAX) {
+            console.log('[network inbound] connections maxed out, rejecting new client ');
+            ws.close(1000, '[network inbound] connections maxed out');
+            return false;
+        }
+        else if (ws.outBound && _.keys(this._outboundRegistry).length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+            console.log('[network outbound] connections maxed out, rejecting new client ');
+            ws.close(1000, '[network outbound] connections maxed out');
             return false;
         }
 
         let nodeID = ws.nodeID;
+        // global registry
         if (this._nodeRegistry[nodeID]) {
             this._nodeRegistry[nodeID].push(ws);
         }
@@ -525,6 +529,16 @@ class Network {
             console.log('[network] node id ' + nodeID + ' registered');
             this._nodeRegistry[nodeID] = [ws];
         }
+
+        // inbound or outbound registry
+        const registry = ws.inBound ? this._inboundRegistry : this._outboundRegistry;
+        if (registry[nodeID]) {
+            registry[nodeID].push(ws);
+        }
+        else {
+            registry[nodeID] = [ws];
+        }
+
         console.log('[network] node ' + ws.node + ' registered with node id ' + nodeID);
         return true;
     }
@@ -550,11 +564,22 @@ class Network {
     }
 
     _unregisterWebsocket(ws) {
-        ws.nodeID && _.pull(this._nodeRegistry[ws.nodeID], ws);
-        if (this._nodeRegistry[ws.nodeID] && this._nodeRegistry[ws.nodeID].length === 0) {
-            delete this._nodeRegistry[ws.nodeID];
+        if (ws.nodeID) {
+            // remove from global registry
+            _.pull(this._nodeRegistry[ws.nodeID], ws);
+            if (this._nodeRegistry[ws.nodeID] && this._nodeRegistry[ws.nodeID].length === 0) {
+                delete this._nodeRegistry[ws.nodeID];
+            }
+
+            // remove from inbound or outbound registry
+            const registry = ws.inBound ? this._inboundRegistry : this._outboundRegistry;
+            _.pull(registry[ws.nodeID], ws);
+            if (registry[ws.nodeID] && registry[ws.nodeID].length === 0) {
+                delete registry[ws.nodeID];
+            }
         }
 
+        // remove from connection registry
         ws.connectionID && _.pull(this._connectionRegistry[ws.connectionID], ws);
         if (this._connectionRegistry[ws.connectionID] && this._connectionRegistry[ws.connectionID].length === 0) {
             delete this._connectionRegistry[ws.connectionID];
@@ -624,8 +649,13 @@ class Network {
             wss.close();
         }
 
+        // clean inbound and outbound registries
+        this._inboundRegistry  = {};
+        this._outboundRegistry = {};
+        // disconnect websocket and clean global registry
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
         this._nodeRegistry       = {};
+        // clean connection registry
         this._connectionRegistry = {};
     }
 }
