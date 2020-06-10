@@ -256,7 +256,7 @@ class Network {
                                 this.addNode(prefix, ipAddress, port, portApi);
                             }
                         });
-                        this.retryConnectToInactiveNodes();
+                        this.retryConnectToInactiveNodes().then(_ => _).catch(_ => _);
                     });
                 });
     }
@@ -273,7 +273,7 @@ class Network {
             }
         });
 
-        console.log('[network] dead nodes size:', inactiveClients.size, ' | active nodes: (', this.registeredClients.length, '/', config.NODE_CONNECTION_INBOUND_MAX, ')');
+        console.log('[network] dead nodes size:', inactiveClients.size, ' | active nodes: (', this.registeredClients.length, '/', config.NODE_CONNECTION_INBOUND_MAX + config.NODE_CONNECTION_OUTBOUND_MAX, ')');
 
         inactiveClients.forEach(node => {
             this._connectTo(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id).catch(this.noop);
@@ -459,7 +459,10 @@ class Network {
                 };
                 this._nodeList[ws.node] = node;
                 database.getRepository('node')
-                        .addNode(node)
+                        .addNode({
+                            ...node,
+                            status: 2
+                        })
                         .then(() => eventBus.emit('node_list_update'))
                         .catch(() => {
                         });
@@ -474,9 +477,13 @@ class Network {
                     'node_id',
                     'node'
                 ]);
+                ws.node                       = registry.node;
                 this._nodeList[registry.node] = node;
                 database.getRepository('node')
-                        .addNode(node)
+                        .addNode({
+                            ...node,
+                            status: 2
+                        })
                         .then(() => eventBus.emit('node_list_update'))
                         .catch(() => {
                         });
@@ -577,6 +584,12 @@ class Network {
             if (registry[ws.nodeID] && registry[ws.nodeID].length === 0) {
                 delete registry[ws.nodeID];
             }
+
+            database.getRepository('node')
+                    .updateNode({
+                        ...this._nodeList[ws.node],
+                        status: !this._nodeRegistry[ws.nodeID] ? 1 : 2
+                    });
         }
 
         // remove from connection registry
@@ -619,7 +632,9 @@ class Network {
         this.nodeConnectionID = this.generateNewID();
         return new Promise(resolve => {
             console.log('[network] starting network');
-            publicIp.v4()
+            database.getRepository('node')
+                    .resetNodeState()
+                    .then(() => publicIp.v4())
                     .then(ip => {
                         console.log('[network] node public-ip', ip);
                         this.nodePublicIp = ip;

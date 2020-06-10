@@ -93,12 +93,13 @@ export default class Node {
     addNode(node) {
         let url = node.node_prefix + node.node_ip_address + ':' + node.node_port;
         return new Promise((resolve, reject) => {
-            this.database.run('INSERT INTO node (node_prefix, node_ip_address, node_port, node_port_api, node_id) VALUES (?,?,?,?,?)', [
+            this.database.run('INSERT INTO node (node_prefix, node_ip_address, node_port, node_port_api, node_id, status) VALUES (?,?,?,?,?,?)', [
                 node.node_prefix,
                 node.node_ip_address,
                 node.node_port,
                 node.node_port_api,
-                node.node_id
+                node.node_id,
+                node.status === undefined ? 1 : node.status
             ], (err) => {
                 if (err) {
                     err.message.startsWith('SQLITE_CONSTRAINT') ? console.log(`[database] node ${url} already exits`) : console.error(err.message);
@@ -106,8 +107,9 @@ export default class Node {
                         return reject(err.message);
                     }
                     else {
-                        this.database.run('UPDATE node SET node_id = ?, update_date = ? WHERE node_prefix = ? AND node_ip_address = ? AND node_port = ? AND node_port_api = ?', [
+                        this.database.run('UPDATE node SET node_id = ?, status = ?, update_date = ? WHERE node_prefix = ? AND node_ip_address = ? AND node_port = ? AND node_port_api = ?', [
                             node.node_id,
+                            node.status === undefined ? 1 : node.status,
                             Math.floor(ntp.now().getTime() / 1000),
                             node.node_prefix,
                             node.node_ip_address,
@@ -121,6 +123,29 @@ export default class Node {
                     }
                 }
                 resolve();
+            });
+        });
+    }
+
+    updateNode(node) {
+        return new Promise(resolve => {
+            this.database.run('UPDATE node SET status = ?, update_date = ? WHERE node_prefix = ? AND node_ip_address = ? AND node_port = ? AND node_port_api = ?', [
+                node.status === undefined ? 1 : node.status,
+                Math.floor(ntp.now().getTime() / 1000),
+                node.node_prefix,
+                node.node_ip_address,
+                node.node_port,
+                node.node_port_api
+            ], () => {
+                return resolve();
+            });
+        });
+    }
+
+    resetNodeState() {
+        return new Promise(resolve => {
+            this.database.run('UPDATE node SET status = 1', () => {
+                return resolve();
             });
         });
     }
