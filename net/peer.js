@@ -812,7 +812,18 @@ class Peer {
             content: nodes,
             from   : ws.node
         });
-        nodes.forEach(data => network.addNode(data.node_prefix, data.node_ip_address, data.node_port, data.node_id));
+        const nodeRepository = database.getRepository('node');
+        async.eachSeries(nodes, (data, callback) => {
+            data.node_port_api = data.node_port_api || config.NODE_PORT_API;
+            if (network.addNode(data.node_prefix, data.node_ip_address, data.node_port, data.node_port_api, data.node_id)) {
+                nodeRepository.addNode(data)
+                              .then(() => callback())
+                              .catch(() => callback());
+            }
+            else {
+                callback();
+            }
+        });
     }
 
     sendConnectionReady(ws) {

@@ -107,15 +107,18 @@ export default class Node {
                         return reject(err.message);
                     }
                     else {
-                        this.database.run('UPDATE node SET node_id = ?, status = ?, update_date = ? WHERE node_prefix = ? AND node_ip_address = ? AND node_port = ? AND node_port_api = ?', [
-                            node.node_id,
-                            node.status === undefined ? 1 : node.status,
-                            Math.floor(ntp.now().getTime() / 1000),
-                            node.node_prefix,
-                            node.node_ip_address,
-                            node.node_port,
-                            node.node_port_api
-                        ], () => {
+                        const set               = _.pick(node, [
+                            'status',
+                            'node_id'
+                        ]);
+                        set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
+                        const {sql, parameters} = Database.buildUpdate('UPDATE node', set, _.pick(node, [
+                            'node_prefix',
+                            'node_ip_address',
+                            'node_port',
+                            'node_port_api'
+                        ]));
+                        this.database.run(sql, parameters, () => {
                             console.log(`[database] update node ${url} with id ${node.node_id}`);
                             return reject();
                         });
@@ -129,14 +132,18 @@ export default class Node {
 
     updateNode(node) {
         return new Promise(resolve => {
-            this.database.run('UPDATE node SET status = ?, update_date = ? WHERE node_prefix = ? AND node_ip_address = ? AND node_port = ? AND node_port_api = ?', [
-                node.status === undefined ? 1 : node.status,
-                Math.floor(ntp.now().getTime() / 1000),
-                node.node_prefix,
-                node.node_ip_address,
-                node.node_port,
-                node.node_port_api
-            ], () => {
+            const set               = _.pick(node, [
+                'status',
+                'node_id'
+            ]);
+            set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
+            const {sql, parameters} = Database.buildUpdate('UPDATE node', set, _.pick(node, [
+                'node_prefix',
+                'node_ip_address',
+                'node_port',
+                'node_port_api'
+            ]));
+            this.database.run(sql, parameters, () => {
                 return resolve();
             });
         });

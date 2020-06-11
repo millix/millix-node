@@ -93,6 +93,61 @@ export class Database {
         };
     }
 
+    static buildUpdate(sql, set, where) {
+        let parameters = [];
+        let first      = true;
+        _.each(_.keys(set), key => {
+            if (set[key] === undefined) {
+                return;
+            }
+
+            if (!first) {
+                sql += ', ';
+            }
+            else {
+                sql += ' SET ';
+                first = false;
+            }
+
+            sql += `${key} = ?`;
+
+            parameters.push(set[key]);
+        });
+        first = true;
+        if (where) {
+            _.each(_.keys(where), key => {
+                if (where[key] === undefined) {
+                    return;
+                }
+
+                if (!first) {
+                    sql += ' AND ';
+                }
+                else {
+                    sql += ' WHERE ';
+                    first = false;
+                }
+
+                if (key.endsWith('_begin') || key.endsWith('_min')) {
+                    sql += `${key.substring(0, key.lastIndexOf('_'))} >= ?`;
+                }
+                else if (key.endsWith('_end') || key.endsWith('_max')) {
+                    sql += `${key.substring(0, key.lastIndexOf('_'))} <= ?`;
+                }
+                else {
+                    sql += `${key} = ?`;
+                }
+
+                parameters.push(where[key]);
+            });
+        }
+
+        return {
+            sql,
+            parameters
+        };
+    }
+
     _initializeMillixSqlite3() {
         return new Promise(resolve => {
             const sqlite3                       = require('sqlite3');

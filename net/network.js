@@ -56,7 +56,9 @@ class Network {
                 node_port_api  : portApi,
                 node_id        : id
             };
+            return true;
         }
+        return false;
     }
 
     // general network functions
