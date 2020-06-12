@@ -90,6 +90,15 @@ export default class Node {
         });
     }
 
+    getNode(where) {
+        return new Promise(resolve => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM node', where);
+            this.database.get(sql, parameters, (err, row) => {
+                resolve(row);
+            });
+        });
+    }
+
     addNode(node) {
         let url = node.node_prefix + node.node_ip_address + ':' + node.node_port;
         return new Promise((resolve, reject) => {

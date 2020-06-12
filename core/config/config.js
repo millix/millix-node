@@ -45,8 +45,8 @@ export const AUDIT_POINT_PRUNE_AGE_MIN                 = 1440;
 export const AUDIT_POINT_PRUNE_COUNT                   = 250;
 export const TRANSACTION_PRUNE_AGE_MIN                 = 1440;
 export const TRANSACTION_PRUNE_COUNT                   = 1000;
-export const NODE_CONNECTION_INBOUND_MAX               = 10;
-export const NODE_CONNECTION_OUTBOUND_MAX              = 10;
+export const NODE_CONNECTION_INBOUND_MAX               = 5;
+export const NODE_CONNECTION_OUTBOUND_MAX              = 5;
 export const HEARTBEAT_TIMEOUT                         = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT = 100;
@@ -76,6 +76,9 @@ export const NODE_CERTIFICATE_PATH                     = DATA_BASE_DIR + '/node_
 export const WALLET_KEY_PATH                           = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH                           = DATA_BASE_DIR + '/job.json';
 export const SHARD_ZERO_NAME                           = 'shard_zero';
+export const PEER_ROTATION_MORE_THAN_AVERAGE           = 0.5;
+export const PEER_ROTATION_MORE_THAN_MOST              = 0.2;
+export const PEER_ROTATION_MORE_THAN_ALL               = 0.01;
 
 if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.MAX_CONNECTIONS               = 1;
@@ -106,6 +109,8 @@ export default {
     MODE_TEST,
     NODE_TEST_HOST,
     NODE_KEY_PATH,
+    NODE_PORT_API,
+    NODE_TEST_PORT,
     NODE_CERTIFICATE_KEY_PATH,
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
@@ -139,8 +144,9 @@ export default {
     WALLET_TRANSACTION_DEFAULT_VERSION,
     WALLET_SPENT_TRANSACTION_PRUNE,
     WALLET_LOG_SIZE_MAX,
-    NODE_PORT_API,
-    NODE_TEST_PORT,
+    PEER_ROTATION_MORE_THAN_AVERAGE,
+    PEER_ROTATION_MORE_THAN_MOST,
+    PEER_ROTATION_MORE_THAN_ALL,
     JOB_CONFIG_PATH
 };
 

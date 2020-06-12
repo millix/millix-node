@@ -1281,6 +1281,21 @@ export default class Transaction {
         });
     }
 
+    getTransactionCount() {
+        return new Promise((resolve, reject) => {
+            this.database.get(
+                'SELECT count(*) as count FROM `transaction`',
+                (err, row) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    resolve(row.count);
+                }
+            );
+        });
+    }
+
     getFreeTransactionsCount() {
         return new Promise((resolve, reject) => {
             this.database.get(

@@ -45,7 +45,21 @@ class Service {
                                                         'fee_ask_request_byte': 20
                                                     }));
                                                     return nodeRepository.addNodeAttribute(network.nodeID, 'shard_protocol', JSON.stringify(shardAttributeList));
-                                                }).then(() => resolve()).catch(() => resolve());
+                                                })
+                                                .then(() => {
+                                                    return database.applyShards((shardID) => {
+                                                        return new Promise(resolve => {
+                                                            database.getRepository('transaction', shardID)
+                                                                    .getTransactionCount()
+                                                                    .then(count => resolve(count))
+                                                                    .catch(() => resolve(0));
+                                                        });
+                                                    }).then(counts => {
+                                                        const totalTransactions = _.sum(counts);
+                                                        return nodeRepository.addNodeAttribute(network.nodeID, 'transaction_count', totalTransactions);
+                                                    });
+                                                })
+                                                .then(() => resolve()).catch(() => resolve());
                              });
                          })
                          .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))

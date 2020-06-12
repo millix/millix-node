@@ -6,8 +6,7 @@ import _ from 'lodash';
 import database from '../database/database';
 import async from 'async';
 import walletSync from '../core/wallet/wallet-sync';
-import walletUtils from '../core/wallet/wallet-utils';
-import server from '../api/server';
+import peerRotation from './peer-rotation';
 
 
 class Peer {
@@ -823,6 +822,10 @@ class Peer {
             else {
                 callback();
             }
+        }, () => {
+            nodeRepository.addNodeAttribute(ws.nodeID, 'peer_count', nodes.length)
+                          .then(_ => _)
+                          .catch(_ => _);
         });
     }
 
@@ -900,6 +903,10 @@ class Peer {
                           .then(_ => _)
                           .catch(_ => _);
         }
+    }
+
+    _doRotationProactive() {
+        return peerRotation.doRotationProactive();
     }
 
     initialize() {

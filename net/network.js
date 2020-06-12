@@ -34,6 +34,18 @@ class Network {
         return _.map(_.filter(_.values(this._nodeRegistry), listWS => listWS.length > 0), listWS => listWS[0]);
     }
 
+    get outboundClients() {
+        return _.map(_.filter(_.values(this._outboundRegistry), listWS => listWS.length > 0), listWS => listWS[0]);
+    }
+
+    get inboundClients() {
+        return _.map(_.filter(_.values(this._inboundRegistry), listWS => listWS.length > 0), listWS => listWS[0]);
+    }
+
+    get nodeList() {
+        return this._nodeList;
+    }
+
     generateNewID() {
         return crypto.randomBytes(20).toString('hex');
     }
@@ -81,7 +93,10 @@ class Network {
                 return reject();
             }
 
-            const ws = new WebSocket(url, {rejectUnauthorized: false});
+            const ws = new WebSocket(url, {
+                rejectUnauthorized: false,
+                handshakeTimeout  : 2000
+            });
 
             ws.setMaxListeners(20); // avoid warning
 
@@ -599,6 +614,7 @@ class Network {
         if (this._connectionRegistry[ws.connectionID] && this._connectionRegistry[ws.connectionID].length === 0) {
             delete this._connectionRegistry[ws.connectionID];
         }
+        ws.onUnregister && ws.onUnregister();
     }
 
     _onGetNodeAddress(data, ws) {
