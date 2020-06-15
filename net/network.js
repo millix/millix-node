@@ -278,6 +278,7 @@ class Network {
                 });
     }
 
+
     retryConnectToInactiveNodes() {
         if (!this.initialized) {
             return Promise.resolve();
@@ -348,7 +349,7 @@ class Network {
                             resolve(payload);
                         })
                         .catch(() => {
-                            console.log('[network warn]: node public key not found.');
+                            console.log('[network warn]: node public key not found... require node registration during handshake.');
                             let payload = {
                                 type   : 'node_handshake',
                                 content: {

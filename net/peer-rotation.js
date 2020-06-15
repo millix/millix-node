@@ -90,7 +90,8 @@ export class PeerRotation {
             const outboundClients = network.outboundClients;
             let peerToDisconnect;
             if (outboundClients.length < config.NODE_CONNECTION_OUTBOUND_MAX - 1) {
-                return network.retryConnectToInactiveNodes();
+                return network.retryConnectToInactiveNodes()
+                              .then(() => resolve());
             }
             else if (outboundClients.length === config.NODE_CONNECTION_OUTBOUND_MAX) {
                 peerToDisconnect = this._getOlderPeer();
