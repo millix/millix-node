@@ -17,6 +17,7 @@ import network from '../../net/network';
 import genesisConfig from '../genesis/genesis-config';
 import signature from '../crypto/signature';
 import node from '../../database/repositories/node';
+import { v4 as uuidv4 } from 'uuid';
 
 
 class WalletUtils {
@@ -151,7 +152,7 @@ class WalletUtils {
 
     generateNodeKey() {
         const mnemonic = this.newMnemonic();
-        return mnemonic.toHDPrivateKey(crypto.randomBytes(20).toString('hex'));
+        return mnemonic.toHDPrivateKey(uuidv4());
     }
 
     getNodeIdFromCertificate(certificateData, type) {
