@@ -627,9 +627,6 @@ class Network {
         if (ws.onUnregister) {
             ws.onUnregister();
         }
-        else {
-            this.retryConnectToInactiveNodes().then(_ => _);
-        }
         eventBus.emit('node_status_update');
     }
 
