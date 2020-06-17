@@ -27,6 +27,7 @@ export class PeerRotation {
     };
 
     constructor() {
+        this._peerRotationStarted = false;
     }
 
     _weightedRandom(prob) {
@@ -104,7 +105,11 @@ export class PeerRotation {
     }
 
     doRotationProactive() {
-        console.log('[peer-rotation] start job');
+        if (this._peerRotationStarted) {
+            return Promise.resolve();
+        }
+
+        console.log('[peer-rotation] start new peer rotation');
         return new Promise(resolve => {
             const outboundClients = network.outboundClients;
             let peerToDisconnect;
@@ -161,6 +166,8 @@ export class PeerRotation {
                     }
                 });
 
+        }).then(() => {
+            this._peerRotationStarted = false;
         });
     }
 }
