@@ -17,12 +17,48 @@ export const NODE_INITIAL_LIST_TEST_NETWORK            = [
         port_api: 35501
     },
     {
-        url     : 'wss://52.74.179.232:30000',
-        port_api: 35500
+        url     : 'wss://node0.millix.org:10000',
+        port_api: 5500
     },
     {
-        url     : 'wss://52.74.179.232:30001',
-        port_api: 35500
+        url     : 'wss://node1.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node2.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node3.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node4.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node5.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node6.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node7.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node8.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node9.millix.org:10000',
+        port_api: 5500
+    },
+    {
+        url     : 'wss://node10.millix.org:10000',
+        port_api: 5500
     }
 ];
 export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
