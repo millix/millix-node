@@ -65,7 +65,7 @@ class Peer {
         });
     }
 
-    sendNodeList() {
+    sendNodeList(ws) {
         return database.getRepository('node')
                        .listNodes()
                        .then(nodes => {
@@ -95,14 +95,24 @@ class Peer {
                            eventBus.emit('node_event_log', payload);
 
                            let data = JSON.stringify(payload);
-                           network.registeredClients.forEach(ws => {
+                           if (ws) { // send to a single node
                                try {
                                    ws.nodeConnectionReady && ws.send(data);
                                }
                                catch (e) {
                                    console.log('[WARN]: try to send data over a closed connection.');
                                }
-                           });
+                           }
+                           else {
+                               network.registeredClients.forEach(ws => {
+                                   try {
+                                       ws.nodeConnectionReady && ws.send(data);
+                                   }
+                                   catch (e) {
+                                       console.log('[WARN]: try to send data over a closed connection.');
+                                   }
+                               });
+                           }
                        });
     }
 
@@ -884,6 +894,11 @@ class Peer {
     }
 
     _onNodeAttributeRequest(content, ws) {
+        eventBus.emit('node_event_log', {
+            type: 'node_attribute_request',
+            from: ws.node,
+            content
+        });
         database.getRepository('node')
                 .getNodeAttribute(content.node_id, content.attribute_type)
                 .then(attributeValue => {
@@ -896,7 +911,12 @@ class Peer {
                 .catch(_ => _);
     }
 
-    _onNodeAttributeResponse(content) {
+    _onNodeAttributeResponse(content, ws) {
+        eventBus.emit('node_event_log', {
+            type: 'node_attribute_response',
+            from: ws.node,
+            content
+        });
         if (content.node_id && content.attribute_type && content.value !== undefined) {
             const nodeRepository = database.getRepository('node');
             nodeRepository.addNodeAttribute(content.node_id, content.attribute_type, content.value)

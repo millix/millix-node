@@ -6,6 +6,7 @@ import eventBus from '../core/event-bus';
 import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
+import peerRotation from './peer-rotation';
 import walletUtils from '../core/wallet/wallet-utils';
 import https from 'https';
 import base58 from 'bs58';
@@ -99,6 +100,7 @@ class Network {
             });
 
             ws.setMaxListeners(20); // avoid warning
+            ws.createTime = Date.now();
 
             ws.once('open', () => {
                 console.log('[network outgoing] Open connection to ' + url);
@@ -108,7 +110,6 @@ class Network {
                 ws.nodePortApi         = portApi;
                 ws.nodePrefix          = prefix;
                 ws.nodeIPAddress       = ipAddress;
-                ws.createTime          = Date.now();
                 ws.lastMessageTime     = ws.createTime;
                 ws.outBound            = true;
                 ws.nodeConnectionReady = false;
@@ -129,11 +130,10 @@ class Network {
                 }
 
                 this._unregisterWebsocket(ws);
-                eventBus.emit('node_status_update');
             });
 
             ws.on('error', (e) => {
-                console.log('[network outgoing] error in connection to nodes ' + e);
+                console.log('[network outgoing] error in connection to nodes ' + e + '. disconnected after ' + (Date.now() - ws.createTime) + 'ms.');
                 // !ws.bOutbound means not connected yet. This is to
                 // distinguish connection errors from later errors that occur
                 // on open connection
@@ -142,7 +142,6 @@ class Network {
                 }
 
                 this._unregisterWebsocket(ws);
-                eventBus.emit('node_status_update');
             });
 
             ws.on('message', this._onWebsocketMessage);
@@ -239,14 +238,12 @@ class Network {
             ws.on('close', () => {
                 console.log('[network income] client ' + ws.node + ' disconnected');
                 this._unregisterWebsocket(ws);
-                eventBus.emit('node_status_update');
             });
 
             ws.on('error', (e) => {
                 console.log('[network income] error on client ' + ip + ': ' + e);
                 ws.close(1000, 'received error');
                 this._unregisterWebsocket(ws);
-                eventBus.emit('node_status_update');
             });
 
             this._doHandshake(ws, true);
@@ -326,6 +323,7 @@ class Network {
                 let peerNodeID;
                 try {
                     peerNodeID = this.getNodeIdFromWebSocket(ws);
+                    ws.nodeID  = peerNodeID;
                 }
                 catch (e) {
                     console.log('[network warn]: cannot get node identity.' + e.message);
@@ -392,6 +390,7 @@ class Network {
                             ws.terminate();
                             return;
                         }
+                        ws.nodeID = peerNodeID;
                         nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', eventData.public_key)
                                       .catch(() => {
                                           console.log('[network warn]: registration error.');
@@ -399,14 +398,7 @@ class Network {
                                       });
                     }
                     else {
-                        try {
-                            peerNodeID = this.getNodeIdFromWebSocket(ws);
-                        }
-                        catch (e) {
-                            console.log('[network warn]: cannot get node identity.' + e.message);
-                            ws.terminate();
-                            return;
-                        }
+                        const peerNodeID  = ws.nodeID;
                         let nodePublicKey = this.getNodePublicKeyFromWebSocket(ws);
                         if (!nodePublicKey) {
                             console.log('[network warn]: cannot get node identity from certificate. ');
@@ -419,12 +411,22 @@ class Network {
                                           ws.terminate();
                                       });
                     }
-                    ws.nodeID = peerNodeID;
+                    // set connection ready
                     peer.sendConnectionReady(ws);
+
+                    // request peer attributes
                     peer.nodeAttributeRequest({
                         node_id       : peerNodeID,
                         attribute_type: 'shard_protocol'
                     }, ws);
+
+                    peer.nodeAttributeRequest({
+                        node_id       : peerNodeID,
+                        attribute_type: 'transaction_count'
+                    }, ws);
+
+                    // send peer list to the new node
+                    peer.sendNodeList(ws);
                 }
             });
 
@@ -444,8 +446,7 @@ class Network {
     }
 
     _onNodeHandshake(registry, ws) {
-        let nodeID      = registry.node_id;
-        ws.nodeID       = nodeID;
+        let nodeID      = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
 
         if (nodeID === this.nodeID) {
@@ -615,7 +616,13 @@ class Network {
         if (this._connectionRegistry[ws.connectionID] && this._connectionRegistry[ws.connectionID].length === 0) {
             delete this._connectionRegistry[ws.connectionID];
         }
-        ws.onUnregister && ws.onUnregister();
+        if (ws.onUnregister) {
+            ws.onUnregister();
+        }
+        else {
+            peerRotation.doRotationProactive().then(_ => _);
+        }
+        eventBus.emit('node_status_update');
     }
 
     _onGetNodeAddress(data, ws) {
@@ -628,11 +635,22 @@ class Network {
         if (ws.readyState === WebSocket.OPEN) {
             ws.nodeConnectionState = !ws.nodeConnectionState ? 'waiting' : 'open';
             if (ws.nodeConnectionState === 'open') {
+                // set connection ready
                 ws.nodeConnectionReady = true;
+
+                // request node attributes
                 peer.nodeAttributeRequest({
                     node_id       : ws.nodeID,
                     attribute_type: 'shard_protocol'
                 }, ws);
+
+                peer.nodeAttributeRequest({
+                    node_id       : ws.nodeID,
+                    attribute_type: 'transaction_count'
+                }, ws);
+
+                // send peer list to the new node
+                peer.sendNodeList(ws);
             }
         }
     }
