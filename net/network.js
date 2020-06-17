@@ -298,11 +298,17 @@ class Network {
 
     getNodeIdFromWebSocket(ws) {
         const peerCertificate = ws._socket.getPeerCertificate();
+        if (!peerCertificate) {
+            return null;
+        }
         return walletUtils.getNodeIdFromCertificate(peerCertificate.raw.toString('hex'), 'hex');
     }
 
     getNodePublicKeyFromWebSocket(ws) {
         const peerCertificate = ws._socket.getPeerCertificate();
+        if (!peerCertificate) {
+            return null;
+        }
         return walletUtils.getNodePublicKeyFromCertificate(peerCertificate.raw.toString('hex'), 'hex');
     }
 
@@ -323,7 +329,10 @@ class Network {
                 let peerNodeID;
                 try {
                     peerNodeID = this.getNodeIdFromWebSocket(ws);
-                    ws.nodeID  = peerNodeID;
+                    if (!peerNodeID) {
+                        throw Error('cannot read node id from certificate');
+                    }
+                    ws.nodeID = peerNodeID;
                 }
                 catch (e) {
                     console.log('[network warn]: cannot get node identity.' + e.message);
