@@ -6,7 +6,6 @@ import eventBus from '../core/event-bus';
 import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
-import peerRotation from './peer-rotation';
 import walletUtils from '../core/wallet/wallet-utils';
 import https from 'https';
 import base58 from 'bs58';
@@ -629,7 +628,7 @@ class Network {
             ws.onUnregister();
         }
         else {
-            peerRotation.doRotationProactive().then(_ => _);
+            this.retryConnectToInactiveNodes().then(_ => _);
         }
         eventBus.emit('node_status_update');
     }
