@@ -15,7 +15,7 @@
 - Device-based security: all private keys are stored locally, not in the cloud
 - Support for testnet
 - Mnemonic ([BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)) support for wallet backups
-- Support [iOS](?#), [Android](?#), [Windows Phone](?#), [Chrome App](?#), [Linux](?#), [Windows](?#) devices
+- Support [macOS](?#), [Linux](?#), [Windows](?#) devices
 
 ## About millix
 
