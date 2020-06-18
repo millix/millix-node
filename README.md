@@ -36,7 +36,7 @@
 - Participants that increase fundamental value should be algorithmically incentivized. 
 
 
-## Instalation
+## Installation
 
 
 ## Install nodejs 12
