@@ -8,7 +8,7 @@
 
 ## Main Features
 
-- DAG-backed criptocurrency
+- DAG-backed cryptocurrency
 - Multiple wallet creation and management in-app
 - Easy to send an receive transactions
 - [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) Hierarchical deterministic (HD) address generation and wallet backups
