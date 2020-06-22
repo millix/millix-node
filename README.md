@@ -50,7 +50,7 @@
  
 ## Download millix-node code
 ```
-git clone git@github.com:millix/millix-node.git
+git clone https://github.com/millix/millix-node.git -b develop
 ````
 
 ## Run millix-node
