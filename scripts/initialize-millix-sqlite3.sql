@@ -17,7 +17,7 @@ CREATE TABLE wallet
 -- derivation path is m/44'/0'/account'/is_change/address_position
 CREATE TABLE keychain
 (
-    address_base      CHAR(32) NOT NULL PRIMARY KEY,
+    address_base      CHAR(34) NOT NULL PRIMARY KEY,
     address_position  INT      NOT NULL,
     address_attribute TEXT     NOT NULL,
     wallet_id         CHAR(44) NOT NULL,
@@ -30,10 +30,10 @@ CREATE TABLE keychain
 
 CREATE TABLE keychain_address
 (
-    address                CHAR(67) NOT NULL,
-    address_base           CHAR(32) NOT NULL,
+    address                CHAR(71) NOT NULL,
+    address_base           CHAR(34) NOT NULL,
     address_version        CHAR(3)  NOT NULL,
-    address_key_identifier CHAR(32) NOT NULL,
+    address_key_identifier CHAR(34) NOT NULL,
     status                 SMALLINT NOT NULL DEFAULT 1,
     create_date            INT      NOT NULL DEFAULT (strftime('%s', 'now')),
     PRIMARY KEY (address_base, address_version, address_key_identifier),
@@ -82,10 +82,10 @@ CREATE INDEX idx_transaction_parent_transaction_id_child ON transaction_parent (
 -- current list of all known from-addresses
 CREATE TABLE address
 (
-    address                CHAR(67) NOT NULL,
-    address_base           CHAR(32) NOT NULL,
+    address                CHAR(71) NOT NULL,
+    address_base           CHAR(34) NOT NULL,
     address_version        CHAR(3)  NOT NULL,
-    address_key_identifier CHAR(32) NOT NULL,
+    address_key_identifier CHAR(34) NOT NULL,
     address_attribute      TEXT,
     status                 SMALLINT NOT NULL DEFAULT 1,
     create_date            INT      NOT NULL DEFAULT (strftime('%s', 'now')),
@@ -98,7 +98,7 @@ CREATE TABLE transaction_signature
 (
     transaction_id CHAR(44) NOT NULL,
     shard_id       CHAR(32) NOT NULL,
-    address_base   CHAR(32) NOT NULL,
+    address_base   CHAR(34) NOT NULL,
     signature      CHAR(44) NOT NULL,
     status         SMALLINT NOT NULL DEFAULT 1,
     create_date    INT      NOT NULL DEFAULT (strftime('%s', 'now')),
@@ -119,8 +119,8 @@ CREATE TABLE transaction_input
     output_transaction_date INT      NULL,
     double_spend_date       INT      NULL,
     is_double_spend         TINYINT  NOT NULL DEFAULT 0,
-    address                 CHAR(67) NULL,
-    address_key_identifier  CHAR(32) NULL,
+    address                 CHAR(71) NULL,
+    address_key_identifier  CHAR(34) NULL,
     status                  SMALLINT NOT NULL DEFAULT 1,
     create_date             INT      NOT NULL DEFAULT (strftime('%s', 'now')),
     PRIMARY KEY (transaction_id, input_position),
@@ -137,8 +137,8 @@ CREATE TABLE transaction_output
     transaction_id         CHAR(44) NOT NULL,
     shard_id               CHAR(32) NOT NULL,
     output_position        TINYINT  NOT NULL,
-    address                CHAR(67) NOT NULL,
-    address_key_identifier CHAR(32) NOT NULL,
+    address                CHAR(71) NOT NULL,
+    address_key_identifier CHAR(34) NOT NULL,
     amount                 BIGINT   NOT NULL,
     stable_date            INT      NULL, -- NULL if not stable yet
     is_stable              TINYINT  NOT NULL DEFAULT 0,
@@ -169,7 +169,7 @@ CREATE TABLE transaction_output_attribute
     status                     SMALLINT NOT NULL DEFAULT 1,
     create_date                INT      NOT NULL DEFAULT (strftime('%s', 'now')),
     PRIMARY KEY (transaction_output_id, transaction_output_type_id),
-    FOREIGN KEY (transaction_output_id) REFERENCES transaction_output (transaction_output_id),
+    FOREIGN KEY (transaction_output_id) REFERENCES transaction_output (transaction_id),
     FOREIGN KEY (transaction_output_type_id) REFERENCES transaction_output_type (transaction_output_type_id)
 );
 
@@ -262,8 +262,7 @@ CREATE TABLE schema_information
     create_date INT          NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
-INSERT INTO schema_information (key, value)
-VALUES ("version", "1");
+INSERT INTO schema_information (key, value) VALUES ("version", "1");
 
 CREATE TABLE address_version
 (

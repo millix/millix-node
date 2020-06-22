@@ -2,33 +2,40 @@ import network from '../../net/network';
 import Endpoint from '../endpoint';
 
 
-// api update_network_state
+/**
+ * api toggle_service_network
+ */
 class _5sgpSNaqnHIcfocl extends Endpoint {
     constructor() {
         super('5sgpSNaqnHIcfocl');
     }
 
+    /**
+     * toggles the network service for all networks (main or test networks)
+     * between running (true) and not running (false)
+     * @param app
+     * @param req (p0: is_running<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
-        let data;
-        try {
-            data = JSON.parse(req.query.p1);
+        if (!req.query.p0) {
+            return res.status(400).send({status: 'p0<is_running> is required'});
         }
-        catch (e) {
-            return res.status(400).send({
-                success: false,
-                message: 'payload is missing or invalid'
-            });
-        }
-        if (data.online && network.initialized === false) {
+        const isOnline = !!req.query.p0;
+        if (isOnline && network.initialized === false) {
             network.initialize();
-            res.send({success: true});
+            res.send({status: 'success'});
         }
-        else if (!data.online && network.initialized === true) {
+        else if (!isOnline && network.initialized === true) {
             network.stop();
-            res.send({success: true});
+            res.send({status: 'success'});
         }
         else {
-            res.send({success: false});
+            res.send({
+                status : 'fail',
+                message: 'not_updated'
+            });
         }
     }
 }

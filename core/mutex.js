@@ -4,7 +4,7 @@ import util from 'util';
 
 class Mutex {
     constructor() {
-        this.debug = false;
+        this.debug              = false;
         this.arrQueuedJobs      = {};
         this.arrLockedKeyArrays = [];
     }
@@ -17,9 +17,14 @@ class Mutex {
         return counts;
     }
 
-    getKeyQueuedSize(arrKeys) {
-        const key = arrKeys.sort().join('_');
-        return this.arrQueuedJobs[key] ? this.arrQueuedJobs[key].length : 0;
+    getKeyQueuedSize(arrKeys, startsWith) {
+        const keyMatch = arrKeys.sort().join('_');
+        if (startsWith) {
+            return _.sum(_.map(_.keys(this.arrQueuedJobs), key => key.startsWith(keyMatch) ? this.arrQueuedJobs[key].length : 0));
+        }
+        else {
+            return this.arrQueuedJobs[keyMatch] ? this.arrQueuedJobs[keyMatch].length : 0;
+        }
     }
 
     getCountOfLocks() {
@@ -51,7 +56,7 @@ class Mutex {
         this.arrLockedKeyArrays.push(arrKeys);
         this.debug && console.log('[mutex] lock acquired', arrKeys);
         const lockTime = new Date().getTime();
-        let bLocked  = true;
+        let bLocked    = true;
         const self     = this;
         proc(function() {
             if (!bLocked) {
@@ -96,7 +101,7 @@ class Mutex {
 
     lock(arrKeys, proc, nextProc, maxTimestamp) {
         const key = arrKeys.sort().join('_');
-        arrKeys = [key];
+        arrKeys   = [key];
 
         if (!this.arrQueuedJobs[key]) {
             this.arrQueuedJobs[key] = [];
@@ -160,4 +165,6 @@ class Mutex {
         });
     }
 }
+
+
 export default new Mutex();

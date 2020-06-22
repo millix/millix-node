@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  millix-node:
+    image: millix/millix-node
+    build: .
+    environment:
+      - MILLIX_NODE_PASSWORD=millixpwd
+      - MILLIX_NODE_DATA_FOLDER=./data/
+      - MILLIX_NODE_PORT=${MILLIX_NODE_PORT}
+      - MILLIX_NODE_PORT_API=${MILLIX_NODE_PORT_API}
+    ports:
+      - ${MILLIX_NODE_PORT}
+      - ${MILLIX_NODE_PORT_API}

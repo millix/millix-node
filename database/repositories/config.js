@@ -46,9 +46,24 @@ export default class Config {
         });
     }
 
-    getAll() {
+    updateConfigByID(configID, value) {
+        return new Promise((resolve, reject) => {
+            this.database.run('UPDATE config SET value=? WHERE config_id=?', [
+                configID,
+                value
+            ], (err, row) => {
+                if (err) {
+                    return reject(err.message);
+                }
+                resolve(row);
+            });
+        });
+    }
+
+    list(where, orderBy, limit) {
         return new Promise(resolve => {
-            this.database.all('SELECT * FROM config', (err, rows) => {
+            const {sql, parameters} = Database.buildQuery('SELECT * FROM config', where, orderBy, limit);
+            this.database.all(sql, parameters, (err, rows) => {
                 if (rows) {
                     rows.forEach(row => {
                         row['config_name'] = row['config_name'].toUpperCase();

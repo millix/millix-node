@@ -6,15 +6,16 @@ import _ from 'lodash';
 import database from '../database/database';
 import async from 'async';
 import walletSync from '../core/wallet/wallet-sync';
+import peerRotation from './peer-rotation';
 
 
 class Peer {
 
     constructor() {
-        this.noop = () => {
+        this.noop                              = () => {
         };
-        this.pendingTransactionSync = {};
-        this.pendingTransactionSpendSync = {};
+        this.pendingTransactionSync            = {};
+        this.pendingTransactionSpendSync       = {};
         this.pendingTransactionIncludePathSync = {};
     }
 
@@ -24,8 +25,8 @@ class Peer {
         }
 
         let payload = {
-            type: 'node_address_response:' + messageID,
-            content: { ip_address: ipAddress }
+            type   : 'node_address_response:' + messageID,
+            content: {ip_address: ipAddress}
         };
         eventBus.emit('node_event_log', payload);
         let data = JSON.stringify(payload);
@@ -34,10 +35,10 @@ class Peer {
 
     getNodeAddress() {
         return new Promise((resolve, reject) => {
-            let id = crypto.randomBytes(20).toString('hex');
+            let id      = crypto.randomBytes(20).toString('hex');
             let payload = {
-                type: 'node_address_request',
-                content: { request_id: id }
+                type   : 'node_address_request',
+                content: {request_id: id}
             };
 
             eventBus.emit('node_event_log', payload);
@@ -47,7 +48,7 @@ class Peer {
 
             setTimeout(() => {
                 if (eventBus.listenerCount('node_address_response:' + id) > 0) {
-                    reject('get address timeout');
+                    reject('get_address_timeout');
                     eventBus.removeAllListeners('node_address_response:' + id);
                 }
             }, config.NETWORK_LONG_TIME_WAIT_MAX);
@@ -64,53 +65,61 @@ class Peer {
         });
     }
 
-    sendNodeList() {
+    sendNodeList(ws) {
         return database.getRepository('node')
-            .getNodes()
-            .then(nodes => {
-                nodes = _.map(nodes, node => _.pick(node, [
-                    'node_prefix',
-                    'node_ip_address',
-                    'node_port',
-                    'node_id'
-                ]));
+                       .listNodes()
+                       .then(nodes => {
+                           nodes = _.map(nodes, node => _.pick(node, [
+                               'node_prefix',
+                               'node_ip_address',
+                               'node_port',
+                               'node_id'
+                           ]));
 
-                if (config.NODE_PUBLIC) {
-                    nodes.push({
-                        node_prefix: config.WEBSOCKET_PROTOCOL,
-                        node_ip_address: config.NODE_HOST,
-                        node_port: config.NODE_PORT,
-                        node_id: network.nodeID
-                    }); // add self
-                }
+                           nodes.push({
+                               node_prefix    : config.WEBSOCKET_PROTOCOL,
+                               node_ip_address: network.nodePublicIp,
+                               node_port      : config.NODE_PORT,
+                               node_id        : network.nodeID
+                           }); // add self
 
-                if (nodes.length === 0) {
-                    return;
-                }
+                           if (nodes.length === 0) {
+                               return;
+                           }
 
-                let payload = {
-                    type: 'node_list',
-                    content: nodes
-                };
+                           let payload = {
+                               type   : 'node_list',
+                               content: nodes
+                           };
 
-                eventBus.emit('node_event_log', payload);
+                           eventBus.emit('node_event_log', payload);
 
-                let data = JSON.stringify(payload);
-                network.registeredClients.forEach(ws => {
-                    try {
-                        ws.nodeConnectionReady && ws.send(data);
-                    }
-                    catch (e) {
-                        console.log('[WARN]: try to send data over a closed connection.');
-                    }
-                });
-            });
+                           let data = JSON.stringify(payload);
+                           if (ws) { // send to a single node
+                               try {
+                                   ws.nodeConnectionReady && ws.send(data);
+                               }
+                               catch (e) {
+                                   console.log('[WARN]: try to send data over a closed connection.');
+                               }
+                           }
+                           else {
+                               network.registeredClients.forEach(ws => {
+                                   try {
+                                       ws.nodeConnectionReady && ws.send(data);
+                                   }
+                                   catch (e) {
+                                       console.log('[WARN]: try to send data over a closed connection.');
+                                   }
+                               });
+                           }
+                       });
     }
 
     transactionSend(transaction, excludeWS) {
         let payload = {
-            type: 'transaction_new',
-            content: { transaction }
+            type   : 'transaction_new',
+            content: {transaction}
         };
 
         eventBus.emit('node_event_log', payload);
@@ -132,7 +141,7 @@ class Peer {
 
     transactionSendToNode(transaction, ws) {
         let payload = {
-            type: 'transaction_new',
+            type   : 'transaction_new',
             content: transaction
         };
 
@@ -151,8 +160,8 @@ class Peer {
 
     auditPointValidationResponse(transactions, auditPointID, ws) {
         let payload = {
-            type: 'audit_point_validation_response:' + auditPointID,
-            content: { transaction_id_list: transactions }
+            type   : 'audit_point_validation_response:' + auditPointID,
+            content: {transaction_id_list: transactions}
         };
 
         eventBus.emit('node_event_log', payload);
@@ -178,9 +187,9 @@ class Peer {
         return new Promise((resolve, reject) => {
 
             let payload = {
-                type: 'transaction_include_path_request',
+                type   : 'transaction_include_path_request',
                 content: {
-                    transaction_id: transactionID,
+                    transaction_id             : transactionID,
                     transaction_id_exclude_list: excludeTransactions
                 }
             };
@@ -193,12 +202,12 @@ class Peer {
 
             async.eachSeries(nodesWS, (ws, callback) => {
                 let callbackCalled = false;
-                let nodeID = ws.nodeID;
+                let nodeID         = ws.nodeID;
                 try {
                     if (ws.nodeConnectionReady) {
 
                         eventBus.removeAllListeners('transaction_include_path_response:' + transactionID);
-                        eventBus.once('transaction_include_path_response:' + transactionID, function (eventData, eventWS) {
+                        eventBus.once('transaction_include_path_response:' + transactionID, function(eventData, eventWS) {
                             console.log('[peer] stopping transaction spend sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
 
                             if (!callbackCalled) {
@@ -214,7 +223,7 @@ class Peer {
 
                         ws.send(data);
 
-                        setTimeout(function () {
+                        setTimeout(function() {
                             if (!callbackCalled) {
                                 callbackCalled = true;
                                 callback();
@@ -249,8 +258,8 @@ class Peer {
 
     transactionSpendResponse(transactionID, transactions, ws) {
         let payload = {
-            type: 'transaction_spend_response:' + transactionID,
-            content: { transaction_id_list: transactions }
+            type   : 'transaction_spend_response:' + transactionID,
+            content: {transaction_id_list: transactions}
         };
 
         eventBus.emit('node_event_log', payload);
@@ -275,8 +284,8 @@ class Peer {
         return new Promise((resolve, reject) => {
 
             let payload = {
-                type: 'transaction_spend_request',
-                content: { transaction_id: transactionID }
+                type   : 'transaction_spend_request',
+                content: {transaction_id: transactionID}
             };
 
             let data = JSON.stringify(payload);
@@ -287,12 +296,12 @@ class Peer {
 
             async.eachSeries(nodesWS, (ws, callback) => {
                 let callbackCalled = false;
-                let nodeID = ws.nodeID;
+                let nodeID         = ws.nodeID;
                 try {
                     if (ws.nodeConnectionReady) {
 
                         eventBus.removeAllListeners('transaction_spend_response:' + transactionID);
-                        eventBus.once('transaction_spend_response:' + transactionID, function (eventData) {
+                        eventBus.once('transaction_spend_response:' + transactionID, function(eventData) {
                             console.log('[peer] stopping transaction spend sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
 
                             if (!callbackCalled) {
@@ -305,7 +314,7 @@ class Peer {
 
                         ws.send(data);
 
-                        setTimeout(function () {
+                        setTimeout(function() {
                             if (!callbackCalled) {
                                 callbackCalled = true;
                                 callback();
@@ -340,7 +349,7 @@ class Peer {
 
     transactionIncludePathResponse(message, ws) {
         let payload = {
-            type: 'transaction_include_path_response:' + message.transaction_id,
+            type   : 'transaction_include_path_response:' + message.transaction_id,
             content: message
         };
 
@@ -373,7 +382,7 @@ class Peer {
                 if (ws.nodeConnectionReady) {
                     const messageID = 'transaction_validation_response:' + content.transaction_id + ':' + content.consensus_round + ':' + ws.nodeID;
                     eventBus.removeAllListeners(messageID);
-                    eventBus.once(messageID, function (eventData, eventWS) {
+                    eventBus.once(messageID, function(eventData, eventWS) {
 
                         console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node);
 
@@ -385,11 +394,14 @@ class Peer {
                         if (!callbackCalled) {
                             console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node, 'success');
                             callbackCalled = true;
-                            resolve([eventData, eventWS]);
+                            resolve([
+                                eventData,
+                                eventWS
+                            ]);
                         }
                     });
                     ws.send(data);
-                    setTimeout(function () {
+                    setTimeout(function() {
                         if (!callbackCalled) {
                             console.log('[peer] validation response from node ', ws.node, 'timeout');
                             callbackCalled = true;
@@ -424,7 +436,7 @@ class Peer {
                 if (ws.nodeConnectionReady) {
                     const messageID = 'transaction_validation_node_allocate_response:' + ws.nodeID;
                     eventBus.removeAllListeners(messageID);
-                    eventBus.once(messageID, function (eventData, eventWS) {
+                    eventBus.once(messageID, function(eventData, eventWS) {
                         if (eventWS.nodeID !== ws.nodeID || eventWS.connectionID !== ws.connectionID) {
                             return;
                         }
@@ -432,11 +444,14 @@ class Peer {
                         console.log('[peer] received allocation response for ', eventData.transaction_id, ' from node ', eventWS.node);
                         if (!callbackCalled) {
                             callbackCalled = true;
-                            resolve([eventData, eventWS]);
+                            resolve([
+                                eventData,
+                                eventWS
+                            ]);
                         }
                     });
                     ws.send(data);
-                    setTimeout(function () {
+                    setTimeout(function() {
                         if (!callbackCalled) {
                             callbackCalled = true;
                             reject();
@@ -470,7 +485,7 @@ class Peer {
                 if (ws.nodeConnectionReady) {
                     const messageID = 'transaction_validation_node_allocate_acknowledge:' + ws.nodeID;
                     eventBus.removeAllListeners(messageID);
-                    eventBus.once(messageID, function (eventData, eventWS) {
+                    eventBus.once(messageID, function(eventData, eventWS) {
                         if (eventWS.nodeID !== ws.nodeID || eventWS.connectionID !== ws.connectionID) {
                             return;
                         }
@@ -482,7 +497,7 @@ class Peer {
                         }
                     });
                     ws.send(data);
-                    setTimeout(function () {
+                    setTimeout(function() {
                         if (!callbackCalled) {
                             callbackCalled = true;
                             reject();
@@ -555,7 +570,7 @@ class Peer {
 
     transactionValidationResponse(message, ws) {
         let payload = {
-            type: 'transaction_validation_response:' + message.transaction_id + ':' + message.consensus_round + ':' + network.nodeID,
+            type   : 'transaction_validation_response:' + message.transaction_id + ':' + message.consensus_round + ':' + network.nodeID,
             content: message
         };
 
@@ -572,6 +587,58 @@ class Peer {
         return message;
     }
 
+    shardSyncResponse(content, ws) {
+        let payload = {
+            type: 'shard_sync_response:' + content.shard_id,
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+
+    }
+
+    shardSync(shardID, ws) {
+        return new Promise((resolve, reject) => {
+            let payload = {
+                type   : 'shard_sync_request',
+                content: {shard_id: shardID}
+            };
+
+            eventBus.emit('node_event_log', payload);
+
+            let data = JSON.stringify(payload);
+            try {
+                if (ws.nodeConnectionReady) {
+                    let timeoutID;
+                    let listener = function(data) {
+                        resolve(data);
+                        clearTimeout(timeoutID);
+                    };
+
+                    eventBus.once('shard_sync_response:' + shardID, listener);
+
+                    ws.send(data);
+                    ws        = null;
+                    timeoutID = setTimeout(() => {
+                        eventBus.removeListener('shard_sync_response:' + shardID, listener);
+                        reject('shard_sync_response_timeout');
+                    }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+                }
+            }
+            catch (e) {
+                reject('[WARN]: try to send data over a closed connection.');
+            }
+        });
+    }
+
     addressTransactionSync(address, updated) {
 
         if (network.registeredClients.length === 0) {
@@ -580,7 +647,7 @@ class Peer {
 
         console.log('[peer] requesting transaction sync for address:', address, ' from ', updated);
         let payload = {
-            type: 'address_transaction_sync',
+            type   : 'address_transaction_sync',
             content: {
                 address,
                 updated
@@ -622,25 +689,28 @@ class Peer {
     }
 
     transactionSyncRequest(transactionID, options = {}) {
-        const { depth: currentDepth, request_node_id: requestNodeID, routing, priority } = options;
+        const {depth: currentDepth, request_node_id: requestNodeID, routing, priority, dispatch_request: dispatchRequest} = options;
         return new Promise((resolve, reject) => {
 
             walletSync.add(transactionID, {
-                delay: config.NETWORK_LONG_TIME_WAIT_MAX * 10,
+                delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
                 priority
             });
 
             if (network.registeredClients.length === 0 || this.pendingTransactionSync[transactionID]) {
                 return reject();
             }
+            else if (!dispatchRequest) {
+                return resolve();
+            }
 
             console.log('[peer] requesting transaction sync for :', transactionID);
             let payload = {
-                type: 'transaction_sync',
+                type   : 'transaction_sync',
                 content: {
-                    transaction_id: transactionID,
-                    depth: currentDepth || 0,
-                    routing: routing,
+                    transaction_id         : transactionID,
+                    depth                  : currentDepth || 0,
+                    routing                : routing,
                     routing_request_node_id: requestNodeID
                 }
             };
@@ -656,11 +726,11 @@ class Peer {
 
             async.eachSeries(nodesWS, (ws, callback) => {
                 let callbackCalled = false;
-                let nodeID = ws.nodeID;
+                let nodeID         = ws.nodeID;
                 try {
                     if (ws.nodeConnectionReady) {
                         eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
-                        eventBus.once('transaction_sync_response:' + transactionID, function (eventData, eventWS) {
+                        eventBus.once('transaction_sync_response:' + transactionID, function(eventData, eventWS) {
                             console.log('[peer] stopping transaction sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
                             eventBus.emit('transaction_new', eventData, eventWS, true);
                             if (!callbackCalled) {
@@ -669,7 +739,7 @@ class Peer {
                             }
                         });
                         ws.send(data);
-                        setTimeout(function () {
+                        setTimeout(function() {
                             if (!callbackCalled) {
                                 callbackCalled = true;
                                 callback();
@@ -693,7 +763,7 @@ class Peer {
 
                 if (!done) {
                     console.log('[peer] transaction_sync_response:' + transactionID + ' not received. skip...');
-                    walletSync.add(transactionID, { priority });
+                    walletSync.add(transactionID, {priority});
                 }
                 resolve();
             });
@@ -709,10 +779,10 @@ class Peer {
 
             console.log('[peer] requesting transaction sync for :', transactionID);
             let payload = {
-                type: 'transaction_sync',
+                type   : 'transaction_sync',
                 content: {
                     transaction_id: transactionID,
-                    depth: currentDepth || 0
+                    depth         : currentDepth || 0
                 }
             };
 
@@ -724,7 +794,7 @@ class Peer {
                 if (ws.nodeConnectionReady) {
                     eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
-                    eventBus.once('transaction_sync_response:' + transactionID, function (data, eventWS) {
+                    eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
                         eventBus.emit('transaction_new', data, eventWS, true);
                     });
 
@@ -747,15 +817,122 @@ class Peer {
 
     _onNodeList(nodes, ws) {
         eventBus.emit('node_event_log', {
-            type: 'node_list',
+            type   : 'node_list',
             content: nodes,
-            from: ws.node
+            from   : ws.node
         });
-        nodes.forEach(data => network.addNode(data.node_prefix, data.node_ip_address, data.node_port, data.node_id));
+        const nodeRepository = database.getRepository('node');
+        async.eachSeries(nodes, (data, callback) => {
+            data.node_port_api = data.node_port_api || config.NODE_PORT_API;
+            if (network.addNode(data.node_prefix, data.node_ip_address, data.node_port, data.node_port_api, data.node_id)) {
+                nodeRepository.addNode(data)
+                              .then(() => callback())
+                              .catch(() => callback());
+            }
+            else {
+                callback();
+            }
+        }, () => {
+            nodeRepository.addNodeAttribute(ws.nodeID, 'peer_count', nodes.length)
+                          .then(_ => _)
+                          .catch(_ => _);
+        });
+    }
+
+    sendConnectionReady(ws) {
+        ws.nodeConnectionState = !ws.nodeConnectionState ? 'waiting' : 'open';
+        if (ws.nodeConnectionState === 'open') {
+            ws.nodeConnectionReady = true;
+        }
+        let payload = {
+            type: 'connection_ready'
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    nodeAttributeRequest(content, ws) {
+        let payload = {
+            type: 'node_attribute_request',
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    nodeAttributeResponse(content, ws) {
+        let payload = {
+            type: 'node_attribute_response',
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    _onNodeAttributeRequest(content, ws) {
+        eventBus.emit('node_event_log', {
+            type: 'node_attribute_request',
+            from: ws.node,
+            content
+        });
+        database.getRepository('node')
+                .getNodeAttribute(content.node_id, content.attribute_type)
+                .then(attributeValue => {
+                    this.nodeAttributeResponse({
+                        node_id       : content.node_id,
+                        attribute_type: content.attribute_type,
+                        value         : attributeValue
+                    }, ws);
+                })
+                .catch(_ => _);
+    }
+
+    _onNodeAttributeResponse(content, ws) {
+        eventBus.emit('node_event_log', {
+            type: 'node_attribute_response',
+            from: ws.node,
+            content
+        });
+        if (content.node_id && content.attribute_type && content.value !== undefined) {
+            const nodeRepository = database.getRepository('node');
+            nodeRepository.addNodeAttribute(content.node_id, content.attribute_type, content.value)
+                          .then(_ => _)
+                          .catch(_ => _);
+        }
+    }
+
+    _doPeerRotation() {
+        return peerRotation.doPeerRotation();
     }
 
     initialize() {
         eventBus.on('node_list', this._onNodeList.bind(this));
+        eventBus.on('node_attribute_request', this._onNodeAttributeRequest.bind(this));
+        eventBus.on('node_attribute_response', this._onNodeAttributeResponse.bind(this));
     }
 
     stop() {

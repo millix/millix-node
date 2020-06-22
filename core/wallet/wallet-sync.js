@@ -8,6 +8,7 @@ import network from '../../net/network';
 import SqliteStore from '../../database/queue-sqlite';
 import database from '../../database/database';
 import wallet from './wallet';
+import async from 'async';
 
 
 export class WalletSync {
@@ -16,36 +17,43 @@ export class WalletSync {
         this.queue               = null;
         this.pendingTransactions = {};
         this.scheduledQueueAdd   = {};
+        this.CARGO_MAX_LENGHT    = (config.NODE_CONNECTION_OUTBOUND_MAX + config.NODE_CONNECTION_INBOUND_MAX) * 2;
     }
 
     initialize() {
         if (!fs.existsSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER))) {
             fs.mkdirSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER));
         }
-        this.queue = new Queue((job, done) => {
-            console.log('[wallet-sync] sync queue stats ', this.queue.getStats(), ' transactions to sync');
-
+        this.executorQueue = async.queue((job, callback) => {
+            if (!job.transaction_id) {
+                return callback();
+            }
             delete this.pendingTransactions[job.transaction_id];
-
             database.getRepository('transaction')
                     .hasTransaction(job.transaction_id)
                     .then(([hasTransaction, isAuditPoint]) => {
                         if (hasTransaction || wallet.isProcessingTransaction(job.transaction_id)) {
-                            return done();
+                            return callback();
                         }
-
-                        peer.transactionSyncRequest(job.transaction_id)
-                            .then(() => done())
-                            .catch(() => {
-                                this.add(job.transaction_id);
-                                done();
-                            });
-                    }).catch(_ => peer.transactionSyncRequest(job.transaction_id)
-                                      .then(() => done())
-                                      .catch(() => {
-                                          this.add(job.transaction_id);
-                                          done();
-                                      }));
+                        peer.transactionSyncRequest(job.transaction_id, job)
+                            .then(() => callback())
+                            .catch(() => callback());
+                    })
+                    .catch(_ => {
+                        peer.transactionSyncRequest(job.transaction_id, job)
+                            .then(() => callback())
+                            .catch(() => callback());
+                    });
+        }, this.CARGO_MAX_LENGHT);
+        this.queue         = new Queue((job, done) => {
+            console.log('[wallet-sync] sync queue stats ', this.queue.getStats(), ' transactions to sync');
+            if (this.executorQueue.length() < this.CARGO_MAX_LENGHT) {
+                this.executorQueue.push(job);
+                done();
+            }
+            else {
+                this.executorQueue.push(job, () => done());
+            }
         }, {
             id                      : 'transaction_id',
             store                   : new SqliteStore({
@@ -88,7 +96,8 @@ export class WalletSync {
                 this.pendingTransactions[transactionID] = true;
                 delete this.scheduledQueueAdd[transactionID];
                 this.queue.push({
-                    transaction_id: transactionID,
+                    transaction_id  : transactionID,
+                    dispatch_request: true,
                     priority
                 });
             }, delay);
@@ -97,7 +106,8 @@ export class WalletSync {
             this.removeSchedule(transactionID);
             this.pendingTransactions[transactionID] = true;
             this.queue.push({
-                transaction_id: transactionID,
+                transaction_id  : transactionID,
+                dispatch_request: true,
                 priority
             });
         }

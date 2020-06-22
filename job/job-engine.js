@@ -188,18 +188,15 @@ class JobEngine {
         if (this.running) {
             return Promise.resolve();
         }
-        this.running = true;
-        for (let i = 0; i < this.configJobEngine.processor_list['localhost'].instances; i++) {
-            const processorTag = `job-engine-processor [localhost-${i}]`;
-            this.debug && console.log('[job-engine] starting processor', processorTag);
-            task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, this.processors['localhost']), 0, false, true);
-        }
-
-        for (let i = 0; i < this.configJobEngine.processor_list['localhost_watchdog'].instances; i++) {
-            const processorWatchdogTag = `job-engine-processor [localhost-${i}-watchdog]`;
-            this.debug && console.log('[job-engine] starting watchdog processor', processorWatchdogTag);
-            task.scheduleTask(processorWatchdogTag, this._getTask.bind(this, processorWatchdogTag, this.processors['localhost_watchdog']), 0, false, true);
-        }
+        this.running              = true;
+        const localhostProcessors = _.filter(_.keys(this.configJobEngine.processor_list), processor => processor.startsWith('localhost'));
+        _.each(localhostProcessors, processorName => {
+            for (let i = 0; i < this.configJobEngine.processor_list[processorName].instances; i++) {
+                const processorTag = `job-engine-processor [${processorName}]`;
+                this.debug && console.log('[job-engine] starting processor', processorTag);
+                task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, this.processors[processorName]), 0, false, true);
+            }
+        });
 
         return Promise.resolve();
     }
@@ -211,10 +208,6 @@ class JobEngine {
 
         if (job.option_list.enable === false) {
             return false;
-        }
-
-        if (job.option_list.enable === '!MODE_NODE_FULL') {
-            return !config.MODE_NODE_FULL;
         }
 
         return true;

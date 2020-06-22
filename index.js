@@ -4,7 +4,8 @@ import wallet from './core/wallet/wallet';
 import config from './core/config/config';
 import genesisConfig from './core/genesis/genesis-config';
 import request from 'request';
-import services from './core/serices/services';
+import services from './core/services/services';
+import logManager from './core/log-manager';
 
 const argv = require('yargs')
     .options({
@@ -39,8 +40,10 @@ if (argv.testPort) {
 }
 
 if (argv.folder) {
-    config.KEY_PATH                   = argv.folder + 'millix_private_key.json';
+    config.WALLET_KEY_PATH            = argv.folder + 'millix_private_key.json';
     config.NODE_KEY_PATH              = argv.folder + 'node.json';
+    config.NODE_CERTIFICATE_KEY_PATH  = argv.folder + 'node_certificate_key.pem';
+    config.NODE_CERTIFICATE_PATH      = argv.folder + 'node_certificate.pem';
     config.JOB_CONFIG_PATH            = argv.folder + 'job.json';
     config.DATABASE_CONNECTION.FOLDER = argv.folder;
 }
@@ -67,6 +70,7 @@ console.log('starting millix-core');
 db.initialize()
   .then(() => services.initialize())
   .then(() => {
+      logManager.logSize = 1000;
       if (config.MODE_TEST) {
           request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
               {

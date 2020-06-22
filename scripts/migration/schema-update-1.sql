@@ -6,8 +6,7 @@ CREATE TABLE schema_information
     create_date INT          NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
-INSERT INTO schema_information (key, value)
-VALUES ("version", "1");
+INSERT INTO schema_information (key, value) VALUES ("version", "1");
 
 CREATE TABLE address_version
 (

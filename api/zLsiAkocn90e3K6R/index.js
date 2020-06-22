@@ -1,21 +1,46 @@
 import database from '../../database/database';
 import Endpoint from '../endpoint';
+import _ from 'lodash';
 
 
-// api get_balance
+/**
+ * api get_address_balance
+ */
 class _zLsiAkocn90e3K6R extends Endpoint {
     constructor() {
         super('zLsiAkocn90e3K6R');
     }
 
+    /**
+     * returns the available (stable) balance and pending (unstable) balance of
+     * an address
+     * @param app
+     * @param req (p0: address<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
-        const addressRepository = database.getRepository('address');
-        const stable            = !(req.query.p2 === 'pending');
-        addressRepository.getAddressBalance(req.query.p1, stable)
-                         .then(balance => res.send({
-                             balance,
-                             stable
-                         }));
+        if (!req.query.p0) {
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<address> is required'
+            });
+        }
+
+        database.applyShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.getAddressBalance(req.query.p0, true);
+        }).then(balances => _.sum(balances))
+                .then(stable => {
+                    database.applyShards((shardID) => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.getAddressBalance(req.query.p0, false);
+                    }).then(balances => _.sum(balances))
+                            .then(unstable => res.send({
+                                stable,
+                                unstable
+                            }));
+                });
     }
 }
 

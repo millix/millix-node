@@ -1,6 +1,7 @@
 import _ from 'lodash';
 import async from 'async';
 import config from '../../core/config/config';
+import {Database} from '../database';
 
 export default class Address {
     constructor(database) {
@@ -18,6 +19,17 @@ export default class Address {
                     _.each(data, version => this.addressVersionList.push(version));
                     resolve();
                 });
+        });
+    }
+
+    listAddressVersion() {
+        return new Promise((resolve, reject) => {
+            this.database.all('SELECT * FROM address_version', (err, rows) => {
+                if (err) {
+                    return reject();
+                }
+                resolve(rows);
+            });
         });
     }
 
@@ -51,22 +63,22 @@ export default class Address {
                 });
 
         }).then(() => {
-            return new Promise(resolve => {
+            return new Promise((resolve, reject) => {
+                const parameters = [
+                    version,
+                    isMainNetwork,
+                    regexPattern,
+                    isDefault
+                ];
                 this.database.all('INSERT INTO address_version (version, is_main_network, regex_pattern, is_default) VALUES (?,?,?,?)',
-                    [
-                        version,
-                        isMainNetwork,
-                        regexPattern,
-                        isDefault
-                    ], (err) => {
+                    parameters, (err) => {
                         if (err) {
-                            return resolve();
+                            return reject();
                         }
-                        this.addressVersionList.push({
-                            version,
-                            regex_pattern  : regexPattern,
-                            is_main_network: isMainNetwork
-                        });
+                        if (config.MODE_TEST_NETWORK && !isMainNetwork || !config.MODE_TEST_NETWORK && isMainNetwork) {
+                            this.database.get('SELECT * from address_version WHERE version=? AND is_main_network=? AND regex_pattern=? AND is_default=?',
+                                parameters, (err, row) => this.addressVersionList.push(row));
+                        }
                         resolve();
                     });
             });
@@ -110,11 +122,7 @@ export default class Address {
             };
         }
 
-        throw new Error('address version not supported');
-    }
-
-    setTransactionRepository(repository) {
-        this.transactionRepository = repository;
+        throw new Error('address version not supported ' + addressFull);
     }
 
     addAddress(address, addressBase, addressVersion, addressKeyIdentifier, addressAttribute) {
@@ -167,75 +175,34 @@ export default class Address {
         });
     }
 
-    getAddressBalance(address, stable) {
-        return new Promise((resolve) => {
-            this.database.get('SELECT SUM(amount) as amount FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
-                              'WHERE address=? and `transaction`.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0', [address],
-                (err, row) => {
-                    resolve(row ? row.amount || 0 : 0);
-                });
-        });
-    }
-
-    getAddressesUnstableTransactions(addresses, minIncludePathLength, excludeTransactionIDList) {
-        return new Promise((resolve, reject) => {
-            this.database.all('SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address IN ( ' + addresses.map(() => '?').join(',') + ' ) ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date DESC LIMIT 100', addresses.concat(excludeTransactionIDList),
-                (err, rows) => {
-                    if (err) {
-                        console.log(err);
-                        return reject(err);
-                    }
-
-                    if (minIncludePathLength === undefined) {
-                        return resolve(rows);
-                    }
-                    else {
-                        let filteredRows = [];
-                        async.eachSeries(rows, (row, callback) => {
-
-                            this.transactionRepository.getTransactionIncludePaths(row.transaction_id)
-                                .then(paths => {
-                                    if (_.some(paths, path => path.length >= minIncludePathLength)) {
-                                        filteredRows.push(row);
-                                    }
-                                    callback();
-                                });
-
-                        }, () => {
-                            resolve(filteredRows);
-                        });
-                    }
-
-                });
-        });
-    }
-
     getAddressesCount() {
         return new Promise((resolve, reject) => {
             this.database.get(
-                'SELECT count(*) as count FROM address',
+                'SELECT COUNT(DISTINCT address) AS address_count, COUNT(DISTINCT address_key_identifier) AS address_key_identifier_count FROM address',
                 (err, row) => {
                     if (err) {
                         console.log(err);
                         return reject(err);
                     }
-                    resolve(row.count);
+                    resolve(row);
                 }
             );
         });
     }
 
-    getAllAddress() {
+    listAddress(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
+
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM address', where, orderBy, limit);
             this.database.all(
-                'SELECT * FROM address',
+                sql,
+                parameters,
                 (err, rows) => {
                     if (err) {
                         console.log(err);
                         return reject(err);
                     }
+                    _.map(rows, row => row.address_attribute = JSON.parse(row.address_attribute));
                     resolve(rows);
                 }
             );

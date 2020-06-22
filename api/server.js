@@ -1,4 +1,5 @@
 // importing the dependencies
+import https from 'https';
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
@@ -6,10 +7,10 @@ import helmet from 'helmet';
 import config from '../core/config/config';
 import async from 'async';
 import database from '../database/database';
-import wallet from '../core/wallet/wallet';
 import apiConfig from '../core/config/api.json';
 import _ from 'lodash';
 import base58 from 'bs58';
+import walletUtils from '../core/wallet/wallet-utils';
 
 
 class Server {
@@ -22,10 +23,10 @@ class Server {
             const apiRepository = database.getRepository('api');
             async.eachSeries(apiConfig.endpoint_list, (api, callback) => {
                 apiRepository.addAPI(api)
-                    .then(() => callback());
+                             .then(() => callback());
             }, () => {
-                apiRepository.getAll()
-                    .then(apis => resolve(apis));
+                apiRepository.list()
+                             .then(apis => resolve(apis));
             });
         });
     }
@@ -38,82 +39,81 @@ class Server {
 
             this.started = true;
 
-            const walletID = _.first(Object.keys(wallet.getActiveWallets()));
-            const keychainRepository = database.getRepository('keychain');
-
             this._loadAPI().then(apis => {
-                const secureAPIs = _.filter(apis, api => api.permission == "true");
-                const insecureAPIs = _.filter(apis, api => api.permission == "false");
-                console.log('secured', secureAPIs);
-                console.log('unsecured', insecureAPIs);
-                keychainRepository.getWalletAddresses(walletID)
-                    .then(addresses => {
-                        let address = _.first(addresses);
-                        let secret = base58.decode(address.address_attribute.key_public);
+                _.each(apis, api => api.permission = JSON.parse(api.permission));
+                // defining the Express app
+                const app = express();
 
-                        // defining the Express app
-                        const app = express();
-                        app.secret = secret;
+                const appInfo = {
+                    name   : 'millix',
+                    version: config.NODE_MILLIX_VERSION
+                };
 
-                        const appInfo = {
-                            name: 'millix',
-                            version: config.NODE_MILLIX_VERSION
-                        };
+                // adding Helmet to enhance your API's
+                // security
+                app.use(helmet());
 
-                        // adding Helmet to enhance your API's
-                        // security
-                        app.use(helmet());
+                // using bodyParser to parse JSON bodies
+                // into JS objects
+                app.use(bodyParser.json());
 
-                        // using bodyParser to parse JSON bodies
-                        // into JS objects
-                        app.use(bodyParser.json());
+                // enabling CORS for all requests
+                app.use(cors());
 
-                        // enabling CORS for all requests
-                        app.use(cors());
+                // defining an endpoint to return all ads
+                app.get('/', (req, res) => {
+                    res.send(appInfo);
+                });
 
-                        // defining an endpoint to return all ads
-                        app.get('/', (req, res) => {
-                            res.send(appInfo);
-                        });
+                // apis
+                apis.forEach(api => {
+                    let module;
+                    try{
+                        module = require('./' + api.api_id + '/index');
+                    }catch (e) {
+                    }
 
-                        // insecure apis
+                    if (module) {
+                        module.default.register(app, api.permission);
+                    }
+                    else {
+                        console.log('api source code not found');
+                    }
+                });
 
-                        insecureAPIs.forEach(insecureAPI => {
-                            const module = require('./' + insecureAPI.api_id + '/index');
-                            if (module) {
-                                module.default.register(app, '/api/');
-                            }
-                            else {
-                                console.log('api source code not found');
-                            }
-                        });
+                app.use(function(err, req, res, next) {
+                    if (err.name === 'UnauthorizedError') {
+                        res.status(err.status).send({error: err.message});
+                        return;
+                    }
+                    next();
+                });
 
-                        // secure apis
+                walletUtils.loadNodeKeyAndCertificate()
+                           .then(({certificate_private_key_pem: certificatePrivateKeyPem, certificate_pem: certificatePem, node_private_key: nodePrivateKey, node_public_key: nodePublicKey}) => {
+                               // starting the server
+                               const httpsServer = https.createServer({
+                                   key      : certificatePrivateKeyPem,
+                                   cert     : certificatePem,
+                                   ecdhCurve: 'prime256v1'
+                               }, app);
 
-                        secureAPIs.forEach(secureAPI => {
-                            const module = require('./' + secureAPI.api_id + '/index');
-                            if (module) {
-                                module.default.register(app, '/api/', true);
-                            }
-                            else {
-                                console.log('api source code not found');
-                            }
-                        });
+                               httpsServer.listen(config.NODE_PORT_API, () => {
+                                   console.log(`[api] listening on port ${config.NODE_PORT_API}`);
+                                   this.nodeID = walletUtils.getNodeIdFromCertificate(certificatePem, 'pem');
+                                   this.nodePrivateKey = nodePrivateKey;
+                                   console.log(`[api] node_id ${this.nodeID}`);
+                                   console.log(`[api] node_signature ${walletUtils.signMessage(nodePrivateKey, this.nodeID)}`);
+                                   const nodeRepository = database.getRepository('node');
+                                   const nop            = () => {
+                                   };
+                                   nodeRepository.addNodeAttribute(this.nodeID, 'node_public_key', base58.encode(nodePublicKey.toBuffer()))
+                                                 .then(nop)
+                                                 .catch(nop);
+                               });
+                               resolve();
+                           });
 
-                        app.use(function (err, req, res, next) {
-                            if (err.name === 'UnauthorizedError') {
-                                res.status(err.status).send({ error: err.message });
-                                return;
-                            }
-                            next();
-                        });
-
-                        // starting the server
-                        app.listen(config.NODE_PORT_API, () => {
-                            console.log('API: listening on port ' + config.NODE_PORT_API);
-                        });
-                        resolve();
-                    });
             });
         });
     }

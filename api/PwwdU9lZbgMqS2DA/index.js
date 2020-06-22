@@ -1,43 +1,61 @@
-import wallet from '../../core/wallet/wallet';
 import walletUtils from '../../core/wallet/wallet-utils';
-import _ from 'lodash';
-import jwt from 'jsonwebtoken';
-import Mnemonic from 'bitcore-mnemonic';
 import Endpoint from '../endpoint';
+import database from '../../database/database';
+import server from '../server';
 
 
-// api get_authentication_token
+/**
+ * api register_node_identity
+ */
 class _PwwdU9lZbgMqS2DA extends Endpoint {
     constructor() {
         super('PwwdU9lZbgMqS2DA');
     }
 
+    /**
+     * this API pushes a value from the client node to the host node for it to
+     * apply to its database. it upserts a record in the host node's table
+     * node_attribute with attribute_type_id = node_public_key.  if a
+     * corresponding node_id does not exist in table node, that is inserted as
+     * well
+     * @param app
+     * @param req (p0: public_key<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
-        const walletID = _.first(Object.keys(wallet.getActiveWallets()));
-        wallet.getMnemonic()
-              .then(([mnemonic_phrase, isNewMnemonic]) => {
-                  if (isNewMnemonic === true) {
-                      res.send(401, 'wallet not initialized');
-                      return;
-                  }
+        if (!req.query.p0) {
+            return res.status(400).send({
+                status : 'fail',
+                message: 'p0<public_key> is required'
+            });
+        }
+        try {
+            if (!walletUtils.isValidNodeIdentity(req.params.nodeID, req.query.p0, server.nodeID, req.params.nodeSignature)) {
+                return res.send({
+                    status : 'fail',
+                    message: 'node_registration_error'
+                });
+            }
+            const nodeRepository = database.getRepository('node');
+            nodeRepository.addNodeAttribute(req.params.nodeID, 'node_public_key', req.query.p0)
+                          .then(() => {
+                              res.send({status: 'success'});
+                          })
+                          .catch(() => {
+                              res.send({
+                                  status : 'fail',
+                                  message: 'node_registration_error'
+                              });
+                          });
+        }
+        catch (e) {
+            res.send({
+                status : 'fail',
+                message: 'node_registration_error'
+            });
+        }
 
-                  const mnemonic       = new Mnemonic(mnemonic_phrase);
-                  const masterKey      = mnemonic.toHDPrivateKey(req.query.p0);
-                  const account        = 0;
-                  const xPrivKey       = walletUtils.deriveExtendedPrivateKey(masterKey, account);
-                  const verifyWalletID = walletUtils.deriveWalletFromKey(xPrivKey);
-                  if (walletID !== verifyWalletID) {
-                      res.send(401, 'wrong authentication');
-                      return;
-                  }
-                  let exp = Math.floor(Date.now() / 1000) + Math.round(req.query.p1);
-                  exp = isNaN(exp) ? {} : {exp};
-                  const token = jwt.sign({
-                      wallet: walletID,
-                      ...exp
-                  }, app.secret);
-                  res.send(token);
-              });
     }
 }
 

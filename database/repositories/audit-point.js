@@ -31,8 +31,8 @@ export default class AuditPoint {
 
     getAuditPointCandidateTransactions() {
         return new Promise((resolve, reject) => {
-            mutex.lock(['get-audit-point-candidate'], unlock => {
-                this.database.all('SELECT DISTINCT audit_verification.transaction_id FROM audit_verification LEFT JOIN audit_point ON audit_verification.transaction_id = audit_point.transaction_id  WHERE verified_date IS NULL AND attempt_count < ? AND audit_point_id IS NULL LIMIT '
+            mutex.lock(['get-audit-point-candidate' + (this.database.shardID ? '_' + this.database.shardID : '')], unlock => {
+                this.database.all('SELECT DISTINCT audit_verification.transaction_id, audit_verification.shard_id FROM audit_verification LEFT JOIN audit_point ON audit_verification.transaction_id = audit_point.transaction_id  WHERE verified_date IS NULL AND attempt_count < ? AND audit_point_id IS NULL LIMIT '
                                   + config.AUDIT_POINT_CANDIDATE_MAX, [config.AUDIT_POINT_ATTEMPT_MAX], (err, pendingCandidates) => {
                     if (err) {
                         reject(err);
@@ -40,13 +40,11 @@ export default class AuditPoint {
                     }
 
                     if (pendingCandidates.length === config.AUDIT_POINT_CANDIDATE_MAX) {
-                        resolve(_.map(pendingCandidates, r => r.transaction_id));
+                        resolve(pendingCandidates);
                         return unlock();
                     }
 
-                    pendingCandidates = _.map(pendingCandidates, r => r.transaction_id);
-
-                    this.database.all('SELECT DISTINCT transaction_output.transaction_id FROM transaction_output ' +
+                    this.database.all('SELECT DISTINCT transaction_output.transaction_id, transaction_output.shard_id FROM transaction_output ' +
                                       'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                                       'LEFT JOIN audit_verification ON transaction_output.transaction_id = audit_verification.transaction_id ' +
                                       'LEFT JOIN audit_point ON transaction_output.transaction_id = audit_point.transaction_id ' +
@@ -56,7 +54,7 @@ export default class AuditPoint {
                             reject(err);
                             return unlock();
                         }
-                        resolve(Array.from(new Set(pendingCandidates.concat(_.map(rows, r => r.transaction_id)))));
+                        resolve(Array.from(new Set(pendingCandidates.concat(rows))));
                         unlock();
                     });
 
@@ -78,31 +76,47 @@ export default class AuditPoint {
         });
     }
 
-    getAuditPointByTransaction(transactionID) {
+    getAuditPoint(transactionID) {
 
         if (!transactionID) {
             return Promise.resolve(null);
         }
 
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT audit_point_id FROM audit_point WHERE transaction_id = ? LIMIT 1', [transactionID],
+            this.database.get('SELECT * FROM audit_point WHERE transaction_id = ? LIMIT 1', [transactionID],
                 (err, row) => {
                     if (err) {
                         return reject(err);
                     }
-                    resolve(row ? row.audit_point_id : undefined);
+                    resolve(row);
                 });
         });
     }
 
-    addTransactionToAuditPoint(entries) {
+    addTransactionToAuditPoint(auditPoint) {
+        return new Promise((resolve, reject) => {
+            this.database.run('INSERT INTO audit_point (audit_point_id, transaction_id, shard_id) VALUES (?,?,?)', [
+                    auditPoint.audit_point_id,
+                    auditPoint.transaction_id,
+                    auditPoint.shard_id
+                ],
+                (err) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve();
+                });
+        });
+    }
+
+    addTransactionToAuditPointEntries(entries) {
         if (entries.length === 0) {
             return Promise.resolve();
         }
 
         return new Promise((resolve, reject) => {
             let placeholders = entries.map((entry) => `("${entry[0]}", "${entry[1]}", "${genesisConfig.genesis_shard_id}")`).join(',');
-            mutex.lock(['transaction'], (unlock) => {
+            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
                 this.database.run('BEGIN TRANSACTION', (err) => {
                     if (err) {
                         reject(err);
@@ -146,7 +160,7 @@ export default class AuditPoint {
 
     updateTransactionToPrune(addressKeyIdentifier) {
         return new Promise((resolve, reject) => {
-            let date = moment().subtract(config.AUDIT_POINT_TRANSACTION_PRUNE_AGE_MIN, 'minute').toDate();
+            let date = moment().subtract(config.TRANSACTION_PRUNE_AGE_MIN, 'minute').toDate();
             if (config.WALLET_SPENT_TRANSACTION_PRUNE) {
 
                 this.database.all('SELECT audit_point.transaction_id FROM audit_point \
@@ -154,7 +168,7 @@ export default class AuditPoint {
                 INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id \
                 LEFT JOIN keychain_address ON transaction_output.address = keychain_address.address \
                 WHERE keychain_address.address_key_identifier=? AND transaction_output.is_spent = 1 \
-                AND +`transaction`.status = 1  AND `transaction`.transaction_date < ? LIMIT 100', [
+                AND +`transaction`.status = 2  AND `transaction`.transaction_date < ? LIMIT 100', [
                     addressKeyIdentifier,
                     Math.floor(date.getTime() / 1000)
                 ], (err, transactions) => {
@@ -165,7 +179,7 @@ export default class AuditPoint {
 
                     transactions = transactions.map(transaction => transaction.transaction_id);
 
-                    this.database.run('UPDATE `transaction` SET status = 0 WHERE transaction_id IND (' + transactions.map(() => '?').join(',') + ')', transactions, (err) => {
+                    this.database.run('UPDATE `transaction` SET status = 0 WHERE transaction_id IN (' + transactions.map(() => '?').join(',') + ')', transactions, (err) => {
                         if (err) {
                             console.log(err);
                             return reject();
@@ -173,7 +187,7 @@ export default class AuditPoint {
 
                         this.database.all('SELECT audit_point.transaction_id FROM audit_point  \
                                     INNER JOIN `transaction` on `transaction`.transaction_id = audit_point.transaction_id  \
-                                    WHERE audit_point.status = 1 AND +`transaction`.status = 1  AND +`transaction`.transaction_date < ? \
+                                    WHERE audit_point.status = 1 AND +`transaction`.status = 2  AND +`transaction`.transaction_date < ? \
                                     AND audit_point.transaction_id NOT IN (SELECT transaction_id FROM transaction_output \
                                     WHERE address_key_identifier=?) \
                                     LIMIT 100', [
@@ -212,7 +226,7 @@ export default class AuditPoint {
             else {
                 this.database.all('SELECT audit_point.transaction_id FROM audit_point  \
                 INNER JOIN `transaction` on `transaction`.transaction_id = audit_point.transaction_id  \
-                WHERE audit_point.status = 1 AND +`transaction`.status = 1  AND +`transaction`.transaction_date < ? \
+                WHERE audit_point.status = 1 AND +`transaction`.status = 2  AND +`transaction`.transaction_date < ? \
                 AND audit_point.transaction_id NOT IN (SELECT transaction_id FROM transaction_output \
                 WHERE address_key_identifier=?) \
                 LIMIT 100', [
@@ -248,7 +262,7 @@ export default class AuditPoint {
 
     pruneTransaction() {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT transaction_id FROM `transaction` where status = 0 LIMIT ' + Math.min(config.AUDIT_POINT_TRANSACTION_PRUNE_COUNT, 250), (err, rows) => {
+            this.database.all('SELECT transaction_id FROM `transaction` where status = 0 LIMIT ' + Math.min(config.TRANSACTION_PRUNE_COUNT, 250), (err, rows) => {
                 if (err) {
                     console.log(err);
                     return reject();

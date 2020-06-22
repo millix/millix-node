@@ -1,34 +1,43 @@
-import services from '../../core/serices/services';
+import services from '../../core/services/services';
 import Endpoint from '../endpoint';
 
 
-// api update_job_engine
+/**
+ * api toggle_service_node
+ */
 class _yefPsK2TvkZmC6M4 extends Endpoint {
     constructor() {
         super('yefPsK2TvkZmC6M4');
     }
 
+    /**
+     * toggles the node service between running (true) and not running (false)
+     * @param app
+     * @param req (p0: is_running<required>)
+     * @param res
+     * @returns {*}
+     */
     handler(app, req, res) {
-        let data;
-        try {
-            data = JSON.parse(req.query.p1);
-        }
-        catch (e) {
+        if (!req.query.p0) {
             return res.status(400).send({
-                success: false,
-                message: 'payload is missing or invalid'
+                status: 'fail',
+                message: 'p0<is_running> is required'
             });
         }
-        if (data.run && !services.initialized) {
+        const isRun = !!req.query.p0;
+        if (isRun && !services.initialized) {
             services.initialize({initialize_wallet_event: true});
-            res.send({success: true});
+            res.send({status: 'success'});
         }
-        else if (!data.run && services.initialized) {
+        else if (!isRun && services.initialized) {
             services.stop();
-            res.send({success: true});
+            res.send({status: 'success'});
         }
         else {
-            res.send({success: false});
+            res.send({
+                status : 'fail',
+                message: 'not_updated'
+            });
         }
     }
 }
