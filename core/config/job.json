@@ -40,7 +40,7 @@
       "processor": "localhost_network",
       "payload": {
         "module": "peer",
-        "function_name": "_doRotationProactive"
+        "function_name": "_doPeerRotation"
       },
       "priority": 0,
       "option_list": {

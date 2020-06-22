@@ -4,7 +4,6 @@ import os from 'os';
 import config from '../../core/config/config';
 import Migration from './migration';
 import genesisConfig from '../../core/genesis/genesis-config';
-import console from '../../core/console';
 
 export default new (class Migrate extends Migration {
 

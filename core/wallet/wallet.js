@@ -718,7 +718,7 @@ class Wallet {
     }
 
     _onSyncTransaction(data, ws) {
-
+        const startTimestamp = Date.now();
         if (data.routing) {
             if (!data.routing_request_node_id || data.routing_request_node_id === network.nodeID) { //no id or its my request
                 return;
@@ -759,6 +759,7 @@ class Wallet {
                             routing                : data.routing,
                             routing_request_node_id: data.routing_request_node_id
                         }, ws);
+                        console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                     }
                     catch (e) {
                         console.log('[wallet] error sending transaction sync response. transaction normalization issue. ' + e.message);
@@ -812,6 +813,7 @@ class Wallet {
                         }
 
                         peer.transactionSyncResponse(routedData, ws);
+                        console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                     });
 
                     setTimeout(function() {
@@ -873,8 +875,9 @@ class Wallet {
 
 
     _onSyncTransactionSpendTransaction(data, ws) {
-        let node         = ws.node;
-        let connectionID = ws.connectionID;
+        let node             = ws.node;
+        let connectionID     = ws.connectionID;
+        const startTimestamp = Date.now();
         mutex.lock(['sync-transaction-spend'], unlock => {
             eventBus.emit('wallet_event_log', {
                 type   : 'transaction_spend_request',
@@ -894,14 +897,16 @@ class Wallet {
                 transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
                 let ws       = network.getWebSocketByID(connectionID);
                 peer.transactionSpendResponse(transactionID, transactions, ws);
+                console.log(`[wallet] sending transactions spending from tx: ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                 unlock();
             }).catch(() => unlock());
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
     }
 
     _onTransactionIncludePathRequest(data, ws) {
-        let node         = ws.node;
-        let connectionID = ws.connectionID;
+        let node             = ws.node;
+        let connectionID     = ws.connectionID;
+        const startTimestamp = Date.now();
         eventBus.emit('wallet_event_log', {
             type   : 'transaction_include_path_request',
             content: data,
@@ -924,6 +929,7 @@ class Wallet {
                                 transaction_id_list: path
                             }, ws);
                         }
+                        console.log(`[wallet] sending transaction include path to tx: ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                         unlock();
                     });
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);

@@ -9,25 +9,51 @@ import async from 'async';
 
 
 export class PeerRotation {
-    static PROACTIVE_ROTATION_TYPE = {
-        DATA_QUANTITY: {
-            type             : 'DATA_QUANTITY',
-            frequency        : 0.25,
-            random_set_length: config.PEER_ROTATION_MORE_THAN_AVERAGE
+    static ROTATION_TYPE = {
+        PROACTIVE: {
+            DATA_QUANTITY: {},
+            POPULARITY   : {},
+            RANDOM       : {}
         },
-        POPULARITY   : {
-            type             : 'POPULARITY',
-            frequency        : 0.25,
-            random_set_length: config.PEER_ROTATION_MORE_THAN_AVERAGE
-        },
-        RANDOM       : {
-            type     : 'RANDOM',
-            frequency: 0.5
-        }
+        REACTIVE : {}
     };
 
     constructor() {
         this._peerRotationStarted = false;
+        this.initialized          = false;
+    }
+
+    initialize() {
+        if (this.initialized) {
+            return Promise.resolve();
+        }
+        this.initialized = true;
+        return database.getRepository('node')
+                       .getNodeAttribute(network.nodeID, 'peer_rotation_settings')
+                       .then(attribute => {
+                           attribute = JSON.parse(attribute);
+                           _.each(_.keys(attribute), rotationType => {
+                               if (PeerRotation.ROTATION_TYPE[rotationType]) {
+                                   const rotationAttribute    = attribute[rotationType];
+                                   const rotationTypeSettings = PeerRotation.ROTATION_TYPE[rotationType];
+                                   _.each(_.keys(rotationAttribute), rotationAttributeType => {
+                                       if (rotationTypeSettings[rotationAttributeType]) {
+                                           const rotationTypeSettingsAttribute        = rotationTypeSettings[rotationAttributeType];
+                                           const rotationAttributeSettings            = rotationAttribute[rotationAttributeType];
+                                           rotationTypeSettingsAttribute['frequency'] = rotationAttributeSettings.frequency;
+                                           if (rotationAttributeSettings.random_set_length !== undefined) {
+                                               rotationTypeSettingsAttribute['random_set_length'] = config[rotationAttributeSettings.random_set_length];
+                                           }
+                                       }
+                                   });
+                                   rotationTypeSettings['frequency'] = rotationAttribute.frequency;
+                               }
+                           });
+                       });
+    }
+
+    stop() {
+        this.initialized = false;
     }
 
     _weightedRandom(prob) {
@@ -36,7 +62,7 @@ export class PeerRotation {
             if (prob.hasOwnProperty(i)) {
                 sum += prob[i].frequency;
                 if (r <= sum) {
-                    return PeerRotation.PROACTIVE_ROTATION_TYPE[i];
+                    return prob[i];
                 }
             }
         }
@@ -50,23 +76,45 @@ export class PeerRotation {
         return _.minBy(peers, ws => ws.createTime);
     }
 
-    _getNewPeer() {
+    _getOlderPeerNotSupportingCommonShards() {
+        return new Promise(resolve => {
+            const peers = network.outboundClients;
+            if (peers.length === 0) {
+                return null;
+            }
+            const nodeRepository = database.getRepository('node');
+            async.mapSeries(peers, (peer, callback) => {
+                nodeRepository.listNodeAttribute({
+                    attribute_type: 'shard_protocol',
+                    node_id       : peer.nodeID
+                }).then(shardAttribute => callback(null, shardAttribute)).catch(() => callback());
+            }, (err, candidates) => {
+                candidates = new Set(_.map(_.filter(candidates, node => {
+                    const supportedShardList = JSON.parse(node.value);
+                    return _.some(_.map(supportedShardList, supportedShard => supportedShard.is_required && _.has(database.shards, supportedShard.shard_id)));
+                }), node => node.node_id));
+                return resolve(_.minBy(_.filter(peers, peer => candidates.has(peer.nodeID)), ws => ws.createTime));
+            });
+        });
+    }
+
+    _getNewPeerProactive() {
         return new Promise(resolve => {
             const nodeRepository = database.getRepository('node');
-            const method         = this._weightedRandom(PeerRotation.PROACTIVE_ROTATION_TYPE);
+            const method         = this._weightedRandom(PeerRotation.ROTATION_TYPE.PROACTIVE);
             switch (method) {
-                case PeerRotation.PROACTIVE_ROTATION_TYPE.DATA_QUANTITY:
-                case PeerRotation.PROACTIVE_ROTATION_TYPE.POPULARITY:
+                case PeerRotation.ROTATION_TYPE.PROACTIVE.DATA_QUANTITY:
+                case PeerRotation.ROTATION_TYPE.PROACTIVE.POPULARITY:
                     let randomSetLength;
                     let attributeType;
-                    if (method === PeerRotation.PROACTIVE_ROTATION_TYPE.DATA_QUANTITY) {
+                    if (method === PeerRotation.ROTATION_TYPE.PROACTIVE.DATA_QUANTITY) {
                         console.log(`[peer-rotation] get new peer using method PeerRotation.PROACTIVE_ROTATION_TYPE.DATA_QUANTITY`);
-                        randomSetLength = PeerRotation.PROACTIVE_ROTATION_TYPE.DATA_QUANTITY.random_set_length;
+                        randomSetLength = PeerRotation.ROTATION_TYPE.PROACTIVE.DATA_QUANTITY.random_set_length;
                         attributeType   = 'transaction_count';
                     }
                     else {
                         console.log(`[peer-rotation] get new peer using method PeerRotation.PROACTIVE_ROTATION_TYPE.POPULARITY`);
-                        randomSetLength = PeerRotation.PROACTIVE_ROTATION_TYPE.POPULARITY.random_set_length;
+                        randomSetLength = PeerRotation.ROTATION_TYPE.PROACTIVE.POPULARITY.random_set_length;
                         attributeType   = 'peer_count';
                     }
                     const limit = Math.round(_.keys(network.nodeList).length * randomSetLength);
@@ -91,7 +139,7 @@ export class PeerRotation {
                                   .then(node => resolve(node))
                                   .catch(() => resolve());
                     break;
-                case PeerRotation.PROACTIVE_ROTATION_TYPE.RANDOM:
+                case PeerRotation.ROTATION_TYPE.PROACTIVE.RANDOM:
                     console.log(`[peer-rotation] get new peer using method PeerRotation.PROACTIVE_ROTATION_TYPE.RANDOM`);
                     nodeRepository.listNodes({status: 1}, 'RANDOM()', 1)
                                   .then(([node]) => {
@@ -104,26 +152,71 @@ export class PeerRotation {
         });
     }
 
-    doRotationProactive() {
-        if (this._peerRotationStarted) {
+    _getNewPeerReactive() {
+        return new Promise(resolve => {
+            const nodeRepository = database.getRepository('node');
+            nodeRepository.listNodeAttribute({attribute_type: 'shard_protocol'})
+                          .then(candidates => {
+                              candidates = _.shuffle(_.filter(candidates, node => {
+                                  const supportedShardList = JSON.parse(node.value);
+                                  return node.node_id !== network.nodeID && _.some(_.map(supportedShardList, supportedShard => supportedShard.is_required && _.has(database.shards, supportedShard.shard_id)));
+                              }));
+                              console.log(`[peer-rotation] list of candidates with ${candidates.length} nodes`);
+                              if (candidates.length === 0) {
+                                  return Promise.reject();
+                              }
+                              return new Promise(resolve => {
+                                  async.eachSeries(candidates, (candidate, callback) => {
+                                      nodeRepository.getNode({
+                                          node_id: candidate.node_id,
+                                          status : 1
+                                      }).then(node => callback(node)).catch(_ => callback());
+                                  }, node => {
+                                      resolve(node);
+                                  });
+                              });
+                          })
+                          .then(node => resolve(node))
+                          .catch(() => resolve());
+        });
+    }
+
+    doPeerRotation() {
+        if (this._peerRotationStarted || !this.initialized) {
             return Promise.resolve();
         }
 
+        this._peerRotationStarted = true;
+
         console.log('[peer-rotation] start new peer rotation');
+
         return new Promise(resolve => {
             const outboundClients = network.outboundClients;
-            let peerToDisconnect;
             if (outboundClients.length < config.NODE_CONNECTION_OUTBOUND_MAX - 1) {
                 console.log(`[peer-rotation] fill available slots (${outboundClients.length} of ${config.NODE_CONNECTION_OUTBOUND_MAX})`);
                 return network.retryConnectToInactiveNodes()
-                              .then(() => resolve());
-            }
-            else if (outboundClients.length === config.NODE_CONNECTION_OUTBOUND_MAX) {
-                peerToDisconnect = this._getOlderPeer();
+                              .then(() => {
+                                  console.log('[peer-rotation] peer rotation done.');
+                                  this._peerRotationStarted = false;
+                                  resolve();
+                              });
             }
 
-            this._getNewPeer()
-                .then(node => {
+            const method = this._weightedRandom(PeerRotation.ROTATION_TYPE);
+            let rotation;
+            switch (method) {
+                case PeerRotation.ROTATION_TYPE.PROACTIVE:
+                    console.log('[peer-rotation] selected mode is PeerRotation.ROTATION_TYPE.PROACTIVE');
+                    rotation = this.doRotationProactive.bind(this);
+                    break;
+                default: // REACTIVE
+                    console.log('[peer-rotation] selected mode is PeerRotation.ROTATION_TYPE.REACTIVE');
+                    rotation = this.doRotationReactive.bind(this);
+                    break;
+            }
+
+            return rotation()
+                .then(([node, peerToDisconnect]) => {
                     if (node) {
                         console.log(`[peer-rotation] new peer found ${node.node_id} - ${node.node_ip_address}`);
                         if (peerToDisconnect && peerToDisconnect.close) {
@@ -132,14 +225,22 @@ export class PeerRotation {
                             peerToDisconnect.onUnregister = () => {
                                 clearTimeout(handlerID);
                                 network._connectTo(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id)
-                                       .then(() => resolve())
+                                       .then(() => {
+                                           console.log('[peer-rotation] peer rotation done.');
+                                           this._peerRotationStarted = false;
+                                           resolve();
+                                       })
                                        .catch(() => {
-                                           this.doRotationProactive().then(() => resolve());
+                                           console.log('[peer-rotation] peer rotation done.');
+                                           this._peerRotationStarted = false;
+                                           this.doPeerRotation().then(() => resolve());
                                        });
                             };
                             handlerID                     = setTimeout(() => {
                                 peerToDisconnect.onUnregister = null;
-                                resolve();
+                                console.log('[peer-rotation] peer rotation done.');
+                                this._peerRotationStarted = false;
+                                this.doPeerRotation().then(() => resolve());
                             }, 1000);
 
                             console.log(`[peer-rotation] drop with node id ${peerToDisconnect.nodeID} - ${peerToDisconnect.url}`);
@@ -154,21 +255,61 @@ export class PeerRotation {
                         else {
                             console.log(`[peer-rotation] no connection to be drop`);
                             network._connectTo(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id)
-                                   .then(() => resolve())
+                                   .then(() => {
+                                       console.log('[peer-rotation] peer rotation done.');
+                                       this._peerRotationStarted = false;
+                                       resolve();
+                                   })
                                    .catch(() => {
-                                       this.doRotationProactive().then(() => resolve());
+                                       console.log('[peer-rotation] peer rotation done.');
+                                       this._peerRotationStarted = false;
+                                       this.doPeerRotation().then(() => resolve());
                                    });
                         }
                     }
                     else {
                         console.log(`[peer-rotation] no new peer found`);
+                        console.log('[peer-rotation] peer rotation done.');
+                        this._peerRotationStarted = false;
                         resolve();
                     }
                 });
-
-        }).then(() => {
-            this._peerRotationStarted = false;
         });
+    }
+
+    doRotationReactive() {
+        const outboundClients = network.outboundClients;
+
+        if (outboundClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+            return this._getOlderPeerNotSupportingCommonShards()
+                       .then(peerToDisconnect => peerToDisconnect ? peerToDisconnect : this._getOlderPeer())
+                       .then(peerToDisconnect => this._getNewPeerReactive()
+                                                     .then(node => ([
+                                                         node,
+                                                         peerToDisconnect
+                                                     ])));
+        }
+        else {
+            return this._getNewPeerReactive()
+                       .then(node => ([
+                           node,
+                           undefined
+                       ]));
+        }
+    }
+
+    doRotationProactive() {
+        const outboundClients = network.outboundClients;
+        let peerToDisconnect;
+        if (outboundClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+            peerToDisconnect = this._getOlderPeer();
+        }
+
+        return this._getNewPeerProactive()
+                   .then(node => ([
+                       node,
+                       peerToDisconnect
+                   ]));
     }
 }
 

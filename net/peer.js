@@ -925,8 +925,8 @@ class Peer {
         }
     }
 
-    _doRotationProactive() {
-        return peerRotation.doRotationProactive();
+    _doPeerRotation() {
+        return peerRotation.doPeerRotation();
     }
 
     initialize() {

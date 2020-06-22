@@ -2,6 +2,7 @@ import wallet, {WALLET_MODE} from '../wallet/wallet';
 import network from '../../net/network';
 import server from '../../api/server';
 import peer from '../../net/peer';
+import peerRotation from '../../net/peer-rotation';
 import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
@@ -28,6 +29,7 @@ class Service {
         return logManager.initialize()
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
+                         .then(() => peerRotation.initialize())
                          .then(() => server.initialize())
                          .then(() => jobEngine.initialize())
                          .then(() => {
@@ -76,6 +78,7 @@ class Service {
         wallet.stop();
         network.stop();
         peer.stop();
+        peerRotation.stop();
         logManager.stop();
         jobEngine.stop();
     }
