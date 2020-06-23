@@ -31,10 +31,12 @@ class _Bootstrap {
         config['NODE_INITIAL_LIST']                  = isModeTestNetwork ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
         config['WALLET_TRANSACTION_DEFAULT_VERSION'] = isModeTestNetwork ? 'lal' : '0a0';
 
-        let DATA_BASE_DIR         = isModeTestNetwork ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
-        config['NODE_KEY_PATH']   = DATA_BASE_DIR + '/node.json';
-        config['KEY_PATH']        = DATA_BASE_DIR + '/millix_private_key.json';
-        config['JOB_CONFIG_PATH'] = DATA_BASE_DIR + '/job.json';
+        let DATA_BASE_DIR                   = isModeTestNetwork ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
+        config['NODE_KEY_PATH']             = DATA_BASE_DIR + '/node.json';
+        config['WALLET_KEY_PATH']           = DATA_BASE_DIR + '/millix_private_key.json';
+        config['JOB_CONFIG_PATH']           = DATA_BASE_DIR + '/job.json';
+        config['NODE_CERTIFICATE_KEY_PATH'] = DATA_BASE_DIR + '/node_certificate_key.pem';
+        config['NODE_CERTIFICATE_PATH']     = DATA_BASE_DIR + '/node_certificate.pem';
 
         if (config.DATABASE_ENGINE === 'sqlite') {
             config['DATABASE_CONNECTION'].FOLDER = DATA_BASE_DIR + '/';
