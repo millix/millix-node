@@ -10,6 +10,7 @@ import walletUtils from '../core/wallet/wallet-utils';
 import https from 'https';
 import base58 from 'bs58';
 import publicIp from 'public-ip';
+import wallet from '../core/wallet/wallet';
 
 const WebSocketServer = Server;
 
@@ -435,6 +436,8 @@ class Network {
 
                     // send peer list to the new node
                     peer.sendNodeList(ws);
+
+                    eventBus.emit('peer_connection_new', ws);
                 }
             });
 
@@ -656,6 +659,8 @@ class Network {
 
                 // send peer list to the new node
                 peer.sendNodeList(ws);
+
+                eventBus.emit('peer_connection_new', ws);
             }
         }
     }

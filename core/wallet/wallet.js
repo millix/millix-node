@@ -369,7 +369,7 @@ class Wallet {
         return signature.sign(objectHash.getHashBuffer(message), privateKeyBuf);
     }
 
-    syncAddresses() {
+    syncAddresses(ws) {
         return new Promise(resolve => {
             mutex.lock(['sync-address-balance-request'], unlock => {
                 let wallets = Object.keys(this.getActiveWallets());
@@ -381,7 +381,7 @@ class Wallet {
                                         return database.getRepository('transaction', shardID)
                                                        .getLastTransactionByAddress(address.address);
                                     }).then(lastUpdateByShard => _.max(lastUpdateByShard))
-                                            .then(updated => peer.addressTransactionSync(address.address, updated ? updated.toISOString() : undefined))
+                                            .then(updated => peer.addressTransactionSync(address.address, updated ? updated.toISOString() : undefined, ws))
                                             .then(() => callbackAddress());
                                 }, () => callback());
                             });
@@ -1369,6 +1369,12 @@ class Wallet {
         }, undefined, Date.now() + config.AUDIT_POINT_VALIDATION_WAIT_TIME_MAX);
     }
 
+    _onNewPeerConnection(ws) {
+        if (this.initialized) {
+            this.syncAddresses(ws);
+        }
+    }
+
     _doShardZeroPruning() {
         return new Promise(resolve => {
             mutex.lock(['shard-zero-pruning'], unlock => {
@@ -1492,6 +1498,7 @@ class Wallet {
         walletSync.initialize()
                   .then(() => walletTransactionConsensus.initialize())
                   .then(() => {
+                      eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
                       eventBus.on('transaction_new', this._onNewTransaction.bind(this));
                       eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
                       eventBus.on('shard_sync_request', this._onSyncShard.bind(this));
