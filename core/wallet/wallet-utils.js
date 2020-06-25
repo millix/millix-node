@@ -1,7 +1,7 @@
 import Mnemonic from 'bitcore-mnemonic';
 import Bitcore from 'bitcore-lib';
 import crypto from 'crypto';
-import config from '../config/config';
+import config, {SHARD_ZERO_NAME} from '../config/config';
 import fs from 'fs';
 import path from 'path';
 import base58 from 'bs58';
@@ -17,7 +17,7 @@ import network from '../../net/network';
 import genesisConfig from '../genesis/genesis-config';
 import signature from '../crypto/signature';
 import node from '../../database/repositories/node';
-import { v4 as uuidv4 } from 'uuid';
+import {v4 as uuidv4} from 'uuid';
 
 
 class WalletUtils {
@@ -703,7 +703,7 @@ class WalletUtils {
               transaction['payload_hash']     = objectHash.getCHash288(transaction);
               transaction['transaction_date'] = timeNow.toISOString();
               transaction['node_id_origin']   = network.nodeID;
-              transaction['shard_id']         = _.sample(_.keys(database.shards));
+              transaction['shard_id']         = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
               transaction['version']          = config.WALLET_TRANSACTION_DEFAULT_VERSION;
               for (let transactionSignature of transaction.transaction_signature_list) {
                   const privateKeyHex = privateKeyMap[transactionSignature.address_base];
