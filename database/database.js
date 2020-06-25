@@ -345,13 +345,13 @@ export class Database {
                 const repository = this.getRepository(repositoryName, shardID);
                 if (repository) {
                     func(repository)
-                        .then(() => callback(true))
+                        .then((data) => callback(data))
                         .catch(() => callback());
                 }
                 else {
                     callback();
                 }
-            }, () => resolve());
+            }, (data) => resolve(data));
         });
     }
 
