@@ -639,7 +639,7 @@ class Peer {
         });
     }
 
-    addressTransactionSync(address, updated) {
+    addressTransactionSync(address, updated, ws) {
 
         if (network.registeredClients.length === 0) {
             return address;
@@ -657,14 +657,24 @@ class Peer {
         eventBus.emit('node_event_log', payload);
 
         let data = JSON.stringify(payload);
-        network.registeredClients.forEach(ws => {
+        if (ws) {
             try {
                 ws.nodeConnectionReady && ws.send(data);
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
             }
-        });
+        }
+        else {
+            network.registeredClients.forEach(ws => {
+                try {
+                    ws.nodeConnectionReady && ws.send(data);
+                }
+                catch (e) {
+                    console.log('[WARN]: try to send data over a closed connection.');
+                }
+            });
+        }
 
         return address;
     }
