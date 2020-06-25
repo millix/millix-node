@@ -3,6 +3,9 @@
     "localhost": {
       "instances": 2
     },
+    "localhost_wallet": {
+      "instances": 2
+    },
     "localhost_watchdog": {
       "instances": 2
     },
@@ -106,7 +109,7 @@
     "transaction_include_path": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_wallet",
       "payload": {
         "module": "wallet",
         "function_name": "_doSyncTransactionIncludePath"
@@ -121,7 +124,7 @@
     "audit_point_update": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_wallet",
       "payload": {
         "module": "wallet",
         "function_name": "_doAuditPointUpdate"
@@ -170,7 +173,7 @@
     "wallet_inspect": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_wallet",
       "payload": {
         "module": "wallet",
         "function_name": "_doStateInspector"
@@ -185,12 +188,12 @@
     "wallet_balance_sync": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_wallet",
       "payload": {
         "module": "wallet",
         "function_name": "_doSyncBalanceForAddresses"
       },
-      "priority": 0,
+      "priority": 1,
       "option_list": {
         "run_always": 1,
         "run_delay": 10000,
@@ -200,7 +203,7 @@
     "wallet_retry_validation_update": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_wallet",
       "payload": {
         "module": "wallet",
         "function_name": "_doUpdateRetryTransactionValidation"
@@ -215,7 +218,7 @@
     "shard_zero_pruning": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_wallet",
       "payload": {
         "module": "wallet",
         "function_name": "_doShardZeroPruning"
@@ -239,7 +242,7 @@
     "transaction_pruning": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_wallet",
       "payload": {
         "module": "wallet",
         "function_name": "_doTransactionPruning"
@@ -262,7 +265,7 @@
     "audit_point_prune": {
       "type": "function",
       "group": "wallet",
-      "processor": "localhost",
+      "processor": "localhost_wallet",
       "payload": {
         "module": "wallet",
         "function_name": "_doAuditPointPruning"
