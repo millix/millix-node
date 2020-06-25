@@ -2,7 +2,7 @@
   <br>
   <a href="#"><img src="https://github.com/millix/millix-wallet/blob/master/app/icon.png?raw=true" alt="millix node" width="200"></a>
   <br>
-  millix node <small>v1.3.3</small>
+  millix node <small>v1.3.4</small>
   <br>
 </h1>
 
@@ -10,7 +10,7 @@
 
 - DAG-backed cryptocurrency
 - Multiple wallet creation and management in-app
-- Easy to send an receive transactions
+- Easy to send and receive transactions
 - [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) Hierarchical deterministic (HD) address generation and wallet backups
 - Device-based security: all private keys are stored locally, not in the cloud
 - Support for testnet
