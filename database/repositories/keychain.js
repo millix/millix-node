@@ -64,6 +64,20 @@ export default class Keychain {
         });
     }
 
+    getKeychainAddressBaseAttribute(addressBase) {
+        return new Promise((resolve, reject) => {
+            this.database.get('SELECT address_attribute FROM keychain WHERE address_base = ?', [addressBase],
+                (err, row) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    row['address_attribute'] = JSON.parse(row.address_attribute);
+                    resolve(row);
+                });
+        });
+    }
+
+
     getAddress(address) {
         return new Promise((resolve, reject) => {
             this.database.get(
