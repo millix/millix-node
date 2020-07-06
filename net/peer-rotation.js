@@ -87,11 +87,11 @@ export class PeerRotation {
                 nodeRepository.listNodeAttribute({
                     attribute_type: 'shard_protocol',
                     node_id       : peer.nodeID
-                }).then(shardAttribute => callback(null, shardAttribute)).catch(() => callback());
-            }, (err, candidates) => {
-                candidates = new Set(_.map(_.filter(candidates, node => {
-                    const supportedShardList = JSON.parse(node.value);
-                    return _.some(_.map(supportedShardList, supportedShard => supportedShard.is_required && _.has(database.shards, supportedShard.shard_id)));
+                }).then(([shardAttribute]) => callback(null, shardAttribute));
+            }, (err, nodeShardAttributeList) => {
+                const candidates = new Set(_.map(_.filter(nodeShardAttributeList, shardAttributeList => {
+                    const supportedShardList = shardAttributeList.value;
+                    return !_.some(_.map(supportedShardList, supportedShard => supportedShard.is_required && _.has(database.shards, supportedShard.shard_id)));
                 }), node => node.node_id));
                 return resolve(_.minBy(_.filter(peers, peer => candidates.has(peer.nodeID)), ws => ws.createTime));
             });
@@ -156,9 +156,9 @@ export class PeerRotation {
         return new Promise(resolve => {
             const nodeRepository = database.getRepository('node');
             nodeRepository.listNodeAttribute({attribute_type: 'shard_protocol'})
-                          .then(candidates => {
-                              candidates = _.shuffle(_.filter(candidates, node => {
-                                  const supportedShardList = JSON.parse(node.value);
+                          .then(nodeShardAttributeList => {
+                              const candidates = _.shuffle(_.filter(nodeShardAttributeList, shardAttributeList => {
+                                  const supportedShardList = shardAttributeList.value;
                                   return node.node_id !== network.nodeID && _.some(_.map(supportedShardList, supportedShard => supportedShard.is_required && _.has(database.shards, supportedShard.shard_id)));
                               }));
                               console.log(`[peer-rotation] list of candidates with ${candidates.length} nodes`);
