@@ -606,6 +606,7 @@ class WalletUtils {
         }
 
         const addressRepository = database.getRepository('address');
+        const keychainRepository = database.getRepository('keychain');
         return new Promise((resolve, reject) => {
             let allocatedFunds = 0;
             const amount       = _.sum(_.map(outputList, o => o.amount));
@@ -635,7 +636,7 @@ class WalletUtils {
             const addressBaseList = _.uniq(_.map(inputList, i => i.address_base));
             const signatureList   = [];
             async.eachSeries(addressBaseList, (addressBase, callback) => {
-                addressRepository.getAddressBaseAttribute(addressBase)
+                keychainRepository.getKeychainAddressBaseAttribute(addressBase)
                                  .then(attribute => {
                                      signatureList.push({
                                          address_base     : addressBase,

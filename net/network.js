@@ -10,7 +10,6 @@ import walletUtils from '../core/wallet/wallet-utils';
 import https from 'https';
 import base58 from 'bs58';
 import publicIp from 'public-ip';
-import wallet from '../core/wallet/wallet';
 
 const WebSocketServer = Server;
 
@@ -116,7 +115,6 @@ class Network {
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
                 this._doHandshake(ws);
                 resolve();
-                eventBus.emit('node_status_update');
             });
 
             ws.on('close', () => {
@@ -247,7 +245,6 @@ class Network {
             });
 
             this._doHandshake(ws, true);
-            eventBus.emit('node_status_update');
         });
 
         console.log('[network] wss running at port ' + config.NODE_PORT);
@@ -438,6 +435,7 @@ class Network {
                     peer.sendNodeList(ws);
 
                     eventBus.emit('peer_connection_new', ws);
+                    eventBus.emit('node_status_update');
                 }
             });
 
@@ -540,8 +538,6 @@ class Network {
                 ws.terminate();
             }
         }
-
-        eventBus.emit('node_status_update');
     }
 
     _registerWebsocketToNodeID(ws) {
@@ -661,6 +657,7 @@ class Network {
                 peer.sendNodeList(ws);
 
                 eventBus.emit('peer_connection_new', ws);
+                eventBus.emit('node_status_update');
             }
         }
     }
