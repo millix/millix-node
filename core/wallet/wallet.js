@@ -238,6 +238,7 @@ class Wallet {
         });
     }
 
+    // TODO - check
     addTransaction(srcAddress, dstOutputs, srcOutputs) {
         const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
@@ -561,6 +562,7 @@ class Wallet {
                        .then(shardInfo => peer.shardSyncResponse(shardInfo, ws));
     }
 
+    // TODO - check this. Called when a new transaction is received from a peer
     _onNewTransaction(data, ws, isRequestedBySync) {
 
         let node         = ws.node;
@@ -612,6 +614,7 @@ class Wallet {
                                                                     return eventBus.emit('transaction_new:' + transaction.transaction_id);
                                                                 }
 
+                                                                // TODO - check here
                                                                 return walletUtils.verifyTransaction(transaction)
                                                                                   .then(validTransaction => {
 
@@ -1018,6 +1021,7 @@ class Wallet {
         return database.getRepository('keychain').getWalletAddresses(this.getDefaultActiveWallet());
     }
 
+    // TODO - check
     _doSyncTransactionIncludePath() {
         return new Promise(resolve => {
             database.getRepository('keychain')
@@ -1411,6 +1415,7 @@ class Wallet {
     }
 
     _doTransactionPruning() {
+        console.log('\n\n\nPRUNING\n\n\n');
 
         if (mutex.getKeyQueuedSize(['transaction-pruning']) > 0) { // a prune task is running.
             return Promise.resolve();
@@ -1493,7 +1498,24 @@ class Wallet {
         return Promise.resolve();
     }
 
+    _doTransactionOutputExpiration() {
+        return new Promise(resolve => {
+            mutex.lock(['transaction-output-expiration'], unlock => {
+                let time = new Date();
+                time.setHours(time.getHours() - 72);
 
+                console.log('\nExpiring older than: \n', time);
+
+                return database.getRepository('transaction').expireTransactions(time)
+                    .then(() => {
+                        unlock();
+                        resolve();
+                    });
+            });
+        });
+    }
+
+    // TODO - check here
     _initializeEvents() {
         walletSync.initialize()
                   .then(() => walletTransactionConsensus.initialize())

@@ -1704,4 +1704,30 @@ export default class Transaction {
             });
         });
     }
+
+
+    expireTransactions(olderThan) {
+        console.log('\n\n(DB) Expire transactions\n\n');
+        return database.applyShards((shardID) => {
+            return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan);
+        })
+    }
+
+    expireTransactionsOnShard(olderThan) {
+        console.log('\n\nEXPIRING SHARD\n\n');
+        let seconds = Math.floor(olderThan.valueOf() / 1000);
+
+        return new Promise((resolve, reject) => {
+            this.database.run('UPDATE transaction_output set status = 2 WHERE is_spent = 0 AND EXISTS (SELECT T.transaction_id FROM `transaction` AS T WHERE T.transaction_date <= ? AND T.transaction_id = transaction_output.transaction_id)', seconds, (err) => {
+                if (err) {
+                    console.log('[Database] Failed updating transactions to expired. [message] ', err);
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    }
 }
+
+
