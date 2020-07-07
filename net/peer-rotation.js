@@ -37,7 +37,7 @@ export class PeerRotation {
                                    const rotationAttribute    = attribute[rotationType];
                                    const rotationTypeSettings = PeerRotation.ROTATION_TYPE[rotationType];
                                    _.each(_.keys(rotationAttribute), rotationAttributeType => {
-                                       if (rotationTypeSettings[rotationAttributeType]) {
+                                       if (rotationAttributeType !== 'frequency' && rotationTypeSettings[rotationAttributeType]) {
                                            const rotationTypeSettingsAttribute        = rotationTypeSettings[rotationAttributeType];
                                            const rotationAttributeSettings            = rotationAttribute[rotationAttributeType];
                                            rotationTypeSettingsAttribute['frequency'] = rotationAttributeSettings.frequency;
