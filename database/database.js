@@ -513,18 +513,37 @@ export class Database {
     }
 
     close() {
-        this.databaseMillix && this.databaseMillix.close((err) => {
-            if (err) {
-                console.error(err.message);
-            }
-            console.log('Close the millix database connection.');
-        });
-
-        this.databaseJobEngine && this.databaseJobEngine.close((err) => {
-            if (err) {
-                console.error(err.message);
-            }
-            console.log('Close the job engine database connection.');
+        return new Promise(resolve => {
+            async.waterfall([
+                (callback) => {
+                    if (this.databaseMillix) {
+                        this.databaseMillix.close((err) => {
+                            if (err) {
+                                console.error(err.message);
+                            }
+                            console.log('Close the millix database connection.');
+                            callback();
+                        });
+                    }
+                    else {
+                        callback();
+                    }
+                },
+                (callback) => {
+                    if (this.databaseJobEngine) {
+                        this.databaseJobEngine.close((err) => {
+                            if (err) {
+                                console.error(err.message);
+                            }
+                            console.log('Close the job engine database connection.');
+                            callback();
+                        });
+                    }
+                    else {
+                        callback();
+                    }
+                }
+            ], () => resolve());
         });
     }
 }

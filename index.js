@@ -59,11 +59,11 @@ if (argv.debug === "true") {
 
 process.on('SIGINT', function() {
     console.log('\nGracefully shutting down from  SIGINT (Crtl-C)');
-    return db.close();
+    process.exit(0);
 });
 
-process.on('exit', function() {
-    return db.close();
+process.on('exit', async () => {
+    await db.close();
 });
 
 console.log('starting millix-core');
