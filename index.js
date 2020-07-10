@@ -57,6 +57,8 @@ if (argv.debug === "true") {
     config.MODE_DEBUG = true;
 }
 
+process.title = 'millix-node';
+
 process.on('SIGINT', function() {
     console.log('\nGracefully shutting down from  SIGINT (Crtl-C)');
     process.exit(0);
