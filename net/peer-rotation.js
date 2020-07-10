@@ -90,6 +90,9 @@ export class PeerRotation {
                 }).then(([shardAttribute]) => callback(null, shardAttribute));
             }, (err, nodeShardAttributeList) => {
                 const candidates = new Set(_.map(_.filter(nodeShardAttributeList, shardAttributeList => {
+                    if(!shardAttributeList.value){
+                        return true;
+                    }
                     const supportedShardList = shardAttributeList.value;
                     return !_.some(_.map(supportedShardList, supportedShard => supportedShard.is_required && _.has(database.shards, supportedShard.shard_id)));
                 }), node => node.node_id));
