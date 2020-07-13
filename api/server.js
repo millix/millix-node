@@ -68,9 +68,10 @@ class Server {
                 // apis
                 apis.forEach(api => {
                     let module;
-                    try{
+                    try {
                         module = require('./' + api.api_id + '/index');
-                    }catch (e) {
+                    }
+                    catch (e) {
                     }
 
                     if (module) {
@@ -100,10 +101,15 @@ class Server {
 
                                httpsServer.listen(config.NODE_PORT_API, () => {
                                    console.log(`[api] listening on port ${config.NODE_PORT_API}`);
-                                   this.nodeID = walletUtils.getNodeIdFromCertificate(certificatePem, 'pem');
+                                   this.nodeID         = walletUtils.getNodeIdFromCertificate(certificatePem, 'pem');
                                    this.nodePrivateKey = nodePrivateKey;
                                    console.log(`[api] node_id ${this.nodeID}`);
-                                   console.log(`[api] node_signature ${walletUtils.signMessage(nodePrivateKey, this.nodeID)}`);
+                                   let nodeSignature = walletUtils.signMessage(nodePrivateKey, this.nodeID);
+                                   console.log(`[api] node_signature ${nodeSignature}`);
+                                   walletUtils.storeNodeData({
+                                       node_id       : this.nodeID,
+                                       node_signature: nodeSignature
+                                   }).then(_ => _).catch(_ => _);
                                    const nodeRepository = database.getRepository('node');
                                    const nop            = () => {
                                    };

@@ -498,6 +498,26 @@ class WalletUtils {
         });
     }
 
+    storeNodeData(extraData) {
+        return new Promise((resolve, reject) => {
+            fs.readFile(path.join(os.homedir(), config.NODE_KEY_PATH), 'utf8', function(err, data) {
+                if (err) {
+                    return reject('couldn\'t the node data file');
+                }
+
+                data = {...JSON.parse(data), ...extraData};
+
+                fs.writeFile(path.join(os.homedir(), config.NODE_KEY_PATH), JSON.stringify(data, null, '\t'), 'utf8', function(err) {
+                    if (err) {
+                        return reject('failed to write to the node data file');
+                    }
+                    resolve();
+                });
+
+            });
+        });
+    }
+
     verifyTransaction(transaction) {
         return new Promise(resolve => {
             if (transaction.transaction_id === genesisConfig.genesis_transaction) {

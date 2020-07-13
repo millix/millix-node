@@ -39,13 +39,13 @@ if (argv.testPort) {
     config.NODE_TEST_PORT = argv.testPort;
 }
 
-if (argv.folder) {
-    config.WALLET_KEY_PATH            = argv.folder + 'millix_private_key.json';
-    config.NODE_KEY_PATH              = argv.folder + 'node.json';
-    config.NODE_CERTIFICATE_KEY_PATH  = argv.folder + 'node_certificate_key.pem';
-    config.NODE_CERTIFICATE_PATH      = argv.folder + 'node_certificate.pem';
-    config.JOB_CONFIG_PATH            = argv.folder + 'job.json';
-    config.DATABASE_CONNECTION.FOLDER = argv.folder;
+if (argv.dataFolder) {
+    config.WALLET_KEY_PATH            = argv.dataFolder + 'millix_private_key.json';
+    config.NODE_KEY_PATH              = argv.dataFolder + 'node.json';
+    config.NODE_CERTIFICATE_KEY_PATH  = argv.dataFolder + 'node_certificate_key.pem';
+    config.NODE_CERTIFICATE_PATH      = argv.dataFolder + 'node_certificate.pem';
+    config.JOB_CONFIG_PATH            = argv.dataFolder + 'job.json';
+    config.DATABASE_CONNECTION.FOLDER = argv.dataFolder;
 }
 
 let initGenesis = false;
@@ -53,17 +53,19 @@ if (argv.genesis) {
     initGenesis = argv.genesis;
 }
 
-if (argv.debug) {
+if (argv.debug === "true") {
     config.MODE_DEBUG = true;
 }
 
+process.title = 'millix-node';
+
 process.on('SIGINT', function() {
     console.log('\nGracefully shutting down from  SIGINT (Crtl-C)');
-    return db.close();
+    process.exit(0);
 });
 
-process.on('exit', function() {
-    return db.close();
+process.on('exit', async () => {
+    await db.close();
 });
 
 console.log('starting millix-core');

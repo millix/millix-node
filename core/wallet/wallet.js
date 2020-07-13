@@ -85,8 +85,9 @@ class Wallet {
                     output: process.stdout
                 });
 
+                console.disable();
                 rl.question(
-                    'Passphrase for the master key: ',
+                    isNewMnemonic ? 'enter a passphrase to protect this wallet: ' : 'enter the passphrase to unlock this wallet: ',
                     function(passphrase) {
                         rl.close();
                         if (process.stdout.moveCursor) {
@@ -96,6 +97,7 @@ class Wallet {
                             process.stdout.clearLine();
                         }
 
+                        console.enable();
                         resolve(passphrase);
                     }
                 );
