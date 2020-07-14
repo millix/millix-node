@@ -238,7 +238,6 @@ class Wallet {
         });
     }
 
-    // TODO - check
     addTransaction(srcAddress, dstOutputs, srcOutputs) {
         const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
@@ -328,15 +327,17 @@ class Wallet {
                             }
                             const extendedPrivateKey = this.getActiveWalletKey(address.wallet_id);
                             const privateKeyBuf      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
-                            return walletUtils.signTransaction(srcInputs, dstOutputs, {[address.address_base]: privateKeyBuf.toString('hex')})
-                                              .then(transaction => {
-                                                  const transactionRepository = database.getRepository('transaction'); // shard zero
-                                                  return transactionRepository.addTransactionFromObject(transaction);
-                                              })
-                                              .then(transaction => [
-                                                  transaction,
-                                                  address
-                                              ]);
+                            return ntp.getTime().then(time => {
+                                let transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
+                                walletUtils.signTransaction(srcInputs, dstOutputs, {[address.address_base]: privateKeyBuf.toString('hex')}, transactionDate)
+                                    .then(transaction => {
+                                        const transactionRepository = database.getRepository('transaction');
+                                        return transactionRepository.addTransactionFromObject(transaction);
+                                    })
+                                    .then(transaction => [
+                                        transaction, address
+                                    ])
+                            });
                         })
                         .then(([transaction, address]) => {
                             return new Promise(resolve => {
@@ -562,7 +563,6 @@ class Wallet {
                        .then(shardInfo => peer.shardSyncResponse(shardInfo, ws));
     }
 
-    // TODO - check this. Called when a new transaction is received from a peer
     _onNewTransaction(data, ws, isRequestedBySync) {
 
         let node         = ws.node;
@@ -614,12 +614,17 @@ class Wallet {
                                                                     return eventBus.emit('transaction_new:' + transaction.transaction_id);
                                                                 }
 
-                                                                // TODO - check here
                                                                 return walletUtils.verifyTransaction(transaction)
                                                                                   .then(validTransaction => {
 
                                                                                       if (!validTransaction) {
                                                                                           console.log('Bad transaction object received from network');
+                                                                                          console.log('Setting all of the childs to invalid');
+
+                                                                                          this.findAndSetAllSpendersAsInvalid(transaction)
+                                                                                              .then(_ => _)
+                                                                                              .catch(_ => _);
+
                                                                                           eventBus.emit('badTransaction:' + transaction.transaction_id);
                                                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                           delete this._transactionRequested[transaction.transaction_id];
@@ -718,6 +723,87 @@ class Wallet {
                        delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                        delete this._transactionRequested[transaction.transaction_id];
                    });
+    }
+
+    // Once a transaction is determined as invalid, we want to set all its spenders
+    // (if there are any) as invalid.
+    findAndSetAllSpendersAsInvalid(transaction) {
+        return new Promise((resolve, reject) => {
+            this.findAllSpenders(transaction)
+                .then((allSpenders) => {
+                    console.log(`Found ${allSpenders.length} spenders of invalid transaction ${transaction.transaction_id}`);
+
+                    this.markAllSpendersAsInvalid(allSpenders)
+                        .then(() => {
+                            console.log(`Marked all spenders of ${transaction.transaction_id} as invalid`);
+                            resolve();
+                        })
+                        .catch((err) => reject(err));
+                })
+                .catch((err) => reject(err));
+        });
+    }
+
+    // Finds all spenders of a single transaction
+    // This is a recursive function
+    // The spenders are added to an array that is passed in
+    findAllSpenders(transaction) {
+        return new Promise((resolve) => {
+            return database.applyShards((shardID) => {
+                return new Promise(resolve => {
+                    let transactionRepository = this.database.getRepository('transaction', shardID);
+                    transactionRepository.getTransactionSpenders(transaction.transaction_id)
+                        .then(result => resolve(result))
+                        .catch(err => {
+                            console.log(`[wallet] Error occurred: ${err}`);
+                            resolve([]);
+                        });
+                });
+            }).then(transactionSpenders => {
+                //  TODO - handle return format
+                if (transactionSpenders.length === 0) return resolve([transaction]); // stops recursion
+
+                async.mapSeries(transactionSpenders, (spender, callback) => {
+                    // continues recursion
+                    this.findAllSpenders(spender)
+                        .then((spenders) => callback(false, spenders))
+                }, (err, mapOfSpenders) => {
+                    let spenders = Array.prototype.concat.apply([], mapOfSpenders);
+                    spenders.push(transaction);
+                    resolve(spenders);
+                });
+            });
+        });
+    }
+
+    markAllSpendersAsInvalid(spenders) {
+        let spendersByShard = {};
+
+        for (let spender of spenders) {
+            if (!(spender.shard_id in spendersByShard)) {
+                spendersByShard[spender.shard_id] = [];
+            }
+
+            spendersByShard[spender.shard_id].push(spender.transaction_id)
+        }
+
+        return new Promise((resolve) => {
+            async.eachSeries(spendersByShard.entries(), ([shardID, transactionIDs], callback) => {
+                let transactionRepository = this.database.getRepository('transaction', shardID);
+                transactionRepository.markTransactionsAsInvalid(transactionIDs)
+                    .then(() => {
+                        console.log(`Set transactions ${transactionIDs} as invalid`);
+                        callback();
+                    })
+                    .catch((err) => {
+                        console.log(`Error while marking transactions as invalid: ${err}`);
+                        callback();
+                    });
+            }, () => {
+                console.log('Finished setting all spenders as invalid');
+                resolve();
+            });
+        });
     }
 
     _onSyncTransaction(data, ws) {

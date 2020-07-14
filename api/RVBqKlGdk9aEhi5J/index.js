@@ -1,5 +1,6 @@
 import Endpoint from '../endpoint';
 import walletUtils from '../../core/wallet/wallet-utils';
+import ntp from '../../core/ntp';
 
 
 /**
@@ -32,12 +33,28 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
         try {
             const transactionPayload = JSON.parse(req.query.p0);
             const privateKeyMap      = JSON.parse(req.query.p1);
-            walletUtils.signTransaction(transactionPayload.transaction_input_list, transactionPayload.transaction_output_list, privateKeyMap)
-                       .then(signedTransaction => res.send(signedTransaction))
-                       .catch(e => res.send({
-                           status : 'fail',
-                           message: e.message
-                       }));
+
+            ntp.getTime().then(time => {
+                let transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
+                walletUtils.isConsumingExpiredOutputs(transactionPayload.transaction_input_list, transactionDate)
+                    .then(isConsuming => {
+                        if (isConsuming) {
+                            console.log('(API) Transaction consuming expired transaction outputs. Not going to sign.');
+
+                            res.send({
+                                status: 'fail',
+                                message: 'Consuming transactions that have expired',
+                            });
+                        } else {
+                            walletUtils.signTransaction(transactionPayload.transaction_input_list, transactionPayload.transaction_output_list, privateKeyMap, transactionDate)
+                                .then(signedTransaction => res.send(signedTransaction))
+                                .catch(e => res.send({
+                                    status: 'fail',
+                                    message: e.message,
+                                }));
+                        }
+                    })
+            });
         }
         catch (e) {
             return res.send({

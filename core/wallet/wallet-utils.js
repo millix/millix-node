@@ -506,14 +506,45 @@ class WalletUtils {
             if (!this.isValidTransactionObject(transaction)) {
                 return resolve(false);
             }
-            else {
-                return resolve(true);
-            }
+
+            this.isConsumingExpiredOutputs(transaction.transaction_input_list, transaction.transaction_date)
+                .then(isConsumingExpired => {
+                    resolve(!isConsumingExpired);
+                })
+                .catch(err => {
+                    console.log(`Failed to check if consuming expired. Abandoning verification. Error: ${err}`);
+                    resolve(false);
+                });
         });
     }
 
     verify(publicKey, sign, message) {
         return signature.verify(objectHash.getHashBuffer(message), sign, publicKey);
+    }
+
+    isConsumingExpiredOutputs(inputList, transactionDate) {
+        return new Promise(resolve => {
+            async.eachSeries(inputList, (input, callback) => {
+                let output_shard = transaction_input.output_shard_id;
+
+                database.firstShardZeroORShardRepository('transaction', output_shard, transactionRepository => {
+                    transactionRepository.getTransaction(input.output_transaction_id)
+                        .then(sourceTransaction => {
+                            let maximumOldest = new Date(transactionDate.valueOf());
+                            maximumOldest.setHours(maximumOldest.getHours() - 72);
+
+                            if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
+                                // Meaning it consumed an expired output
+                                callback(true);
+                            } else {
+                                callback(false);
+                            }
+                    })
+                });
+            }, (isConsumingExpired) => {
+                resolve(isConsumingExpired);
+            });
+        });
     }
 
     isValidTransactionObject(transaction) {
@@ -592,7 +623,7 @@ class WalletUtils {
     }
 
 
-    signTransaction(inputList, outputList, privateKeyMap) {
+    signTransaction(inputList, outputList, privateKeyMap, transactionDate) {
         if (!inputList || inputList.length === 0) {
             return Promise.reject('input list is required');
         }
@@ -655,12 +686,11 @@ class WalletUtils {
             });
         }))
           .then((signatureList) => peer.getNodeAddress()
-                                       .then(({ip_address: nodeIPAddress}) => ntp.getTime().then(time => [
+                                       .then(({ip_address: nodeIPAddress}) => [
                                            signatureList,
                                            nodeIPAddress,
-                                           new Date(Math.floor(time.now.getTime() / 1000) * 1000)
-                                       ])))
-          .then(([signatureList, nodeIPAddress, timeNow]) => {
+                                       ]))
+          .then(([signatureList, nodeIPAddress]) => {
 
               let transaction = {
                   transaction_input_list    : _.map(inputList, o => _.pick(o, [
@@ -693,7 +723,7 @@ class WalletUtils {
                   transaction['transaction_parent_list'] = _.map(parents, p => p.transaction_id).sort();
                   return [
                       transaction,
-                      timeNow,
+                      transactionDate,
                       nodeIPAddress
                   ];
               });
