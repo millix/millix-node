@@ -596,7 +596,6 @@ export default class Transaction {
         });
     }
 
-
     getTransactionParents(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT transaction_id_parent FROM transaction_parent WHERE transaction_id_child = ?',
@@ -618,6 +617,37 @@ export default class Transaction {
                     }
                     resolve(rows.map(r => r.transaction_id_child));
                 });
+        });
+    }
+
+    getTransactionSpenders(transactionID) {
+        return new Promise((resolve, reject) => {
+            this.database.all('SELECT transaction_id, shard_id FROM transaction_input WHERE output_transaction_id = ?', [transactionID], (err, rows) => {
+                if (err) {
+                    return reject(err);
+                }
+
+                let result = rows.map(r => {
+                    return {
+                        'transaction_id': r.transaction_id,
+                        'shard_id': r.shard_id
+                    }
+                });
+
+                resolve(result);
+            });
+        });
+    }
+
+    markTransactionsAsInvalid(transactionIDs) {
+        return new Promise((resolve, reject) => {
+            this.database.run('UPDATE `transaction` set status = 3 WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ' )', transactionIDs, err => {
+               if (err) {
+                   reject(err);
+               } else {
+                   resolve();
+               }
+           });
         });
     }
 
@@ -1242,7 +1272,7 @@ export default class Transaction {
 
     getFreeStableOutput(address) {
         return new Promise((resolve) => {
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE address=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0',
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE address=? and is_spent = 0 and transaction_output.is_stable = 1 and transaction_output.status != 2 and is_double_spend = 0',
                 [address], (err, rows) => {
                     resolve(rows);
                 });
