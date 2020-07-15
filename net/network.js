@@ -16,17 +16,19 @@ const WebSocketServer = Server;
 
 class Network {
     constructor() {
-        this._nodeList           = {};
-        this._connectionRegistry = {};
-        this._nodeRegistry       = {};
-        this._inboundRegistry    = {};
-        this._outboundRegistry   = {};
-        this._ws                 = null;
-        this.nodeID              = null;
-        this.nodeConnectionID    = this.generateNewID();
-        this._selfConnectionNode = new Set();
-        this.initialized         = false;
-        this.noop                = () => {
+        this._nodeList                            = {};
+        this._connectionRegistry                  = {};
+        this._nodeRegistry                        = {};
+        this._inboundRegistry                     = {};
+        this._outboundRegistry                    = {};
+        this._bidirectionaOutboundConnectionCount = 0;
+        this._bidirectionaInboundConnectionCount  = 0;
+        this._ws                                  = null;
+        this.nodeID                               = null;
+        this.nodeConnectionID                     = this.generateNewID();
+        this._selfConnectionNode                  = new Set();
+        this.initialized                          = false;
+        this.noop                                 = () => {
         };
     }
 
@@ -80,7 +82,7 @@ class Network {
             return Promise.resolve();
         }
 
-        if (_.keys(this._outboundRegistry).length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        if ((_.keys(this._outboundRegistry).length + this._bidirectionaInboundConnectionCount) >= config.NODE_CONNECTION_OUTBOUND_MAX) {
             console.log('[network outgoing] outbound connections maxed out, rejecting new client ');
             return Promise.resolve();
         }
@@ -223,7 +225,7 @@ class Network {
 
             console.log('[network income] got connection from ' + ws.node + ', host ' + ip);
 
-            if (_.keys(this._inboundRegistry).length >= config.NODE_CONNECTION_INBOUND_MAX) {
+            if ((_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) >= config.NODE_CONNECTION_INBOUND_MAX) {
                 console.log('[network income] inbound connections maxed out, rejecting new client ' + ip);
                 ws.close(1000, '[network income] inbound connections maxed out'); // 1001 doesn't work in cordova
                 return;
@@ -309,7 +311,7 @@ class Network {
         return walletUtils.getNodePublicKeyFromCertificate(peerCertificate.raw.toString('hex'), 'hex');
     }
 
-    _doHandshake(ws, forceRegistration) {
+    _doHandshake(ws, isInboundConnection) {
         return new Promise((resolve) => {
             let node;
 
@@ -322,7 +324,8 @@ class Network {
                 node           : url
             };
 
-            if (!forceRegistration) {
+            if (!isInboundConnection) {
+                // force node registration on new inbound node connection
                 let peerNodeID;
                 try {
                     peerNodeID = this.getNodeIdFromWebSocket(ws);
@@ -375,6 +378,7 @@ class Network {
                         node_network_test    : config.MODE_TEST_NETWORK,
                         connection_id        : this.nodeConnectionID,
                         registration_required: true,
+
                         ...node
                     }
                 };
@@ -542,12 +546,12 @@ class Network {
 
     _registerWebsocketToNodeID(ws) {
 
-        if (ws.inBound && _.keys(this._inboundRegistry).length >= config.NODE_CONNECTION_INBOUND_MAX) {
+        if (ws.inBound && (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) >= config.NODE_CONNECTION_INBOUND_MAX) {
             console.log('[network inbound] connections maxed out, rejecting new client ');
             ws.close(1000, '[network inbound] connections maxed out');
             return false;
         }
-        else if (ws.outBound && _.keys(this._outboundRegistry).length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        else if (ws.outBound && (_.keys(this._outboundRegistry).length + this._bidirectionaInboundConnectionCount) >= config.NODE_CONNECTION_OUTBOUND_MAX) {
             console.log('[network outbound] connections maxed out, rejecting new client ');
             ws.close(1000, '[network outbound] connections maxed out');
             return false;
