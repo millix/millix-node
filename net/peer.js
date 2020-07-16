@@ -849,13 +849,33 @@ class Peer {
         });
     }
 
-    sendConnectionReady(ws) {
+    sendConnectionReady(content, ws) {
         ws.nodeConnectionState = !ws.nodeConnectionState ? 'waiting' : 'open';
         if (ws.nodeConnectionState === 'open') {
             ws.nodeConnectionReady = true;
         }
         let payload = {
-            type: 'connection_ready'
+            type: 'connection_ready',
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    replyInboundStreamRequest(enabled, ws) {
+        let payload = {
+            type   : 'inbound_stream_response',
+            content: {
+                'inbound_stream_enabled': !!enabled
+            }
         };
 
         eventBus.emit('node_event_log', payload);

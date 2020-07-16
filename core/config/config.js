@@ -9,56 +9,12 @@ export const NODE_PUBLIC                               = false;
 export const NODE_INITIAL_LIST_MAIN_NETWORK            = [];
 export const NODE_INITIAL_LIST_TEST_NETWORK            = [
     {
-        url     : 'wss://13.251.31.129:30000',
+        url     : 'wss://localhost:8802',
         port_api: 35500
     },
     {
-        url     : 'wss://13.251.31.129:30001',
-        port_api: 35501
-    },
-    {
-        url     : 'wss://node0.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node1.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node2.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node3.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node4.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node5.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node6.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node7.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node8.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node9.millix.org:10000',
-        port_api: 5500
-    },
-    {
-        url     : 'wss://node10.millix.org:10000',
-        port_api: 5500
+        url     : 'wss://localhost:8803',
+        port_api: 35500
     }
 ];
 export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;

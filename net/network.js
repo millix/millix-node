@@ -82,7 +82,7 @@ class Network {
             return Promise.resolve();
         }
 
-        if ((_.keys(this._outboundRegistry).length + this._bidirectionaInboundConnectionCount) >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        if (this.hasOutboundConnectionsSlotAvailable()) {
             console.log('[network outgoing] outbound connections maxed out, rejecting new client ');
             return Promise.resolve();
         }
@@ -114,6 +114,7 @@ class Network {
                 ws.lastMessageTime     = ws.createTime;
                 ws.outBound            = true;
                 ws.nodeConnectionReady = false;
+                ws.bidirectional       = false;
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
                 this._doHandshake(ws);
                 resolve();
@@ -221,11 +222,12 @@ class Network {
             ws.createTime          = Date.now();
             ws.lastMessageTime     = ws.createTime;
             ws.nodeConnectionReady = false;
+            ws.bidirectional       = false;
 
 
             console.log('[network income] got connection from ' + ws.node + ', host ' + ip);
 
-            if ((_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) >= config.NODE_CONNECTION_INBOUND_MAX) {
+            if (this.hasInboundConnectionsSlotAvailable()) {
                 console.log('[network income] inbound connections maxed out, rejecting new client ' + ip);
                 ws.close(1000, '[network income] inbound connections maxed out'); // 1001 doesn't work in cordova
                 return;
@@ -422,7 +424,15 @@ class Network {
                                       });
                     }
                     // set connection ready
-                    peer.sendConnectionReady(ws);
+                    let extra = {};
+
+                    if (ws.inBound && this.hasOutboundConnectionsSlotAvailable()) {
+                        ws.reservedOutboundSlot = true;
+                        this._bidirectionaInboundConnectionCount++;
+                        extra['enable_inbound_stream'] = true;
+                    }
+
+                    peer.sendConnectionReady(extra, ws);
 
                     // request peer attributes
                     peer.nodeAttributeRequest({
@@ -544,14 +554,22 @@ class Network {
         }
     }
 
+    hasInboundConnectionsSlotAvailable() {
+        return (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) < config.NODE_CONNECTION_INBOUND_MAX;
+    }
+
+    hasOutboundConnectionsSlotAvailable() {
+        return (_.keys(this._outboundRegistry).length + this._bidirectionaInboundConnectionCount) < config.NODE_CONNECTION_OUTBOUND_MAX;
+    }
+
     _registerWebsocketToNodeID(ws) {
 
-        if (ws.inBound && (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) >= config.NODE_CONNECTION_INBOUND_MAX) {
+        if (ws.inBound && this.hasInboundConnectionsSlotAvailable()) {
             console.log('[network inbound] connections maxed out, rejecting new client ');
             ws.close(1000, '[network inbound] connections maxed out');
             return false;
         }
-        else if (ws.outBound && (_.keys(this._outboundRegistry).length + this._bidirectionaInboundConnectionCount) >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        else if (ws.outBound && this.hasOutboundConnectionsSlotAvailable()) {
             console.log('[network outbound] connections maxed out, rejecting new client ');
             ws.close(1000, '[network outbound] connections maxed out');
             return false;
@@ -663,6 +681,31 @@ class Network {
                 eventBus.emit('peer_connection_new', ws);
                 eventBus.emit('node_status_update');
             }
+
+            if (content && content.enable_inbound_stream === true) {
+                if (ws.outBound && this.hasInboundConnectionsSlotAvailable()) {
+                    ws.bidirectional = true;
+                    this._bidirectionaOutboundConnectionCount++;
+                    peer.replyInboundStreamRequest(true, ws);
+                }
+                else {
+                    ws.bidirectional = true;
+                    peer.replyInboundStreamRequest(false, ws);
+                }
+            }
+        }
+    }
+
+    _onInboundStreamResponse(content, ws) {
+        if (ws.reservedOutboundSlot) {
+            if (content.inbound_stream_enabled === true) {
+                ws.bidirectional = true;
+            }
+            else {
+                ws.bidirectional = false;
+                this._bidirectionaInboundConnectionCount--;
+            }
+            ws.reservedOutboundSlot = false;
         }
     }
 
@@ -674,6 +717,7 @@ class Network {
         eventBus.on('node_handshake', this._onNodeHandshake.bind(this));
         eventBus.on('node_address_request', this._onGetNodeAddress.bind(this));
         eventBus.on('connection_ready', this._onConnectionReady.bind(this));
+        eventBus.on('inbound_stream_response', this._onInboundStreamResponse.bind(this));
     }
 
     initialize() {
@@ -706,6 +750,7 @@ class Network {
         eventBus.removeAllListeners('node_handshake');
         eventBus.removeAllListeners('node_address_request');
         eventBus.removeAllListeners('connection_ready');
+        eventBus.removeAllListeners('inbound_stream_response');
         const wss = this.getWebSocket();
         if (wss) {
             wss._server.close();
