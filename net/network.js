@@ -82,7 +82,7 @@ class Network {
             return Promise.resolve();
         }
 
-        if (this.hasOutboundConnectionsSlotAvailable()) {
+        if (!this.hasOutboundConnectionsSlotAvailable()) {
             console.log('[network outgoing] outbound connections maxed out, rejecting new client ');
             return Promise.resolve();
         }
@@ -145,15 +145,13 @@ class Network {
                 this._unregisterWebsocket(ws);
             });
 
-            ws.on('message', this._onWebsocketMessage);
+            ws.on('message', this._onWebsocketMessage.bind(this, ws));
             console.log('[network outgoing] connecting to node');
 
         }).bind(this));
     }
 
-    _onWebsocketMessage(message) {
-
-        const ws = this;
+    _onWebsocketMessage(ws, message) {
 
         if (ws.readyState !== ws.OPEN) {
             return;
@@ -161,19 +159,27 @@ class Network {
 
         ws.lastMessageTime = Date.now();
 
-        let arrMessage;
+        let jsonMessage;
 
         try {
-            arrMessage = JSON.parse(message);
+            jsonMessage = JSON.parse(message);
         }
         catch (e) {
-            return console.log('[network] failed to json.parse message ' + message);
+            return console.log('[network] failed to parse json message ' + message);
         }
 
-        const message_type = arrMessage.type;
-        const content      = arrMessage.content;
+        const messageType = jsonMessage.type;
+        const content     = jsonMessage.content;
 
-        eventBus.emit(message_type, content, ws);
+        if (ws.outBound && !ws.bidirectional && this.shouldBlockMessage(messageType)) {
+            return;
+        }
+
+        eventBus.emit(messageType, content, ws);
+    }
+
+    shouldBlockMessage(messageType) {
+        return !!/.*_(request|sync|allocate)$/g.exec(messageType);
     }
 
     getHostByNode(node) {
@@ -227,7 +233,7 @@ class Network {
 
             console.log('[network income] got connection from ' + ws.node + ', host ' + ip);
 
-            if (this.hasInboundConnectionsSlotAvailable()) {
+            if (!this.hasInboundConnectionsSlotAvailable()) {
                 console.log('[network income] inbound connections maxed out, rejecting new client ' + ip);
                 ws.close(1000, '[network income] inbound connections maxed out'); // 1001 doesn't work in cordova
                 return;
@@ -235,7 +241,7 @@ class Network {
 
             ws.inBound = true;
 
-            ws.on('message', this._onWebsocketMessage);
+            ws.on('message', this._onWebsocketMessage.bind(this, ws));
 
             ws.on('close', () => {
                 console.log('[network income] client ' + ws.node + ' disconnected');
@@ -564,12 +570,12 @@ class Network {
 
     _registerWebsocketToNodeID(ws) {
 
-        if (ws.inBound && this.hasInboundConnectionsSlotAvailable()) {
+        if (ws.inBound && !this.hasInboundConnectionsSlotAvailable()) {
             console.log('[network inbound] connections maxed out, rejecting new client ');
             ws.close(1000, '[network inbound] connections maxed out');
             return false;
         }
-        else if (ws.outBound && this.hasOutboundConnectionsSlotAvailable()) {
+        else if (ws.outBound && !this.hasOutboundConnectionsSlotAvailable()) {
             console.log('[network outbound] connections maxed out, rejecting new client ');
             ws.close(1000, '[network outbound] connections maxed out');
             return false;
