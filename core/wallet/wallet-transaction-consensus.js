@@ -411,11 +411,11 @@ export class WalletTransactionConsensus {
                 consensus_round: consensusRound,
                 transaction_id : transactionID
             }, ws)
-                .then(() => resolve())
+                .then(resolve)
                 .catch(() => {
                     console.log('[consensus][request] warn: node didnt reply to allocation for transaction validation. replacing node.');
                     this._replaceNodeInConsensusRound(ws)
-                        .then(() => resolve())
+                        .then(resolve)
                         .catch(() => {
                             reject();
                         });
