@@ -327,30 +327,9 @@ class Wallet {
                             }
                             const extendedPrivateKey = this.getActiveWalletKey(address.wallet_id);
                             const privateKeyBuf      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
-                            return ntp.getTime().then(time => {
-                                let transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
-                                walletUtils.signTransaction(srcInputs, dstOutputs, {[address.address_base]: privateKeyBuf.toString('hex')}, transactionDate)
-                                    .then(transaction => {
-                                        const transactionRepository = database.getRepository('transaction');
-                                        return transactionRepository.addTransactionFromObject(transaction);
-                                    })
-                                    .then(transaction => [
-                                        transaction, address
-                                    ])
-                            });
-                        })
-                        .then(([transaction, address]) => {
-                            return new Promise(resolve => {
-                                async.eachSeries(transaction.transaction_output_list, (output, callback) => {
-                                    if (output.address_base === address.address_base) {
-                                        database.applyShardZeroAndShardRepository('transaction', output.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, undefined, ntp.now(), undefined))
-                                                .then(callback);
-                                    }
-                                    else {
-                                        callback();
-                                    }
-                                }, () => resolve(transaction));
-                            });
+                            const privateKeyMap      = {[address.address_base]: privateKeyBuf.toString('hex')};
+                            const addressBases       = [address.address_base];
+                            return this.signAndStoreTransaction(srcInputs, dstOutputs, addressBases, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION);
                         })
                         .then(transaction => peer.transactionSend(transaction))
                         .then((transaction) => {
@@ -725,8 +704,8 @@ class Wallet {
                    });
     }
 
-    // Once a transaction is determined as invalid, we want to set all its spenders
-    // (if there are any) as invalid.
+    // Once a transaction is determined as invalid, we want to set all its
+    // spenders (if there are any) as invalid.
     findAndSetAllSpendersAsInvalid(transaction) {
         return new Promise((resolve, reject) => {
             this.findAllSpenders(transaction)
@@ -751,22 +730,23 @@ class Wallet {
         return new Promise((resolve) => {
             return database.applyShards((shardID) => {
                 return new Promise(resolve => {
-                    let transactionRepository = this.database.getRepository('transaction', shardID);
-                    transactionRepository.getTransactionSpenders(transaction.transaction_id)
-                        .then(result => resolve(result))
-                        .catch(err => {
-                            console.log(`[wallet] Error occurred: ${err}`);
-                            resolve([]);
-                        });
+                    database.getRepository('transaction', shardID)
+                            .getTransactionSpenders(transaction.transaction_id)
+                            .then(result => resolve(result))
+                            .catch(err => {
+                                console.log(`[wallet] Error occurred: ${err}`);
+                                resolve([]);
+                            });
                 });
             }).then(transactionSpenders => {
-                //  TODO - handle return format
-                if (transactionSpenders.length === 0) return resolve([transaction]); // stops recursion
+                if (transactionSpenders.length === 0) {
+                    return resolve([transaction]);
+                } // stops recursion
 
                 async.mapSeries(transactionSpenders, (spender, callback) => {
                     // continues recursion
                     this.findAllSpenders(spender)
-                        .then((spenders) => callback(false, spenders))
+                        .then((spenders) => callback(false, spenders));
                 }, (err, mapOfSpenders) => {
                     let spenders = Array.prototype.concat.apply([], mapOfSpenders);
                     spenders.push(transaction);
@@ -784,21 +764,21 @@ class Wallet {
                 spendersByShard[spender.shard_id] = [];
             }
 
-            spendersByShard[spender.shard_id].push(spender.transaction_id)
+            spendersByShard[spender.shard_id].push(spender.transaction_id);
         }
 
         return new Promise((resolve) => {
             async.eachSeries(spendersByShard.entries(), ([shardID, transactionIDs], callback) => {
-                let transactionRepository = this.database.getRepository('transaction', shardID);
-                transactionRepository.markTransactionsAsInvalid(transactionIDs)
-                    .then(() => {
-                        console.log(`Set transactions ${transactionIDs} as invalid`);
-                        callback();
-                    })
-                    .catch((err) => {
-                        console.log(`Error while marking transactions as invalid: ${err}`);
-                        callback();
-                    });
+                database.getRepository('transaction', shardID)
+                        .markTransactionsAsInvalid(transactionIDs)
+                        .then(() => {
+                            console.log(`Set transactions ${transactionIDs} as invalid`);
+                            callback();
+                        })
+                        .catch((err) => {
+                            console.log(`Error while marking transactions as invalid: ${err}`);
+                            callback();
+                        });
             }, () => {
                 console.log('Finished setting all spenders as invalid');
                 resolve();
@@ -1590,18 +1570,159 @@ class Wallet {
                 let time = new Date();
                 time.setHours(time.getHours() - 72);
 
-                console.log('\nExpiring older than: \n', time);
-
                 return database.getRepository('transaction').expireTransactions(time)
-                    .then(() => {
-                        unlock();
-                        resolve();
-                    });
+                               .then(() => {
+                                   unlock();
+                                   resolve();
+                               });
             });
         });
     }
 
-    // TODO - check here
+    // A job that refreshes outputs that are near expiration
+    _doTransactionOutputRefresh() {
+        return new Promise(resolve => {
+            mutex.lock(['transaction-output-refresh'], unlock => {
+                let time = new Date();
+                time.setHours(time.getHours() - config.OUTPUT_REFRESH_OLDER_THAN);
+
+                const walletID = this.getDefaultActiveWallet();
+                if (!walletID) {
+                    resolve();
+                    unlock();
+                    return;
+                }
+
+                database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
+                        .then((addressKeyIdentifier) => {
+                            if (addressKeyIdentifier === null) {
+                                throw new Error('No address key identifier');
+                            }
+
+                            return this.findAllExpiredOrNearExpiredOutputs(addressKeyIdentifier, time)
+                                       .then(inputs => {
+                                           if (inputs.length === 0) {
+                                               throw new Error('no outputs that need to be refreshed');
+                                           }
+
+                                           console.log(`[wallet] Found ${inputs.length} outputs that need to be refreshed.`);
+                                           return [
+                                               inputs,
+                                               addressKeyIdentifier
+                                           ];
+                                       });
+                        })
+                        .then(([inputs, addressKeyIdentifier]) => {
+                            let neededAddresses = {};
+
+                            for (let input of inputs) {
+                                if (!(input.address in neededAddresses)) {
+                                    neededAddresses[input.address] = true;
+                                }
+                            }
+
+                            const extendedPrivateKey = this.getActiveWalletKey(walletID);
+
+                            //TODO - query address by address
+                            this.getWalletAddresses()
+                                .then(addresses => {
+                                    // Looking for the keys and address bases
+                                    // that are needed to spend these inputs
+                                    let keyMap       = {};
+                                    let addressBases = [];
+
+                                    for (let address of addresses) {
+                                        if (address.address in neededAddresses) {
+                                            const privateKey             = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
+                                            keyMap[address.address_base] = privateKey;
+                                            addressBases.push(address.address_base);
+                                        }
+                                    }
+
+                                    // Creating output - using the first
+                                    // address in the list
+                                    const addressBase    = addresses[0].address_base;
+                                    const addressVersion = addresses[0].address_version;
+                                    const amount         = _.sum(_.map(inputs, i => i.amount));
+
+                                    const output = {
+                                        address_base          : addressBase,
+                                        address_version       : addressVersion,
+                                        address_key_identifier: addressKeyIdentifier,
+                                        amount
+                                    };
+
+                                    return [
+                                        keyMap,
+                                        addressBases,
+                                        output
+                                    ];
+                                })
+                                .then(([keyMap, addressBases, output]) => {
+                                    this.signAndStoreTransaction(inputs, [output], addressBases, keyMap, '0b0')
+                                        .then((transaction) => {
+                                            return transaction;
+                                        });
+                                });
+                        })
+                        .then((transaction) => {
+                            console.log(`[wallet] Successfully stored and propagated refresh transaction ${transaction.transaction_id}`);
+                            resolve();
+                            unlock();
+                        })
+                        .catch((e) => {
+                            console.log(`[wallet] Failed to refresh outputs. Error: ${e}`);
+                            resolve();
+                            unlock();
+                        });
+            });
+        });
+    }
+
+    findAllExpiredOrNearExpiredOutputs(addressKeyIdentifier, time) {
+        return new Promise((resolve) => {
+            return database.applyShards((shardID) => {
+                return new Promise((resolve) => {
+                    database.getRepository('transaction', shardID)
+                            .getUnspentTransactionOutputsOlderThan(addressKeyIdentifier, time)
+                            .then(result => resolve(result))
+                            .catch(err => {
+                                console.log(`[wallet] Failed to get expired or near expired outputs for shard ${shardID}. Error: ${err}`);
+                                resolve([]);
+                            });
+                });
+            }).then(allOutputs => resolve(allOutputs));
+        });
+    }
+
+    signAndStoreTransaction(srcInputs, dstOutputs, addressBases, privateKeyMap, transactionVersion) {
+        return ntp.getTime()
+                  .then(time => {
+                      const transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
+
+                      walletUtils.signTransaction(srcInputs, dstOutputs, privateKeyMap, transactionDate, transactionVersion)
+                                 .then(transaction => {
+                                     return database.getRepository('transaction')
+                                                    .addTransactionFromObject(transaction);
+                                 })
+                                 .then(transaction => transaction);
+                  })
+                  .then(transaction => {
+                      return new Promise(resolve => {
+                          async.eachSeries(transaction.transaction_output_list, (output, callback) => {
+                              if (addressBases.includes(output.address_base)) {
+                                  database.applyShardZeroAndShardRepository('transaction', output.output_shard_id, transactionRepository => {
+                                      return transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, undefined, ntp.now(), undefined);
+                                  }).then(() => callback());
+                              }
+                              else {
+                                  callback();
+                              }
+                          }, () => resolve(transaction));
+                      });
+                  });
+    }
+
     _initializeEvents() {
         walletSync.initialize()
                   .then(() => walletTransactionConsensus.initialize())

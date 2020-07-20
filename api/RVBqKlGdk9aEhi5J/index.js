@@ -35,25 +35,60 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
             const privateKeyMap      = JSON.parse(req.query.p1);
 
             ntp.getTime().then(time => {
-                let transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
-                walletUtils.isConsumingExpiredOutputs(transactionPayload.transaction_input_list, transactionDate)
-                    .then(isConsuming => {
-                        if (isConsuming) {
-                            console.log('(API) Transaction consuming expired transaction outputs. Not going to sign.');
+                const transactionDate    = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
+                const transactionVersion = transactionPayload.transaction_version;
+                const transactionInputs  = transactionPayload.transaction_input_list;
+                const transactionOutputs = transactionPayload.transaction_output_list;
+
+                new Promise((resolve) => {
+                    if (transactionVersion === '0a0') {
+                        walletUtils.isConsumingExpiredOutputs(transactionInputs, transactionDate)
+                                   .then(isConsuming => {
+                                       if (isConsuming) {
+                                           console.log('[API] Transaction consuming expired transaction outputs. Not going to sign.');
+
+                                           res.send({
+                                               status : 'fail',
+                                               message: 'Consuming transactions that have expired'
+                                           });
+                                       }
+                                       resolve(!isConsuming);
+                                   });
+                    }
+                    else if (transactionVersion === '0b0') {
+                        if (!(walletUtils.isValidRefreshTransaction(transactionInputs, transactionOutputs))) {
+                            console.log('[API] Received invalid refresh transaction. Not going to sign.');
 
                             res.send({
-                                status: 'fail',
-                                message: 'Consuming transactions that have expired',
+                                status : 'fail',
+                                message: 'Invalid refresh transaction'
                             });
-                        } else {
-                            walletUtils.signTransaction(transactionPayload.transaction_input_list, transactionPayload.transaction_output_list, privateKeyMap, transactionDate)
-                                .then(signedTransaction => res.send(signedTransaction))
-                                .catch(e => res.send({
-                                    status: 'fail',
-                                    message: e.message,
-                                }));
+                            resolve(false);
                         }
-                    })
+                        else {
+                            resolve(true);
+                        }
+                    }
+                    else {
+                        console.log('[API] Received transaction with invalid transaction version. Not going to sign.');
+
+                        res.send({
+                            status : 'fail',
+                            message: 'Unsupported transaction version'
+                        });
+                        resolve(false);
+                    }
+                })
+                    .then(shouldSign => {
+                        if (shouldSign) {
+                            walletUtils.signTransaction(transactionInputs, transactionOutputs, privateKeyMap, transactionDate, transactionVersion)
+                                       .then(signedTransaction => res.send(signedTransaction))
+                                       .catch(e => res.send({
+                                           status : 'fail',
+                                           message: e.message
+                                       }));
+                        }
+                    });
             });
         }
         catch (e) {

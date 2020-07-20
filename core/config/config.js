@@ -115,6 +115,7 @@ export const SHARD_ZERO_NAME                           = 'shard_zero';
 export const PEER_ROTATION_MORE_THAN_AVERAGE           = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST              = 0.2;
 export const PEER_ROTATION_MORE_THAN_ALL               = 0.01;
+export const OUTPUT_REFRESH_OLDER_THAN                 = 70;
 
 if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.MAX_CONNECTIONS               = 1;
@@ -183,7 +184,8 @@ export default {
     PEER_ROTATION_MORE_THAN_AVERAGE,
     PEER_ROTATION_MORE_THAN_MOST,
     PEER_ROTATION_MORE_THAN_ALL,
-    JOB_CONFIG_PATH
+    JOB_CONFIG_PATH,
+    OUTPUT_REFRESH_OLDER_THAN
 };
 
 // dev branch should be running in the test-network
