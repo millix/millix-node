@@ -574,7 +574,10 @@ class Wallet {
             eventBus.emit('transactionRoutingResponse:' + data.routing_request_node_id + ':' + transaction.transaction_id, data);
         }
 
-        if (this._transactionReceivedFromNetwork[transaction.transaction_id]) {
+        if (!transaction) {
+            return;
+        }
+        else if (this._transactionReceivedFromNetwork[transaction.transaction_id]) {
             delete this._transactionRequested[transaction.transaction_id];
             return;
         }

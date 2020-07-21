@@ -127,7 +127,7 @@ class Peer {
         let data = JSON.stringify(payload);
         network.registeredClients.forEach(ws => {
             try {
-                if (excludeWS !== ws) {
+                if (excludeWS !== ws && !(ws.outBound && !ws.bidirectional)) {
                     ws.nodeConnectionReady && ws.send(data);
                 }
             }
@@ -140,6 +140,10 @@ class Peer {
     }
 
     transactionSendToNode(transaction, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return transaction;
+        }
+
         let payload = {
             type   : 'transaction_new',
             content: transaction
@@ -159,6 +163,10 @@ class Peer {
     }
 
     auditPointValidationResponse(transactions, auditPointID, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return transactions;
+        }
+
         let payload = {
             type   : 'audit_point_validation_response:' + auditPointID,
             content: {transaction_id_list: transactions}
@@ -204,7 +212,7 @@ class Peer {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
                 try {
-                    if (ws.nodeConnectionReady) {
+                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
 
                         eventBus.removeAllListeners('transaction_include_path_response:' + transactionID);
                         eventBus.once('transaction_include_path_response:' + transactionID, function(eventData, eventWS) {
@@ -257,6 +265,10 @@ class Peer {
     }
 
     transactionSpendResponse(transactionID, transactions, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return;
+        }
+
         let payload = {
             type   : 'transaction_spend_response:' + transactionID,
             content: {transaction_id_list: transactions}
@@ -298,7 +310,7 @@ class Peer {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
                 try {
-                    if (ws.nodeConnectionReady) {
+                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
 
                         eventBus.removeAllListeners('transaction_spend_response:' + transactionID);
                         eventBus.once('transaction_spend_response:' + transactionID, function(eventData) {
@@ -348,6 +360,10 @@ class Peer {
     }
 
     transactionIncludePathResponse(message, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return message;
+        }
+
         let payload = {
             type   : 'transaction_include_path_response:' + message.transaction_id,
             content: message
@@ -379,7 +395,7 @@ class Peer {
             let data = JSON.stringify(payload);
             try {
                 let callbackCalled = false;
-                if (ws.nodeConnectionReady) {
+                if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
                     const messageID = 'transaction_validation_response:' + content.transaction_id + ':' + content.consensus_round + ':' + ws.nodeID;
                     eventBus.removeAllListeners(messageID);
                     eventBus.once(messageID, function(eventData, eventWS) {
@@ -422,6 +438,10 @@ class Peer {
     }
 
     allocateNodeToValidateTransaction(content, ws) {
+        if (ws.inBound && !ws.bidirectional) {
+            return Promise.reject();
+        }
+
         return new Promise((resolve, reject) => {
             const payload = {
                 type: 'transaction_validation_node_allocate',
@@ -471,6 +491,10 @@ class Peer {
     }
 
     replyNodeAllocationRequest(content, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return Promise.resolve();
+        }
+
         return new Promise((resolve, reject) => {
             let payload = {
                 type: 'transaction_validation_node_allocate_response:' + network.nodeID,
@@ -516,6 +540,10 @@ class Peer {
     }
 
     acknowledgeAllocateNodeToValidateTransaction(content, ws) {
+        if (ws.inBound && !ws.bidirectional) {
+            return;
+        }
+
         let payload = {
             type: 'transaction_validation_node_allocate_acknowledge:' + network.nodeID,
             content
@@ -533,6 +561,10 @@ class Peer {
     }
 
     releaseNodeToValidateTransaction(content, ws) {
+        if (ws.inBound && !ws.bidirectional) {
+            return;
+        }
+
         let payload = {
             type: 'transaction_validation_node_release',
             content
@@ -550,6 +582,10 @@ class Peer {
     }
 
     auditPointValidationRequest(content, ws) {
+        if (ws.inBound && !ws.bidirectional) {
+            return content;
+        }
+
         let payload = {
             type: 'audit_point_validation_request',
             content
@@ -569,6 +605,10 @@ class Peer {
     }
 
     transactionValidationResponse(message, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return message;
+        }
+
         let payload = {
             type   : 'transaction_validation_response:' + message.transaction_id + ':' + message.consensus_round + ':' + network.nodeID,
             content: message
@@ -659,7 +699,7 @@ class Peer {
         let data = JSON.stringify(payload);
         if (ws) {
             try {
-                ws.nodeConnectionReady && ws.send(data);
+                ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional) && ws.send(data);
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
@@ -668,7 +708,7 @@ class Peer {
         else {
             network.registeredClients.forEach(ws => {
                 try {
-                    ws.nodeConnectionReady && ws.send(data);
+                    ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional) && ws.send(data);
                 }
                 catch (e) {
                     console.log('[WARN]: try to send data over a closed connection.');
@@ -680,6 +720,10 @@ class Peer {
     }
 
     transactionSyncResponse(content, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return content;
+        }
+
         let payload = {
             type: 'transaction_sync_response:' + content.transaction.transaction_id,
             content
@@ -738,7 +782,7 @@ class Peer {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
                 try {
-                    if (ws.nodeConnectionReady) {
+                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
                         eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
                         eventBus.once('transaction_sync_response:' + transactionID, function(eventData, eventWS) {
                             console.log('[peer] stopping transaction sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
@@ -801,7 +845,7 @@ class Peer {
             let data = JSON.stringify(payload);
 
             try {
-                if (ws.nodeConnectionReady) {
+                if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
                     eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
                     eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {

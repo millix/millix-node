@@ -676,6 +676,9 @@ export class WalletTransactionConsensus {
                             return;
                         }
                     }
+                    else if (data.cause === 'transaction_not_found' && transaction && transaction.transaction_id === data.transaction_id_fail) {
+                        peer.transactionSendToNode(transaction, ws);
+                    }
 
                     let validationCount     = 0;
                     let transactionNotFound = true;
