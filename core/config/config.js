@@ -9,12 +9,12 @@ export const NODE_PUBLIC                               = false;
 export const NODE_INITIAL_LIST_MAIN_NETWORK            = [];
 export const NODE_INITIAL_LIST_TEST_NETWORK            = [
     {
-        url     : 'wss://localhost:8802',
+        url     : 'wss://13.251.31.129:30000',
         port_api: 35500
     },
     {
-        url     : 'wss://localhost:8803',
-        port_api: 35500
+        url     : 'wss://13.251.31.129:30001',
+        port_api: 35501
     }
 ];
 export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
