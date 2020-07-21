@@ -81,6 +81,10 @@ class Network {
         if (!prefix || !ipAddress || !port || portApi === undefined) {
             return Promise.resolve();
         }
+        else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && id && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id)) {
+            console.log('[network warn]: node id not in NODE_CONNECTION_OUTBOUND_WHITELIST');
+            return Promise.resolve();
+        }
 
         if (!this.hasOutboundConnectionsSlotAvailable()) {
             console.log('[network outgoing] outbound connections maxed out, rejecting new client ');
@@ -408,6 +412,11 @@ class Network {
                             ws.terminate();
                             return;
                         }
+                        else if (config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(peerNodeID)) {
+                            console.log('[network warn]: node id not in NODE_CONNECTION_INBOUND_WHITELIST');
+                            ws.terminate();
+                            return;
+                        }
                         ws.nodeID = peerNodeID;
                         nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', eventData.public_key)
                                       .catch(() => {
@@ -432,7 +441,7 @@ class Network {
                     // set connection ready
                     let extra = {};
 
-                    if (ws.inBound && this.hasOutboundConnectionsSlotAvailable()) {
+                    if (ws.inBound && this.hasOutboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(peerNodeID))) {
                         ws.reservedOutboundSlot = true;
                         this._bidirectionaInboundConnectionCount++;
                         extra['enable_inbound_stream'] = true;
@@ -689,7 +698,7 @@ class Network {
             }
 
             if (content && content.enable_inbound_stream === true) {
-                if (ws.outBound && this.hasInboundConnectionsSlotAvailable()) {
+                if (ws.outBound && this.hasInboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(ws.nodeID))) {
                     ws.bidirectional = true;
                     this._bidirectionaOutboundConnectionCount++;
                     peer.replyInboundStreamRequest(true, ws);
