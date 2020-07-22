@@ -1,6 +1,7 @@
 import Endpoint from '../endpoint';
 import walletUtils from '../../core/wallet/wallet-utils';
 import ntp from '../../core/ntp';
+import config from '../../core/config/config';
 
 
 /**
@@ -41,21 +42,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                 const transactionOutputs = transactionPayload.transaction_output_list;
 
                 new Promise((resolve) => {
-                    if (transactionVersion === '0a0') {
-                        walletUtils.isConsumingExpiredOutputs(transactionInputs, transactionDate)
-                                   .then(isConsuming => {
-                                       if (isConsuming) {
-                                           console.log('[API] Transaction consuming expired transaction outputs. Not going to sign.');
-
-                                           res.send({
-                                               status : 'fail',
-                                               message: 'Consuming transactions that have expired'
-                                           });
-                                       }
-                                       resolve(!isConsuming);
-                                   });
-                    }
-                    else if (transactionVersion === '0b0') {
+                    if (transactionVersion === config.WALLET_TRANSACTION_REFRESH_VERSION) {
                         if (!(walletUtils.isValidRefreshTransaction(transactionInputs, transactionOutputs))) {
                             console.log('[API] Received invalid refresh transaction. Not going to sign.');
 
@@ -70,23 +57,34 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                         }
                     }
                     else {
-                        console.log('[API] Received transaction with invalid transaction version. Not going to sign.');
+                        walletUtils.isConsumingExpiredOutputs(transactionInputs, transactionDate)
+                                   .then(isConsuming => {
+                                       if (isConsuming) {
+                                           console.log('[API] Transaction consuming expired transaction outputs. Not going to sign.');
 
-                        res.send({
-                            status : 'fail',
-                            message: 'Unsupported transaction version'
-                        });
-                        resolve(false);
+                                           res.send({
+                                               status : 'fail',
+                                               message: 'Consuming transactions that have expired'
+                                           });
+                                       }
+                                       resolve(!isConsuming);
+                                   });
                     }
                 })
                     .then(shouldSign => {
                         if (shouldSign) {
                             walletUtils.signTransaction(transactionInputs, transactionOutputs, privateKeyMap, transactionDate, transactionVersion)
-                                       .then(signedTransaction => res.send(signedTransaction))
-                                       .catch(e => res.send({
-                                           status : 'fail',
-                                           message: e.message
-                                       }));
+                                       .then(signedTransaction => {
+                                           console.log('[API] Successfully signed transaction transaction.');
+                                           res.send(signedTransaction);
+                                       })
+                                       .catch(e => {
+                                           console.log(`[API] Failed to sign transaction. Error: ${e}`);
+                                           res.send({
+                                               status : 'fail',
+                                               message: e.message
+                                           });
+                                       });
                         }
                     });
             });

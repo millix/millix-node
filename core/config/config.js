@@ -88,6 +88,7 @@ export const HEARTBEAT_RESPONSE_TIMEOUT                = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT = 100;
 export const WALLET_LOG_SIZE_MAX                       = 1000;
 export const WALLET_TRANSACTION_DEFAULT_VERSION        = MODE_TEST_NETWORK ? 'lal' : null;
+export const WALLET_TRANSACTION_REFRESH_VERSION        = MODE_TEST_NETWORK ? 'lbl' : null;
 export const WALLET_SPENT_TRANSACTION_PRUNE            = false;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX         = 1000;
 export const WALLET_TRANSACTION_QUEUE_SIZE_NORMAL      = 250;

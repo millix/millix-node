@@ -597,12 +597,11 @@ class Wallet {
                                                                                   .then(validTransaction => {
 
                                                                                       if (!validTransaction) {
-                                                                                          console.log('Bad transaction object received from network');
-                                                                                          console.log('Setting all of the childs to invalid');
+                                                                                          console.log('Invalid transaction received from network. Setting all of the childs to invalid');
 
                                                                                           this.findAndSetAllSpendersAsInvalid(transaction)
                                                                                               .then(_ => _)
-                                                                                              .catch(_ => _);
+                                                                                              .catch(err => console.log(`Failed to find and set spenders as invalid. Error: ${err}`));
 
                                                                                           eventBus.emit('badTransaction:' + transaction.transaction_id);
                                                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
@@ -727,6 +726,8 @@ class Wallet {
     // This is a recursive function
     // The spenders are added to an array that is passed in
     findAllSpenders(transaction) {
+        console.log(`[Wallet] Querying all shards for potential spenders of transaction ${transaction.transaction_id}`);
+
         return new Promise((resolve) => {
             return database.applyShards((shardID) => {
                 return new Promise(resolve => {
@@ -769,6 +770,8 @@ class Wallet {
 
         return new Promise((resolve) => {
             async.eachSeries(spendersByShard.entries(), ([shardID, transactionIDs], callback) => {
+                console.log(`[Wallet] Marking transactions ${transactionIDs.join(', ')} on shard ${shardID} as invalid.`);
+
                 database.getRepository('transaction', shardID)
                         .markTransactionsAsInvalid(transactionIDs)
                         .then(() => {
@@ -1566,6 +1569,7 @@ class Wallet {
 
     _doTransactionOutputExpiration() {
         return new Promise(resolve => {
+            console.log('[Wallet] Starting transaction output expiration');
             mutex.lock(['transaction-output-expiration'], unlock => {
                 let time = new Date();
                 time.setHours(time.getHours() - 72);
@@ -1583,6 +1587,7 @@ class Wallet {
     _doTransactionOutputRefresh() {
         return new Promise(resolve => {
             mutex.lock(['transaction-output-refresh'], unlock => {
+                console.log('[Wallet] Starting refreshing');
                 let time = new Date();
                 time.setHours(time.getHours() - config.OUTPUT_REFRESH_OLDER_THAN);
 
@@ -1624,46 +1629,71 @@ class Wallet {
                             const extendedPrivateKey = this.getActiveWalletKey(walletID);
 
                             //TODO - query address by address
-                            this.getWalletAddresses()
-                                .then(addresses => {
-                                    // Looking for the keys and address bases
-                                    // that are needed to spend these inputs
-                                    let keyMap       = {};
-                                    let addressBases = [];
+                            return this.getWalletAddresses()
+                                       .then(addresses => {
+                                           // Looking for the keys and address
+                                           // bases that are needed to spend
+                                           // these inputs
+                                           let keyMap       = {};
+                                           let addressBases = [];
 
-                                    for (let address of addresses) {
-                                        if (address.address in neededAddresses) {
-                                            const privateKey             = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
-                                            keyMap[address.address_base] = privateKey;
-                                            addressBases.push(address.address_base);
-                                        }
-                                    }
+                                           for (let address of addresses) {
+                                               if (address.address in neededAddresses) {
+                                                   const privateKey             = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
+                                                   keyMap[address.address_base] = privateKey;
+                                                   addressBases.push(address.address_base);
+                                               }
+                                           }
 
-                                    // Creating output - using the first
-                                    // address in the list
-                                    const addressBase    = addresses[0].address_base;
-                                    const addressVersion = addresses[0].address_version;
-                                    const amount         = _.sum(_.map(inputs, i => i.amount));
+                                           // Creating output - using the first
+                                           // address in the list
+                                           const addressBase    = addresses[0].address_base;
+                                           const addressVersion = addresses[0].address_version;
+                                           const amount         = _.sum(_.map(inputs, i => i.amount));
 
-                                    const output = {
-                                        address_base          : addressBase,
-                                        address_version       : addressVersion,
-                                        address_key_identifier: addressKeyIdentifier,
-                                        amount
-                                    };
+                                           const output = {
+                                               address_base          : addressBase,
+                                               address_version       : addressVersion,
+                                               address_key_identifier: addressKeyIdentifier,
+                                               amount
+                                           };
 
-                                    return [
-                                        keyMap,
-                                        addressBases,
-                                        output
-                                    ];
-                                })
-                                .then(([keyMap, addressBases, output]) => {
-                                    this.signAndStoreTransaction(inputs, [output], addressBases, keyMap, '0b0')
-                                        .then((transaction) => {
-                                            return transaction;
-                                        });
-                                });
+                                           return [
+                                               keyMap,
+                                               addressBases,
+                                               output
+                                           ];
+                                       })
+                                       .then(([keyMap, addressBases, output]) => {
+                                           let fieldMap      = {
+                                               'transaction_id'  : 'output_transaction_id',
+                                               'transaction_date': 'output_transaction_date',
+                                               'shard_id'        : 'output_shard_id'
+                                           };
+
+                                           const addressRepository = database.getRepository('address');
+
+                                           for (let input of inputs) {
+                                               const addressComponent = addressRepository.getAddressComponent(input.address);
+                                               input["address_base"] = addressComponent["address"];
+                                               input["address_version"] = addressComponent["version"];
+                                           }
+
+                                           const srcInputs = _.map(inputs, o => _.mapKeys(_.pick(o, [
+                                               'transaction_id',
+                                               'output_position',
+                                               'transaction_date',
+                                               'shard_id',
+                                               'address_base',
+                                               'address_version',
+                                               'address_key_identifier'
+                                           ]), (v, k) => fieldMap[k] ? fieldMap[k] : k));
+
+                                           return this.signAndStoreTransaction(srcInputs, [output], addressBases, keyMap, '0b0')
+                                                      .then((transaction) => {
+                                                          return transaction;
+                                                      });
+                                       });
                         })
                         .then((transaction) => {
                             console.log(`[wallet] Successfully stored and propagated refresh transaction ${transaction.transaction_id}`);
@@ -1700,12 +1730,12 @@ class Wallet {
                   .then(time => {
                       const transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
 
-                      walletUtils.signTransaction(srcInputs, dstOutputs, privateKeyMap, transactionDate, transactionVersion)
-                                 .then(transaction => {
-                                     return database.getRepository('transaction')
-                                                    .addTransactionFromObject(transaction);
-                                 })
-                                 .then(transaction => transaction);
+                      return walletUtils.signTransaction(srcInputs, dstOutputs, privateKeyMap, transactionDate, transactionVersion)
+                                        .then(transaction => {
+                                            return database.getRepository('transaction')
+                                                           .addTransactionFromObject(transaction);
+                                        })
+                                        .then(transaction => transaction);
                   })
                   .then(transaction => {
                       return new Promise(resolve => {

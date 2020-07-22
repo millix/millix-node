@@ -1737,14 +1737,12 @@ export default class Transaction {
 
 
     expireTransactions(olderThan) {
-        console.log('\n\n(DB) Expire transactions\n\n');
         return database.applyShards((shardID) => {
             return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan);
         })
     }
 
     expireTransactionsOnShard(olderThan) {
-        console.log('\n\nEXPIRING SHARD\n\n');
         let seconds = Math.floor(olderThan.valueOf() / 1000);
 
         return new Promise((resolve, reject) => {
@@ -1760,9 +1758,11 @@ export default class Transaction {
     }
 
     getUnspentTransactionOutputsOlderThan(addressKeyIdentifier, time) {
+        const seconds = Math.floor(time.valueOf() / 1000);
+
         return new Promise((resolve, reject) => {
             // TODO - return only necessary
-            this.database.all('SELECT transaction_output.* FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date <= ? AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0', [time, addressKeyIdentifier], (err, rows) => {
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date <= ? AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0', [seconds, addressKeyIdentifier], (err, rows) => {
                 if (err) {
                     return reject(err);
                 }

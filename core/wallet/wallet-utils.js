@@ -509,7 +509,15 @@ class WalletUtils {
 
             console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
 
-            if (transaction.version === '0a0') {
+            if (transaction.version === config.WALLET_REFRESH_TRANSACTION_VERSION) {
+                const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
+                if (!(isValidRefresh)) {
+                    console.log('[wallet-utils] Rejecting refresh transaction');
+                }
+
+                resolve(isValidRefresh);
+            }
+            else {
                 this.isConsumingExpiredOutputs(transaction.transaction_input_list, transaction.transaction_date)
                     .then(isConsumingExpired => {
                         resolve(!isConsumingExpired);
@@ -518,16 +526,6 @@ class WalletUtils {
                         console.log(`Failed to check if consuming expired. Abandoning verification. Error: ${err}`);
                         resolve(false);
                     });
-            } else if (transaction.version === '0b0') {
-                const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
-                if (!(isValidRefresh)) {
-                    console.log('[wallet-utils] Rejecting refresh transaction');
-                }
-
-                resolve(isValidRefresh);
-            } else {
-                console.log('[wallet-utils] Received transaction with invalid transaction version');
-                resolve(false);
             }
         });
     }
@@ -537,32 +535,32 @@ class WalletUtils {
     }
 
     isConsumingExpiredOutputs(inputList, transactionDate) {
-        for (let input of inputList) {
-            console.log(`\tInput: ${input.output_transaction_id}. Position: ${input.output_position}`);
-        }
-
         return new Promise(resolve => {
             async.eachSeries(inputList, (input, callback) => {
                 let output_shard = input.output_shard_id;
 
                 database.firstShardZeroORShardRepository('transaction', output_shard, transactionRepository => {
                     return transactionRepository.getTransaction(input.output_transaction_id)
-                        .then(sourceTransaction => {
-                            if (!sourceTransaction) {
-                                console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
-                                callback(false);
-                            } else {
-                                let maximumOldest = new Date(transactionDate.valueOf());
-                                maximumOldest.setHours(maximumOldest.getHours() - 72);
+                                                .then(sourceTransaction => {
+                                                    if (!sourceTransaction) {
+                                                        console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
+                                                        callback(false);
+                                                    }
+                                                    else {
+                                                        let maximumOldest = new Date(transactionDate.valueOf());
+                                                        maximumOldest.setHours(maximumOldest.getHours() - 72);
 
-                                if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
-                                    // Meaning it consumed an expired output
-                                    callback(true);
-                                } else {
-                                    callback(false);
-                                }
-                            }
-                    })
+                                                        if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
+                                                            // Meaning it
+                                                            // consumed an
+                                                            // expired output
+                                                            callback(true);
+                                                        }
+                                                        else {
+                                                            callback(false);
+                                                        }
+                                                    }
+                                                });
                 });
             }, (isConsumingExpired) => {
                 console.log(`[wallet-utils] CONSUMING EXPIRED OUTPUTS: ${isConsumingExpired}`);
@@ -646,8 +644,8 @@ class WalletUtils {
         return !(signatureVerified === false || vTransaction['payload_hash'] !== transaction['payload_hash'] || vTransaction['transaction_id'] !== transaction['transaction_id']);
     }
 
-    // Refresh transaction is valid if all inputs and outputs belong to same master private key
-    // meaning that their address key identifiers are same
+    // Refresh transaction is valid if all inputs and outputs belong to same
+    // master private key meaning that their address key identifiers are same
     isValidRefreshTransaction(inputList, outputList) {
         const addressKeyIdentifier = inputList[0].address_key_identifier;
 
@@ -679,7 +677,6 @@ class WalletUtils {
             return Promise.reject('private key set is required');
         }
 
-        const addressRepository = database.getRepository('address');
         const keychainRepository = database.getRepository('keychain');
         return new Promise((resolve, reject) => {
             let allocatedFunds = 0;
@@ -711,16 +708,16 @@ class WalletUtils {
             const signatureList   = [];
             async.eachSeries(addressBaseList, (addressBase, callback) => {
                 keychainRepository.getKeychainAddressBaseAttribute(addressBase)
-                                 .then(attribute => {
-                                     signatureList.push({
-                                         address_base     : addressBase,
-                                         address_attribute: attribute.address_attribute
-                                     });
-                                     callback();
-                                 })
-                                 .catch(() => {
-                                     callback('address_attribute_not_found: ' + addressBase);
-                                 });
+                                  .then(attribute => {
+                                      signatureList.push({
+                                          address_base     : addressBase,
+                                          address_attribute: attribute.address_attribute
+                                      });
+                                      callback();
+                                  })
+                                  .catch(() => {
+                                      callback('address_attribute_not_found: ' + addressBase);
+                                  });
             }, (err) => {
                 if (err) {
                     return reject(err);
