@@ -31,21 +31,24 @@ export class WalletSync {
                 return callback();
             }
             delete this.pendingTransactions[job.transaction_id];
-            database.getRepository('transaction')
-                    .hasTransaction(job.transaction_id)
-                    .then(([hasTransaction, isAuditPoint]) => {
-                        if (hasTransaction || wallet.isProcessingTransaction(job.transaction_id)) {
-                            return callback();
-                        }
-                        peer.transactionSyncRequest(job.transaction_id, job)
-                            .then(() => callback())
-                            .catch(() => callback());
-                    })
-                    .catch(_ => {
-                        peer.transactionSyncRequest(job.transaction_id, job)
-                            .then(() => callback())
-                            .catch(() => callback());
-                    });
+            database.firstShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return new Promise((resolve, reject) => transactionRepository.hasTransaction(job.transaction_id)
+                                                                             .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
+                                                                                 hasTransaction,
+                                                                                 isAuditPoint,
+                                                                                 hasTransactionData,
+                                                                                 shardID
+                                                                             ]) : reject())
+                                                                             .catch(() => reject()));
+            }).then(data => data || []).then(([hasTransaction]) => {
+                if (hasTransaction || wallet.isProcessingTransaction(job.transaction_id)) {
+                    return callback();
+                }
+                peer.transactionSyncRequest(job.transaction_id, job)
+                    .then(() => callback())
+                    .catch(() => callback());
+            });
         }, this.CARGO_MAX_LENGHT);
         this.queue         = new Queue((job, done) => {
             if (this.executorQueue.length() < this.CARGO_MAX_LENGHT) {
