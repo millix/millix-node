@@ -807,7 +807,7 @@ class Peer {
                             console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
                             eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
                             callback();
-                        }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+                        }, Math.round(config.NETWORK_SHORT_TIME_WAIT_MAX / 3));
                     }
                     else {
                         callback();
@@ -873,7 +873,7 @@ class Peer {
                         if (!this.pendingTransactionSync[transactionID]) {
                             eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
                         }
-                    }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+                    }, Math.round(config.NETWORK_SHORT_TIME_WAIT_MAX / 3));
                 }
             }
             catch (e) {
