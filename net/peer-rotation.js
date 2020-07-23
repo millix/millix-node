@@ -28,28 +28,36 @@ export class PeerRotation {
             return Promise.resolve();
         }
         this.initialized = true;
-        return database.getRepository('node')
-                       .getNodeAttribute(network.nodeID, 'peer_rotation_settings')
-                       .then(attribute => {
-                           attribute = JSON.parse(attribute);
-                           _.each(_.keys(attribute), rotationType => {
-                               if (PeerRotation.ROTATION_TYPE[rotationType]) {
-                                   const rotationAttribute    = attribute[rotationType];
-                                   const rotationTypeSettings = PeerRotation.ROTATION_TYPE[rotationType];
-                                   _.each(_.keys(rotationAttribute), rotationAttributeType => {
-                                       if (rotationAttributeType !== 'frequency' && rotationTypeSettings[rotationAttributeType]) {
-                                           const rotationTypeSettingsAttribute        = rotationTypeSettings[rotationAttributeType];
-                                           const rotationAttributeSettings            = rotationAttribute[rotationAttributeType];
-                                           rotationTypeSettingsAttribute['frequency'] = rotationAttributeSettings.frequency;
-                                           if (rotationAttributeSettings.random_set_length !== undefined) {
-                                               rotationTypeSettingsAttribute['random_set_length'] = config[rotationAttributeSettings.random_set_length];
-                                           }
-                                       }
-                                   });
-                                   rotationTypeSettings['frequency'] = rotationAttribute.frequency;
-                               }
-                           });
-                       });
+        return new Promise(resolve => {
+            let nodeRepository = database.getRepository('node');
+            nodeRepository
+                .getNodeAttribute(network.nodeID, 'peer_rotation_settings')
+                .then(attribute => resolve(attribute))
+                .catch(() => {
+                    let attribute = JSON.stringify(config.PEER_ROTATION_CONFIG);
+                    nodeRepository.addNodeAttribute(network.nodeID, 'peer_rotation_settings', attribute)
+                                  .then(() => resolve(attribute));
+                });
+        }).then(attribute => {
+            attribute = JSON.parse(attribute);
+            _.each(_.keys(attribute), rotationType => {
+                if (PeerRotation.ROTATION_TYPE[rotationType]) {
+                    const rotationAttribute    = attribute[rotationType];
+                    const rotationTypeSettings = PeerRotation.ROTATION_TYPE[rotationType];
+                    _.each(_.keys(rotationAttribute), rotationAttributeType => {
+                        if (rotationAttributeType !== 'frequency' && rotationTypeSettings[rotationAttributeType]) {
+                            const rotationTypeSettingsAttribute        = rotationTypeSettings[rotationAttributeType];
+                            const rotationAttributeSettings            = rotationAttribute[rotationAttributeType];
+                            rotationTypeSettingsAttribute['frequency'] = rotationAttributeSettings.frequency;
+                            if (rotationAttributeSettings.random_set_length !== undefined) {
+                                rotationTypeSettingsAttribute['random_set_length'] = config[rotationAttributeSettings.random_set_length];
+                            }
+                        }
+                    });
+                    rotationTypeSettings['frequency'] = rotationAttribute.frequency;
+                }
+            });
+        });
     }
 
     stop() {

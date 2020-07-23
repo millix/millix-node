@@ -574,7 +574,7 @@ class Wallet {
             eventBus.emit('transactionRoutingResponse:' + data.routing_request_node_id + ':' + transaction.transaction_id, data);
         }
 
-        if (!transaction) {
+        if (!transaction || data.transaction_not_found) {
             return;
         }
         else if (this._transactionReceivedFromNetwork[transaction.transaction_id]) {
@@ -750,7 +750,8 @@ class Wallet {
                                      .then(transaction => transaction ? resolve([
                                          transaction,
                                          transactionRepository
-                                     ]) : reject());
+                                     ]) : reject())
+                                     .catch(() => reject());
             });
         }).then(firstShardData => {
             const [transaction, transactionRepository] = firstShardData || [];
@@ -772,6 +773,15 @@ class Wallet {
                 }
             }
             else {
+                console.log(`[wallet] sending transaction ${data.transaction_id} not found to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                peer.transactionSyncResponse({
+                    transaction            : {transaction_id: data.transaction_id},
+                    transaction_not_found  : true,
+                    depth                  : data.depth,
+                    routing                : data.routing,
+                    routing_request_node_id: data.routing_request_node_id
+                }, ws);
+
                 mutex.lock(['routing_transaction'], unlock => {
 
                     let requestNodeID = data.routing ? data.routing_request_node_id : nodeID;
@@ -795,15 +805,14 @@ class Wallet {
                         };
                     }
 
-                    let self = this;
                     eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
-                    eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, function(routedData) {
-                        if (!self._transactionOnRoute[routedData.routing_request_node_id]) {
+                    eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, (routedData) => {
+                        if (!this._transactionOnRoute[routedData.routing_request_node_id]) {
                             console.log('[Wallet] Routed package not requested ?!', routedData);
                             return;
                         }
 
-                        delete self._transactionOnRoute[routedData.routing_request_node_id][routedData.transaction.transaction_id];
+                        delete this._transactionOnRoute[routedData.routing_request_node_id][routedData.transaction.transaction_id];
 
                         if (!routedData.transaction) {
                             console.log('[Wallet] Routed package does not contain a transaction ?!', routedData);
@@ -817,7 +826,7 @@ class Wallet {
                             return;
                         }
 
-                        peer.transactionSyncResponse(routedData, ws);
+                        peer.transactionSendToNode(routedData.transaction, ws);
                         console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                     });
 
@@ -827,12 +836,14 @@ class Wallet {
 
                     unlock();
                     peer.transactionSyncRequest(transactionID, {
-                        depth          : data.depth,
-                        routing        : true,
-                        request_node_id: requestNodeID
+                        depth           : data.depth,
+                        routing         : true,
+                        request_node_id : requestNodeID,
+                        dispatch_request: true
                     })
-                        .then(() => this._transactionRequested[transactionID] = Date.now())
+                        .then(_ => _)
                         .catch(_ => _);
+                    this._transactionRequested[transactionID] = Date.now();
                 }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
             }
         });
@@ -894,13 +905,14 @@ class Wallet {
                 const transactionRepository = database.getRepository('transaction', shardID);
                 return transactionRepository.getSpendTransactions(transactionID);
             }).then(transactions => {
-                if (!transactions || transactions.length === 0) {
-                    unlock();
-                    return;
+                if (transactions && transactions.length > 0) {
+                    transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
+                }
+                else {
+                    transactions = [];
                 }
 
-                transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
-                let ws       = network.getWebSocketByID(connectionID);
+                let ws = network.getWebSocketByID(connectionID);
                 peer.transactionSpendResponse(transactionID, transactions, ws);
                 console.log(`[wallet] sending transactions spending from tx: ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                 unlock();

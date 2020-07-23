@@ -216,7 +216,7 @@ class Peer {
 
                         eventBus.removeAllListeners('transaction_include_path_response:' + transactionID);
                         eventBus.once('transaction_include_path_response:' + transactionID, function(eventData, eventWS) {
-                            console.log('[peer] stopping transaction spend sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
+                            console.log('[peer] received include path for transaction id ', transactionID, ' from node ', nodeID);
 
                             if (!callbackCalled) {
                                 resolve([
@@ -314,12 +314,17 @@ class Peer {
 
                         eventBus.removeAllListeners('transaction_spend_response:' + transactionID);
                         eventBus.once('transaction_spend_response:' + transactionID, function(eventData) {
-                            console.log('[peer] stopping transaction spend sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
+                            console.log('[peer] received transaction spend sync for transaction id ', transactionID, ' from node ', nodeID);
 
                             if (!callbackCalled) {
-                                resolve(eventData);
                                 callbackCalled = true;
-                                callback(true);
+                                if (!eventData || !eventData.transaction_id_list || eventData.transaction_id_list.length === 0) {
+                                    callback();
+                                }
+                                else {
+                                    resolve(eventData);
+                                    callback(true);
+                                }
                             }
 
                         });
@@ -779,25 +784,29 @@ class Peer {
             let nodesWS = _.shuffle(network.registeredClients);
 
             async.eachSeries(nodesWS, (ws, callback) => {
-                let callbackCalled = false;
+                let timeoutID      = undefined;
                 let nodeID         = ws.nodeID;
+                let startTimestamp = Date.now();
                 try {
                     if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
-                        eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
-                        eventBus.once('transaction_sync_response:' + transactionID, function(eventData, eventWS) {
-                            console.log('[peer] stopping transaction sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
-                            eventBus.emit('transaction_new', eventData, eventWS, true);
-                            if (!callbackCalled) {
-                                callbackCalled = true;
+                        eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
+                        eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData, eventWS) {
+                            clearTimeout(timeoutID);
+                            if (eventData.transaction_not_found) {
+                                console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                                callback();
+                            }
+                            else {
+                                console.log(`[peer] received transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                                eventBus.emit('transaction_new', eventData, eventWS, true);
                                 callback(true);
                             }
                         });
                         ws.send(data);
-                        setTimeout(function() {
-                            if (!callbackCalled) {
-                                callbackCalled = true;
-                                callback();
-                            }
+                        timeoutID = setTimeout(function() {
+                            console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                            eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
+                            callback();
                         }, config.NETWORK_SHORT_TIME_WAIT_MAX);
                     }
                     else {
@@ -806,10 +815,9 @@ class Peer {
                 }
                 catch (e) {
                     console.log('[WARN]: try to send data over a closed connection.');
-                    if (!callbackCalled) {
-                        callbackCalled = true;
-                        callback();
-                    }
+                    clearTimeout(timeoutID);
+                    eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
+                    callback();
                 }
             }, (done) => {
                 eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
@@ -826,6 +834,9 @@ class Peer {
 
     transactionSyncByWebSocket(transactionID, ws, currentDepth) {
         return new Promise((resolve) => {
+
+            let startTimestamp = Date.now();
+            let nodeID         = ws.nodeID;
 
             if (this.pendingTransactionSync[transactionID]) {
                 return resolve();
@@ -849,12 +860,16 @@ class Peer {
                     eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
                     eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
-                        eventBus.emit('transaction_new', data, eventWS, true);
+                        if (!data.transaction_not_found) {
+                            console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                            eventBus.emit('transaction_new', data, eventWS, true);
+                        }
                     });
 
                     ws.send(data);
                     ws = null;
                     setTimeout(() => {
+                        console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
                         if (!this.pendingTransactionSync[transactionID]) {
                             eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
                         }
