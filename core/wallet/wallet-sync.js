@@ -19,42 +19,33 @@ export class WalletSync {
         this.transactionSpendQueue = null;
         this.pendingTransactions   = {};
         this.scheduledQueueAdd     = {};
-        this.CARGO_MAX_LENGHT      = config.NODE_CONNECTION_OUTBOUND_MAX * 2;
+        this.CARGO_MAX_LENGHT      = 2;
     }
 
     initialize() {
         if (!fs.existsSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER))) {
             fs.mkdirSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER));
         }
-        this.executorQueue = async.queue((job, callback) => {
+        this.queue = new Queue((job, done) => {
             if (!job.transaction_id) {
-                return callback();
+                return done();
             }
             delete this.pendingTransactions[job.transaction_id];
             database.getRepository('transaction')
                     .hasTransaction(job.transaction_id)
                     .then(([hasTransaction, isAuditPoint]) => {
                         if (hasTransaction || wallet.isProcessingTransaction(job.transaction_id)) {
-                            return callback();
+                            return done();
                         }
                         peer.transactionSyncRequest(job.transaction_id, job)
-                            .then(() => callback())
-                            .catch(() => callback());
+                            .then(() => done())
+                            .catch(() => done());
                     })
                     .catch(_ => {
                         peer.transactionSyncRequest(job.transaction_id, job)
-                            .then(() => callback())
-                            .catch(() => callback());
+                            .then(() => done())
+                            .catch(() => done());
                     });
-        }, this.CARGO_MAX_LENGHT);
-        this.queue         = new Queue((job, done) => {
-            if (this.executorQueue.length() < this.CARGO_MAX_LENGHT) {
-                this.executorQueue.push(job);
-                done();
-            }
-            else {
-                this.executorQueue.push(job, () => done());
-            }
         }, {
             id                      : 'transaction_id',
             store                   : new SqliteStore({
