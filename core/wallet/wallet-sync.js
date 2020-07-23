@@ -1,4 +1,5 @@
 import config from '../config/config';
+import genesisConfig from '../genesis/genesis-config';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -14,10 +15,11 @@ import async from 'async';
 export class WalletSync {
 
     constructor() {
-        this.queue               = null;
-        this.pendingTransactions = {};
-        this.scheduledQueueAdd   = {};
-        this.CARGO_MAX_LENGHT    = (config.NODE_CONNECTION_OUTBOUND_MAX + config.NODE_CONNECTION_INBOUND_MAX) * 2;
+        this.queue                 = null;
+        this.transactionSpendQueue = null;
+        this.pendingTransactions   = {};
+        this.scheduledQueueAdd     = {};
+        this.CARGO_MAX_LENGHT      = config.NODE_CONNECTION_OUTBOUND_MAX * 2;
     }
 
     initialize() {
@@ -46,7 +48,6 @@ export class WalletSync {
                     });
         }, this.CARGO_MAX_LENGHT);
         this.queue         = new Queue((job, done) => {
-            console.log('[wallet-sync] sync queue stats ', this.queue.getStats(), ' transactions to sync');
             if (this.executorQueue.length() < this.CARGO_MAX_LENGHT) {
                 this.executorQueue.push(job);
                 done();
@@ -58,7 +59,7 @@ export class WalletSync {
             id                      : 'transaction_id',
             store                   : new SqliteStore({
                 dialect     : 'sqlite',
-                path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_SYNC_QUEUE),
+                path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_QUEUE),
                 setImmediate: global.setImmediate
             }),
             precondition            : function(cb) {
@@ -76,6 +77,78 @@ export class WalletSync {
             preconditionRetryTimeout: 10 * 1000 // If we go offline, retry
             // every 10s
         });
+
+        let isStartTransactionSync = false;
+        if (!fs.existsSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE))) {
+            isStartTransactionSync = true;
+        }
+        this.processTransactionSpend = null;
+        this.transactionSpendQueue   = new Queue((batch, done) => {
+            console.log('[wallet-sync] transaction spend sync stats ', this.transactionSpendQueue.getStats());
+            if (batch.length === 0) {
+                return done();
+            }
+            this.processTransactionSpend = new Promise(resolve => {
+                async.eachSeries(batch, (job, callback) => {
+                    if (!job.transaction_id) {
+                        return callback();
+                    }
+
+                    peer.transactionSpendRequest(job.transaction_id)
+                        .then(response => {
+                            if (response.transaction_id_list.length > 0) {
+                                response.transaction_id_list.forEach(transactionID => {
+                                    this.transactionSpendQueue.push({
+                                        transaction_id: transactionID
+                                    });
+                                });
+                                this.add(job.transaction_id);
+                            }
+                            else {
+                                this.transactionSpendQueue.push({
+                                    transaction_id: job.transaction_id
+                                });
+                            }
+                            callback();
+                        })
+                        .catch(() => {
+                            this.transactionSpendQueue.push({
+                                transaction_id: job.transaction_id
+                            });
+                            callback();
+                        });
+                }, () => {
+                    done();
+                    resolve();
+                });
+            });
+        }, {
+            id                      : 'transaction_id',
+            store                   : new SqliteStore({
+                dialect     : 'sqlite',
+                path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE),
+                setImmediate: global.setImmediate
+            }),
+            batchSize               : 10,
+            precondition            : function(cb) {
+                if (network.registeredClients.length > 0) {
+                    cb(null, true);
+                }
+                else {
+                    cb(null, false);
+                }
+            },
+            priority                : function(entry, cb) {
+                return cb(null, entry.priority || 0);
+            },
+            setImmediate            : global.setImmediate,
+            preconditionRetryTimeout: 10 * 1000 // If we go offline, retry
+            // every 10s
+        });
+
+        if (isStartTransactionSync) {
+            this.transactionSpendQueue.push({transaction_id: genesisConfig.genesis_transaction});
+        }
 
         return Promise.resolve();
     }
@@ -126,7 +199,22 @@ export class WalletSync {
             else {
                 resolve();
             }
-        });
+        }).then(() => new Promise(resolve => {
+            if (this.transactionSpendQueue) {
+                this.transactionSpendQueue.destroy(() => resolve());
+            }
+            else {
+                resolve();
+            }
+        }));
+    }
+
+    _doSyncTransactionSpend() {
+        if (!this.transactionSpendQueue || !this.processTransactionSpend) {
+            return Promise.resolve();
+        }
+
+        return this.processTransactionSpend();
     }
 
 }

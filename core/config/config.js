@@ -90,16 +90,17 @@ export const PEER_ROTATION_CONFIG                      = {
 };
 
 if (DATABASE_ENGINE === 'sqlite') {
-    DATABASE_CONNECTION.MAX_CONNECTIONS               = 1;
-    DATABASE_CONNECTION.FOLDER                        = DATA_BASE_DIR + '/';
-    DATABASE_CONNECTION.FILENAME_MILLIX               = 'millix.sqlite';
-    DATABASE_CONNECTION.FILENAME_SYNC_QUEUE           = 'millix_sync_queue.sqlite';
-    DATABASE_CONNECTION.FILENAME_JOB_ENGINE           = 'millix_job_engine.sqlite';
-    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX            = './scripts/initialize-millix-sqlite3.sql';
-    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_SHARD      = './scripts/initialize-millix-shard-sqlite3.sql';
-    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE = './scripts/initialize-millix-job-engine-sqlite3.sql';
-    DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR          = './scripts/migration';
-    DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR    = './scripts/migration/shard';
+    DATABASE_CONNECTION.MAX_CONNECTIONS                  = 1;
+    DATABASE_CONNECTION.FOLDER                           = DATA_BASE_DIR + '/';
+    DATABASE_CONNECTION.FILENAME_MILLIX                  = 'millix.sqlite';
+    DATABASE_CONNECTION.FILENAME_TRANSACTION_QUEUE       = 'millix_transaction_queue.sqlite';
+    DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE = 'millix_transaction_spend_queue.sqlite';
+    DATABASE_CONNECTION.FILENAME_JOB_ENGINE              = 'millix_job_engine.sqlite';
+    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX               = './scripts/initialize-millix-sqlite3.sql';
+    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_SHARD         = './scripts/initialize-millix-shard-sqlite3.sql';
+    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE    = './scripts/initialize-millix-job-engine-sqlite3.sql';
+    DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR             = './scripts/migration';
+    DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR       = './scripts/migration/shard';
     DATABASE_CONNECTION.SCHEMA_VERSION                   = '8';
 }
 

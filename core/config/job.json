@@ -121,6 +121,21 @@
         "enable": true
       }
     },
+    "transaction_spend_sync": {
+      "type": "function",
+      "group": "wallet",
+      "processor": "localhost_wallet",
+      "payload": {
+        "module": "wallet-sync",
+        "function_name": "_doSyncTransactionSpend"
+      },
+      "priority": 0,
+      "option_list": {
+        "run_always": 1,
+        "run_delay": 2000,
+        "enable": true
+      }
+    },
     "audit_point_update": {
       "type": "function",
       "group": "wallet",
