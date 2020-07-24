@@ -19,7 +19,7 @@ export class WalletSync {
         this.transactionSpendQueue = null;
         this.pendingTransactions   = {};
         this.scheduledQueueAdd     = {};
-        this.CARGO_MAX_LENGHT      = config.NODE_CONNECTION_OUTBOUND_MAX * 2;
+        this.CARGO_MAX_LENGHT      = config.NODE_CONNECTION_OUTBOUND_MAX * 10;
     }
 
     initialize() {
