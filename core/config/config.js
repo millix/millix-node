@@ -39,6 +39,7 @@ export const AUDIT_POINT_PRUNE_AGE_MIN                 = 1440;
 export const AUDIT_POINT_PRUNE_COUNT                   = 250;
 export const TRANSACTION_PRUNE_AGE_MIN                 = 1440;
 export const TRANSACTION_PRUNE_COUNT                   = 1000;
+export const TRANSACTION_RETRY_SYNC_MAX                = 100;
 export const NODE_CONNECTION_INBOUND_MAX               = 5;
 export const NODE_CONNECTION_OUTBOUND_MAX              = 5;
 export const HEARTBEAT_TIMEOUT                         = 10 * 1000;
@@ -146,6 +147,7 @@ export default {
     AUDIT_POINT_VALIDATION_WAIT_TIME_MAX,
     TRANSACTION_PRUNE_AGE_MIN,
     TRANSACTION_PRUNE_COUNT,
+    TRANSACTION_RETRY_SYNC_MAX,
     AUDIT_POINT_PRUNE_AGE_MIN,
     AUDIT_POINT_PRUNE_COUNT,
     NETWORK_LONG_TIME_WAIT_MAX,

@@ -66,6 +66,16 @@ SqliteStore.prototype.getTask = function (taskId, cb) {
     });
 };
 
+SqliteStore.prototype.getAll = function (cb) {
+    const self = this;
+    self._afterWritten(function () {
+        self._db.all(`SELECT * FROM ${self._tableName}`, function (err, rows) {
+            if (err) return cb(err);
+            cb(null, rows);
+        });
+    });
+};
+
 SqliteStore.prototype.deleteTask = function (taskId, cb) {
     const self = this;
     self._afterWritten(function () {

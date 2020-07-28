@@ -438,7 +438,7 @@ export class WalletTransactionConsensus {
                            return this._allocateNodeToValidateTransaction(ws);
                        }
                        else {
-                           console.log('[consensus][request] no more node available');
+                           console.log('[consensus][request] no more nodes available');
                            return Promise.reject();
                        }
                    });

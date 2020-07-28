@@ -10,6 +10,7 @@ import SqliteStore from '../../database/queue-sqlite';
 import database from '../../database/database';
 import wallet from './wallet';
 import async from 'async';
+import _ from 'lodash';
 
 
 export class WalletSync {
@@ -91,7 +92,7 @@ export class WalletSync {
             if (batch.length === 0) {
                 return done();
             }
-            this.processTransactionSpend = new Promise(resolve => {
+            this.processTransactionSpend = () => new Promise(resolve => {
                 async.eachSeries(batch, (job, callback) => {
                     if (!job.transaction_id) {
                         return callback();
@@ -121,8 +122,8 @@ export class WalletSync {
                             callback();
                         });
                 }, () => {
-                    done();
                     resolve();
+                    done();
                 });
             });
         }, {
@@ -158,14 +159,24 @@ export class WalletSync {
 
     add(transactionID, options) {
         const {delay, priority} = options || {};
-
+        const attempt           = options.attempt ? options.attempt + 1 : 1;
         if (!this.queue || this.pendingTransactions[transactionID] || wallet.isProcessingTransaction(transactionID)) {
             return;
         }
 
-        if (delay && delay > 0) {
+        if (attempt >= config.TRANSACTION_RETRY_SYNC_MAX) {
+            this.removeSchedule(transactionID);
+            this.pendingTransactions[transactionID] = true;
+            this.queue.push({
+                transaction_id  : transactionID,
+                dispatch_request: true,
+                priority        : -1,
+                attempt
+            });
+        }
+        else if (delay && delay > 0) {
             this.scheduledQueueAdd[transactionID] = setTimeout(() => {
-                if (this.pendingTransactions[transactionID]) {
+                if (!this.queue || this.pendingTransactions[transactionID]) {
                     return;
                 }
 
@@ -174,6 +185,7 @@ export class WalletSync {
                 this.queue.push({
                     transaction_id  : transactionID,
                     dispatch_request: true,
+                    attempt,
                     priority
                 });
             }, delay);
@@ -184,6 +196,7 @@ export class WalletSync {
             this.queue.push({
                 transaction_id  : transactionID,
                 dispatch_request: true,
+                attempt,
                 priority
             });
         }
@@ -217,7 +230,33 @@ export class WalletSync {
             return Promise.resolve();
         }
 
-        return this.processTransactionSpend();
+        return this.processTransactionSpend()
+                   .then(() => {
+                       return new Promise(resolve => {
+                           this.transactionSpendQueue._store.getAll((err, rows) => {
+                               if (err) {
+                                   console.error(err);
+                                   return resolve();
+                               }
+                               const queuedTransactions = new Set(_.map(rows, row => row.id));
+                               database.applyShards(shardID => {
+                                   // add all unspent outputs to transaction
+                                   // spend sync
+                                   const transactionRepository = database.getRepository('transaction', shardID);
+                                   return transactionRepository.listTransactionOutput({is_spent: 0}, 'transaction_date')
+                                                               .then(transactions => {
+                                                                   transactions.forEach(transaction => {
+                                                                       if (!queuedTransactions.has(transaction.transaction_id)) {
+                                                                           this.transactionSpendQueue.push({
+                                                                               transaction_id: transaction.transaction_id
+                                                                           });
+                                                                       }
+                                                                   });
+                                                               });
+                               }).then(() => resolve());
+                           });
+                       });
+                   });
     }
 
 }

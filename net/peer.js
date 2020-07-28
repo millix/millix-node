@@ -748,11 +748,12 @@ class Peer {
     }
 
     transactionSyncRequest(transactionID, options = {}) {
-        const {depth: currentDepth, request_node_id: requestNodeID, routing, priority, dispatch_request: dispatchRequest} = options;
+        const {depth: currentDepth, request_node_id: requestNodeID, routing, priority, dispatch_request: dispatchRequest, attempt} = options;
         return new Promise((resolve, reject) => {
 
             walletSync.add(transactionID, {
                 delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
+                attempt,
                 priority
             });
 
@@ -825,7 +826,10 @@ class Peer {
 
                 if (!done) {
                     console.log('[peer] transaction_sync_response:' + transactionID + ' not received. skip...');
-                    walletSync.add(transactionID, {priority});
+                    walletSync.add(transactionID, {
+                        attempt,
+                        priority
+                    });
                 }
                 resolve();
             });
