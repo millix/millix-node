@@ -27,10 +27,11 @@ class Service {
             this.mode = mode;
         }
         return logManager.initialize()
+                         .then(() => server.initialize())
+                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
-                         .then(() => server.initialize())
                          .then(() => jobEngine.initialize())
                          .then(() => {
                              return new Promise(resolve => {
@@ -64,7 +65,6 @@ class Service {
                                                 .then(() => resolve()).catch(() => resolve());
                              });
                          })
-                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
                          .catch(e => {
                              console.log(e);
                          });
