@@ -48,11 +48,6 @@ if (argv.dataFolder) {
     config.DATABASE_CONNECTION.FOLDER = argv.dataFolder;
 }
 
-let initGenesis = false;
-if (argv.genesis) {
-    initGenesis = argv.genesis;
-}
-
 if (argv.debug === "true") {
     config.MODE_DEBUG = true;
 }
