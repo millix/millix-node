@@ -475,7 +475,8 @@ export class WalletTransactionConsensus {
                             return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
                                 return transactionRepository.setTransactionAsStable(transactionID)
                                                             .then(() => transactionRepository.setOutputAsStable(transactionID))
-                                                            .then(() => transactionRepository.setInputsAsSpend(transactionID));
+                                                            .then(() => transactionRepository.setInputsAsSpend(transactionID))
+                                                            .then(() => resolve());
                             });
                         }
 
