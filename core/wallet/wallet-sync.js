@@ -86,45 +86,42 @@ export class WalletSync {
         if (!fs.existsSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE))) {
             isStartTransactionSync = true;
         }
-        this.processTransactionSpend = null;
-        this.transactionSpendQueue   = new Queue((batch, done) => {
+
+        this.transactionSpendQueue = new Queue((batch, done) => {
             console.log('[wallet-sync] transaction spend sync stats ', this.transactionSpendQueue.getStats());
             if (batch.length === 0) {
                 return done();
             }
-            this.processTransactionSpend = () => new Promise(resolve => {
-                async.eachSeries(batch, (job, callback) => {
-                    if (!job.transaction_id) {
-                        return callback();
-                    }
+            async.eachSeries(batch, (job, callback) => {
+                if (!job.transaction_id) {
+                    return callback();
+                }
 
-                    peer.transactionSpendRequest(job.transaction_id)
-                        .then(response => {
-                            if (response.transaction_id_list.length > 0) {
-                                response.transaction_id_list.forEach(transactionID => {
-                                    this.transactionSpendQueue.push({
-                                        transaction_id: transactionID
-                                    });
-                                });
-                                this.add(job.transaction_id);
-                            }
-                            else {
+                peer.transactionSpendRequest(job.transaction_id)
+                    .then(response => {
+                        if (response.transaction_id_list.length > 0) {
+                            response.transaction_id_list.forEach(transactionID => {
                                 this.transactionSpendQueue.push({
-                                    transaction_id: job.transaction_id
+                                    transaction_id: transactionID
                                 });
-                            }
-                            callback();
-                        })
-                        .catch(() => {
+                            });
+                            this.add(job.transaction_id);
+                        }
+                        else {
                             this.transactionSpendQueue.push({
                                 transaction_id: job.transaction_id
                             });
-                            callback();
+                        }
+                        callback();
+                    })
+                    .catch(() => {
+                        this.transactionSpendQueue.push({
+                            transaction_id: job.transaction_id
                         });
-                }, () => {
-                    resolve();
-                    done();
-                });
+                        callback();
+                    });
+            }, () => {
+                done();
             });
         }, {
             id                      : 'transaction_id',
@@ -133,7 +130,7 @@ export class WalletSync {
                 path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE),
                 setImmediate: global.setImmediate
             }),
-            batchSize               : 10,
+            batchSize               : this.CARGO_MAX_LENGHT,
             precondition            : function(cb) {
                 if (network.registeredClients.length > 0) {
                     cb(null, true);
@@ -159,7 +156,7 @@ export class WalletSync {
 
     add(transactionID, options) {
         const {delay, priority} = options || {};
-        const attempt           = options.attempt ? options.attempt + 1 : 1;
+        const attempt           = options && options.attempt ? options.attempt + 1 : 1;
         if (!this.queue || this.pendingTransactions[transactionID] || wallet.isProcessingTransaction(transactionID)) {
             return;
         }
@@ -230,33 +227,30 @@ export class WalletSync {
             return Promise.resolve();
         }
 
-        return this.processTransactionSpend()
-                   .then(() => {
-                       return new Promise(resolve => {
-                           this.transactionSpendQueue._store.getAll((err, rows) => {
-                               if (err) {
-                                   console.error(err);
-                                   return resolve();
-                               }
-                               const queuedTransactions = new Set(_.map(rows, row => row.id));
-                               database.applyShards(shardID => {
-                                   // add all unspent outputs to transaction
-                                   // spend sync
-                                   const transactionRepository = database.getRepository('transaction', shardID);
-                                   return transactionRepository.listTransactionOutput({is_spent: 0}, 'transaction_date')
-                                                               .then(transactions => {
-                                                                   transactions.forEach(transaction => {
-                                                                       if (!queuedTransactions.has(transaction.transaction_id)) {
-                                                                           this.transactionSpendQueue.push({
-                                                                               transaction_id: transaction.transaction_id
-                                                                           });
-                                                                       }
-                                                                   });
-                                                               });
-                               }).then(() => resolve());
-                           });
-                       });
-                   });
+        return new Promise(resolve => {
+            this.transactionSpendQueue._store.getAll((err, rows) => {
+                if (err) {
+                    console.error(err);
+                    return resolve();
+                }
+                const queuedTransactions = new Set(_.map(rows, row => row.id));
+                database.applyShards(shardID => {
+                    // add all unspent outputs to transaction
+                    // spend sync
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return transactionRepository.listTransactionOutput({is_spent: 0}, 'transaction_date')
+                                                .then(transactions => {
+                                                    transactions.forEach(transaction => {
+                                                        if (!queuedTransactions.has(transaction.transaction_id)) {
+                                                            this.transactionSpendQueue.push({
+                                                                transaction_id: transaction.transaction_id
+                                                            });
+                                                        }
+                                                    });
+                                                });
+                }).then(() => resolve());
+            });
+        });
     }
 
 }
