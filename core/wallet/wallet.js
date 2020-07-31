@@ -1706,7 +1706,7 @@ class Wallet {
                                                'address_key_identifier'
                                            ]), (v, k) => fieldMap[k] ? fieldMap[k] : k));
 
-                                           return this.signAndStoreTransaction(srcInputs, [output], addressBases, keyMap, '0b0')
+                                           return this.signAndStoreTransaction(srcInputs, [output], addressBases, keyMap, config.WALLET_TRANSACTION_REFRESH_VERSION)
                                                       .then((transaction) => {
                                                           return transaction;
                                                       });
