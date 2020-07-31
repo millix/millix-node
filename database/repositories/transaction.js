@@ -296,40 +296,66 @@ export default class Transaction {
                     });
 
                     promise = promise.then(() => {
-                        return this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
-                            transaction.node_id_origin, transaction.version, transaction.parent_date,
-                            transaction.stable_date, transaction.timeout_date,
-                            transaction.status, transaction.create_date);
+                        return new Promise((resolve, reject) => {
+                            this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
+                                transaction.node_id_origin, transaction.version, transaction.parent_date,
+                                transaction.stable_date, transaction.timeout_date,
+                                transaction.status, transaction.create_date)
+                                .then(() => resolve())
+                                .catch(() => {
+                                    this.updateTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
+                                        transaction.node_id_origin, transaction.version, transaction.parent_date,
+                                        transaction.stable_date, transaction.timeout_date,
+                                        transaction.status, transaction.create_date)
+                                        .then(() => resolve())
+                                        .catch(() => reject());
+                                });
+                        });
                     });
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
-                        promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id));
+                        promise = promise.then(() => new Promise(resolve => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id).then(resolve).catch(resolve)));
                     });
 
                     transaction.transaction_input_list.forEach(input => {
                         promise = promise.then(() => {
-                            return this.addTransactionInput(transaction.transaction_id, transaction.shard_id, input.input_position, input.address, input.address_key_identifier,
-                                input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id,
-                                input.double_spend_date, input.status, input.create_date)
-                                       .then(() => {
-                                           delete input['address'];
-                                       });
+                            return new Promise((resolve, reject) => {
+                                this.addTransactionInput(transaction.transaction_id, transaction.shard_id, input.input_position, input.address, input.address_key_identifier,
+                                    input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id,
+                                    input.double_spend_date, input.status, input.create_date)
+                                    .then(resolve)
+                                    .catch(() => {
+                                        this.updateTransactionInput(transaction.transaction_id, input.input_position, input.double_spend_date ? new Date(input.double_spend_date * 1000) : null)
+                                            .then(resolve)
+                                            .catch(reject);
+                                    });
+                            }).then(() => {
+                                delete input['address'];
+                            });
                         });
                     });
 
                     transaction.transaction_output_list.forEach(output => {
                         promise = promise.then(() => {
-                            return this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier,
-                                output.amount, output.spend_date, output.stable_date, output.double_spend_date,
-                                output.status, output.create_date)
-                                       .then(() => {
-                                           delete output['address'];
-                                       });
+                            return new Promise((resolve, reject) => {
+                                this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier,
+                                    output.amount, output.spend_date, output.stable_date, output.double_spend_date,
+                                    output.status, output.create_date)
+                                    .then(resolve)
+                                    .catch(() => {
+                                        this.updateTransactionOutput(transaction.transaction_id, output.output_position, output.spend_date ? new Date(output.spend_date * 1000) : null,
+                                            output.stable_date ? new Date(output.stable_date * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null)
+                                            .then(resolve)
+                                            .catch(reject);
+                                    });
+                            }).then(() => {
+                                delete output['address'];
+                            });
                         });
                     });
 
                     transaction.transaction_signature_list.forEach(signature => {
-                        promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signature.status, new Date(signature.create_date)));
+                        promise = promise.then(() => new Promise(resolve => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signature.status, new Date(signature.create_date)).then(resolve).catch(resolve)));
                     });
 
                     promise.then(() => this.database.run('COMMIT', () => {
@@ -541,7 +567,7 @@ export default class Transaction {
             let sql = 'UPDATE transaction_input SET';
 
             if (doubleSpendDate === null) {
-                sql += ' double_spend_date = NULL, is_double_spend = 0,';
+                sql += ' double_spend_date = NULL, is_double_spend = 0';
             }
             else if (doubleSpendDate) {
                 sql += ' double_spend_date = ' + Math.floor(doubleSpendDate.getTime() / 1000) + ', is_double_spend = 1';
@@ -630,8 +656,8 @@ export default class Transaction {
                 let result = rows.map(r => {
                     return {
                         'transaction_id': r.transaction_id,
-                        'shard_id': r.shard_id
-                    }
+                        'shard_id'      : r.shard_id
+                    };
                 });
 
                 resolve(result);
@@ -642,12 +668,13 @@ export default class Transaction {
     markTransactionsAsInvalid(transactionIDs) {
         return new Promise((resolve, reject) => {
             this.database.run('UPDATE `transaction` set status = 3 WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ' )', transactionIDs, err => {
-               if (err) {
-                   reject(err);
-               } else {
-                   resolve();
-               }
-           });
+                if (err) {
+                    reject(err);
+                }
+                else {
+                    resolve();
+                }
+            });
         });
     }
 
@@ -819,7 +846,38 @@ export default class Transaction {
                 if (err) {
                     return reject(err);
                 }
-                console.log('New transaction added ' + transactionID);
+                console.log('[transaction] transaction added ' + transactionID);
+                resolve();
+            });
+        });
+    }
+
+    updateTransaction(transactionID, shardID, payloadHash, transactionDate, ipAddressOrigin, version, parentDate, stableDate, timeoutDate, status, createDate) {
+        return new Promise((resolve, reject) => {
+            this.database.run('UPDATE `transaction` SET version=coalesce(?, version), shard_id=coalesce(?, shard_id), payload_hash=coalesce(?, payload_hash), \
+                              transaction_date=coalesce(?, transaction_date), node_id_origin=coalesce(?, node_id_origin), parent_date=coalesce(?, parent_date), \
+                              is_parent=coalesce(?, is_parent), stable_date=coalesce(?, stable_date), is_stable=coalesce(?, is_stable), \
+                              timeout_date=coalesce(?, timeout_date), is_timeout=coalesce(?, is_timeout), status=coalesce(?, status), create_date=coalesce(?, create_date) \
+                              WHERE transaction_id=?', [
+                version,
+                shardID,
+                payloadHash,
+                transactionDate,
+                ipAddressOrigin,
+                parentDate,
+                !!parentDate ? 1 : 0,
+                stableDate,
+                !!stableDate ? 1 : 0,
+                timeoutDate,
+                !!timeoutDate ? 1 : 0,
+                status !== undefined ? status : 1,
+                createDate,
+                transactionID
+            ], (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                console.log('[transaction] transaction updated ' + transactionID);
                 resolve();
             });
         });
@@ -1580,13 +1638,28 @@ export default class Transaction {
                                                                                                .then(() => {
                                                                                                    if (auditVerification) {
                                                                                                        const auditVerificationRepository = database.getRepository('audit_verification', transaction.shard_id);
-                                                                                                       return auditVerificationRepository.addAuditVerification(auditVerification);
+                                                                                                       return new Promise((resolve, reject) => {
+                                                                                                           auditVerificationRepository.addAuditVerification(auditVerification)
+                                                                                                                                      .then(resolve)
+                                                                                                                                      .catch(() => {
+                                                                                                                                          auditVerificationRepository.updateAuditVerification([
+                                                                                                                                              [
+                                                                                                                                                  auditVerification.verification_count,
+                                                                                                                                                  auditVerification.attempt_count,
+                                                                                                                                                  auditVerification.verified_date ? new Date(auditVerification.verified_date * 1000) : null,
+                                                                                                                                                  auditVerification.is_verified,
+                                                                                                                                                  auditVerification.transaction_id
+                                                                                                                                              ]
+                                                                                                                                          ]).then(resolve).catch(reject);
+                                                                                                                                      });
+                                                                                                       });
+
                                                                                                    }
                                                                                                })
                                                                                                .then(() => {
                                                                                                    if (auditPoint) {
                                                                                                        const auditPointRepository = database.getRepository('audit_point', transaction.shard_id);
-                                                                                                       return auditPointRepository.addTransactionToAuditPoint(auditPoint);
+                                                                                                       return new Promise(resolve => auditPointRepository.addTransactionToAuditPoint(auditPoint).then(resolve).catch(resolve));
                                                                                                    }
                                                                                                })
                                                                                                .then(() => {
@@ -1739,7 +1812,7 @@ export default class Transaction {
     expireTransactions(olderThan) {
         return database.applyShards((shardID) => {
             return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan);
-        })
+        });
     }
 
     expireTransactionsOnShard(olderThan) {
@@ -1750,7 +1823,8 @@ export default class Transaction {
                 if (err) {
                     console.log('[Database] Failed updating transactions to expired. [message] ', err);
                     reject(err);
-                } else {
+                }
+                else {
                     resolve();
                 }
             });
@@ -1762,7 +1836,10 @@ export default class Transaction {
 
         return new Promise((resolve, reject) => {
             // TODO - return only necessary
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date <= ? AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0', [seconds, addressKeyIdentifier], (err, rows) => {
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date <= ? AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0', [
+                seconds,
+                addressKeyIdentifier
+            ], (err, rows) => {
                 if (err) {
                     return reject(err);
                 }
