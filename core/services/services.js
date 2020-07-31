@@ -27,6 +27,10 @@ class Service {
             this.mode = mode;
         }
         return logManager.initialize()
+                         .then(() => {
+                             console.log('[services] Checking for expired transactions on startup');
+                             return wallet._doTransactionOutputExpiration();
+                         })
                          .then(() => server.initialize())
                          .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
                          .then(() => network.initialize())
