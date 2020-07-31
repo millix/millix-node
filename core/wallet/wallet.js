@@ -1589,7 +1589,7 @@ class Wallet {
             mutex.lock(['transaction-output-refresh'], unlock => {
                 console.log('[Wallet] Starting refreshing');
                 let time = new Date();
-                time.setHours(time.getHours() - config.OUTPUT_REFRESH_OLDER_THAN);
+                time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN);
 
                 const walletID = this.getDefaultActiveWallet();
                 if (!walletID) {
@@ -1665,7 +1665,7 @@ class Wallet {
                                            ];
                                        })
                                        .then(([keyMap, addressBases, output]) => {
-                                           let fieldMap      = {
+                                           let fieldMap = {
                                                'transaction_id'  : 'output_transaction_id',
                                                'transaction_date': 'output_transaction_date',
                                                'shard_id'        : 'output_shard_id'
@@ -1674,9 +1674,9 @@ class Wallet {
                                            const addressRepository = database.getRepository('address');
 
                                            for (let input of inputs) {
-                                               const addressComponent = addressRepository.getAddressComponent(input.address);
-                                               input["address_base"] = addressComponent["address"];
-                                               input["address_version"] = addressComponent["version"];
+                                               const addressComponent   = addressRepository.getAddressComponent(input.address);
+                                               input['address_base']    = addressComponent['address'];
+                                               input['address_version'] = addressComponent['version'];
                                            }
 
                                            const srcInputs = _.map(inputs, o => _.mapKeys(_.pick(o, [

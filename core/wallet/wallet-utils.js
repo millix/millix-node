@@ -547,8 +547,8 @@ class WalletUtils {
                                                         callback(false);
                                                     }
                                                     else {
-                                                        let maximumOldest = new Date(transactionDate.valueOf());
-                                                        maximumOldest.setHours(maximumOldest.getHours() - 72);
+                                                        let maximumOldest = new Date(transactionDate.getTime());
+                                                        maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN);
 
                                                         if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
                                                             // Meaning it

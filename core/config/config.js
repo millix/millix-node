@@ -81,6 +81,7 @@ export const AUDIT_POINT_PRUNE_AGE_MIN                 = 1440;
 export const AUDIT_POINT_PRUNE_COUNT                   = 250;
 export const TRANSACTION_PRUNE_AGE_MIN                 = 1440;
 export const TRANSACTION_PRUNE_COUNT                   = 1000;
+export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN     = 4200;
 export const NODE_CONNECTION_INBOUND_MAX               = 5;
 export const NODE_CONNECTION_OUTBOUND_MAX              = 5;
 export const HEARTBEAT_TIMEOUT                         = 10 * 1000;
@@ -116,7 +117,6 @@ export const SHARD_ZERO_NAME                           = 'shard_zero';
 export const PEER_ROTATION_MORE_THAN_AVERAGE           = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST              = 0.2;
 export const PEER_ROTATION_MORE_THAN_ALL               = 0.01;
-export const OUTPUT_REFRESH_OLDER_THAN                 = 70;
 
 if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.MAX_CONNECTIONS               = 1;
@@ -172,6 +172,7 @@ export default {
     AUDIT_POINT_VALIDATION_WAIT_TIME_MAX,
     TRANSACTION_PRUNE_AGE_MIN,
     TRANSACTION_PRUNE_COUNT,
+    TRANSACTION_OUTPUT_REFRESH_OLDER_THAN,
     AUDIT_POINT_PRUNE_AGE_MIN,
     AUDIT_POINT_PRUNE_COUNT,
     NETWORK_LONG_TIME_WAIT_MAX,
@@ -180,13 +181,13 @@ export default {
     WALLET_TRANSACTION_QUEUE_SIZE_NORMAL,
     WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT,
     WALLET_TRANSACTION_DEFAULT_VERSION,
+    WALLET_TRANSACTION_REFRESH_VERSION,
     WALLET_SPENT_TRANSACTION_PRUNE,
     WALLET_LOG_SIZE_MAX,
     PEER_ROTATION_MORE_THAN_AVERAGE,
     PEER_ROTATION_MORE_THAN_MOST,
     PEER_ROTATION_MORE_THAN_ALL,
-    JOB_CONFIG_PATH,
-    OUTPUT_REFRESH_OLDER_THAN
+    JOB_CONFIG_PATH
 };
 
 // dev branch should be running in the test-network
