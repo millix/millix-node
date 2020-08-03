@@ -1831,12 +1831,12 @@ export default class Transaction {
         });
     }
 
-    getUnspentTransactionOutputsOlderThan(addressKeyIdentifier, time) {
+    getUnspentTransactionOutputsOlderThanOrExpired(addressKeyIdentifier, time) {
         const seconds = Math.floor(time.valueOf() / 1000);
 
         return new Promise((resolve, reject) => {
             // TODO - return only necessary
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date <= ? AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0', [
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date <= ? OR transaction_output.status = 2) AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0', [
                 seconds,
                 addressKeyIdentifier
             ], (err, rows) => {

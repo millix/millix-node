@@ -1731,7 +1731,7 @@ class Wallet {
             return database.applyShards((shardID) => {
                 return new Promise((resolve) => {
                     database.getRepository('transaction', shardID)
-                            .getUnspentTransactionOutputsOlderThan(addressKeyIdentifier, time)
+                            .getUnspentTransactionOutputsOlderThanOrExpired(addressKeyIdentifier, time)
                             .then(result => resolve(result))
                             .catch(err => {
                                 console.log(`[wallet] Failed to get expired or near expired outputs for shard ${shardID}. Error: ${err}`);
