@@ -1589,7 +1589,7 @@ class Wallet {
             console.log('[Wallet] Starting transaction output expiration');
             mutex.lock(['transaction-output-expiration'], unlock => {
                 let time = new Date();
-                time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN);
+                time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
                 return database.getRepository('transaction').expireTransactions(time)
                                .then(() => {
