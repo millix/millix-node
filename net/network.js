@@ -273,7 +273,7 @@ class Network {
                         callback();
                     }, () => {
                         _.each(config.NODE_INITIAL_LIST, ({url, port_api: portApi}) => {
-                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[\w|\d|.]+):(?<port>\d+)$/);
+                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[^:]+):(?<port>\d+)$/);
                             let prefix    = matches.groups['prefix'];
                             let ipAddress = matches.groups['ip_address'];
                             let port      = matches.groups['port'];
