@@ -146,7 +146,7 @@ class Peer {
 
         let payload = {
             type   : 'transaction_new',
-            content: transaction
+            content: {transaction}
         };
 
         eventBus.emit('node_event_log', payload);
@@ -730,7 +730,7 @@ class Peer {
         }
 
         let payload = {
-            type: 'transaction_sync_response:' + content.transaction.transaction_id,
+            type: 'transaction_sync_response',
             content
         };
 
@@ -791,7 +791,7 @@ class Peer {
                 try {
                     if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
                         eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
-                        eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData, eventWS) {
+                        eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData) {
                             clearTimeout(timeoutID);
                             if (eventData.transaction_not_found) {
                                 console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
@@ -799,7 +799,6 @@ class Peer {
                             }
                             else {
                                 console.log(`[peer] received transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
-                                eventBus.emit('transaction_new', eventData, eventWS, true);
                                 callback(true);
                             }
                         });
@@ -866,7 +865,6 @@ class Peer {
                     eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
                         if (!data.transaction_not_found) {
                             console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
-                            eventBus.emit('transaction_new', data, eventWS, true);
                         }
                     });
 

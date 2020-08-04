@@ -385,7 +385,7 @@ export class WalletTransactionConsensus {
             return Promise.reject();
         }
 
-        peer.transactionSendToNode({transaction}, ws);
+        peer.transactionSendToNode(transaction, ws);
 
         console.log('[consensus][request] ask ', ws.node, ' for transaction validation');
         this._requestConsensusTransactionValidation.nodes[ws.node] = {replied: false};
