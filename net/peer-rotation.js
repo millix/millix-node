@@ -81,7 +81,7 @@ export class PeerRotation {
         if (peers.length === 0) {
             return null;
         }
-        return _.minBy(peers, ws => ws.createTime);
+        return _.minBy(_.filter(peers, peer => !config.NODE_CONNECTION_STATIC.includes(peer.nodeID)), peer => peer.createTime);
     }
 
     _getOlderPeerNotSupportingCommonShards() {
@@ -107,7 +107,7 @@ export class PeerRotation {
                     const supportedShardList = shardAttributeList.value;
                     return !_.some(_.map(supportedShardList, supportedShard => supportedShard.is_required && _.has(database.shards, supportedShard.shard_id)));
                 }), node => node.node_id));
-                return resolve(_.minBy(_.filter(peers, peer => candidates.has(peer.nodeID)), ws => ws.createTime));
+                return resolve(_.minBy(_.filter(peers, peer => candidates.has(peer.nodeID) && !config.NODE_CONNECTION_STATIC.includes(peer.nodeID)), ws => ws.createTime));
             });
         });
     }

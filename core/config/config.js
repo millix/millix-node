@@ -15,10 +15,51 @@ export const NODE_INITIAL_LIST_TEST_NETWORK            = [
     {
         url     : 'wss://13.251.31.129:30001',
         port_api: 35501
+    },
+    {
+        url     : 'wss://test-node0.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node1.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node2.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node3.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node4.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node5.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node6.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node7.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node8.millix.org:30000',
+        port_api: 35500
+    },
+    {
+        url     : 'wss://test-node9.millix.org:30000',
+        port_api: 35500
     }
 ];
 export const NODE_CONNECTION_INBOUND_WHITELIST         = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST        = [];
+export const NODE_CONNECTION_STATIC                    = [];
 export const NODE_INITIAL_LIST                         = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
 export const CONSENSUS_ROUND_NODE_COUNT                = 1;
 export const CONSENSUS_ROUND_PATH_LENGTH_MIN           = 1;
@@ -116,6 +157,7 @@ export default {
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
     NODE_INITIAL_LIST,
+    NODE_CONNECTION_STATIC,
     NODE_CONNECTION_INBOUND_MAX,
     NODE_CONNECTION_OUTBOUND_MAX,
     NODE_CONNECTION_INBOUND_WHITELIST,
