@@ -547,7 +547,9 @@ class Wallet {
     _onTransactionSyncResponse(data, ws) {
         if (data && data.transaction) {
             eventBus.emit('transaction_sync_response:' + data.transaction.transaction_id, {transaction_not_found: data.transaction_not_found});
-            setTimeout(() => this._onNewTransaction(data, ws, true), 0);
+            if (!data.transaction_not_found) {
+                setTimeout(() => this._onNewTransaction(data, ws, true), 0);
+            }
         }
     }
 
