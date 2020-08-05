@@ -240,108 +240,105 @@ class Wallet {
         });
     }
 
-    addTransaction(srcAddress, dstOutputs, srcOutputs) {
+    addTransaction(dstOutputs, srcOutputs) {
         const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
-                database.getRepository('keychain')
-                        .getAddress(srcAddress)
-                        .then(address => {
-                            let privKey = this.getActiveWalletKey(address.wallet_id);
-                            if (!privKey) {
-                                return Promise.reject('wallet not active for address ' + srcAddress);
-                            }
-                            if (!srcOutputs) {
-                                return database.firstShards((shardID) => {
-                                    const transactionRepository = database.getRepository('transaction', shardID);
-                                    return new Promise((resolve, reject) => transactionRepository.getFreeStableOutput(srcAddress)
-                                                                                                 .then(outputs => outputs.length ? resolve(outputs) : reject()));
-                                }).then(outputs => [
-                                    outputs,
-                                    address
-                                ]);
-                            }
-                            else {
-                                return [
-                                    srcOutputs,
-                                    address
-                                ];
-                            }
-                        })
-                        .then(([outputs, address]) => {
-                            if (!outputs || outputs.length === 0) {
-                                return Promise.reject('Do not have enough funds on address ' + srcAddress);
-                            }
-                            outputs = _.orderBy(outputs, ['amount'], ['desc']);
+                return new Promise((resolve, reject) => {
+                    if (!srcOutputs) {
+                        return database.applyShards((shardID) => {
+                            const transactionRepository = database.getRepository('transaction', shardID);
+                            return new Promise((resolve, reject) => transactionRepository.getFreeStableOutput(this.defaultKeyIdentifier)
+                                                                                         .then(outputs => outputs.length ? resolve(outputs) : reject()));
+                        }).then(resolve);
+                    }
+                    else {
+                        resolve(srcOutputs);
+                    }
+                })
+                    .then((outputs) => {
+                        const keychainRepository = database.getRepository('keychain');
+                        return keychainRepository.getAddresses(_.map(outputs, output => output.address)).then(addresses => {
+                            const mapAddresses = {};
+                            addresses.forEach(address => mapAddresses[address.address] = address);
 
-                            let outputsToUse    = [];
-                            let amount          = _.sum(_.map(dstOutputs, o => o.amount));
-                            let remainingAmount = amount;
-
-                            let exactMatchOutput = _.find(outputs, o => o.amount === amount);
-                            if (exactMatchOutput) {
-                                remainingAmount                     = 0;
-                                const outputAddress                 = addressRepository.getAddressComponent(exactMatchOutput.address);
-                                exactMatchOutput['address_base']    = outputAddress['address'];
-                                exactMatchOutput['address_version'] = outputAddress['version'];
-                                outputsToUse.push(exactMatchOutput);
-                            }
-                            else {
-                                for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
-                                    let output                = outputs[i];
-                                    remainingAmount -= output.amount;
-                                    const outputAddress       = addressRepository.getAddressComponent(output.address);
-                                    output['address_base']    = outputAddress['address'];
-                                    output['address_version'] = outputAddress['version'];
-                                    outputsToUse.push(output);
+                            for (let i = 0; i < outputs.length; i++) {
+                                const output        = outputs[i];
+                                const outputAddress = mapAddresses[output.address];
+                                if (!outputAddress) {
+                                    return Promise.reject('[wallet] output address not found', output);
                                 }
+                                output['address_version']        = outputAddress.address_version;
+                                output['address_key_identifier'] = outputAddress.address_key_identifier;
+                                output['address_base']           = outputAddress.address_base;
+                                output['address_position']       = outputAddress.address_position;
                             }
-
-                            if (remainingAmount > 0) {
-                                return Promise.reject('Do not have enough funds on address ' + srcAddress);
-                            }
-
-                            let keyMap      = {
-                                'transaction_id'  : 'output_transaction_id',
-                                'transaction_date': 'output_transaction_date',
-                                'shard_id'        : 'output_shard_id'
-                            };
-                            const srcInputs = _.map(outputsToUse, o => _.mapKeys(_.pick(o, [
-                                'transaction_id',
-                                'output_position',
-                                'transaction_date',
-                                'shard_id',
-                                'address_base',
-                                'address_version',
-                                'address_key_identifier'
-                            ]), (v, k) => keyMap[k] ? keyMap[k] : k));
-
-                            let amountSent     = _.sum(_.map(dstOutputs, o => o.amount));
-                            let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
-                            let change         = totalUsedCoins - amountSent;
-                            if (change > 0) {
-                                dstOutputs.push({
-                                    address_base          : address.address_base,
-                                    address_version       : address.address_version,
-                                    address_key_identifier: address.address_key_identifier,
-                                    amount                : change
-                                });
-                            }
-                            const extendedPrivateKey = this.getActiveWalletKey(address.wallet_id);
-                            const privateKeyBuf      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
-                            const privateKeyMap      = {[address.address_base]: privateKeyBuf.toString('hex')};
-                            const addressBases       = [address.address_base];
-                            return this.signAndStoreTransaction(srcInputs, dstOutputs, addressBases, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION);
-                        })
-                        .then(transaction => peer.transactionSend(transaction))
-                        .then((transaction) => {
-                            resolve(transaction);
-                            unlock();
-                        })
-                        .catch((e) => {
-                            reject(e);
-                            unlock();
+                            return outputs;
                         });
+                    })
+                    .then((outputs) => {
+                        if (!outputs || outputs.length === 0) {
+                            return Promise.reject('Do not have enough funds on wallet');
+                        }
+                        outputs = _.orderBy(outputs, ['amount'], ['asc']);
+
+                        const amount        = _.sum(_.map(dstOutputs, o => o.amount));
+                        let remainingAmount = amount;
+                        const outputsToUse  = [];
+                        const privateKeyMap = {};
+                        const addressBases  = [];
+
+                        for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
+                            let output                         = outputs[i];
+                            remainingAmount -= output.amount;
+                            const extendedPrivateKey           = this.getActiveWalletKey(this.getDefaultActiveWallet());
+                            const privateKeyBuf                = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
+                            privateKeyMap[output.address_base] = privateKeyBuf.toString('hex');
+                            addressBases.push(output.address_base);
+                            outputsToUse.push(output);
+                        }
+
+                        if (remainingAmount > 0) {
+                            return Promise.reject('Do not have enough funds on wallet');
+                        }
+                        let keyMap      = {
+                            'transaction_id'  : 'output_transaction_id',
+                            'transaction_date': 'output_transaction_date',
+                            'shard_id'        : 'output_shard_id'
+                        };
+                        const srcInputs = _.map(outputsToUse, o => _.mapKeys(_.pick(o, [
+                            'transaction_id',
+                            'output_position',
+                            'transaction_date',
+                            'shard_id',
+                            'address_base',
+                            'address_version',
+                            'address_key_identifier'
+                        ]), (v, k) => keyMap[k] ? keyMap[k] : k));
+
+                        let amountSent     = _.sum(_.map(dstOutputs, o => o.amount));
+                        let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
+                        let change         = totalUsedCoins - amountSent;
+                        if (change > 0) {
+                            let addressChange = outputs[outputs.length - 1];
+                            dstOutputs.push({
+                                address_base          : addressChange.address_base,
+                                address_version       : addressChange.address_version,
+                                address_key_identifier: addressChange.address_key_identifier,
+                                amount                : change
+                            });
+                        }
+                        return this.signAndStoreTransaction(srcInputs, dstOutputs, addressBases, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION);
+                    })
+                    .then(transaction => peer.transactionSend(transaction))
+                    .then((transaction) => {
+                        resolve(transaction);
+                        unlock();
+                    })
+                    .catch((e) => {
+                        reject(e);
+                        unlock();
+                    });
             });
         });
     }
@@ -1037,7 +1034,7 @@ class Wallet {
                         if (!address) {
                             return resolve();
                         }
-                        this.addTransaction(address.address, [
+                        this.addTransaction([
                             {
                                 address_base          : address.address_base,
                                 address_version       : address.address_version,
