@@ -11,7 +11,6 @@ import async from 'async';
 import _ from 'lodash';
 import database from '../../database/database';
 import peer from '../../net/peer';
-import ntp from '../ntp';
 import objectHash from '../crypto/object-hash';
 import network from '../../net/network';
 import genesisConfig from '../genesis/genesis-config';
@@ -590,22 +589,27 @@ class WalletUtils {
     }
 
     isValidTransactionObject(transaction) {
+        const addressRepository                = database.getRepository('address');
         //sort arrays
         transaction['transaction_output_list'] = _.sortBy(transaction.transaction_output_list, 'output_position');
         transaction['transaction_input_list']  = _.sortBy(transaction.transaction_input_list, 'input_position');
         //verify addresses
         if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
             for (let i = 0; i < transaction.transaction_input_list.length; i++) {
-                if (!this.isValidAddress(transaction.transaction_input_list[i].address_base)
-                    || !this.isValidAddress(transaction.transaction_input_list[i].address_key_identifier)) {
+                const input = transaction.transaction_input_list[i];
+                if (!this.isValidAddress(input.address_base)
+                    || !this.isValidAddress(input.address_key_identifier)
+                    || !addressRepository.supportedVersionSet.has(input.address_version)) {
                     return false;
                 }
             }
         }
 
         for (let i = 0; i < transaction.transaction_output_list.length; i++) {
-            if (!this.isValidAddress(transaction.transaction_output_list[i].address_base)
-                || !this.isValidAddress(transaction.transaction_output_list[i].address_key_identifier)) {
+            const output = transaction.transaction_output_list[i];
+            if (!this.isValidAddress(output.address_base)
+                || !this.isValidAddress(output.address_key_identifier)
+                || !addressRepository.supportedVersionSet.has(output.address_version)) {
                 return false;
             }
 

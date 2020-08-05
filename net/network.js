@@ -273,7 +273,7 @@ class Network {
                         callback();
                     }, () => {
                         _.each(config.NODE_INITIAL_LIST, ({url, port_api: portApi}) => {
-                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[\w|\d|.]+):(?<port>\d+)$/);
+                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[^:]+):(?<port>\d+)$/);
                             let prefix    = matches.groups['prefix'];
                             let ipAddress = matches.groups['ip_address'];
                             let port      = matches.groups['port'];
@@ -412,7 +412,7 @@ class Network {
                             ws.terminate();
                             return;
                         }
-                        else if (config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(peerNodeID)) {
+                        else if (ws.inBound && config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(peerNodeID)) {
                             console.log('[network warn]: node id not in NODE_CONNECTION_INBOUND_WHITELIST');
                             ws.terminate();
                             return;
@@ -476,7 +476,7 @@ class Network {
                     eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
                     ws.terminate();
                 }
-            }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+            }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
         }).catch(e => {
             console.log('[network warn]: error on connection handshake.');
             ws.terminate();
@@ -484,10 +484,10 @@ class Network {
     }
 
     _onNodeHandshake(registry, ws) {
-        let nodeID      = ws.nodeID || registry.node_id;
+        ws.nodeID       = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
 
-        if (nodeID === this.nodeID) {
+        if (ws.nodeID === this.nodeID) {
             ws.duplicated = true;
 
             if (ws.outBound) {

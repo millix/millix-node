@@ -1,12 +1,12 @@
 import _ from 'lodash';
-import async from 'async';
 import config from '../../core/config/config';
 import {Database} from '../database';
 
 export default class Address {
     constructor(database) {
-        this.database           = database;
-        this.addressVersionList = [];
+        this.database            = database;
+        this.addressVersionList  = [];
+        this.supportedVersionSet = new Set();
     }
 
     loadAddressVersion() {
@@ -16,7 +16,10 @@ export default class Address {
                     if (err) {
                         resolve();
                     }
-                    _.each(data, version => this.addressVersionList.push(version));
+                    _.each(data, version => {
+                        this.addressVersionList.push(version);
+                        this.supportedVersionSet.add(version.version);
+                    });
                     resolve();
                 });
         });
@@ -77,7 +80,10 @@ export default class Address {
                         }
                         if (config.MODE_TEST_NETWORK && !isMainNetwork || !config.MODE_TEST_NETWORK && isMainNetwork) {
                             this.database.get('SELECT * from address_version WHERE version=? AND is_main_network=? AND regex_pattern=? AND is_default=?',
-                                parameters, (err, row) => this.addressVersionList.push(row));
+                                parameters, (err, row) => {
+                                    this.addressVersionList.push(row);
+                                    this.supportedVersionSet.add(row.version);
+                                });
                         }
                         resolve();
                     });
@@ -94,6 +100,7 @@ export default class Address {
                     }
                     const oldList                  = this.addressVersionList.slice();
                     this.addressVersionList.length = 0; // empty the list
+                    this.supportedVersionSet.delete(version);
                     _.each(oldList, addressVersion => {
                         if (addressVersion.version === version) {
                             return;

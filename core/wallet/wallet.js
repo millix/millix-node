@@ -541,6 +541,15 @@ class Wallet {
                        .then(shardInfo => peer.shardSyncResponse(shardInfo, ws));
     }
 
+    _onTransactionSyncResponse(data, ws) {
+        if (data && data.transaction) {
+            eventBus.emit('transaction_sync_response:' + data.transaction.transaction_id, {transaction_not_found: data.transaction_not_found});
+            if (!data.transaction_not_found) {
+                setTimeout(() => this._onNewTransaction(data, ws, true), 0);
+            }
+        }
+    }
+
     _onNewTransaction(data, ws, isRequestedBySync) {
 
         let node         = ws.node;
@@ -948,7 +957,7 @@ class Wallet {
                     }).then(data => data || []).then(([transaction, transactionRepository]) => {
                         let ws = network.getWebSocketByID(connectionID);
                         if (transaction && ws) {
-                            peer.transactionSendToNode({transaction: transactionRepository.normalizeTransactionObject(transaction)}, ws);
+                            peer.transactionSendToNode(transactionRepository.normalizeTransactionObject(transaction), ws);
                         }
                         callback();
                     });
@@ -1774,6 +1783,7 @@ class Wallet {
                       eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
                       eventBus.on('transaction_new', this._onNewTransaction.bind(this));
                       eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
+                      eventBus.on('transaction_sync_response', this._onTransactionSyncResponse.bind(this));
                       eventBus.on('shard_sync_request', this._onSyncShard.bind(this));
                       eventBus.on('address_transaction_sync', this._onSyncAddressBalance.bind(this));
                       eventBus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
@@ -1830,6 +1840,7 @@ class Wallet {
         walletSync.close().then(_ => _).catch(_ => _);
         eventBus.removeAllListeners('transaction_new');
         eventBus.removeAllListeners('transaction_sync');
+        eventBus.removeAllListeners('transaction_sync_response');
         eventBus.removeAllListeners('shard_sync_request');
         eventBus.removeAllListeners('address_transaction_sync');
         eventBus.removeAllListeners('transaction_validation_request');

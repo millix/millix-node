@@ -385,7 +385,7 @@ export class WalletTransactionConsensus {
             return Promise.reject();
         }
 
-        peer.transactionSendToNode({transaction}, ws);
+        peer.transactionSendToNode(transaction, ws);
 
         console.log('[consensus][request] ask ', ws.node, ' for transaction validation');
         this._requestConsensusTransactionValidation.nodes[ws.node] = {replied: false};
@@ -575,11 +575,15 @@ export class WalletTransactionConsensus {
     }
 
     _releaseAllocatedNodes() {
+        if (!this._requestConsensusTransactionValidation || !this._requestConsensusTransactionValidation.transaction) {
+            return;
+        }
+
         const transactionID  = this._requestConsensusTransactionValidation.transaction.transaction_id;
         const consensusRound = this._requestConsensusTransactionValidation.consensus_round;
         for (let wsNode of _.keys(this._requestConsensusTransactionValidation.nodes)) {
             if (this._requestConsensusTransactionValidation.nodes[wsNode].allocated) {
-                const ws = _.find(this._requestConsensusTransactionValidation.nodes_candidate, ws => ws.node == wsNode);
+                const ws = _.find(this._requestConsensusTransactionValidation.nodes_candidate, ws => ws.node === wsNode);
                 if (ws) {
                     peer.releaseNodeToValidateTransaction({
                         transaction_id : transactionID,
