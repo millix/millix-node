@@ -476,7 +476,7 @@ class Network {
                     eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
                     ws.terminate();
                 }
-            }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+            }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
         }).catch(e => {
             console.log('[network warn]: error on connection handshake.');
             ws.terminate();
@@ -484,10 +484,10 @@ class Network {
     }
 
     _onNodeHandshake(registry, ws) {
-        let nodeID      = ws.nodeID || registry.node_id;
+        ws.nodeID       = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
 
-        if (nodeID === this.nodeID) {
+        if (ws.nodeID === this.nodeID) {
             ws.duplicated = true;
 
             if (ws.outBound) {
