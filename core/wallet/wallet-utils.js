@@ -652,20 +652,38 @@ class WalletUtils {
             'shard_id',
             'version'
         ]));
-        const sign       = vTransaction.transaction_signature_list[0]['signature'];
-        delete vTransaction.transaction_signature_list[0]['signature'];
+
+        const addressSignatureList = [];
+        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
+            let addressSignature = vTransaction.transaction_signature_list[i];
+            addressSignatureList.push(addressSignature['signature']);
+            delete addressSignature['signature'];
+        }
+
         if (transaction.transaction_id === genesisConfig.genesis_transaction) {
             delete vTransaction['transaction_parent_list'];
         }
-        vTransaction['payload_hash']                            = objectHash.getCHash288(vTransaction);
-        vTransaction['transaction_date']                        = transaction.transaction_date;
-        vTransaction['node_id_origin']                          = transaction.node_id_origin;
-        vTransaction['shard_id']                                = transaction.shard_id;
-        vTransaction['version']                                 = transaction.version;
-        const signatureVerified                                 = this.verify(vTransaction.transaction_signature_list[0].address_attribute.key_public, sign, vTransaction);
-        vTransaction.transaction_signature_list[0]['signature'] = sign;
-        vTransaction['transaction_id']                          = objectHash.getCHash288(vTransaction);
-        return !(signatureVerified === false || vTransaction['payload_hash'] !== transaction['payload_hash'] || vTransaction['transaction_id'] !== transaction['transaction_id']);
+        vTransaction['payload_hash']     = objectHash.getCHash288(vTransaction);
+        vTransaction['transaction_date'] = transaction.transaction_date;
+        vTransaction['node_id_origin']   = transaction.node_id_origin;
+        vTransaction['shard_id']         = transaction.shard_id;
+        vTransaction['version']          = transaction.version;
+
+        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
+            const sign              = addressSignatureList[i];
+            const signatureVerified = this.verify(vTransaction.transaction_signature_list[i].address_attribute.key_public, sign, vTransaction);
+            if (!signatureVerified) {
+                return false;
+            }
+        }
+
+        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
+            const sign                                              = addressSignatureList[i];
+            vTransaction.transaction_signature_list[i]['signature'] = sign;
+        }
+
+        vTransaction['transaction_id'] = objectHash.getCHash288(vTransaction);
+        return !(vTransaction['payload_hash'] !== transaction['payload_hash'] || vTransaction['transaction_id'] !== transaction['transaction_id']);
     }
 
     // Refresh transaction is valid if all inputs and outputs belong to same
