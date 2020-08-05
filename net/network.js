@@ -412,7 +412,7 @@ class Network {
                             ws.terminate();
                             return;
                         }
-                        else if (config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(peerNodeID)) {
+                        else if (ws.inBound && config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(peerNodeID)) {
                             console.log('[network warn]: node id not in NODE_CONNECTION_INBOUND_WHITELIST');
                             ws.terminate();
                             return;
