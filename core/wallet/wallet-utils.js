@@ -528,7 +528,7 @@ class WalletUtils {
 
             console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
 
-            if (transaction.version === config.WALLET_REFRESH_TRANSACTION_VERSION) {
+            if (transaction.version === config.WALLET_TRANSACTION_REFRESH_VERSION) {
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 if (!(isValidRefresh)) {
                     console.log('[wallet-utils] Rejecting refresh transaction');
