@@ -101,7 +101,7 @@ class Network {
 
             const ws = new WebSocket(url, {
                 rejectUnauthorized: false,
-                handshakeTimeout  : 2000
+                handshakeTimeout  : 10000
             });
 
             ws.setMaxListeners(20); // avoid warning
