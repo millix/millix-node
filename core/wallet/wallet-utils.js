@@ -537,7 +537,7 @@ class WalletUtils {
                 resolve(isValidRefresh);
             }
             else {
-                this.isConsumingExpiredOutputs(transaction.transaction_input_list, transaction.transaction_date)
+                this.isConsumingExpiredOutputs(transaction.transaction_input_list, new Date(transaction.transaction_date))
                     .then(isConsumingExpired => {
                         resolve(!isConsumingExpired);
                     })
@@ -560,26 +560,25 @@ class WalletUtils {
 
                 database.firstShardZeroORShardRepository('transaction', output_shard, transactionRepository => {
                     return transactionRepository.getTransaction(input.output_transaction_id)
-                                                .then(sourceTransaction => {
-                                                    if (!sourceTransaction) {
-                                                        console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
-                                                        callback(false);
-                                                    }
-                                                    else {
-                                                        let maximumOldest = new Date(transactionDate.getTime());
-                                                        maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                }).then(sourceTransaction => {
+                    if (!sourceTransaction) {
+                        console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
+                        callback(false);
+                    }
+                    else {
+                        let maximumOldest = new Date(transactionDate.getTime());
+                        maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
-                                                        if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
-                                                            // Meaning it
-                                                            // consumed an
-                                                            // expired output
-                                                            callback(true);
-                                                        }
-                                                        else {
-                                                            callback(false);
-                                                        }
-                                                    }
-                                                });
+                        if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
+                            // Meaning it
+                            // consumed an
+                            // expired output
+                            callback(true);
+                        }
+                        else {
+                            callback(false);
+                        }
+                    }
                 });
             }, (isConsumingExpired) => {
                 console.log(`[wallet-utils] CONSUMING EXPIRED OUTPUTS: ${isConsumingExpired}`);
