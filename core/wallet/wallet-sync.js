@@ -90,7 +90,7 @@ export class WalletSync {
         this.transactionSpendQueue = new Queue((batch, done) => {
             console.log('[wallet-sync] transaction spend sync stats ', this.transactionSpendQueue.getStats());
             if (batch.length === 0) {
-                return done();
+                return setTimeout(done, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             }
             async.eachSeries(batch, (job, callback) => {
                 if (!job.transaction_id) {
@@ -121,7 +121,7 @@ export class WalletSync {
                         callback();
                     });
             }, () => {
-                done();
+                return setTimeout(done, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             });
         }, {
             id                      : 'transaction_id',
@@ -223,7 +223,7 @@ export class WalletSync {
     }
 
     _doSyncTransactionSpend() {
-        if (!this.transactionSpendQueue || !this.processTransactionSpend) {
+        if (!this.transactionSpendQueue) {
             return Promise.resolve();
         }
 
