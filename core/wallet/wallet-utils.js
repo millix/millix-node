@@ -796,6 +796,7 @@ class WalletUtils {
               transaction['node_id_origin']   = network.nodeID;
               transaction['shard_id']         = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
               transaction['version']          = transactionVersion;
+              const tempAddressSignatures     = {};
               for (let transactionSignature of transaction.transaction_signature_list) {
                   const privateKeyHex = privateKeyMap[transactionSignature.address_base];
                   if (!privateKeyHex) {
@@ -803,11 +804,14 @@ class WalletUtils {
                   }
                   try {
                       const privateKeyBuf               = Buffer.from(privateKeyHex, 'hex');
-                      transactionSignature['signature'] = signature.sign(objectHash.getHashBuffer(transaction), privateKeyBuf);
+                      tempAddressSignatures[transactionSignature.address_base] = signature.sign(objectHash.getHashBuffer(transaction), privateKeyBuf);
                   }
                   catch (e) {
                       return Promise.reject(`sign_error: address<${transactionSignature.address_base}>`);
                   }
+              }
+              for (let transactionSignature of transaction.transaction_signature_list) {
+                  transactionSignature['signature'] = tempAddressSignatures[transactionSignature.address_base];
               }
               transaction['transaction_id'] = objectHash.getCHash288(transaction);
               return transaction;
