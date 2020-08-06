@@ -783,7 +783,7 @@ class Wallet {
         }
 
         return new Promise((resolve) => {
-            async.eachSeries(spendersByShard.entries(), ([shardID, transactionIDs], callback) => {
+            async.eachSeries(Object.entries(spendersByShard), ([shardID, transactionIDs], callback) => {
                 console.log(`[Wallet] Marking transactions ${transactionIDs.join(', ')} on shard ${shardID} as invalid.`);
 
                 database.getRepository('transaction', shardID)
