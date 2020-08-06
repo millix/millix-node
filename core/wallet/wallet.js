@@ -1056,14 +1056,7 @@ class Wallet {
                         ]).then((transaction) => {
                             this._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier));
                             resolve();
-                        })
-                            /*.then(transaction => {
-                             const transactionRepository = database.getRepository('transaction', transaction.shard_id);
-                             return transactionRepository.setTransactionAsStable(transaction.transaction_id)
-                             .then(() => transactionRepository.setOutputAsStable(transaction.transaction_id))
-                             .then(() => transactionRepository.setInputsAsSpend(transaction.transaction_id))
-                             .then(() => resolve());
-                             })*/.catch(() => resolve());
+                        }).catch(() => resolve());
                     });
         });
     }
@@ -1762,20 +1755,6 @@ class Wallet {
                                                            .addTransactionFromObject(transaction);
                                         })
                                         .then(transaction => transaction);
-                  })
-                  .then(transaction => {
-                      return new Promise(resolve => {
-                          async.eachSeries(transaction.transaction_output_list, (output, callback) => {
-                              if (addressBases.includes(output.address_base)) {
-                                  database.applyShardZeroAndShardRepository('transaction', output.output_shard_id, transactionRepository => {
-                                      return transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, undefined, ntp.now(), undefined);
-                                  }).then(() => callback());
-                              }
-                              else {
-                                  callback();
-                              }
-                          }, () => resolve(transaction));
-                      });
                   });
     }
 
