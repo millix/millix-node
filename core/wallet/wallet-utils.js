@@ -589,6 +589,11 @@ class WalletUtils {
     }
 
     isValidTransactionObject(transaction) {
+
+        if (!config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version)) {
+            return false;
+        }
+
         const addressRepository                = database.getRepository('address');
         //sort arrays
         transaction['transaction_output_list'] = _.sortBy(transaction.transaction_output_list, 'output_position');
