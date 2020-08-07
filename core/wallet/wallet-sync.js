@@ -11,6 +11,7 @@ import database from '../../database/database';
 import wallet from './wallet';
 import async from 'async';
 import _ from 'lodash';
+import eventBus from '../event-bus';
 
 
 export class WalletSync {
@@ -93,38 +94,48 @@ export class WalletSync {
                 return setTimeout(done, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             }
             async.eachSeries(batch, (job, callback) => {
-                if (!job.transaction_id) {
+                if (!job.transaction_output_id) {
                     return callback();
                 }
+                let [transactionID, shardID, outputPosition] = job.transaction_output_id.split('_');
+                if (transactionID === undefined || shardID === undefined || outputPosition === undefined) {
+                    return callback(); //something was wrong skip this output.
+                }
 
-                peer.transactionSpendRequest(job.transaction_id)
-                    .then(response => {
-                        if (response.transaction_id_list.length > 0) {
-                            response.transaction_id_list.forEach(transactionID => {
-                                this.transactionSpendQueue.push({
-                                    transaction_id: transactionID
-                                });
-                            });
-                            this.add(job.transaction_id);
-                        }
-                        else {
-                            this.transactionSpendQueue.push({
-                                transaction_id: job.transaction_id
-                            });
-                        }
-                        callback();
-                    })
-                    .catch(() => {
-                        this.transactionSpendQueue.push({
-                            transaction_id: job.transaction_id
-                        });
-                        callback();
+                // convert to integer
+                try {
+                    outputPosition = parseInt(outputPosition);
+                }
+                catch (e) {
+                    return callback(); //something was wrong skip this output.
+                }
+
+                database.firstShardZeroORShardRepository('transaction', shardID, (transactionRepository) => {
+                    return new Promise((resolve, reject) => {
+                        transactionRepository.getTransactionOutput({transaction_id: transactionID})
+                                             .then(output => output ? resolve(output) : reject())
+                                             .catch(() => reject());
                     });
+                }).then(output => {
+                    // skip if we already know that the tx is spent
+                    if (output && output.is_spent === 1) {
+                        return callback();
+                    }
+
+                    peer.transactionOutputSpendRequest(transactionID, outputPosition)
+                        .then(_ => callback())
+                        .catch(() => {
+                            this.transactionSpendQueue.push({
+                                transaction_output_id: job.transaction_output_id
+                            });
+                            callback();
+                        });
+                });
             }, () => {
                 return setTimeout(done, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             });
         }, {
-            id                      : 'transaction_id',
+            id                      : 'transaction_output_id',
             store                   : new SqliteStore({
                 dialect     : 'sqlite',
                 path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE),
@@ -148,10 +159,19 @@ export class WalletSync {
         });
 
         if (isStartTransactionSync) {
-            this.transactionSpendQueue.push({transaction_id: genesisConfig.genesis_transaction});
+            this.transactionSpendQueue.push({transaction_output_id: `${genesisConfig.genesis_transaction}_${genesisConfig.genesis_shard_id}_0`}); // output zero of genesis
+            this.add(genesisConfig.genesis_transaction);
         }
 
         return Promise.resolve();
+    }
+
+    syncTransactionSpendingOutputs(transaction) {
+        for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
+            this.transactionSpendQueue.push({
+                transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${outputPosition}`
+            });
+        }
     }
 
     add(transactionID, options) {
@@ -233,17 +253,18 @@ export class WalletSync {
                     console.error(err);
                     return resolve();
                 }
-                const queuedTransactions = new Set(_.map(rows, row => row.id));
+                const queuedTransactionOutputs = new Set(_.map(rows, row => row.id));
                 database.applyShards(shardID => {
                     // add all unspent outputs to transaction
                     // spend sync
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.listTransactionOutput({is_spent: 0}, 'transaction_date')
-                                                .then(transactions => {
-                                                    transactions.forEach(transaction => {
-                                                        if (!queuedTransactions.has(transaction.transaction_id)) {
+                                                .then(transactionOutputList => {
+                                                    transactionOutputList.forEach(transactionOutput => {
+                                                        const transactionOutputID = `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`;
+                                                        if (!queuedTransactionOutputs.has(transactionOutputID)) {
                                                             this.transactionSpendQueue.push({
-                                                                transaction_id: transaction.transaction_id
+                                                                transaction_output_id: transactionOutputID
                                                             });
                                                         }
                                                     });
