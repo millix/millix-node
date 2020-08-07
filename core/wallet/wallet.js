@@ -1039,7 +1039,7 @@ class Wallet {
                                                  .catch(() => reject());
                         });
                     }).then(transaction => callback(null, transaction));
-                }, (transactions) => {
+                }, (err, transactions) => {
                     // get peers' current web socket
                     let ws = network.getWebSocketByID(connectionID);
                     peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, transactions, ws);
@@ -1879,6 +1879,8 @@ class Wallet {
         eventBus.removeAllListeners('transaction_validation_request');
         eventBus.removeAllListeners('transaction_include_path_request');
         eventBus.removeAllListeners('transaction_spend_request');
+        eventBus.removeAllListeners('transaction_output_spend_request');
+        eventBus.removeAllListeners('transaction_output_spend_response');
         eventBus.removeAllListeners('audit_point_validation_request');
     }
 }
