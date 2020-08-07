@@ -16,6 +16,7 @@ import network from '../../net/network';
 import mutex from '../mutex';
 import ntp from '../ntp';
 import path from 'path';
+import console from '../console';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -553,6 +554,11 @@ class Wallet {
         }
     }
 
+    _onSyncOutputSpendTransactionResponse(data, ws) {
+        eventBus.emit(`transaction_output_spend_response:${data.transaction_id}_${data.output_position}`, data);
+        data.transaction_list.forEach(transaction => setTimeout(() => this._onNewTransaction({transaction}, ws, true), 0));
+    }
+
     _onNewTransaction(data, ws, isRequestedBySync) {
 
         let node         = ws.node;
@@ -999,6 +1005,44 @@ class Wallet {
                 unlock();
             }).catch(() => unlock());
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
+    }
+
+    _onSyncOutputSpendTransaction(data, ws) {
+        let node             = ws.node;
+        let connectionID     = ws.connectionID;
+        const startTimestamp = Date.now();
+        mutex.lock(['sync-transaction-spend'], unlock => {
+            eventBus.emit('wallet_event_log', {
+                type   : 'transaction_output_spend_request',
+                content: data,
+                from   : node
+            });
+
+            const transactionID             = data.transaction_id;
+            const transactionOutputPosition = data.output_position;
+
+            database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.listTransactionInput({
+                    output_transaction_id: transactionID,
+                    output_position      : transactionOutputPosition
+                });
+            }).then(spendingTransactions => {
+                // get transaction objects
+                async.mapSeries(spendingTransactions, (spendingTransaction, callback) => {
+                    const transactionRepository = database.getRepository('transaction', spendingTransaction.shard_id);
+                    transactionRepository.getTransactionObject(spendingTransaction.transaction_id)
+                                         .then(transaction => callback(null, transactionRepository.normalizeTransactionObject(transaction)))
+                                         .catch(() => callback());
+                }, (transactions) => {
+                    // get peers' current web socket
+                    let ws = network.getWebSocketByID(connectionID);
+                    peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, transactions, ws);
+                    console.log(`[wallet] sending transactions spending from output tx: ${data.transaction_id}:${data.output_position} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                    unlock();
+                });
+            }).catch(() => unlock());
+        });
     }
 
     _onTransactionIncludePathRequest(data, ws) {
@@ -1773,6 +1817,8 @@ class Wallet {
                       eventBus.on('transaction_validation_node_release', this._onTransactionValidationNodeRelease.bind(this));
                       eventBus.on('transaction_include_path_request', this._onTransactionIncludePathRequest.bind(this));
                       eventBus.on('transaction_spend_request', this._onSyncTransactionSpendTransaction.bind(this));
+                      eventBus.on('transaction_output_spend_request', this._onSyncOutputSpendTransaction.bind(this));
+                      eventBus.on('transaction_output_spend_response', this._onSyncOutputSpendTransactionResponse.bind(this));
                       eventBus.on('audit_point_validation_request', this._onAuditPointValidationRequest.bind(this));
                   });
     }
