@@ -556,7 +556,9 @@ class Wallet {
 
     _onSyncOutputSpendTransactionResponse(data, ws) {
         eventBus.emit(`transaction_output_spend_response:${data.transaction_id}_${data.output_position}`, data);
-        data.transaction_list.forEach(transaction => setTimeout(() => this._onNewTransaction({transaction}, ws, true), 0));
+        if (data.transaction_list) {
+            data.transaction_list.forEach(transaction => setTimeout(() => this._onNewTransaction({transaction}, ws, true), 0));
+        }
     }
 
     _onNewTransaction(data, ws, isRequestedBySync) {
@@ -1030,10 +1032,13 @@ class Wallet {
             }).then(spendingTransactions => {
                 // get transaction objects
                 async.mapSeries(spendingTransactions, (spendingTransaction, callback) => {
-                    const transactionRepository = database.getRepository('transaction', spendingTransaction.shard_id);
-                    transactionRepository.getTransactionObject(spendingTransaction.transaction_id)
-                                         .then(transaction => callback(null, transactionRepository.normalizeTransactionObject(transaction)))
-                                         .catch(() => callback());
+                    database.firstShardZeroORShardRepository('transaction', spendingTransaction.shard_id, transactionRepository => {
+                        return new Promise((resolve, reject) => {
+                            transactionRepository.getTransactionObject(spendingTransaction.transaction_id)
+                                                 .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject())
+                                                 .catch(() => reject());
+                        });
+                    }).then(transaction => callback(null, transaction));
                 }, (transactions) => {
                     // get peers' current web socket
                     let ws = network.getWebSocketByID(connectionID);
