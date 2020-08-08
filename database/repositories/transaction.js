@@ -339,11 +339,11 @@ export default class Transaction {
                         promise = promise.then(() => {
                             return new Promise((resolve, reject) => {
                                 this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier,
-                                    output.amount, output.spend_date, output.stable_date, output.double_spend_date,
+                                    output.amount, output.spent_date, output.stable_date, output.double_spend_date,
                                     output.status, output.create_date)
                                     .then(resolve)
                                     .catch(() => {
-                                        this.updateTransactionOutput(transaction.transaction_id, output.output_position, output.spend_date ? new Date(output.spend_date * 1000) : null,
+                                        this.updateTransactionOutput(transaction.transaction_id, output.output_position, output.spent_date ? new Date(output.spend_date * 1000) : null,
                                             output.stable_date ? new Date(output.stable_date * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null)
                                             .then(resolve)
                                             .catch(reject);
