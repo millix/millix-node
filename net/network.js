@@ -96,7 +96,7 @@ class Network {
             let url = prefix + ipAddress + ':' + port;
 
             if (!url || this._selfConnectionNode.has(url) || (id && this._nodeRegistry[id])) {
-                return reject();
+                return reject(this._selfConnectionNode.has(url) ? 'self-connection' : `node ${id} is already connected`);
             }
 
             const ws = new WebSocket(url, {
@@ -131,7 +131,7 @@ class Network {
                 // distinguish connection errors from later errors that occur
                 // on open connection
                 if (!ws.outBound) {
-                    return reject();
+                    return reject('client closed the connection');
                 }
 
                 this._unregisterWebsocket(ws);
@@ -143,7 +143,7 @@ class Network {
                 // distinguish connection errors from later errors that occur
                 // on open connection
                 if (!ws.outBound) {
-                    return reject();
+                    return reject('there was an error in the connection,' + e);
                 }
 
                 this._unregisterWebsocket(ws);
