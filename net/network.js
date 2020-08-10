@@ -120,7 +120,7 @@ class Network {
                 ws.nodeConnectionReady = false;
                 ws.bidirectional       = false;
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
-                this._doHandshake(ws);
+                this._doHandshake(ws).then(_ => _);
                 resolve();
             });
 
@@ -663,6 +663,7 @@ class Network {
         if (ws.onUnregister) {
             ws.onUnregister();
         }
+        eventBus.emit('peer_connection_closed', ws);
         eventBus.emit('node_status_update');
     }
 

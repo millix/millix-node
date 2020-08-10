@@ -545,6 +545,16 @@ class Wallet {
                        .then(shardInfo => peer.shardSyncResponse(shardInfo, ws));
     }
 
+
+    _onTransactionSyncByDateResponse(data, ws) {
+        if (eventBus.listenerCount('transaction_sync_by_date_response:' + ws.nodeID) > 0) {
+            eventBus.emit('transaction_sync_by_date_response:' + ws.nodeID, data);
+        }
+        else {
+            walletSync.moveProgressiveSync(ws);
+        }
+    }
+
     _onTransactionSyncResponse(data, ws) {
         if (data && data.transaction) {
             eventBus.emit('transaction_sync_response:' + data.transaction.transaction_id, {transaction_not_found: data.transaction_not_found});
@@ -809,6 +819,69 @@ class Wallet {
                 console.log('Finished setting all spenders as invalid');
                 resolve();
             });
+        });
+    }
+
+    _onSyncTransactionByDate(data, ws) {
+        let node         = ws.node;
+        let connectionID = ws.connectionID;
+        const start      = Date.now();
+        mutex.lock(['sync-transaction'], unlock => {
+            eventBus.emit('wallet_event_log', {
+                type   : 'transaction_sync_by_date_request',
+                content: data,
+                from   : node
+            });
+
+            const beginTimestamp         = data.begin_timestamp;
+            const endTimestamp           = data.end_timestamp;
+            const excludeTransactionList = data.exclude_transaction_id_list;
+
+            database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.listTransactions({
+                    transaction_date_end  : endTimestamp,
+                    transaction_date_begin: beginTimestamp
+                });
+            }).then(transactionsByDate => {
+                // let's exclude the list of tx already present in our
+                // peer.
+                let transactions = new Set(_.map(transactions, transaction => transaction.transaction_id));
+                excludeTransactionList.forEach(transactionID => transactions.delete(transactionID));
+                transactionsByDate = _.filter(transactionsByDate, transactionID => transactions.has(transactionID));
+                transactions       = Array.from(transactions);
+
+                // get peers' current web socket
+                let ws = network.getWebSocketByID(connectionID);
+                peer.transactionSyncByDateResponse(transactions, ws);
+                console.log(`[wallet] sending transactions sync by date to node ${ws.nodeID} (response time: ${Date.now() - start}ms)`);
+                // unlock here. now on we are going to send missing
+                // transactions to peer.
+                unlock();
+
+                if (transactionsByDate.length === 0) { // no transaction will be synced
+                    return;
+                }
+
+                // get transaction objects
+                async.mapSeries(transactionsByDate, (transaction, callback) => {
+                    database.firstShardZeroORShardRepository('transaction', transaction.shard_id, transactionRepository => {
+                        return new Promise((resolve, reject) => {
+                            transactionRepository.getTransactionObject(transaction.transaction_id)
+                                                 .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject())
+                                                 .catch(() => reject());
+                        });
+                    }).then(transaction => callback(null, transaction));
+                }, (err, transactions) => {
+                    async.eachSeries(transactions, (transaction, callback) => {
+                        // get peers' current web socket
+                        let ws = network.getWebSocketByID(connectionID);
+                        peer.transactionSendToNode(transaction, ws);
+                        setTimeout(() => callback(), 250);
+                    });
+                });
+
+            }).catch(() => unlock());
         });
     }
 
@@ -1511,10 +1584,16 @@ class Wallet {
         }, undefined, Date.now() + config.AUDIT_POINT_VALIDATION_WAIT_TIME_MAX);
     }
 
+
     _onNewPeerConnection(ws) {
         if (this.initialized) {
-            this.syncAddresses(ws);
+            this.syncAddresses(ws).then(_ => _);
         }
+        walletSync.doProgressiveSync(ws);
+    }
+
+    _onPeerConnectionClosed(ws) {
+        walletSync.stopProgressiveSync(ws);
     }
 
     _doShardZeroPruning() {
@@ -1813,9 +1892,12 @@ class Wallet {
                   .then(() => walletTransactionConsensus.initialize())
                   .then(() => {
                       eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
+                      eventBus.on('peer_connection_closed', this._onPeerConnectionClosed.bind(this));
                       eventBus.on('transaction_new', this._onNewTransaction.bind(this));
                       eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
+                      eventBus.on('transaction_sync_by_date', this._onSyncTransactionByDate.bind(this));
                       eventBus.on('transaction_sync_response', this._onTransactionSyncResponse.bind(this));
+                      eventBus.on('transaction_sync_by_date_response', this._onTransactionSyncByDateResponse.bind(this));
                       eventBus.on('shard_sync_request', this._onSyncShard.bind(this));
                       eventBus.on('address_transaction_sync', this._onSyncAddressBalance.bind(this));
                       eventBus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
@@ -1872,9 +1954,13 @@ class Wallet {
     stop() {
         this.initialized = false;
         walletSync.close().then(_ => _).catch(_ => _);
+        eventBus.removeAllListeners('peer_connection_new');
+        eventBus.removeAllListeners('peer_connection_closed');
         eventBus.removeAllListeners('transaction_new');
         eventBus.removeAllListeners('transaction_sync');
+        eventBus.removeAllListeners('transaction_sync_by_date');
         eventBus.removeAllListeners('transaction_sync_response');
+        eventBus.removeAllListeners('transaction_sync_by_date_response');
         eventBus.removeAllListeners('shard_sync_request');
         eventBus.removeAllListeners('address_transaction_sync');
         eventBus.removeAllListeners('transaction_validation_request');
