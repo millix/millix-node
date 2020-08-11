@@ -828,7 +828,7 @@ class Wallet {
         const start      = Date.now();
         mutex.lock(['sync-transaction'], unlock => {
             eventBus.emit('wallet_event_log', {
-                type   : 'transaction_sync_by_date_request',
+                type   : 'transaction_sync_by_date',
                 content: data,
                 from   : node
             });
