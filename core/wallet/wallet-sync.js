@@ -183,10 +183,15 @@ export class WalletSync {
             ws,
             timestamp: Math.round(Date.now() / 1000)
         };
-        this._runProgressiveSync(this.progressiveSync[ws.nodeID]);
+        this._runProgressiveSync(ws.nodeID);
     }
 
-    _runProgressiveSync(peerSyncInfo) {
+    _runProgressiveSync(nodeID) {
+        const peerSyncInfo = this.progressiveSync[nodeID];
+        if (!this.progressiveSync[nodeID]) {
+            return;
+        }
+
         const {ws, timestamp} = peerSyncInfo;
         if (ws.readyState !== ws.OPEN) {
             return;
@@ -206,13 +211,13 @@ export class WalletSync {
                         data.transaction_id_list.forEach(transactionToSync => this.add(transactionToSync));
                     }
                     this.moveProgressiveSync(ws);
-                    setTimeout(() => this._runProgressiveSync(peerSyncInfo), config.NETWORK_LONG_TIME_WAIT_MAX * 5);
+                    setTimeout(() => this._runProgressiveSync(nodeID), config.NETWORK_LONG_TIME_WAIT_MAX * 5);
                 })
                 .catch((e) => {
                     if (e === 'sync_not_allowed') {
                         return;
                     }
-                    setTimeout(() => this._runProgressiveSync(peerSyncInfo), config.NETWORK_LONG_TIME_WAIT_MAX * 5);
+                    setTimeout(() => this._runProgressiveSync(nodeID), config.NETWORK_LONG_TIME_WAIT_MAX * 5);
                 });
     }
 
