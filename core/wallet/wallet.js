@@ -1161,6 +1161,37 @@ class Wallet {
         return Object.keys(this.getActiveWallets())[0];
     }
 
+    _doUpdateNodeAttribute() {
+        return new Promise(resolve => {
+            const nodeRepository  = database.getRepository('node');
+            const shardRepository = database.getRepository('shard');
+            let totalTransactions = 0;
+            shardRepository.listShard()
+                           .then(shardList => {
+                               return new Promise(resolve => {
+                                   const shardAttributeList = [];
+                                   async.eachSeries(shardList, (shard, callback) => {
+                                       database.getRepository('transaction', shard.shard_id)
+                                               .getTransactionCount()
+                                               .then(count => {
+                                                   totalTransactions += count;
+                                                   shardAttributeList.push({
+                                                       'shard_id'            : shard.shard_id,
+                                                       'transaction_count'   : count,
+                                                       'update_date'         : Math.floor(ntp.now().getTime() / 1000),
+                                                       'is_required'         : !!shard.is_required,
+                                                       'fee_ask_request_byte': 20
+                                                   });
+                                                   callback();
+                                               });
+                                   }, () => nodeRepository.addNodeAttribute(network.nodeID, 'shard_protocol', JSON.stringify(shardAttributeList)).then(resolve));
+                               });
+                           })
+                           .then(() => nodeRepository.addNodeAttribute(network.nodeID, 'transaction_count', totalTransactions))
+                           .then(resolve).catch(resolve);
+        });
+    }
+
     _doDAGProgress() {
         return new Promise(resolve => {
             database.getRepository('keychain').getWalletAddresses(this.getDefaultActiveWallet())
