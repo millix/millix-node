@@ -528,7 +528,7 @@ class WalletUtils {
 
             console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
 
-            if (transaction.version === config.WALLET_REFRESH_TRANSACTION_VERSION) {
+            if (transaction.version === config.WALLET_TRANSACTION_REFRESH_VERSION) {
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 if (!(isValidRefresh)) {
                     console.log('[wallet-utils] Rejecting refresh transaction');
@@ -537,7 +537,7 @@ class WalletUtils {
                 resolve(isValidRefresh);
             }
             else {
-                this.isConsumingExpiredOutputs(transaction.transaction_input_list, transaction.transaction_date)
+                this.isConsumingExpiredOutputs(transaction.transaction_input_list, new Date(transaction.transaction_date))
                     .then(isConsumingExpired => {
                         resolve(!isConsumingExpired);
                     })
@@ -560,26 +560,25 @@ class WalletUtils {
 
                 database.firstShardZeroORShardRepository('transaction', output_shard, transactionRepository => {
                     return transactionRepository.getTransaction(input.output_transaction_id)
-                                                .then(sourceTransaction => {
-                                                    if (!sourceTransaction) {
-                                                        console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
-                                                        callback(false);
-                                                    }
-                                                    else {
-                                                        let maximumOldest = new Date(transactionDate.getTime());
-                                                        maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                }).then(sourceTransaction => {
+                    if (!sourceTransaction) {
+                        console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
+                        callback(false);
+                    }
+                    else {
+                        let maximumOldest = new Date(transactionDate.getTime());
+                        maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
-                                                        if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
-                                                            // Meaning it
-                                                            // consumed an
-                                                            // expired output
-                                                            callback(true);
-                                                        }
-                                                        else {
-                                                            callback(false);
-                                                        }
-                                                    }
-                                                });
+                        if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
+                            // Meaning it
+                            // consumed an
+                            // expired output
+                            callback(true);
+                        }
+                        else {
+                            callback(false);
+                        }
+                    }
                 });
             }, (isConsumingExpired) => {
                 console.log(`[wallet-utils] CONSUMING EXPIRED OUTPUTS: ${isConsumingExpired}`);
@@ -589,6 +588,11 @@ class WalletUtils {
     }
 
     isValidTransactionObject(transaction) {
+
+        if (!config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version)) {
+            return false;
+        }
+
         const addressRepository                = database.getRepository('address');
         //sort arrays
         transaction['transaction_output_list'] = _.sortBy(transaction.transaction_output_list, 'output_position');

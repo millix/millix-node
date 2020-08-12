@@ -96,12 +96,12 @@ class Network {
             let url = prefix + ipAddress + ':' + port;
 
             if (!url || this._selfConnectionNode.has(url) || (id && this._nodeRegistry[id])) {
-                return reject();
+                return reject(this._selfConnectionNode.has(url) ? 'self-connection' : `node ${id} is already connected`);
             }
 
             const ws = new WebSocket(url, {
                 rejectUnauthorized: false,
-                handshakeTimeout  : 2000
+                handshakeTimeout  : 10000
             });
 
             ws.setMaxListeners(20); // avoid warning
@@ -120,7 +120,7 @@ class Network {
                 ws.nodeConnectionReady = false;
                 ws.bidirectional       = false;
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
-                this._doHandshake(ws);
+                this._doHandshake(ws).then(_ => _);
                 resolve();
             });
 
@@ -131,7 +131,7 @@ class Network {
                 // distinguish connection errors from later errors that occur
                 // on open connection
                 if (!ws.outBound) {
-                    return reject();
+                    return reject('client closed the connection');
                 }
 
                 this._unregisterWebsocket(ws);
@@ -143,7 +143,7 @@ class Network {
                 // distinguish connection errors from later errors that occur
                 // on open connection
                 if (!ws.outBound) {
-                    return reject();
+                    return reject('there was an error in the connection,' + e);
                 }
 
                 this._unregisterWebsocket(ws);
@@ -663,6 +663,7 @@ class Network {
         if (ws.onUnregister) {
             ws.onUnregister();
         }
+        eventBus.emit('peer_connection_closed', ws);
         eventBus.emit('node_status_update');
     }
 

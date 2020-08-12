@@ -244,17 +244,18 @@ export class PeerRotation {
                                            this._peerRotationStarted = false;
                                            resolve();
                                        })
-                                       .catch(() => {
+                                       .catch(e => {
+                                           console.log('[peer-rotation] connection error: ', e);
                                            console.log('[peer-rotation] peer rotation done.');
                                            this._peerRotationStarted = false;
-                                           this.doPeerRotation().then(() => resolve());
+                                           resolve();
                                        });
                             };
                             handlerID                     = setTimeout(() => {
                                 peerToDisconnect.onUnregister = null;
                                 console.log('[peer-rotation] peer rotation done.');
                                 this._peerRotationStarted = false;
-                                this.doPeerRotation().then(() => resolve());
+                                resolve();
                             }, 1000);
 
                             console.log(`[peer-rotation] drop with node id ${peerToDisconnect.nodeID} - ${peerToDisconnect.url}`);
@@ -274,10 +275,11 @@ export class PeerRotation {
                                        this._peerRotationStarted = false;
                                        resolve();
                                    })
-                                   .catch(() => {
+                                   .catch(e => {
+                                       console.log('[peer-rotation] connection error: ', e);
                                        console.log('[peer-rotation] peer rotation done.');
                                        this._peerRotationStarted = false;
-                                       this.doPeerRotation().then(() => resolve());
+                                       resolve();
                                    });
                         }
                     }
