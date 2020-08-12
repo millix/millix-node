@@ -21,7 +21,7 @@ export default class Transaction {
     getAddressBalance(address, stable) {
         return new Promise((resolve) => {
             this.database.get('SELECT SUM(amount) as amount FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
-                              'WHERE address=? and `transaction`.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0', [address],
+                              'WHERE address=? AND (`transaction`.is_stable = ' + (stable ? 1 : 0) + (stable ? ' AND transaction_output.status != 2) ' : ' OR transaction_output.status = 2) ') + 'AND is_spent = 0', [address],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });
