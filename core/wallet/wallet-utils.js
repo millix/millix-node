@@ -822,13 +822,14 @@ class WalletUtils {
               transaction['node_id_origin']          = network.nodeID;
               transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
               transaction['version']                 = transactionVersion;
+              const tempAddressSignatures            = {};
               for (let transactionSignature of transaction.transaction_signature_list) {
                   const privateKeyHex = privateKeyMap[transactionSignature.address_base];
                   if (!privateKeyHex) {
                       return Promise.reject(`private_key_not_found: address<${transactionSignature.address_base}>`);
                   }
                   try {
-                      const privateKeyBuf               = Buffer.from(privateKeyHex, 'hex');
+                      const privateKeyBuf                                      = Buffer.from(privateKeyHex, 'hex');
                       tempAddressSignatures[transactionSignature.address_base] = signature.sign(objectHash.getHashBuffer(transaction), privateKeyBuf);
                   }
                   catch (e) {
