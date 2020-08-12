@@ -559,7 +559,7 @@ class WalletUtils {
                 let output_shard = input.output_shard_id;
 
                 database.firstShardZeroORShardRepository('transaction', output_shard, transactionRepository => {
-                    return transactionRepository.getTransaction(input.output_transaction_id)
+                    return transactionRepository.getTransaction(input.output_transaction_id);
                 }).then(sourceTransaction => {
                     if (!sourceTransaction) {
                         console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
@@ -593,10 +593,11 @@ class WalletUtils {
             return false;
         }
 
-        const addressRepository                = database.getRepository('address');
+        const addressRepository                   = database.getRepository('address');
         //sort arrays
-        transaction['transaction_output_list'] = _.sortBy(transaction.transaction_output_list, 'output_position');
-        transaction['transaction_input_list']  = _.sortBy(transaction.transaction_input_list, 'input_position');
+        transaction['transaction_output_list']    = _.sortBy(transaction.transaction_output_list, 'output_position');
+        transaction['transaction_input_list']     = _.sortBy(transaction.transaction_input_list, 'input_position');
+        transaction['transaction_signature_list'] = _.sortBy(transaction.transaction_signature_list, 'address_base');
         //verify addresses
         if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
             for (let i = 0; i < transaction.transaction_input_list.length; i++) {
@@ -812,13 +813,15 @@ class WalletUtils {
           })
           .then(([transaction, timeNow]) => {
               transaction.transaction_input_list.forEach((input, idx) => input['input_position'] = idx);
+              transaction.transaction_input_list = _.sortBy(transaction.transaction_input_list, 'input_position');
               transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = idx);
-              transaction['payload_hash']     = objectHash.getCHash288(transaction);
-              transaction['transaction_date'] = timeNow.toISOString();
-              transaction['node_id_origin']   = network.nodeID;
-              transaction['shard_id']         = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
-              transaction['version']          = transactionVersion;
-              const tempAddressSignatures     = {};
+              transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
+              transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
+              transaction['payload_hash']            = objectHash.getCHash288(transaction);
+              transaction['transaction_date']        = timeNow.toISOString();
+              transaction['node_id_origin']          = network.nodeID;
+              transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
+              transaction['version']                 = transactionVersion;
               for (let transactionSignature of transaction.transaction_signature_list) {
                   const privateKeyHex = privateKeyMap[transactionSignature.address_base];
                   if (!privateKeyHex) {
