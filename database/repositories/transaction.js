@@ -1328,10 +1328,12 @@ export default class Transaction {
         });
     }
 
-    getFreeStableOutput(address) {
+    getFreeStableOutput(addressKeyIndentifier) {
         return new Promise((resolve) => {
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE address=? and is_spent = 0 and transaction_output.is_stable = 1 and transaction_output.status != 2 and is_double_spend = 0',
-                [address], (err, rows) => {
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
+                              INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
+                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and transaction_output.status != 2 and is_double_spend = 0',
+                [addressKeyIndentifier], (err, rows) => {
                     resolve(rows);
                 });
         });
