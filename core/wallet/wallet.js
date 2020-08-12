@@ -1910,10 +1910,17 @@ class Wallet {
                       const transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
 
                       return walletUtils.signTransaction(srcInputs, dstOutputs, privateKeyMap, transactionDate, transactionVersion)
-                                        .then(transaction => {
-                                            return database.getRepository('transaction')
-                                                           .addTransactionFromObject(transaction);
-                                        })
+                                        .then(transaction =>
+                                            walletUtils.verifyTransaction(transaction)
+                                                       .then(isValid => {
+                                                           if (!isValid) {
+                                                               return Promise.reject('tried to sign and store and invalid transaction');
+                                                           }
+                                                           else {
+                                                               return database.getRepository('transaction')
+                                                                              .addTransactionFromObject(transaction);
+                                                           }
+                                                       }))
                                         .then(transaction => transaction);
                   });
     }
