@@ -411,11 +411,11 @@ export default class Transaction {
             'address_version',
             'address_key_identifier'
         ])), 'input_position');
-        transaction['transaction_signature_list'] = transactionDB.transaction_signature_list.map(a => _.pick(a, [
+        transaction['transaction_signature_list'] = _.sortBy(transactionDB.transaction_signature_list.map(a => _.pick(a, [
             'address_base',
             'address_attribute',
             'signature'
-        ]));
+        ])), 'address_base');
         transaction['transaction_date']           = transactionDB.transaction_date.toISOString();
         transaction['version']                    = transactionDB.version;
         transaction['node_id_origin']             = transactionDB.node_id_origin;
