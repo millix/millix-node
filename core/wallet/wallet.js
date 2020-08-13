@@ -1750,7 +1750,7 @@ class Wallet {
         return new Promise(resolve => {
             console.log('[Wallet] Starting transaction output expiration');
             mutex.lock(['transaction-output-expiration'], unlock => {
-                let time = new Date();
+                let time = ntp.now();
                 time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
                 return database.getRepository('transaction').expireTransactions(time)
@@ -1767,7 +1767,7 @@ class Wallet {
         return new Promise(resolve => {
             mutex.lock(['transaction-output-refresh'], unlock => {
                 console.log('[Wallet] Starting refreshing');
-                let time = new Date();
+                let time = ntp.now();
                 time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN);
 
                 const walletID = this.getDefaultActiveWallet();

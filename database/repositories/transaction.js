@@ -2,7 +2,7 @@ import mutex from '../../core/mutex';
 import _ from 'lodash';
 import ntp from '../../core/ntp';
 import eventBus from '../../core/event-bus';
-import config, {SHARD_ZERO_NAME} from '../../core/config/config';
+import config from '../../core/config/config';
 import genesisConfig from '../../core/genesis/genesis-config';
 import async from 'async';
 import database, {Database} from '../database';
@@ -823,7 +823,7 @@ export default class Transaction {
 
     addTransaction(transactionID, shardID, payloadHash, transactionDate, ipAddressOrigin, version, parentDate, stableDate, timeoutDate, status, createDate) {
         if (!createDate) {
-            createDate = Math.floor(new Date().getTime() / 1000);
+            createDate = Math.floor(ntp.now().getTime() / 1000);
         }
 
         return new Promise((resolve, reject) => {
