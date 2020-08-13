@@ -121,11 +121,12 @@ export default class Transaction {
                         return unlock();
                     }
 
-                    let runPipeline = null;
-                    let promise     = new Promise(r => {
+                    let runPipeline       = null;
+                    let promise           = new Promise(r => {
                         runPipeline = r;
                     });
-                    let addressList = {};
+                    const addressList     = {};
+                    const transactionDate = Math.floor(new Date(transaction.transaction_date).getTime() / 1000);
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => {
@@ -175,7 +176,7 @@ export default class Transaction {
                                 return transactionRepository.getTransactionParentDate(transaction.transaction_id);
                             }).then(dates => resolve(_.min(dates)));
                         });
-                    }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, Math.floor(new Date(transaction.transaction_date).getTime() / 1000), transaction.node_id_origin, transaction.version, parentDate));
+                    }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.version, parentDate));
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id));
@@ -206,7 +207,12 @@ export default class Transaction {
                                 }).then(dates => resolve(_.min(dates)));
                             });
                         }).then(spendDate => {
-                            return this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate)
+                            // verify if expire time is greater than
+                            // transaction data
+                            let expireDate = ntp.now();
+                            expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                            const status = Math.round(expireDate.getTime() / 1000) < transactionDate ? 1 : 2;
+                            return this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate, undefined, undefined, status)
                                        .then(() => {
                                            delete output['address'];
                                        });
@@ -338,13 +344,19 @@ export default class Transaction {
                     transaction.transaction_output_list.forEach(output => {
                         promise = promise.then(() => {
                             return new Promise((resolve, reject) => {
+                                // verify if expire time is greater than
+                                // transaction data
+                                let expireDate = ntp.now();
+                                expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                                const status = Math.round(expireDate.getTime() / 1000) < transactionDate ? 1 : 2;
+
                                 this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier,
                                     output.amount, output.spent_date, output.stable_date, output.double_spend_date,
-                                    output.status, output.create_date)
+                                    status, output.create_date)
                                     .then(resolve)
                                     .catch(() => {
                                         this.updateTransactionOutput(transaction.transaction_id, output.output_position, output.spent_date ? new Date(output.spend_date * 1000) : null,
-                                            output.stable_date ? new Date(output.stable_date * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null)
+                                            output.stable_date ? new Date(output.stable_date * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null, status)
                                             .then(resolve)
                                             .catch(reject);
                                     });
@@ -523,7 +535,7 @@ export default class Transaction {
         });
     }
 
-    updateTransactionOutput(transactionID, outputPosition, spentDate, stableDate, doubleSpendDate) {
+    updateTransactionOutput(transactionID, outputPosition, spentDate, stableDate, doubleSpendDate, status) {
         return new Promise((resolve, reject) => {
             let sql = 'UPDATE transaction_output SET';
 
@@ -548,12 +560,20 @@ export default class Transaction {
                 sql += ' stable_date = ' + Math.floor(stableDate.getTime() / 1000) + ', is_stable = 1,';
             }
 
-            sql = sql.substring(0, sql.length - 1);
-
-            this.database.run(sql + ' WHERE transaction_id = ? and output_position = ?', [
+            const params = [];
+            if (status !== undefined) {
+                sql += ' status = ?,';
+                params.push(status);
+            }
+            // push remaining parameters
+            params.push(...[
                 transactionID,
                 outputPosition
-            ], (err) => {
+            ]);
+
+            sql = sql.substring(0, sql.length - 1);
+
+            this.database.run(sql + ' WHERE transaction_id = ? and output_position = ?', params, (err) => {
                 if (err) {
                     return reject(err);
                 }
