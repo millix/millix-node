@@ -197,6 +197,14 @@ export default class Job {
         });
     }
 
+    getJobs() {
+        return new Promise((resolve) => {
+            this.database.all('SELECT * FROM job', (err, rows) => {
+                resolve(rows || []);
+            });
+        });
+    }
+
     getJob(name) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT * FROM job WHERE job_name = ?',

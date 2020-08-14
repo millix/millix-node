@@ -1162,8 +1162,9 @@ class Wallet {
     }
 
     _doUpdateNodeAttribute() {
+        const nodeRepository = database.getRepository('node');
+        let jobRepository    = database.getRepository('job');
         return new Promise(resolve => {
-            const nodeRepository  = database.getRepository('node');
             const shardRepository = database.getRepository('shard');
             let totalTransactions = 0;
             shardRepository.listShard()
@@ -1189,7 +1190,13 @@ class Wallet {
                            })
                            .then(() => nodeRepository.addNodeAttribute(network.nodeID, 'transaction_count', totalTransactions))
                            .then(resolve).catch(resolve);
-        });
+        }).then(() => jobRepository.getJobs()
+                                   .then(jobs => {
+                                       return nodeRepository.addNodeAttribute(network.nodeID, 'job_list', JSON.stringify(_.map(jobs, job => ({
+                                           job_name: job.job_name,
+                                           status  : job.status
+                                       }))));
+                                   }));// update job attribute
     }
 
     _doDAGProgress() {
