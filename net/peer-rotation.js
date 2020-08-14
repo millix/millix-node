@@ -28,28 +28,36 @@ export class PeerRotation {
             return Promise.resolve();
         }
         this.initialized = true;
-        return database.getRepository('node')
-                       .getNodeAttribute(network.nodeID, 'peer_rotation_settings')
-                       .then(attribute => {
-                           attribute = JSON.parse(attribute);
-                           _.each(_.keys(attribute), rotationType => {
-                               if (PeerRotation.ROTATION_TYPE[rotationType]) {
-                                   const rotationAttribute    = attribute[rotationType];
-                                   const rotationTypeSettings = PeerRotation.ROTATION_TYPE[rotationType];
-                                   _.each(_.keys(rotationAttribute), rotationAttributeType => {
-                                       if (rotationAttributeType !== 'frequency' && rotationTypeSettings[rotationAttributeType]) {
-                                           const rotationTypeSettingsAttribute        = rotationTypeSettings[rotationAttributeType];
-                                           const rotationAttributeSettings            = rotationAttribute[rotationAttributeType];
-                                           rotationTypeSettingsAttribute['frequency'] = rotationAttributeSettings.frequency;
-                                           if (rotationAttributeSettings.random_set_length !== undefined) {
-                                               rotationTypeSettingsAttribute['random_set_length'] = config[rotationAttributeSettings.random_set_length];
-                                           }
-                                       }
-                                   });
-                                   rotationTypeSettings['frequency'] = rotationAttribute.frequency;
-                               }
-                           });
-                       });
+        return new Promise(resolve => {
+            let nodeRepository = database.getRepository('node');
+            nodeRepository
+                .getNodeAttribute(network.nodeID, 'peer_rotation_settings')
+                .then(attribute => resolve(attribute))
+                .catch(() => {
+                    let attribute = JSON.stringify(config.PEER_ROTATION_CONFIG);
+                    nodeRepository.addNodeAttribute(network.nodeID, 'peer_rotation_settings', attribute)
+                                  .then(() => resolve(attribute));
+                });
+        }).then(attribute => {
+            attribute = JSON.parse(attribute);
+            _.each(_.keys(attribute), rotationType => {
+                if (PeerRotation.ROTATION_TYPE[rotationType]) {
+                    const rotationAttribute    = attribute[rotationType];
+                    const rotationTypeSettings = PeerRotation.ROTATION_TYPE[rotationType];
+                    _.each(_.keys(rotationAttribute), rotationAttributeType => {
+                        if (rotationAttributeType !== 'frequency' && rotationTypeSettings[rotationAttributeType]) {
+                            const rotationTypeSettingsAttribute        = rotationTypeSettings[rotationAttributeType];
+                            const rotationAttributeSettings            = rotationAttribute[rotationAttributeType];
+                            rotationTypeSettingsAttribute['frequency'] = rotationAttributeSettings.frequency;
+                            if (rotationAttributeSettings.random_set_length !== undefined) {
+                                rotationTypeSettingsAttribute['random_set_length'] = config[rotationAttributeSettings.random_set_length];
+                            }
+                        }
+                    });
+                    rotationTypeSettings['frequency'] = rotationAttribute.frequency;
+                }
+            });
+        });
     }
 
     stop() {
@@ -73,7 +81,7 @@ export class PeerRotation {
         if (peers.length === 0) {
             return null;
         }
-        return _.minBy(peers, ws => ws.createTime);
+        return _.minBy(_.filter(peers, peer => !config.NODE_CONNECTION_STATIC.includes(peer.nodeID)), peer => peer.createTime);
     }
 
     _getOlderPeerNotSupportingCommonShards() {
@@ -99,7 +107,7 @@ export class PeerRotation {
                     const supportedShardList = shardAttributeList.value;
                     return !_.some(_.map(supportedShardList, supportedShard => supportedShard.is_required && _.has(database.shards, supportedShard.shard_id)));
                 }), node => node.node_id));
-                return resolve(_.minBy(_.filter(peers, peer => candidates.has(peer.nodeID)), ws => ws.createTime));
+                return resolve(_.minBy(_.filter(peers, peer => candidates.has(peer.nodeID) && !config.NODE_CONNECTION_STATIC.includes(peer.nodeID)), ws => ws.createTime));
             });
         });
     }
@@ -236,17 +244,18 @@ export class PeerRotation {
                                            this._peerRotationStarted = false;
                                            resolve();
                                        })
-                                       .catch(() => {
+                                       .catch(e => {
+                                           console.log('[peer-rotation] connection error: ', e);
                                            console.log('[peer-rotation] peer rotation done.');
                                            this._peerRotationStarted = false;
-                                           this.doPeerRotation().then(() => resolve());
+                                           resolve();
                                        });
                             };
                             handlerID                     = setTimeout(() => {
                                 peerToDisconnect.onUnregister = null;
                                 console.log('[peer-rotation] peer rotation done.');
                                 this._peerRotationStarted = false;
-                                this.doPeerRotation().then(() => resolve());
+                                resolve();
                             }, 1000);
 
                             console.log(`[peer-rotation] drop with node id ${peerToDisconnect.nodeID} - ${peerToDisconnect.url}`);
@@ -266,10 +275,11 @@ export class PeerRotation {
                                        this._peerRotationStarted = false;
                                        resolve();
                                    })
-                                   .catch(() => {
+                                   .catch(e => {
+                                       console.log('[peer-rotation] connection error: ', e);
                                        console.log('[peer-rotation] peer rotation done.');
                                        this._peerRotationStarted = false;
-                                       this.doPeerRotation().then(() => resolve());
+                                       resolve();
                                    });
                         }
                     }

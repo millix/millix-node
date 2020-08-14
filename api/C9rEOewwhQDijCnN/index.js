@@ -1,5 +1,7 @@
 import database from '../../database/database';
 import Endpoint from '../endpoint';
+import async from 'async';
+import _ from 'lodash';
 
 
 /**
@@ -17,28 +19,38 @@ class _C9rEOewwhQDijCnN extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        const transactionRepository = database.getRepository('transaction');
-        transactionRepository.getFreeTransactionsCount()
-                             .then(transactionFreeCount =>
-                                 transactionRepository.getIncludedTransactionsCount()
-                                                      .then(transactionIncludedCount =>
-                                                          transactionRepository.getInputsCount()
-                                                                               .then(transactionInputCount =>
-                                                                                   transactionRepository.getOutputsCount()
-                                                                                                        .then(transactionOutputCount =>
-
-                                                                                                            transactionRepository.getStableTransactionsCount()
-                                                                                                                                 .then(transactionStableCount =>
-                                                                                                                                     transactionRepository.getPendingTransactionsCount()
-                                                                                                                                                          .then(transactionPendingCount =>
-                                                                                                                                                              res.send({
-                                                                                                                                                                  transaction_free_count    : transactionFreeCount,
-                                                                                                                                                                  transaction_included_count: transactionIncludedCount,
-                                                                                                                                                                  transaction_input_count   : transactionInputCount,
-                                                                                                                                                                  transaction_output_count  : transactionOutputCount,
-                                                                                                                                                                  transaction_stable_count  : transactionStableCount,
-                                                                                                                                                                  transaction_pending_count : transactionPendingCount
-                                                                                                                                                              })))))));
+        async.mapSeries(
+            [
+                () => database.applyShards(shardID => {
+                    return database.getRepository('transaction', shardID).getFreeTransactionsCount();
+                }).then(_.sum),
+                () => database.applyShards(shardID => {
+                    return database.getRepository('transaction', shardID).getIncludedTransactionsCount();
+                }).then(_.sum),
+                () => database.applyShards(shardID => {
+                    return database.getRepository('transaction', shardID).getInputsCount();
+                }).then(_.sum),
+                () => database.applyShards(shardID => {
+                    return database.getRepository('transaction', shardID).getOutputsCount();
+                }).then(_.sum),
+                () => database.applyShards(shardID => {
+                    return database.getRepository('transaction', shardID).getStableTransactionsCount();
+                }).then(_.sum),
+                () => database.applyShards(shardID => {
+                    return database.getRepository('transaction', shardID).getPendingTransactionsCount();
+                }).then(_.sum)
+            ],
+            (fn, callback) => fn().then(result => callback(null, result)),
+            (err, [transactionFreeCount, transactionIncludedCount, transactionInputCount, transactionOutputCount, transactionStableCount, transactionPendingCount]) => {
+                res.send({
+                    transaction_free_count    : transactionFreeCount,
+                    transaction_included_count: transactionIncludedCount,
+                    transaction_input_count   : transactionInputCount,
+                    transaction_output_count  : transactionOutputCount,
+                    transaction_stable_count  : transactionStableCount,
+                    transaction_pending_count : transactionPendingCount
+                });
+            });
     }
 };
 

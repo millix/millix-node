@@ -27,44 +27,17 @@ class Service {
             this.mode = mode;
         }
         return logManager.initialize()
+                         .then(() => {
+                             console.log('[services] Checking for expired transactions on startup');
+                             return wallet._doTransactionOutputExpiration();
+                         })
+                         .then(() => server.initialize())
+                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
-                         .then(() => server.initialize())
                          .then(() => jobEngine.initialize())
-                         .then(() => {
-                             return new Promise(resolve => {
-                                 const nodeRepository  = database.getRepository('node');
-                                 const shardRepository = database.getRepository('shard');
-                                 shardRepository.listShard()
-                                                .then(shardList => {
-                                                    const shardAttributeList = [];
-                                                    _.each(shardList, shard => shardAttributeList.push({
-                                                        'shard_id'            : shard.shard_id,
-                                                        'transaction_count'   : 0,
-                                                        'update_date'         : Math.floor(ntp.now().getTime() / 1000),
-                                                        'is_required'         : !!shard.is_required,
-                                                        'fee_ask_request_byte': 20
-                                                    }));
-                                                    return nodeRepository.addNodeAttribute(network.nodeID, 'shard_protocol', JSON.stringify(shardAttributeList));
-                                                })
-                                                .then(() => {
-                                                    return database.applyShards((shardID) => {
-                                                        return new Promise(resolve => {
-                                                            database.getRepository('transaction', shardID)
-                                                                    .getTransactionCount()
-                                                                    .then(count => resolve(count))
-                                                                    .catch(() => resolve(0));
-                                                        });
-                                                    }).then(counts => {
-                                                        const totalTransactions = _.sum(counts);
-                                                        return nodeRepository.addNodeAttribute(network.nodeID, 'transaction_count', totalTransactions);
-                                                    });
-                                                })
-                                                .then(() => resolve()).catch(() => resolve());
-                             });
-                         })
-                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
+                         .then(() => wallet._doUpdateNodeAttribute())
                          .catch(e => {
                              console.log(e);
                          });

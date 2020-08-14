@@ -16,17 +16,19 @@ const WebSocketServer = Server;
 
 class Network {
     constructor() {
-        this._nodeList           = {};
-        this._connectionRegistry = {};
-        this._nodeRegistry       = {};
-        this._inboundRegistry    = {};
-        this._outboundRegistry   = {};
-        this._ws                 = null;
-        this.nodeID              = null;
-        this.nodeConnectionID    = this.generateNewID();
-        this._selfConnectionNode = new Set();
-        this.initialized         = false;
-        this.noop                = () => {
+        this._nodeList                            = {};
+        this._connectionRegistry                  = {};
+        this._nodeRegistry                        = {};
+        this._inboundRegistry                     = {};
+        this._outboundRegistry                    = {};
+        this._bidirectionaOutboundConnectionCount = 0;
+        this._bidirectionaInboundConnectionCount  = 0;
+        this._ws                                  = null;
+        this.nodeID                               = null;
+        this.nodeConnectionID                     = this.generateNewID();
+        this._selfConnectionNode                  = new Set();
+        this.initialized                          = false;
+        this.noop                                 = () => {
         };
     }
 
@@ -79,8 +81,12 @@ class Network {
         if (!prefix || !ipAddress || !port || portApi === undefined) {
             return Promise.resolve();
         }
+        else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && id && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id)) {
+            console.log('[network warn]: node id not in NODE_CONNECTION_OUTBOUND_WHITELIST');
+            return Promise.resolve();
+        }
 
-        if (_.keys(this._outboundRegistry).length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        if (!this.hasOutboundConnectionsSlotAvailable()) {
             console.log('[network outgoing] outbound connections maxed out, rejecting new client ');
             return Promise.resolve();
         }
@@ -90,12 +96,12 @@ class Network {
             let url = prefix + ipAddress + ':' + port;
 
             if (!url || this._selfConnectionNode.has(url) || (id && this._nodeRegistry[id])) {
-                return reject();
+                return reject(this._selfConnectionNode.has(url) ? 'self-connection' : `node ${id} is already connected`);
             }
 
             const ws = new WebSocket(url, {
                 rejectUnauthorized: false,
-                handshakeTimeout  : 2000
+                handshakeTimeout  : 10000
             });
 
             ws.setMaxListeners(20); // avoid warning
@@ -112,8 +118,9 @@ class Network {
                 ws.lastMessageTime     = ws.createTime;
                 ws.outBound            = true;
                 ws.nodeConnectionReady = false;
+                ws.bidirectional       = false;
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
-                this._doHandshake(ws);
+                this._doHandshake(ws).then(_ => _);
                 resolve();
             });
 
@@ -124,7 +131,7 @@ class Network {
                 // distinguish connection errors from later errors that occur
                 // on open connection
                 if (!ws.outBound) {
-                    return reject();
+                    return reject('client closed the connection');
                 }
 
                 this._unregisterWebsocket(ws);
@@ -136,21 +143,19 @@ class Network {
                 // distinguish connection errors from later errors that occur
                 // on open connection
                 if (!ws.outBound) {
-                    return reject();
+                    return reject('there was an error in the connection,' + e);
                 }
 
                 this._unregisterWebsocket(ws);
             });
 
-            ws.on('message', this._onWebsocketMessage);
+            ws.on('message', this._onWebsocketMessage.bind(this, ws));
             console.log('[network outgoing] connecting to node');
 
         }).bind(this));
     }
 
-    _onWebsocketMessage(message) {
-
-        const ws = this;
+    _onWebsocketMessage(ws, message) {
 
         if (ws.readyState !== ws.OPEN) {
             return;
@@ -158,19 +163,27 @@ class Network {
 
         ws.lastMessageTime = Date.now();
 
-        let arrMessage;
+        let jsonMessage;
 
         try {
-            arrMessage = JSON.parse(message);
+            jsonMessage = JSON.parse(message);
         }
         catch (e) {
-            return console.log('[network] failed to json.parse message ' + message);
+            return console.log('[network] failed to parse json message ' + message);
         }
 
-        const message_type = arrMessage.type;
-        const content      = arrMessage.content;
+        const messageType = jsonMessage.type;
+        const content     = jsonMessage.content;
 
-        eventBus.emit(message_type, content, ws);
+        if (ws.outBound && !ws.bidirectional && this.shouldBlockMessage(messageType)) {
+            return;
+        }
+
+        eventBus.emit(messageType, content, ws);
+    }
+
+    shouldBlockMessage(messageType) {
+        return !!/.*_(request|sync|allocate)$/g.exec(messageType);
     }
 
     getHostByNode(node) {
@@ -219,11 +232,12 @@ class Network {
             ws.createTime          = Date.now();
             ws.lastMessageTime     = ws.createTime;
             ws.nodeConnectionReady = false;
+            ws.bidirectional       = false;
 
 
             console.log('[network income] got connection from ' + ws.node + ', host ' + ip);
 
-            if (_.keys(this._inboundRegistry).length >= config.NODE_CONNECTION_INBOUND_MAX) {
+            if (!this.hasInboundConnectionsSlotAvailable()) {
                 console.log('[network income] inbound connections maxed out, rejecting new client ' + ip);
                 ws.close(1000, '[network income] inbound connections maxed out'); // 1001 doesn't work in cordova
                 return;
@@ -231,7 +245,7 @@ class Network {
 
             ws.inBound = true;
 
-            ws.on('message', this._onWebsocketMessage);
+            ws.on('message', this._onWebsocketMessage.bind(this, ws));
 
             ws.on('close', () => {
                 console.log('[network income] client ' + ws.node + ' disconnected');
@@ -259,7 +273,7 @@ class Network {
                         callback();
                     }, () => {
                         _.each(config.NODE_INITIAL_LIST, ({url, port_api: portApi}) => {
-                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[\w|\d|.]+):(?<port>\d+)$/);
+                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[^:]+):(?<port>\d+)$/);
                             let prefix    = matches.groups['prefix'];
                             let ipAddress = matches.groups['ip_address'];
                             let port      = matches.groups['port'];
@@ -309,7 +323,7 @@ class Network {
         return walletUtils.getNodePublicKeyFromCertificate(peerCertificate.raw.toString('hex'), 'hex');
     }
 
-    _doHandshake(ws, forceRegistration) {
+    _doHandshake(ws, isInboundConnection) {
         return new Promise((resolve) => {
             let node;
 
@@ -322,7 +336,8 @@ class Network {
                 node           : url
             };
 
-            if (!forceRegistration) {
+            if (!isInboundConnection) {
+                // force node registration on new inbound node connection
                 let peerNodeID;
                 try {
                     peerNodeID = this.getNodeIdFromWebSocket(ws);
@@ -375,6 +390,7 @@ class Network {
                         node_network_test    : config.MODE_TEST_NETWORK,
                         connection_id        : this.nodeConnectionID,
                         registration_required: true,
+
                         ...node
                     }
                 };
@@ -393,6 +409,11 @@ class Network {
                         peerNodeID = eventData.node_id;
                         if (!walletUtils.isValidNodeIdentity(peerNodeID, eventData.public_key, this.nodeID, eventData.signature)) {
                             console.log('[network warn]: invalid node identity.');
+                            ws.terminate();
+                            return;
+                        }
+                        else if (ws.inBound && config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(peerNodeID)) {
+                            console.log('[network warn]: node id not in NODE_CONNECTION_INBOUND_WHITELIST');
                             ws.terminate();
                             return;
                         }
@@ -418,7 +439,15 @@ class Network {
                                       });
                     }
                     // set connection ready
-                    peer.sendConnectionReady(ws);
+                    let extra = {};
+
+                    if (ws.inBound && this.hasOutboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(peerNodeID))) {
+                        ws.reservedOutboundSlot = true;
+                        this._bidirectionaInboundConnectionCount++;
+                        extra['enable_inbound_stream'] = true;
+                    }
+
+                    peer.sendConnectionReady(extra, ws);
 
                     // request peer attributes
                     peer.nodeAttributeRequest({
@@ -447,7 +476,7 @@ class Network {
                     eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
                     ws.terminate();
                 }
-            }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+            }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
         }).catch(e => {
             console.log('[network warn]: error on connection handshake.');
             ws.terminate();
@@ -455,10 +484,10 @@ class Network {
     }
 
     _onNodeHandshake(registry, ws) {
-        let nodeID      = ws.nodeID || registry.node_id;
+        ws.nodeID       = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
 
-        if (nodeID === this.nodeID) {
+        if (ws.nodeID === this.nodeID) {
             ws.duplicated = true;
 
             if (ws.outBound) {
@@ -540,14 +569,22 @@ class Network {
         }
     }
 
+    hasInboundConnectionsSlotAvailable() {
+        return (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) < config.NODE_CONNECTION_INBOUND_MAX;
+    }
+
+    hasOutboundConnectionsSlotAvailable() {
+        return (_.keys(this._outboundRegistry).length + this._bidirectionaInboundConnectionCount) < config.NODE_CONNECTION_OUTBOUND_MAX;
+    }
+
     _registerWebsocketToNodeID(ws) {
 
-        if (ws.inBound && _.keys(this._inboundRegistry).length >= config.NODE_CONNECTION_INBOUND_MAX) {
+        if (ws.inBound && !this.hasInboundConnectionsSlotAvailable()) {
             console.log('[network inbound] connections maxed out, rejecting new client ');
             ws.close(1000, '[network inbound] connections maxed out');
             return false;
         }
-        else if (ws.outBound && _.keys(this._outboundRegistry).length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        else if (ws.outBound && !this.hasOutboundConnectionsSlotAvailable()) {
             console.log('[network outbound] connections maxed out, rejecting new client ');
             ws.close(1000, '[network outbound] connections maxed out');
             return false;
@@ -626,6 +663,7 @@ class Network {
         if (ws.onUnregister) {
             ws.onUnregister();
         }
+        eventBus.emit('peer_connection_closed', ws);
         eventBus.emit('node_status_update');
     }
 
@@ -659,6 +697,31 @@ class Network {
                 eventBus.emit('peer_connection_new', ws);
                 eventBus.emit('node_status_update');
             }
+
+            if (content && content.enable_inbound_stream === true) {
+                if (ws.outBound && this.hasInboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(ws.nodeID))) {
+                    ws.bidirectional = true;
+                    this._bidirectionaOutboundConnectionCount++;
+                    peer.replyInboundStreamRequest(true, ws);
+                }
+                else {
+                    ws.bidirectional = true;
+                    peer.replyInboundStreamRequest(false, ws);
+                }
+            }
+        }
+    }
+
+    _onInboundStreamResponse(content, ws) {
+        if (ws.reservedOutboundSlot) {
+            if (content.inbound_stream_enabled === true) {
+                ws.bidirectional = true;
+            }
+            else {
+                ws.bidirectional = false;
+                this._bidirectionaInboundConnectionCount--;
+            }
+            ws.reservedOutboundSlot = false;
         }
     }
 
@@ -670,6 +733,7 @@ class Network {
         eventBus.on('node_handshake', this._onNodeHandshake.bind(this));
         eventBus.on('node_address_request', this._onGetNodeAddress.bind(this));
         eventBus.on('connection_ready', this._onConnectionReady.bind(this));
+        eventBus.on('inbound_stream_response', this._onInboundStreamResponse.bind(this));
     }
 
     initialize() {
@@ -702,6 +766,7 @@ class Network {
         eventBus.removeAllListeners('node_handshake');
         eventBus.removeAllListeners('node_address_request');
         eventBus.removeAllListeners('connection_ready');
+        eventBus.removeAllListeners('inbound_stream_response');
         const wss = this.getWebSocket();
         if (wss) {
             wss._server.close();

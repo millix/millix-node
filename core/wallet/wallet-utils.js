@@ -11,7 +11,6 @@ import async from 'async';
 import _ from 'lodash';
 import database from '../../database/database';
 import peer from '../../net/peer';
-import ntp from '../ntp';
 import objectHash from '../crypto/object-hash';
 import network from '../../net/network';
 import genesisConfig from '../genesis/genesis-config';
@@ -526,8 +525,26 @@ class WalletUtils {
             if (!this.isValidTransactionObject(transaction)) {
                 return resolve(false);
             }
+
+            console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
+
+            if (transaction.version === config.WALLET_TRANSACTION_REFRESH_VERSION) {
+                const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
+                if (!(isValidRefresh)) {
+                    console.log('[wallet-utils] Rejecting refresh transaction');
+                }
+
+                resolve(isValidRefresh);
+            }
             else {
-                return resolve(true);
+                this.isConsumingExpiredOutputs(transaction.transaction_input_list, new Date(transaction.transaction_date))
+                    .then(isConsumingExpired => {
+                        resolve(!isConsumingExpired);
+                    })
+                    .catch(err => {
+                        console.log(`Failed to check if consuming expired. Abandoning verification. Error: ${err}`);
+                        resolve(false);
+                    });
             }
         });
     }
@@ -536,23 +553,68 @@ class WalletUtils {
         return signature.verify(objectHash.getHashBuffer(message), sign, publicKey);
     }
 
+    isConsumingExpiredOutputs(inputList, transactionDate) {
+        return new Promise(resolve => {
+            async.eachSeries(inputList, (input, callback) => {
+                let output_shard = input.output_shard_id;
+
+                database.firstShardZeroORShardRepository('transaction', output_shard, transactionRepository => {
+                    return transactionRepository.getTransaction(input.output_transaction_id);
+                }).then(sourceTransaction => {
+                    if (!sourceTransaction) {
+                        console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
+                        callback(false);
+                    }
+                    else {
+                        let maximumOldest = new Date(transactionDate.getTime());
+                        maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+
+                        if ((maximumOldest - sourceTransaction.transaction_date) > 0) {
+                            // Meaning it
+                            // consumed an
+                            // expired output
+                            callback(true);
+                        }
+                        else {
+                            callback(false);
+                        }
+                    }
+                });
+            }, (isConsumingExpired) => {
+                console.log(`[wallet-utils] CONSUMING EXPIRED OUTPUTS: ${isConsumingExpired}`);
+                resolve(isConsumingExpired);
+            });
+        });
+    }
+
     isValidTransactionObject(transaction) {
+
+        if (!config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version)) {
+            return false;
+        }
+
+        const addressRepository                   = database.getRepository('address');
         //sort arrays
-        transaction['transaction_output_list'] = _.sortBy(transaction.transaction_output_list, 'output_position');
-        transaction['transaction_input_list']  = _.sortBy(transaction.transaction_input_list, 'input_position');
+        transaction['transaction_output_list']    = _.sortBy(transaction.transaction_output_list, 'output_position');
+        transaction['transaction_input_list']     = _.sortBy(transaction.transaction_input_list, 'input_position');
+        transaction['transaction_signature_list'] = _.sortBy(transaction.transaction_signature_list, 'address_base');
         //verify addresses
         if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
             for (let i = 0; i < transaction.transaction_input_list.length; i++) {
-                if (!this.isValidAddress(transaction.transaction_input_list[i].address_base)
-                    || !this.isValidAddress(transaction.transaction_input_list[i].address_key_identifier)) {
+                const input = transaction.transaction_input_list[i];
+                if (!this.isValidAddress(input.address_base)
+                    || !this.isValidAddress(input.address_key_identifier)
+                    || !addressRepository.supportedVersionSet.has(input.address_version)) {
                     return false;
                 }
             }
         }
 
         for (let i = 0; i < transaction.transaction_output_list.length; i++) {
-            if (!this.isValidAddress(transaction.transaction_output_list[i].address_base)
-                || !this.isValidAddress(transaction.transaction_output_list[i].address_key_identifier)) {
+            const output = transaction.transaction_output_list[i];
+            if (!this.isValidAddress(output.address_base)
+                || !this.isValidAddress(output.address_key_identifier)
+                || !addressRepository.supportedVersionSet.has(output.address_version)) {
                 return false;
             }
 
@@ -595,24 +657,61 @@ class WalletUtils {
             'shard_id',
             'version'
         ]));
-        const sign       = vTransaction.transaction_signature_list[0]['signature'];
-        delete vTransaction.transaction_signature_list[0]['signature'];
+
+        const addressSignatureList = [];
+        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
+            let addressSignature = vTransaction.transaction_signature_list[i];
+            addressSignatureList.push(addressSignature['signature']);
+            delete addressSignature['signature'];
+        }
+
         if (transaction.transaction_id === genesisConfig.genesis_transaction) {
             delete vTransaction['transaction_parent_list'];
         }
-        vTransaction['payload_hash']                            = objectHash.getCHash288(vTransaction);
-        vTransaction['transaction_date']                        = transaction.transaction_date;
-        vTransaction['node_id_origin']                          = transaction.node_id_origin;
-        vTransaction['shard_id']                                = transaction.shard_id;
-        vTransaction['version']                                 = transaction.version;
-        const signatureVerified                                 = this.verify(vTransaction.transaction_signature_list[0].address_attribute.key_public, sign, vTransaction);
-        vTransaction.transaction_signature_list[0]['signature'] = sign;
-        vTransaction['transaction_id']                          = objectHash.getCHash288(vTransaction);
-        return !(signatureVerified === false || vTransaction['payload_hash'] !== transaction['payload_hash'] || vTransaction['transaction_id'] !== transaction['transaction_id']);
+        vTransaction['payload_hash']     = objectHash.getCHash288(vTransaction);
+        vTransaction['transaction_date'] = transaction.transaction_date;
+        vTransaction['node_id_origin']   = transaction.node_id_origin;
+        vTransaction['shard_id']         = transaction.shard_id;
+        vTransaction['version']          = transaction.version;
+
+        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
+            const sign              = addressSignatureList[i];
+            const signatureVerified = this.verify(vTransaction.transaction_signature_list[i].address_attribute.key_public, sign, vTransaction);
+            if (!signatureVerified) {
+                return false;
+            }
+        }
+
+        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
+            const sign                                              = addressSignatureList[i];
+            vTransaction.transaction_signature_list[i]['signature'] = sign;
+        }
+
+        vTransaction['transaction_id'] = objectHash.getCHash288(vTransaction);
+        return !(vTransaction['payload_hash'] !== transaction['payload_hash'] || vTransaction['transaction_id'] !== transaction['transaction_id']);
     }
 
+    // Refresh transaction is valid if all inputs and outputs belong to same
+    // master private key meaning that their address key identifiers are same
+    isValidRefreshTransaction(inputList, outputList) {
+        const addressKeyIdentifier = inputList[0].address_key_identifier;
 
-    signTransaction(inputList, outputList, privateKeyMap) {
+        for (let input of inputList) {
+            if (input.address_key_identifier !== addressKeyIdentifier) {
+                return false;
+            }
+        }
+
+        for (let output of outputList) {
+            if (output.address_key_identifier !== addressKeyIdentifier) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    signTransaction(inputList, outputList, privateKeyMap, transactionDate, transactionVersion) {
         if (!inputList || inputList.length === 0) {
             return Promise.reject('input list is required');
         }
@@ -625,7 +724,6 @@ class WalletUtils {
             return Promise.reject('private key set is required');
         }
 
-        const addressRepository = database.getRepository('address');
         const keychainRepository = database.getRepository('keychain');
         return new Promise((resolve, reject) => {
             let allocatedFunds = 0;
@@ -657,16 +755,16 @@ class WalletUtils {
             const signatureList   = [];
             async.eachSeries(addressBaseList, (addressBase, callback) => {
                 keychainRepository.getKeychainAddressBaseAttribute(addressBase)
-                                 .then(attribute => {
-                                     signatureList.push({
-                                         address_base     : addressBase,
-                                         address_attribute: attribute.address_attribute
-                                     });
-                                     callback();
-                                 })
-                                 .catch(() => {
-                                     callback('address_attribute_not_found: ' + addressBase);
-                                 });
+                                  .then(attribute => {
+                                      signatureList.push({
+                                          address_base     : addressBase,
+                                          address_attribute: attribute.address_attribute
+                                      });
+                                      callback();
+                                  })
+                                  .catch(() => {
+                                      callback('address_attribute_not_found: ' + addressBase);
+                                  });
             }, (err) => {
                 if (err) {
                     return reject(err);
@@ -675,12 +773,8 @@ class WalletUtils {
             });
         }))
           .then((signatureList) => peer.getNodeAddress()
-                                       .then(({ip_address: nodeIPAddress}) => ntp.getTime().then(time => [
-                                           signatureList,
-                                           nodeIPAddress,
-                                           new Date(Math.floor(time.now.getTime() / 1000) * 1000)
-                                       ])))
-          .then(([signatureList, nodeIPAddress, timeNow]) => {
+                                       .then(() => signatureList))
+          .then(signatureList => {
 
               let transaction = {
                   transaction_input_list    : _.map(inputList, o => _.pick(o, [
@@ -713,19 +807,21 @@ class WalletUtils {
                   transaction['transaction_parent_list'] = _.map(parents, p => p.transaction_id).sort();
                   return [
                       transaction,
-                      timeNow,
-                      nodeIPAddress
+                      transactionDate
                   ];
               });
           })
           .then(([transaction, timeNow]) => {
               transaction.transaction_input_list.forEach((input, idx) => input['input_position'] = idx);
+              transaction.transaction_input_list = _.sortBy(transaction.transaction_input_list, 'input_position');
               transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = idx);
-              transaction['payload_hash']     = objectHash.getCHash288(transaction);
-              transaction['transaction_date'] = timeNow.toISOString();
-              transaction['node_id_origin']   = network.nodeID;
-              transaction['shard_id']         = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
-              transaction['version']          = config.WALLET_TRANSACTION_DEFAULT_VERSION;
+              transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
+              transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
+              transaction['payload_hash']            = objectHash.getCHash288(transaction);
+              transaction['transaction_date']        = timeNow.toISOString();
+              transaction['node_id_origin']          = network.nodeID;
+              transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
+              transaction['version']                 = transactionVersion;
               for (let transactionSignature of transaction.transaction_signature_list) {
                   const privateKeyHex = privateKeyMap[transactionSignature.address_base];
                   if (!privateKeyHex) {

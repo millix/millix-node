@@ -16,6 +16,7 @@ import network from '../../net/network';
 import mutex from '../mutex';
 import ntp from '../ntp';
 import path from 'path';
+import console from '../console';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -329,28 +330,9 @@ class Wallet {
                             }
                             const extendedPrivateKey = this.getActiveWalletKey(address.wallet_id);
                             const privateKeyBuf      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
-                            return walletUtils.signTransaction(srcInputs, dstOutputs, {[address.address_base]: privateKeyBuf.toString('hex')})
-                                              .then(transaction => {
-                                                  const transactionRepository = database.getRepository('transaction'); // shard zero
-                                                  return transactionRepository.addTransactionFromObject(transaction);
-                                              })
-                                              .then(transaction => [
-                                                  transaction,
-                                                  address
-                                              ]);
-                        })
-                        .then(([transaction, address]) => {
-                            return new Promise(resolve => {
-                                async.eachSeries(transaction.transaction_output_list, (output, callback) => {
-                                    if (output.address_base === address.address_base) {
-                                        database.applyShardZeroAndShardRepository('transaction', output.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, undefined, ntp.now(), undefined))
-                                                .then(callback);
-                                    }
-                                    else {
-                                        callback();
-                                    }
-                                }, () => resolve(transaction));
-                            });
+                            const privateKeyMap      = {[address.address_base]: privateKeyBuf.toString('hex')};
+                            const addressBases       = [address.address_base];
+                            return this.signAndStoreTransaction(srcInputs, dstOutputs, addressBases, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION);
                         })
                         .then(transaction => peer.transactionSend(transaction))
                         .then((transaction) => {
@@ -563,6 +545,32 @@ class Wallet {
                        .then(shardInfo => peer.shardSyncResponse(shardInfo, ws));
     }
 
+
+    _onTransactionSyncByDateResponse(data, ws) {
+        if (eventBus.listenerCount('transaction_sync_by_date_response:' + ws.nodeID) > 0) {
+            eventBus.emit('transaction_sync_by_date_response:' + ws.nodeID, data);
+        }
+        else {
+            walletSync.moveProgressiveSync(ws);
+        }
+    }
+
+    _onTransactionSyncResponse(data, ws) {
+        if (data && data.transaction) {
+            eventBus.emit('transaction_sync_response:' + data.transaction.transaction_id, {transaction_not_found: data.transaction_not_found});
+            if (!data.transaction_not_found) {
+                setTimeout(() => this._onNewTransaction(data, ws, true), 0);
+            }
+        }
+    }
+
+    _onSyncOutputSpendTransactionResponse(data, ws) {
+        eventBus.emit(`transaction_output_spend_response:${data.transaction_id}_${data.output_position}`, data);
+        if (data.transaction_list) {
+            data.transaction_list.forEach(transaction => setTimeout(() => this._onNewTransaction({transaction}, ws, true), 0));
+        }
+    }
+
     _onNewTransaction(data, ws, isRequestedBySync) {
 
         let node         = ws.node;
@@ -574,7 +582,10 @@ class Wallet {
             eventBus.emit('transactionRoutingResponse:' + data.routing_request_node_id + ':' + transaction.transaction_id, data);
         }
 
-        if (this._transactionReceivedFromNetwork[transaction.transaction_id]) {
+        if (!transaction || data.transaction_not_found) {
+            return;
+        }
+        else if (this._transactionReceivedFromNetwork[transaction.transaction_id]) {
             delete this._transactionRequested[transaction.transaction_id];
             return;
         }
@@ -618,7 +629,12 @@ class Wallet {
                                                                                   .then(validTransaction => {
 
                                                                                       if (!validTransaction) {
-                                                                                          console.log('Bad transaction object received from network');
+                                                                                          console.log('Invalid transaction received from network. Setting all of the childs to invalid');
+
+                                                                                          this.findAndSetAllSpendersAsInvalid(transaction)
+                                                                                              .then(_ => _)
+                                                                                              .catch(err => console.log(`Failed to find and set spenders as invalid. Error: ${err}`));
+
                                                                                           eventBus.emit('badTransaction:' + transaction.transaction_id);
                                                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                           delete this._transactionRequested[transaction.transaction_id];
@@ -658,6 +674,7 @@ class Wallet {
                                                                                                                       });
 
                                                                                                                       this.transactionSpendRequest(transaction.transaction_id, hasKeyIdentifier, syncPriority).then(_ => _).catch(_ => _);
+                                                                                                                      walletSync.syncTransactionSpendingOutputs(transaction);
 
                                                                                                                       if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
                                                                                                                           _.each(transaction.transaction_input_list, inputTransaction => {
@@ -719,6 +736,155 @@ class Wallet {
                    });
     }
 
+    // Once a transaction is determined as invalid, we want to set all its
+    // spenders (if there are any) as invalid.
+    findAndSetAllSpendersAsInvalid(transaction) {
+        return new Promise((resolve, reject) => {
+            this.findAllSpenders(transaction)
+                .then((allSpenders) => {
+                    console.log(`Found ${allSpenders.length} spenders of invalid transaction ${transaction.transaction_id}`);
+
+                    this.markAllSpendersAsInvalid(allSpenders)
+                        .then(() => {
+                            console.log(`Marked all spenders of ${transaction.transaction_id} as invalid`);
+                            resolve();
+                        })
+                        .catch((err) => reject(err));
+                })
+                .catch((err) => reject(err));
+        });
+    }
+
+    // Finds all spenders of a single transaction
+    // This is a recursive function
+    // The spenders are added to an array that is passed in
+    findAllSpenders(transaction) {
+        console.log(`[Wallet] Querying all shards for potential spenders of transaction ${transaction.transaction_id}`);
+
+        return new Promise((resolve) => {
+            return database.applyShards((shardID) => {
+                return new Promise(resolve => {
+                    database.getRepository('transaction', shardID)
+                            .getTransactionSpenders(transaction.transaction_id)
+                            .then(result => resolve(result))
+                            .catch(err => {
+                                console.log(`[wallet] Error occurred: ${err}`);
+                                resolve([]);
+                            });
+                });
+            }).then(transactionSpenders => {
+                if (transactionSpenders.length === 0) {
+                    return resolve([transaction]);
+                } // stops recursion
+
+                async.mapSeries(transactionSpenders, (spender, callback) => {
+                    // continues recursion
+                    this.findAllSpenders(spender)
+                        .then((spenders) => callback(false, spenders));
+                }, (err, mapOfSpenders) => {
+                    let spenders = Array.prototype.concat.apply([], mapOfSpenders);
+                    spenders.push(transaction);
+                    resolve(spenders);
+                });
+            });
+        });
+    }
+
+    markAllSpendersAsInvalid(spenders) {
+        let spendersByShard = {};
+
+        for (let spender of spenders) {
+            if (!(spender.shard_id in spendersByShard)) {
+                spendersByShard[spender.shard_id] = [];
+            }
+
+            spendersByShard[spender.shard_id].push(spender.transaction_id);
+        }
+
+        return new Promise((resolve) => {
+            async.eachSeries(Object.entries(spendersByShard), ([shardID, transactionIDs], callback) => {
+                console.log(`[Wallet] Marking transactions ${transactionIDs.join(', ')} on shard ${shardID} as invalid.`);
+
+                database.getRepository('transaction', shardID)
+                        .markTransactionsAsInvalid(transactionIDs)
+                        .then(() => {
+                            console.log(`Set transactions ${transactionIDs} as invalid`);
+                            callback();
+                        })
+                        .catch((err) => {
+                            console.log(`Error while marking transactions as invalid: ${err}`);
+                            callback();
+                        });
+            }, () => {
+                console.log('Finished setting all spenders as invalid');
+                resolve();
+            });
+        });
+    }
+
+    _onSyncTransactionByDate(data, ws) {
+        let node         = ws.node;
+        let connectionID = ws.connectionID;
+        const start      = Date.now();
+        mutex.lock(['sync-transaction'], unlock => {
+            eventBus.emit('wallet_event_log', {
+                type   : 'transaction_sync_by_date',
+                content: data,
+                from   : node
+            });
+
+            const beginTimestamp         = data.begin_timestamp;
+            const endTimestamp           = data.end_timestamp;
+            const excludeTransactionList = data.exclude_transaction_id_list;
+
+            database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.listTransactions({
+                    transaction_date_end  : endTimestamp,
+                    transaction_date_begin: beginTimestamp
+                });
+            }).then(transactionsByDate => {
+                // let's exclude the list of tx already present in our
+                // peer.
+                let transactions = new Set(_.map(transactions, transaction => transaction.transaction_id));
+                excludeTransactionList.forEach(transactionID => transactions.delete(transactionID));
+                transactionsByDate = _.filter(transactionsByDate, transactionID => transactions.has(transactionID));
+                transactions       = Array.from(transactions);
+
+                // get peers' current web socket
+                let ws = network.getWebSocketByID(connectionID);
+                peer.transactionSyncByDateResponse(transactions, ws);
+                console.log(`[wallet] sending transactions sync by date to node ${ws.nodeID} (response time: ${Date.now() - start}ms)`);
+                // unlock here. now on we are going to send missing
+                // transactions to peer.
+                unlock();
+
+                if (transactionsByDate.length === 0) { // no transaction will be synced
+                    return;
+                }
+
+                // get transaction objects
+                async.mapSeries(transactionsByDate, (transaction, callback) => {
+                    database.firstShardZeroORShardRepository('transaction', transaction.shard_id, transactionRepository => {
+                        return new Promise((resolve, reject) => {
+                            transactionRepository.getTransactionObject(transaction.transaction_id)
+                                                 .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject())
+                                                 .catch(() => reject());
+                        });
+                    }).then(transaction => callback(null, transaction));
+                }, (err, transactions) => {
+                    async.eachSeries(transactions, (transaction, callback) => {
+                        // get peers' current web socket
+                        let ws = network.getWebSocketByID(connectionID);
+                        peer.transactionSendToNode(transaction, ws);
+                        setTimeout(() => callback(), 250);
+                    });
+                });
+
+            }).catch(() => unlock());
+        });
+    }
+
     _onSyncTransaction(data, ws) {
         const startTimestamp = Date.now();
         if (data.routing) {
@@ -747,7 +913,8 @@ class Wallet {
                                      .then(transaction => transaction ? resolve([
                                          transaction,
                                          transactionRepository
-                                     ]) : reject());
+                                     ]) : reject())
+                                     .catch(() => reject());
             });
         }).then(firstShardData => {
             const [transaction, transactionRepository] = firstShardData || [];
@@ -769,6 +936,15 @@ class Wallet {
                 }
             }
             else {
+                console.log(`[wallet] sending transaction ${data.transaction_id} not found to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                peer.transactionSyncResponse({
+                    transaction            : {transaction_id: data.transaction_id},
+                    transaction_not_found  : true,
+                    depth                  : data.depth,
+                    routing                : data.routing,
+                    routing_request_node_id: data.routing_request_node_id
+                }, ws);
+
                 mutex.lock(['routing_transaction'], unlock => {
 
                     let requestNodeID = data.routing ? data.routing_request_node_id : nodeID;
@@ -792,15 +968,14 @@ class Wallet {
                         };
                     }
 
-                    let self = this;
                     eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
-                    eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, function(routedData) {
-                        if (!self._transactionOnRoute[routedData.routing_request_node_id]) {
+                    eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, (routedData) => {
+                        if (!this._transactionOnRoute[routedData.routing_request_node_id]) {
                             console.log('[Wallet] Routed package not requested ?!', routedData);
                             return;
                         }
 
-                        delete self._transactionOnRoute[routedData.routing_request_node_id][routedData.transaction.transaction_id];
+                        delete this._transactionOnRoute[routedData.routing_request_node_id][routedData.transaction.transaction_id];
 
                         if (!routedData.transaction) {
                             console.log('[Wallet] Routed package does not contain a transaction ?!', routedData);
@@ -814,7 +989,7 @@ class Wallet {
                             return;
                         }
 
-                        peer.transactionSyncResponse(routedData, ws);
+                        peer.transactionSendToNode(routedData.transaction, ws);
                         console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                     });
 
@@ -824,12 +999,14 @@ class Wallet {
 
                     unlock();
                     peer.transactionSyncRequest(transactionID, {
-                        depth          : data.depth,
-                        routing        : true,
-                        request_node_id: requestNodeID
+                        depth           : data.depth,
+                        routing         : true,
+                        request_node_id : requestNodeID,
+                        dispatch_request: true
                     })
-                        .then(() => this._transactionRequested[transactionID] = Date.now())
+                        .then(_ => _)
                         .catch(_ => _);
+                    this._transactionRequested[transactionID] = Date.now();
                 }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
             }
         });
@@ -865,7 +1042,7 @@ class Wallet {
                     }).then(data => data || []).then(([transaction, transactionRepository]) => {
                         let ws = network.getWebSocketByID(connectionID);
                         if (transaction && ws) {
-                            peer.transactionSendToNode({transaction: transactionRepository.normalizeTransactionObject(transaction)}, ws);
+                            peer.transactionSendToNode(transactionRepository.normalizeTransactionObject(transaction), ws);
                         }
                         callback();
                     });
@@ -891,18 +1068,60 @@ class Wallet {
                 const transactionRepository = database.getRepository('transaction', shardID);
                 return transactionRepository.getSpendTransactions(transactionID);
             }).then(transactions => {
-                if (!transactions || transactions.length === 0) {
-                    unlock();
-                    return;
+                if (transactions && transactions.length > 0) {
+                    transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
+                }
+                else {
+                    transactions = [];
                 }
 
-                transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
-                let ws       = network.getWebSocketByID(connectionID);
+                let ws = network.getWebSocketByID(connectionID);
                 peer.transactionSpendResponse(transactionID, transactions, ws);
                 console.log(`[wallet] sending transactions spending from tx: ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                 unlock();
             }).catch(() => unlock());
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
+    }
+
+    _onSyncOutputSpendTransaction(data, ws) {
+        let node             = ws.node;
+        let connectionID     = ws.connectionID;
+        const startTimestamp = Date.now();
+        mutex.lock(['sync-transaction-spend'], unlock => {
+            eventBus.emit('wallet_event_log', {
+                type   : 'transaction_output_spend_request',
+                content: data,
+                from   : node
+            });
+
+            const transactionID             = data.transaction_id;
+            const transactionOutputPosition = data.output_position;
+
+            database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.listTransactionInput({
+                    output_transaction_id: transactionID,
+                    output_position      : transactionOutputPosition
+                });
+            }).then(spendingTransactions => {
+                // get transaction objects
+                async.mapSeries(spendingTransactions, (spendingTransaction, callback) => {
+                    database.firstShardZeroORShardRepository('transaction', spendingTransaction.shard_id, transactionRepository => {
+                        return new Promise((resolve, reject) => {
+                            transactionRepository.getTransactionObject(spendingTransaction.transaction_id)
+                                                 .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject())
+                                                 .catch(() => reject());
+                        });
+                    }).then(transaction => callback(null, transaction));
+                }, (err, transactions) => {
+                    // get peers' current web socket
+                    let ws = network.getWebSocketByID(connectionID);
+                    peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, transactions, ws);
+                    console.log(`[wallet] sending transactions spending from output tx: ${data.transaction_id}:${data.output_position} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                    unlock();
+                });
+            }).catch(() => unlock());
+        });
     }
 
     _onTransactionIncludePathRequest(data, ws) {
@@ -942,6 +1161,37 @@ class Wallet {
         return Object.keys(this.getActiveWallets())[0];
     }
 
+    _doUpdateNodeAttribute() {
+        return new Promise(resolve => {
+            const nodeRepository  = database.getRepository('node');
+            const shardRepository = database.getRepository('shard');
+            let totalTransactions = 0;
+            shardRepository.listShard()
+                           .then(shardList => {
+                               return new Promise(resolve => {
+                                   const shardAttributeList = [];
+                                   async.eachSeries(shardList, (shard, callback) => {
+                                       database.getRepository('transaction', shard.shard_id)
+                                               .getTransactionCount()
+                                               .then(count => {
+                                                   totalTransactions += count;
+                                                   shardAttributeList.push({
+                                                       'shard_id'            : shard.shard_id,
+                                                       'transaction_count'   : count,
+                                                       'update_date'         : Math.floor(ntp.now().getTime() / 1000),
+                                                       'is_required'         : !!shard.is_required,
+                                                       'fee_ask_request_byte': 20
+                                                   });
+                                                   callback();
+                                               });
+                                   }, () => nodeRepository.addNodeAttribute(network.nodeID, 'shard_protocol', JSON.stringify(shardAttributeList)).then(resolve));
+                               });
+                           })
+                           .then(() => nodeRepository.addNodeAttribute(network.nodeID, 'transaction_count', totalTransactions))
+                           .then(resolve).catch(resolve);
+        });
+    }
+
     _doDAGProgress() {
         return new Promise(resolve => {
             database.getRepository('keychain').getWalletAddresses(this.getDefaultActiveWallet())
@@ -960,14 +1210,7 @@ class Wallet {
                         ]).then((transaction) => {
                             this._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier));
                             resolve();
-                        })
-                            /*.then(transaction => {
-                             const transactionRepository = database.getRepository('transaction', transaction.shard_id);
-                             return transactionRepository.setTransactionAsStable(transaction.transaction_id)
-                             .then(() => transactionRepository.setOutputAsStable(transaction.transaction_id))
-                             .then(() => transactionRepository.setInputsAsSpend(transaction.transaction_id))
-                             .then(() => resolve());
-                             })*/.catch(() => resolve());
+                        }).catch(() => resolve());
                     });
         });
     }
@@ -1020,6 +1263,7 @@ class Wallet {
         return database.getRepository('keychain').getWalletAddresses(this.getDefaultActiveWallet());
     }
 
+    // TODO - check
     _doSyncTransactionIncludePath() {
         return new Promise(resolve => {
             database.getRepository('keychain')
@@ -1371,10 +1615,16 @@ class Wallet {
         }, undefined, Date.now() + config.AUDIT_POINT_VALIDATION_WAIT_TIME_MAX);
     }
 
+
     _onNewPeerConnection(ws) {
         if (this.initialized) {
-            this.syncAddresses(ws);
+            this.syncAddresses(ws).then(_ => _);
         }
+        walletSync.doProgressiveSync(ws);
+    }
+
+    _onPeerConnectionClosed(ws) {
+        walletSync.stopProgressiveSync(ws);
     }
 
     _doShardZeroPruning() {
@@ -1413,6 +1663,7 @@ class Wallet {
     }
 
     _doTransactionPruning() {
+        console.log('\n\n\nPRUNING\n\n\n');
 
         if (mutex.getKeyQueuedSize(['transaction-pruning']) > 0) { // a prune task is running.
             return Promise.resolve();
@@ -1495,14 +1746,196 @@ class Wallet {
         return Promise.resolve();
     }
 
+    _doTransactionOutputExpiration() {
+        return new Promise(resolve => {
+            console.log('[Wallet] Starting transaction output expiration');
+            mutex.lock(['transaction-output-expiration'], unlock => {
+                let time = ntp.now();
+                time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+
+                return database.getRepository('transaction').expireTransactions(time)
+                               .then(() => {
+                                   unlock();
+                                   resolve();
+                               });
+            });
+        });
+    }
+
+    // A job that refreshes outputs that are near expiration
+    _doTransactionOutputRefresh() {
+        return new Promise(resolve => {
+            mutex.lock(['transaction-output-refresh'], unlock => {
+                console.log('[Wallet] Starting refreshing');
+                let time = ntp.now();
+                time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN);
+
+                const walletID = this.getDefaultActiveWallet();
+                if (!walletID) {
+                    resolve();
+                    unlock();
+                    return;
+                }
+
+                database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
+                        .then((addressKeyIdentifier) => {
+                            if (addressKeyIdentifier === null) {
+                                throw new Error('No address key identifier');
+                            }
+
+                            return this.findAllExpiredOrNearExpiredOutputs(addressKeyIdentifier, time)
+                                       .then(inputs => {
+                                           if (inputs.length === 0) {
+                                               throw new Error('no outputs that need to be refreshed');
+                                           }
+
+                                           console.log(`[wallet] Found ${inputs.length} outputs that need to be refreshed.`);
+                                           return [
+                                               inputs,
+                                               addressKeyIdentifier
+                                           ];
+                                       });
+                        })
+                        .then(([inputs, addressKeyIdentifier]) => {
+                            let neededAddresses = {};
+
+                            for (let input of inputs) {
+                                if (!(input.address in neededAddresses)) {
+                                    neededAddresses[input.address] = true;
+                                }
+                            }
+
+                            const extendedPrivateKey = this.getActiveWalletKey(walletID);
+
+                            //TODO - query address by address
+                            return this.getWalletAddresses()
+                                       .then(addresses => {
+                                           // Looking for the keys and address
+                                           // bases that are needed to spend
+                                           // these inputs
+                                           let keyMap       = {};
+                                           let addressBases = [];
+
+                                           for (let address of addresses) {
+                                               if (address.address in neededAddresses) {
+                                                   const privateKey             = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
+                                                   keyMap[address.address_base] = privateKey;
+                                                   addressBases.push(address.address_base);
+                                               }
+                                           }
+
+                                           // Creating output - using the first
+                                           // address in the list
+                                           const addressBase    = addresses[0].address_base;
+                                           const addressVersion = addresses[0].address_version;
+                                           const amount         = _.sum(_.map(inputs, i => i.amount));
+
+                                           const output = {
+                                               address_base          : addressBase,
+                                               address_version       : addressVersion,
+                                               address_key_identifier: addressKeyIdentifier,
+                                               amount
+                                           };
+
+                                           return [
+                                               keyMap,
+                                               addressBases,
+                                               output
+                                           ];
+                                       })
+                                       .then(([keyMap, addressBases, output]) => {
+                                           let fieldMap = {
+                                               'transaction_id'  : 'output_transaction_id',
+                                               'transaction_date': 'output_transaction_date',
+                                               'shard_id'        : 'output_shard_id'
+                                           };
+
+                                           const addressRepository = database.getRepository('address');
+
+                                           for (let input of inputs) {
+                                               const addressComponent   = addressRepository.getAddressComponent(input.address);
+                                               input['address_base']    = addressComponent['address'];
+                                               input['address_version'] = addressComponent['version'];
+                                           }
+
+                                           const srcInputs = _.map(inputs, o => _.mapKeys(_.pick(o, [
+                                               'transaction_id',
+                                               'output_position',
+                                               'transaction_date',
+                                               'shard_id',
+                                               'address_base',
+                                               'address_version',
+                                               'address_key_identifier'
+                                           ]), (v, k) => fieldMap[k] ? fieldMap[k] : k));
+
+                                           return this.signAndStoreTransaction(srcInputs, [output], addressBases, keyMap, config.WALLET_TRANSACTION_REFRESH_VERSION)
+                                                      .then((transaction) => {
+                                                          return transaction;
+                                                      });
+                                       });
+                        })
+                        .then((transaction) => {
+                            console.log(`[wallet] Successfully stored and propagated refresh transaction ${transaction.transaction_id}`);
+                            resolve();
+                            unlock();
+                        })
+                        .catch((e) => {
+                            console.log(`[wallet] Failed to refresh outputs. Error: ${e}`);
+                            resolve();
+                            unlock();
+                        });
+            });
+        });
+    }
+
+    findAllExpiredOrNearExpiredOutputs(addressKeyIdentifier, time) {
+        return new Promise((resolve) => {
+            return database.applyShards((shardID) => {
+                return new Promise((resolve) => {
+                    database.getRepository('transaction', shardID)
+                            .getUnspentTransactionOutputsOlderThanOrExpired(addressKeyIdentifier, time)
+                            .then(result => resolve(result))
+                            .catch(err => {
+                                console.log(`[wallet] Failed to get expired or near expired outputs for shard ${shardID}. Error: ${err}`);
+                                resolve([]);
+                            });
+                });
+            }).then(allOutputs => resolve(allOutputs));
+        });
+    }
+
+    signAndStoreTransaction(srcInputs, dstOutputs, addressBases, privateKeyMap, transactionVersion) {
+        return ntp.getTime()
+                  .then(time => {
+                      const transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
+
+                      return walletUtils.signTransaction(srcInputs, dstOutputs, privateKeyMap, transactionDate, transactionVersion)
+                                        .then(transaction =>
+                                            walletUtils.verifyTransaction(transaction)
+                                                       .then(isValid => {
+                                                           if (!isValid) {
+                                                               return Promise.reject('tried to sign and store and invalid transaction');
+                                                           }
+                                                           else {
+                                                               return database.getRepository('transaction')
+                                                                              .addTransactionFromObject(transaction);
+                                                           }
+                                                       }))
+                                        .then(transaction => transaction);
+                  });
+    }
 
     _initializeEvents() {
         walletSync.initialize()
                   .then(() => walletTransactionConsensus.initialize())
                   .then(() => {
                       eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
+                      eventBus.on('peer_connection_closed', this._onPeerConnectionClosed.bind(this));
                       eventBus.on('transaction_new', this._onNewTransaction.bind(this));
                       eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
+                      eventBus.on('transaction_sync_by_date', this._onSyncTransactionByDate.bind(this));
+                      eventBus.on('transaction_sync_response', this._onTransactionSyncResponse.bind(this));
+                      eventBus.on('transaction_sync_by_date_response', this._onTransactionSyncByDateResponse.bind(this));
                       eventBus.on('shard_sync_request', this._onSyncShard.bind(this));
                       eventBus.on('address_transaction_sync', this._onSyncAddressBalance.bind(this));
                       eventBus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
@@ -1510,6 +1943,8 @@ class Wallet {
                       eventBus.on('transaction_validation_node_release', this._onTransactionValidationNodeRelease.bind(this));
                       eventBus.on('transaction_include_path_request', this._onTransactionIncludePathRequest.bind(this));
                       eventBus.on('transaction_spend_request', this._onSyncTransactionSpendTransaction.bind(this));
+                      eventBus.on('transaction_output_spend_request', this._onSyncOutputSpendTransaction.bind(this));
+                      eventBus.on('transaction_output_spend_response', this._onSyncOutputSpendTransactionResponse.bind(this));
                       eventBus.on('audit_point_validation_request', this._onAuditPointValidationRequest.bind(this));
                   });
     }
@@ -1557,13 +1992,20 @@ class Wallet {
     stop() {
         this.initialized = false;
         walletSync.close().then(_ => _).catch(_ => _);
+        eventBus.removeAllListeners('peer_connection_new');
+        eventBus.removeAllListeners('peer_connection_closed');
         eventBus.removeAllListeners('transaction_new');
         eventBus.removeAllListeners('transaction_sync');
+        eventBus.removeAllListeners('transaction_sync_by_date');
+        eventBus.removeAllListeners('transaction_sync_response');
+        eventBus.removeAllListeners('transaction_sync_by_date_response');
         eventBus.removeAllListeners('shard_sync_request');
         eventBus.removeAllListeners('address_transaction_sync');
         eventBus.removeAllListeners('transaction_validation_request');
         eventBus.removeAllListeners('transaction_include_path_request');
         eventBus.removeAllListeners('transaction_spend_request');
+        eventBus.removeAllListeners('transaction_output_spend_request');
+        eventBus.removeAllListeners('transaction_output_spend_response');
         eventBus.removeAllListeners('audit_point_validation_request');
     }
 }

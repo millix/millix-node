@@ -385,7 +385,7 @@ export class WalletTransactionConsensus {
             return Promise.reject();
         }
 
-        peer.transactionSendToNode({transaction}, ws);
+        peer.transactionSendToNode(transaction, ws);
 
         console.log('[consensus][request] ask ', ws.node, ' for transaction validation');
         this._requestConsensusTransactionValidation.nodes[ws.node] = {replied: false};
@@ -438,7 +438,7 @@ export class WalletTransactionConsensus {
                            return this._allocateNodeToValidateTransaction(ws);
                        }
                        else {
-                           console.log('[consensus][request] no more node available');
+                           console.log('[consensus][request] no more nodes available');
                            return Promise.reject();
                        }
                    });
@@ -475,7 +475,8 @@ export class WalletTransactionConsensus {
                             return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
                                 return transactionRepository.setTransactionAsStable(transactionID)
                                                             .then(() => transactionRepository.setOutputAsStable(transactionID))
-                                                            .then(() => transactionRepository.setInputsAsSpend(transactionID));
+                                                            .then(() => transactionRepository.setInputsAsSpend(transactionID))
+                                                            .then(() => resolve());
                             });
                         }
 
@@ -574,11 +575,15 @@ export class WalletTransactionConsensus {
     }
 
     _releaseAllocatedNodes() {
+        if (!this._requestConsensusTransactionValidation || !this._requestConsensusTransactionValidation.transaction) {
+            return;
+        }
+
         const transactionID  = this._requestConsensusTransactionValidation.transaction.transaction_id;
         const consensusRound = this._requestConsensusTransactionValidation.consensus_round;
         for (let wsNode of _.keys(this._requestConsensusTransactionValidation.nodes)) {
             if (this._requestConsensusTransactionValidation.nodes[wsNode].allocated) {
-                const ws = _.find(this._requestConsensusTransactionValidation.nodes_candidate, ws => ws.node == wsNode);
+                const ws = _.find(this._requestConsensusTransactionValidation.nodes_candidate, ws => ws.node === wsNode);
                 if (ws) {
                     peer.releaseNodeToValidateTransaction({
                         transaction_id : transactionID,
@@ -675,6 +680,9 @@ export class WalletTransactionConsensus {
                                     });
                             return;
                         }
+                    }
+                    else if (data.cause === 'transaction_not_found' && transaction && transaction.transaction_id === data.transaction_id_fail) {
+                        peer.transactionSendToNode(transaction, ws);
                     }
 
                     let validationCount     = 0;

@@ -16,6 +16,7 @@ class Peer {
         };
         this.pendingTransactionSync            = {};
         this.pendingTransactionSpendSync       = {};
+        this.pendingTransactionOutputSpendSync = {};
         this.pendingTransactionIncludePathSync = {};
     }
 
@@ -127,7 +128,7 @@ class Peer {
         let data = JSON.stringify(payload);
         network.registeredClients.forEach(ws => {
             try {
-                if (excludeWS !== ws) {
+                if (excludeWS !== ws && !(ws.outBound && !ws.bidirectional)) {
                     ws.nodeConnectionReady && ws.send(data);
                 }
             }
@@ -140,9 +141,13 @@ class Peer {
     }
 
     transactionSendToNode(transaction, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return transaction;
+        }
+
         let payload = {
             type   : 'transaction_new',
-            content: transaction
+            content: {transaction}
         };
 
         eventBus.emit('node_event_log', payload);
@@ -159,6 +164,10 @@ class Peer {
     }
 
     auditPointValidationResponse(transactions, auditPointID, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return transactions;
+        }
+
         let payload = {
             type   : 'audit_point_validation_response:' + auditPointID,
             content: {transaction_id_list: transactions}
@@ -204,11 +213,11 @@ class Peer {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
                 try {
-                    if (ws.nodeConnectionReady) {
+                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
 
                         eventBus.removeAllListeners('transaction_include_path_response:' + transactionID);
                         eventBus.once('transaction_include_path_response:' + transactionID, function(eventData, eventWS) {
-                            console.log('[peer] stopping transaction spend sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
+                            console.log('[peer] received include path for transaction id ', transactionID, ' from node ', nodeID);
 
                             if (!callbackCalled) {
                                 resolve([
@@ -257,6 +266,10 @@ class Peer {
     }
 
     transactionSpendResponse(transactionID, transactions, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return;
+        }
+
         let payload = {
             type   : 'transaction_spend_response:' + transactionID,
             content: {transaction_id_list: transactions}
@@ -272,6 +285,114 @@ class Peer {
             console.log('[WARN]: try to send data over a closed connection.');
         }
 
+    }
+
+    transactionOutputSpendResponse(transactionID, outputPosition, transactions, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return;
+        }
+
+        let payload = {
+            type   : 'transaction_output_spend_response',
+            content: {
+                transaction_id  : transactionID,
+                output_position : outputPosition,
+                transaction_list: transactions
+            }
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+
+    }
+
+    transactionOutputSpendRequest(transactionID, outputPosition) {
+        const transactionOutputID = `${transactionID}_${outputPosition}`;
+        if (this.pendingTransactionOutputSpendSync[transactionOutputID]) {
+            return Promise.reject();
+        }
+
+        this.pendingTransactionOutputSpendSync[transactionOutputID] = true;
+
+        return new Promise((resolve, reject) => {
+
+            let payload = {
+                type   : 'transaction_output_spend_request',
+                content: {
+                    transaction_id : transactionID,
+                    output_position: outputPosition
+                }
+            };
+
+            let data = JSON.stringify(payload);
+
+            eventBus.emit('node_event_log', payload);
+
+            let nodesWS = _.shuffle(network.registeredClients);
+
+            async.eachSeries(nodesWS, (ws, callback) => {
+                let callbackCalled = false;
+                let nodeID         = ws.nodeID;
+                try {
+                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+
+                        eventBus.removeAllListeners(`transaction_output_spend_response:${transactionOutputID}`);
+                        eventBus.once(`transaction_output_spend_response:${transactionOutputID}`, function(eventData) {
+                            console.log(`[peer] received transaction output spend for transaction id ${transactionID} output position ${outputPosition} from node ${nodeID}`);
+
+                            if (!callbackCalled) {
+                                callbackCalled = true;
+                                if (!eventData || !eventData.transaction_list || eventData.transaction_list.length === 0) {
+                                    callback();
+                                }
+                                else {
+                                    resolve(eventData);
+                                    callback(true);
+                                }
+                            }
+
+                        });
+
+                        ws.send(data);
+
+                        setTimeout(function() {
+                            if (!callbackCalled) {
+                                callbackCalled = true;
+                                callback();
+                            }
+                        }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+
+                    }
+                    else {
+                        callback();
+                    }
+
+                }
+                catch (e) {
+                    console.log('[WARN]: try to send data over a closed connection.');
+                    if (!callbackCalled) {
+                        callbackCalled = true;
+                        callback();
+                    }
+                }
+            }, (done) => {
+                eventBus.removeAllListeners(`transaction_output_spend_response:${transactionOutputID}`);
+                delete this.pendingTransactionOutputSpendSync[transactionOutputID];
+
+                if (!done) {
+                    console.log(`[peer] transaction_output_spend_response:${transactionOutputID} not received. skip...`);
+                    reject();
+                }
+            });
+
+        });
     }
 
     transactionSpendRequest(transactionID) {
@@ -298,16 +419,21 @@ class Peer {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
                 try {
-                    if (ws.nodeConnectionReady) {
+                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
 
                         eventBus.removeAllListeners('transaction_spend_response:' + transactionID);
                         eventBus.once('transaction_spend_response:' + transactionID, function(eventData) {
-                            console.log('[peer] stopping transaction spend sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
+                            console.log('[peer] received transaction spend sync for transaction id ', transactionID, ' from node ', nodeID);
 
                             if (!callbackCalled) {
-                                resolve(eventData);
                                 callbackCalled = true;
-                                callback(true);
+                                if (!eventData || !eventData.transaction_id_list || eventData.transaction_id_list.length === 0) {
+                                    callback();
+                                }
+                                else {
+                                    resolve(eventData);
+                                    callback(true);
+                                }
                             }
 
                         });
@@ -348,6 +474,10 @@ class Peer {
     }
 
     transactionIncludePathResponse(message, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return message;
+        }
+
         let payload = {
             type   : 'transaction_include_path_response:' + message.transaction_id,
             content: message
@@ -379,7 +509,7 @@ class Peer {
             let data = JSON.stringify(payload);
             try {
                 let callbackCalled = false;
-                if (ws.nodeConnectionReady) {
+                if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
                     const messageID = 'transaction_validation_response:' + content.transaction_id + ':' + content.consensus_round + ':' + ws.nodeID;
                     eventBus.removeAllListeners(messageID);
                     eventBus.once(messageID, function(eventData, eventWS) {
@@ -422,6 +552,10 @@ class Peer {
     }
 
     allocateNodeToValidateTransaction(content, ws) {
+        if (ws.inBound && !ws.bidirectional) {
+            return Promise.reject();
+        }
+
         return new Promise((resolve, reject) => {
             const payload = {
                 type: 'transaction_validation_node_allocate',
@@ -471,6 +605,10 @@ class Peer {
     }
 
     replyNodeAllocationRequest(content, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return Promise.resolve();
+        }
+
         return new Promise((resolve, reject) => {
             let payload = {
                 type: 'transaction_validation_node_allocate_response:' + network.nodeID,
@@ -516,6 +654,10 @@ class Peer {
     }
 
     acknowledgeAllocateNodeToValidateTransaction(content, ws) {
+        if (ws.inBound && !ws.bidirectional) {
+            return;
+        }
+
         let payload = {
             type: 'transaction_validation_node_allocate_acknowledge:' + network.nodeID,
             content
@@ -533,6 +675,10 @@ class Peer {
     }
 
     releaseNodeToValidateTransaction(content, ws) {
+        if (ws.inBound && !ws.bidirectional) {
+            return;
+        }
+
         let payload = {
             type: 'transaction_validation_node_release',
             content
@@ -550,6 +696,10 @@ class Peer {
     }
 
     auditPointValidationRequest(content, ws) {
+        if (ws.inBound && !ws.bidirectional) {
+            return content;
+        }
+
         let payload = {
             type: 'audit_point_validation_request',
             content
@@ -569,6 +719,10 @@ class Peer {
     }
 
     transactionValidationResponse(message, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return message;
+        }
+
         let payload = {
             type   : 'transaction_validation_response:' + message.transaction_id + ':' + message.consensus_round + ':' + network.nodeID,
             content: message
@@ -659,7 +813,7 @@ class Peer {
         let data = JSON.stringify(payload);
         if (ws) {
             try {
-                ws.nodeConnectionReady && ws.send(data);
+                ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional) && ws.send(data);
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
@@ -668,7 +822,7 @@ class Peer {
         else {
             network.registeredClients.forEach(ws => {
                 try {
-                    ws.nodeConnectionReady && ws.send(data);
+                    ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional) && ws.send(data);
                 }
                 catch (e) {
                     console.log('[WARN]: try to send data over a closed connection.');
@@ -680,8 +834,12 @@ class Peer {
     }
 
     transactionSyncResponse(content, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return content;
+        }
+
         let payload = {
-            type: 'transaction_sync_response:' + content.transaction.transaction_id,
+            type: 'transaction_sync_response',
             content
         };
 
@@ -699,11 +857,12 @@ class Peer {
     }
 
     transactionSyncRequest(transactionID, options = {}) {
-        const {depth: currentDepth, request_node_id: requestNodeID, routing, priority, dispatch_request: dispatchRequest} = options;
+        const {depth: currentDepth, request_node_id: requestNodeID, routing, priority, dispatch_request: dispatchRequest, attempt} = options;
         return new Promise((resolve, reject) => {
 
             walletSync.add(transactionID, {
                 delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
+                attempt,
                 priority
             });
 
@@ -735,26 +894,29 @@ class Peer {
             let nodesWS = _.shuffle(network.registeredClients);
 
             async.eachSeries(nodesWS, (ws, callback) => {
-                let callbackCalled = false;
+                let timeoutID      = undefined;
                 let nodeID         = ws.nodeID;
+                let startTimestamp = Date.now();
                 try {
-                    if (ws.nodeConnectionReady) {
-                        eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
-                        eventBus.once('transaction_sync_response:' + transactionID, function(eventData, eventWS) {
-                            console.log('[peer] stopping transaction sync for transaction id ', transactionID, 'because data was received from node ', nodeID);
-                            eventBus.emit('transaction_new', eventData, eventWS, true);
-                            if (!callbackCalled) {
-                                callbackCalled = true;
+                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                        eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
+                        eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData) {
+                            clearTimeout(timeoutID);
+                            if (eventData.transaction_not_found) {
+                                console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                                callback();
+                            }
+                            else {
+                                console.log(`[peer] received transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
                                 callback(true);
                             }
                         });
                         ws.send(data);
-                        setTimeout(function() {
-                            if (!callbackCalled) {
-                                callbackCalled = true;
-                                callback();
-                            }
-                        }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+                        timeoutID = setTimeout(function() {
+                            console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                            eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
+                            callback();
+                        }, Math.round(config.NETWORK_SHORT_TIME_WAIT_MAX / 3));
                     }
                     else {
                         callback();
@@ -762,10 +924,9 @@ class Peer {
                 }
                 catch (e) {
                     console.log('[WARN]: try to send data over a closed connection.');
-                    if (!callbackCalled) {
-                        callbackCalled = true;
-                        callback();
-                    }
+                    clearTimeout(timeoutID);
+                    eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
+                    callback();
                 }
             }, (done) => {
                 eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
@@ -773,15 +934,88 @@ class Peer {
 
                 if (!done) {
                     console.log('[peer] transaction_sync_response:' + transactionID + ' not received. skip...');
-                    walletSync.add(transactionID, {priority});
+                    walletSync.add(transactionID, {
+                        attempt,
+                        priority
+                    });
                 }
                 resolve();
             });
         });
     }
 
+    transactionSyncByDateResponse(transactionList, ws) {
+        if (ws.outBound && !ws.bidirectional) {
+            return;
+        }
+
+        let payload = {
+            type   : 'transaction_sync_by_date_response',
+            content: {transaction_id_list: transactionList}
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    transactionSyncByDate(beginTimestamp, endTimestamp, excludeTransactionList, ws) {
+        return new Promise((resolve, reject) => {
+
+            let start  = Date.now();
+            let nodeID = ws.nodeID;
+
+            console.log(`[peer] requesting transaction sync by date from ${new Date(beginTimestamp)} to ${new Date(endTimestamp)} : node ${nodeID}`);
+            let payload = {
+                type   : 'transaction_sync_by_date',
+                content: {
+                    exclude_transaction_id_list: excludeTransactionList,
+                    begin_timestamp            : beginTimestamp,
+                    end_timestamp              : endTimestamp
+                }
+            };
+
+            eventBus.emit('node_event_log', payload);
+
+            let data = JSON.stringify(payload);
+
+            try {
+                if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
+                    eventBus.removeAllListeners('transaction_sync_by_date_response:' + nodeID);
+                    eventBus.once('transaction_sync_by_date_response:' + nodeID, function(data) {
+                        console.log(`[peer] transaction sync by date received from node ${nodeID} (${Date.now() - start}ms)`);
+                        resolve(data);
+                    });
+
+                    ws.send(data);
+                    setTimeout(() => {
+                        console.log(`[peer] timeout transaction sync by date from node ${nodeID} (${Date.now() - start}ms)`);
+                        eventBus.removeAllListeners('transaction_sync_by_date_response:' + nodeID);
+                        reject('sync_timeout');
+                    }, Math.round(config.NETWORK_LONG_TIME_WAIT_MAX));
+                }
+                else {
+                    reject('sync_not_allowed');
+                }
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                reject('sync_error:' + e.message);
+            }
+        });
+    }
+
     transactionSyncByWebSocket(transactionID, ws, currentDepth) {
         return new Promise((resolve) => {
+
+            let startTimestamp = Date.now();
+            let nodeID         = ws.nodeID;
 
             if (this.pendingTransactionSync[transactionID]) {
                 return resolve();
@@ -801,20 +1035,23 @@ class Peer {
             let data = JSON.stringify(payload);
 
             try {
-                if (ws.nodeConnectionReady) {
+                if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
                     eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
                     eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
-                        eventBus.emit('transaction_new', data, eventWS, true);
+                        if (!data.transaction_not_found) {
+                            console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                        }
                     });
 
                     ws.send(data);
                     ws = null;
                     setTimeout(() => {
+                        console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
                         if (!this.pendingTransactionSync[transactionID]) {
                             eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
                         }
-                    }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+                    }, Math.round(config.NETWORK_SHORT_TIME_WAIT_MAX / 3));
                 }
             }
             catch (e) {
@@ -849,13 +1086,33 @@ class Peer {
         });
     }
 
-    sendConnectionReady(ws) {
+    sendConnectionReady(content, ws) {
         ws.nodeConnectionState = !ws.nodeConnectionState ? 'waiting' : 'open';
         if (ws.nodeConnectionState === 'open') {
             ws.nodeConnectionReady = true;
         }
         let payload = {
-            type: 'connection_ready'
+            type: 'connection_ready',
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    replyInboundStreamRequest(enabled, ws) {
+        let payload = {
+            type   : 'inbound_stream_response',
+            content: {
+                'inbound_stream_enabled': !!enabled
+            }
         };
 
         eventBus.emit('node_event_log', payload);

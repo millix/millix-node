@@ -387,7 +387,7 @@ export class Database {
                 },
                 (shardList, callback) => {
                     async.mapSeries([SHARD_ZERO_NAME].concat(_.without(shardList, SHARD_ZERO_NAME)), (dbShardID, mapCallback) => {
-                        func(dbShardID).then(result => mapCallback(null, result));
+                        func(dbShardID).then(result => mapCallback(null, result)).catch(() => mapCallback(null, []));
                     }, (error, data) => {
                         if (data) {
                             data = Array.prototype.concat.apply([], data);

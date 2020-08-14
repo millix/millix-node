@@ -8,6 +8,7 @@ import ntp from '../core/ntp';
 import network from '../net/network';
 import peer from '../net/peer';
 import wallet from '../core/wallet/wallet';
+import walletSync from '../core/wallet/wallet-sync';
 import walletTransactionConsensus from '../core/wallet/wallet-transaction-consensus';
 import config from '../core/config/config';
 import moment from 'moment';
@@ -28,7 +29,8 @@ class JobEngine {
             network,
             wallet,
             peer,
-            'wallet-transaction-consensus': walletTransactionConsensus
+            'wallet-transaction-consensus': walletTransactionConsensus,
+            'wallet-sync'                 : walletSync
         };
     }
 
