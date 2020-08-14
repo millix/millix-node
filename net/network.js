@@ -450,16 +450,7 @@ class Network {
                     peer.sendConnectionReady(extra, ws);
 
                     // request peer attributes
-                    peer.nodeAttributeRequest({
-                        node_id       : peerNodeID,
-                        attribute_type: 'shard_protocol'
-                    }, ws);
-
-                    peer.nodeAttributeRequest({
-                        node_id       : peerNodeID,
-                        attribute_type: 'transaction_count'
-                    }, ws);
-
+                    this._requestAllNodeAttribute(peerNodeID, ws);
                     // send peer list to the new node
                     peer.sendNodeList(ws);
 
@@ -673,6 +664,23 @@ class Network {
         }
     }
 
+    _requestAllNodeAttribute(nodeID, ws) {
+        peer.nodeAttributeRequest({
+            node_id       : nodeID,
+            attribute_type: 'shard_protocol'
+        }, ws);
+
+        peer.nodeAttributeRequest({
+            node_id       : nodeID,
+            attribute_type: 'transaction_count'
+        }, ws);
+
+        peer.nodeAttributeRequest({
+            node_id       : nodeID,
+            attribute_type: 'transaction_count'
+        }, ws);
+    }
+
     _onConnectionReady(content, ws) {
         if (ws.readyState === WebSocket.OPEN) {
             ws.nodeConnectionState = !ws.nodeConnectionState ? 'waiting' : 'open';
@@ -681,15 +689,7 @@ class Network {
                 ws.nodeConnectionReady = true;
 
                 // request node attributes
-                peer.nodeAttributeRequest({
-                    node_id       : ws.nodeID,
-                    attribute_type: 'shard_protocol'
-                }, ws);
-
-                peer.nodeAttributeRequest({
-                    node_id       : ws.nodeID,
-                    attribute_type: 'transaction_count'
-                }, ws);
+                this._requestAllNodeAttribute(ws.nodeID, ws);
 
                 // send peer list to the new node
                 peer.sendNodeList(ws);
