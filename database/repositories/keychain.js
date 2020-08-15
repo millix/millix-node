@@ -77,6 +77,22 @@ export default class Keychain {
         });
     }
 
+    getAddresses(addresses) {
+        return new Promise((resolve, reject) => {
+            this.database.all(
+                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.address_attribute, k.is_change, ka.create_date \
+                 FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base WHERE ka.address IN ( ' + addresses.map(() => '?').join(',') + ' ) ', addresses,
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    rows.forEach(row => row['address_attribute'] = JSON.parse(row.address_attribute));
+                    resolve(rows);
+                }
+            );
+        });
+    }
 
     getAddress(address) {
         return new Promise((resolve, reject) => {
