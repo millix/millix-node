@@ -38,6 +38,7 @@ class Service {
                          .then(() => peerRotation.initialize())
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
+                         .then(() => wallet._doTransactionOutputRefresh())
                          .catch(e => {
                              console.log(e);
                          });
