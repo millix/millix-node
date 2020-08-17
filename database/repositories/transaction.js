@@ -115,10 +115,9 @@ export default class Transaction {
                 ],
                 (err, rows) => {
                     if (err) {
-                        console.log(err);
                         return reject(err);
                     }
-                    resolve(rows);
+                    resolve(_.uniqBy(rows, row => row.transaction_id + row.output_position));
                 }
             );
         });
