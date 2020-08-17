@@ -803,63 +803,56 @@ export class WalletTransactionConsensus {
 
         console.log('[consensus][request] get unstable transactions');
         return new Promise(resolve => {
-            database.getRepository('keychain')
-                    .getWalletAddresses(wallet.getDefaultActiveWallet())
-                    .then(addresses => {
-                        return database.applyShards((shardID) => {
-                            return database.getRepository('transaction', shardID)
-                                           .getAddressesUnstableTransactions(addresses.map(address => address.address), config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList);
-                        });
-                    })
-                    .then(pendingTransactions => {
-                        if (pendingTransactions.length === 0) {
-                            return database.applyShards((shardID) => {
-                                return database.getRepository('transaction', shardID)
-                                               .findUnstableTransaction(config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList);
-                            }).then(transactions => [
-                                transactions,
-                                false
-                            ]);
-                        }
-                        else {
-                            return [
-                                pendingTransactions,
-                                true
-                            ];
-                        }
-                    })
-                    .then(([pendingTransactions, isNodeTransaction]) => {
-                        console.log('[consensus][request] get unstable transactions done');
-                        let rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id));
-                        let pendingTransaction   = pendingTransactions[0];
+            database.applyShards((shardID) => {
+                return database.getRepository('transaction', shardID)
+                               .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList);
+            }).then(pendingTransactions => {
+                if (pendingTransactions.length === 0) {
+                    return database.applyShards((shardID) => {
+                        return database.getRepository('transaction', shardID)
+                                       .findUnstableTransaction(config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList);
+                    }).then(transactions => [
+                        transactions,
+                        false
+                    ]);
+                }
+                else {
+                    return [
+                        pendingTransactions,
+                        true
+                    ];
+                }
+            }).then(([pendingTransactions, isNodeTransaction]) => {
+                console.log('[consensus][request] get unstable transactions done');
+                let rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id));
+                let pendingTransaction   = pendingTransactions[0];
 
-                        if (!pendingTransaction) {
-                            pendingTransaction = rejectedTransactions[0];
-                        }
+                if (!pendingTransaction) {
+                    pendingTransaction = rejectedTransactions[0];
+                }
 
-                        if (!pendingTransaction) {
-                            console.log('[consensus][request] no pending funds available for validation.');
-                            this._requestConsensusTransactionValidation = null;
-                            return resolve();
-                        }
+                if (!pendingTransaction) {
+                    console.log('[consensus][request] no pending funds available for validation.');
+                    this._requestConsensusTransactionValidation = null;
+                    return resolve();
+                }
 
-                        console.log('[consensus][request] starting consensus round for ', pendingTransaction.transaction_id);
+                console.log('[consensus][request] starting consensus round for ', pendingTransaction.transaction_id);
 
-                        if (isNodeTransaction) {
-                            this._transactionRetryValidation[pendingTransaction.transaction_id] = Date.now();
-                        }
+                if (isNodeTransaction) {
+                    this._transactionRetryValidation[pendingTransaction.transaction_id] = Date.now();
+                }
 
-                        this._requestConsensusTransactionValidation['transaction_id'] = pendingTransaction.transaction_id;
-                        this._requestConsensusTransactionValidation['resolve']        = resolve;
-                        return this._startConsensusRound(pendingTransaction.transaction_id).then(() => {
-                            this._requestConsensusTransactionValidation = null;
-                            resolve();
-                        });
-                    })
-                    .catch(() => {
-                        this._requestConsensusTransactionValidation = null;
-                        resolve();
-                    });
+                this._requestConsensusTransactionValidation['transaction_id'] = pendingTransaction.transaction_id;
+                this._requestConsensusTransactionValidation['resolve']        = resolve;
+                return this._startConsensusRound(pendingTransaction.transaction_id).then(() => {
+                    this._requestConsensusTransactionValidation = null;
+                    resolve();
+                });
+            }).catch(() => {
+                this._requestConsensusTransactionValidation = null;
+                resolve();
+            });
         });
     }
 
