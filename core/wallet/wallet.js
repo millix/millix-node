@@ -267,12 +267,28 @@ class Wallet {
                                 const output        = outputs[i];
                                 const outputAddress = mapAddresses[output.address];
                                 if (!outputAddress) {
-                                    return Promise.reject('[wallet] output address not found', output);
+                                    console.log('[wallet][warn] output address not found', output);
+                                    const {address: missingAddress} = addressRepository.getAddressComponent(output.address);
+                                    //TODO: find a better way to get the address
+                                    for (let addressPosition = 0; addressPosition < 2 ** 32; addressPosition++) {
+                                        let {address: addressBase, address_attribute: addressAttribute} = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
+                                        if (addressBase === missingAddress) {
+                                            output['address_version']        = addressRepository.getDefaultAddressVersion().version;
+                                            output['address_key_identifier'] = this.defaultKeyIdentifier;
+                                            output['address_base']           = addressBase;
+                                            output['address_position']       = addressPosition;
+                                            output['address_attribute']      = addressAttribute;
+                                            break;
+                                        }
+                                    }
                                 }
-                                output['address_version']        = outputAddress.address_version;
-                                output['address_key_identifier'] = outputAddress.address_key_identifier;
-                                output['address_base']           = outputAddress.address_base;
-                                output['address_position']       = outputAddress.address_position;
+                                else {
+                                    output['address_version']        = outputAddress.address_version;
+                                    output['address_key_identifier'] = outputAddress.address_key_identifier;
+                                    output['address_base']           = outputAddress.address_base;
+                                    output['address_position']       = outputAddress.address_position;
+                                    output['address_attribute']      = outputAddress.address_attribute;
+                                }
                             }
                             return outputs;
                         });
@@ -283,19 +299,18 @@ class Wallet {
                         }
                         outputs = _.orderBy(outputs, ['amount'], ['asc']);
 
-                        const amount        = _.sum(_.map(dstOutputs, o => o.amount));
-                        let remainingAmount = amount;
-                        const outputsToUse  = [];
-                        const privateKeyMap = {};
-                        const addressBases  = [];
+                        let remainingAmount       = _.sum(_.map(dstOutputs, o => o.amount));
+                        const outputsToUse        = [];
+                        const privateKeyMap       = {};
+                        const addressAttributeMap = {};
 
                         for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
-                            let output                         = outputs[i];
+                            let output                               = outputs[i];
                             remainingAmount -= output.amount;
-                            const extendedPrivateKey           = this.getActiveWalletKey(this.getDefaultActiveWallet());
-                            const privateKeyBuf                = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
-                            privateKeyMap[output.address_base] = privateKeyBuf.toString('hex');
-                            addressBases.push(output.address_base);
+                            const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
+                            const privateKeyBuf                      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
+                            privateKeyMap[output.address_base]       = privateKeyBuf.toString('hex');
+                            addressAttributeMap[output.address_base] = output.address_attribute;
                             outputsToUse.push(output);
                         }
 
@@ -329,7 +344,7 @@ class Wallet {
                                 amount                : change
                             });
                         }
-                        return this.signAndStoreTransaction(srcInputs, dstOutputs, addressBases, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION);
+                        return this.signAndStoreTransaction(srcInputs, dstOutputs, addressAttributeMap, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION);
                     })
                     .then(transaction => peer.transactionSend(transaction))
                     .then((transaction) => {
@@ -418,26 +433,16 @@ class Wallet {
     }
 
     getAllTransactions() {
-        let walletID = this.getDefaultActiveWallet();
-        return database.getRepository('keychain')
-                       .getWalletAddresses(walletID)
-                       .then(addresses => {
-                           let walletsAddresses     = _.map(addresses, address => address.address);
-                           let addressKeyIdentifier = addresses.length > 0 ? addresses[0].address_key_identifier : undefined;
-                           return [
-                               walletsAddresses,
-                               addressKeyIdentifier
-                           ];
-                       }).then(([addresses, addressKeyIdentifier]) => {
-                addresses = new Set(addresses);
-                return database.applyShards((shardID) => {
-                    return database.getRepository('transaction', shardID)
-                                   .getTransactionsByAddressKeyIdentifier(addressKeyIdentifier);
-                }, 'transaction_date desc').then(transactions => {
-                    _.each(transactions, transaction => _.assign(transaction, {'income': addresses.has(transaction.output_address)}));
-                    return transactions;
-                });
+        return database.applyShards((shardID) => {
+            return database.getRepository('transaction', shardID)
+                           .getTransactionsByAddressKeyIdentifier(this.defaultKeyIdentifier);
+        }, 'transaction_date desc').then(transactions => {
+            _.each(transactions, transaction => {
+                _.assign(transaction, {'income': transaction.address_key_identifier === this.defaultKeyIdentifier});
+                delete transaction['address_key_identifier'];
             });
+            return transactions;
+        });
     }
 
     isProcessingTransaction(transactionID) {
@@ -1169,19 +1174,22 @@ class Wallet {
                                return new Promise(resolve => {
                                    const shardAttributeList = [];
                                    async.eachSeries(shardList, (shard, callback) => {
-                                       database.getRepository('transaction', shard.shard_id)
-                                               .getTransactionCount()
-                                               .then(count => {
-                                                   totalTransactions += count;
-                                                   shardAttributeList.push({
-                                                       'shard_id'            : shard.shard_id,
-                                                       'transaction_count'   : count,
-                                                       'update_date'         : Math.floor(ntp.now().getTime() / 1000),
-                                                       'is_required'         : !!shard.is_required,
-                                                       'fee_ask_request_byte': 20
-                                                   });
-                                                   callback();
-                                               });
+                                       const transactionRepository = database.getRepository('transaction', shard.shard_id);
+                                       if (!transactionRepository) {
+                                           return callback();
+                                       }
+                                       transactionRepository.getTransactionCount()
+                                                            .then(count => {
+                                                                totalTransactions += count;
+                                                                shardAttributeList.push({
+                                                                    'shard_id'            : shard.shard_id,
+                                                                    'transaction_count'   : count,
+                                                                    'update_date'         : Math.floor(ntp.now().getTime() / 1000),
+                                                                    'is_required'         : !!shard.is_required,
+                                                                    'fee_ask_request_byte': 20
+                                                                });
+                                                                callback();
+                                                            });
                                    }, () => nodeRepository.addNodeAttribute(network.nodeID, 'shard_protocol', JSON.stringify(shardAttributeList)).then(resolve));
                                });
                            })
@@ -1270,57 +1278,52 @@ class Wallet {
     // TODO - check
     _doSyncTransactionIncludePath() {
         return new Promise(resolve => {
-            database.getRepository('keychain')
-                    .getWalletAddresses(this.getDefaultActiveWallet())
-                    .then(addresses => {
-                        return database.applyShards((shardID) => {
-                            return database.getRepository('transaction', shardID)
-                                           .getAddressesUnstableTransactions(addresses.map(address => address.address), 0, Array.from(walletTransactionConsensus.getRejectedTransactionList().keys()));
-                        });
-                    })
-                    .then(pendingTransactions => {
-                        async.eachSeries(pendingTransactions, (pendingTransaction, callback) => {
-                            const transactionRepository = database.getRepository('transaction'); // shard zero
-                            transactionRepository.getTransactionIncludePaths(pendingTransaction.transaction_id)
-                                                 .then(paths => {
-                                                     let maxLength = _.reduce(paths, (max, path) => path.length > max ? path.length : max, 0);
-                                                     if (maxLength >= config.CONSENSUS_ROUND_PATH_LENGTH_MIN) {
-                                                         return callback(); //dont
-                                                         // need
-                                                         // to
-                                                         // sync
-                                                         // more
-                                                         // transactions
-                                                     }
+            database.applyShards((shardID) => {
+                return database.getRepository('transaction', shardID)
+                               .getWalletUnstableTransactions(this.defaultKeyIdentifier, 0, Array.from(walletTransactionConsensus.getRejectedTransactionList().keys()));
+            }).then(pendingTransactions => {
+                async.eachSeries(pendingTransactions, (pendingTransaction, callback) => {
+                    const transactionRepository = database.getRepository('transaction'); // shard zero
+                    transactionRepository.getTransactionIncludePaths(pendingTransaction.transaction_id)
+                                         .then(paths => {
+                                             let maxLength = _.reduce(paths, (max, path) => path.length > max ? path.length : max, 0);
+                                             if (maxLength >= config.CONSENSUS_ROUND_PATH_LENGTH_MIN) {
+                                                 return callback(); //dont
+                                                 // need
+                                                 // to
+                                                 // sync
+                                                 // more
+                                                 // transactions
+                                             }
 
-                                                     let transactions = _.find(paths, path => path.length === maxLength);
+                                             let transactions = _.find(paths, path => path.length === maxLength);
 
-                                                     if (maxLength <= 1) {
-                                                         transactionRepository.getTransactionObject(pendingTransaction.transaction_id)
-                                                                              .then(dbTransaction => dbTransaction ? dbTransaction : database.getRepository('transaction', pendingTransaction.shard_id)
-                                                                                                                                             .getTransactionObject(pendingTransaction.transaction_id))
-                                                                              .then(dbTransaction => {
-                                                                                  peer.transactionSend(transactionRepository.normalizeTransactionObject(dbTransaction));
-                                                                                  peer.transactionIncludePathRequest(pendingTransaction.transaction_id, transactions)
-                                                                                      .then(([response, ws]) => {
-                                                                                          this._onTransactionIncludePathResponse(response, ws);
-                                                                                      })
-                                                                                      .catch(_ => _);
-                                                                                  callback();
-                                                                              });
-                                                     }
-                                                     else {
-                                                         peer.transactionIncludePathRequest(pendingTransaction.transaction_id, transactions)
-                                                             .then(([response, ws]) => {
-                                                                 this._onTransactionIncludePathResponse(response, ws);
-                                                             })
-                                                             .catch(() => {
-                                                             });
-                                                         callback();
-                                                     }
-                                                 }).catch(() => callback());
-                        }, () => resolve());
-                    }).catch(() => resolve());
+                                             if (maxLength <= 1) {
+                                                 transactionRepository.getTransactionObject(pendingTransaction.transaction_id)
+                                                                      .then(dbTransaction => dbTransaction ? dbTransaction : database.getRepository('transaction', pendingTransaction.shard_id)
+                                                                                                                                     .getTransactionObject(pendingTransaction.transaction_id))
+                                                                      .then(dbTransaction => {
+                                                                          peer.transactionSend(transactionRepository.normalizeTransactionObject(dbTransaction));
+                                                                          peer.transactionIncludePathRequest(pendingTransaction.transaction_id, transactions)
+                                                                              .then(([response, ws]) => {
+                                                                                  this._onTransactionIncludePathResponse(response, ws);
+                                                                              })
+                                                                              .catch(_ => _);
+                                                                          callback();
+                                                                      });
+                                             }
+                                             else {
+                                                 peer.transactionIncludePathRequest(pendingTransaction.transaction_id, transactions)
+                                                     .then(([response, ws]) => {
+                                                         this._onTransactionIncludePathResponse(response, ws);
+                                                     })
+                                                     .catch(() => {
+                                                     });
+                                                 callback();
+                                             }
+                                         }).catch(() => callback());
+                }, () => resolve());
+            }).catch(() => resolve());
         });
     }
 
@@ -1818,13 +1821,13 @@ class Wallet {
                                            // bases that are needed to spend
                                            // these inputs
                                            let keyMap       = {};
-                                           let addressBases = [];
+                                           let attributeMap = [];
 
                                            for (let address of addresses) {
                                                if (address.address in neededAddresses) {
-                                                   const privateKey             = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
-                                                   keyMap[address.address_base] = privateKey;
-                                                   addressBases.push(address.address_base);
+                                                   const privateKey                   = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
+                                                   keyMap[address.address_base]       = privateKey;
+                                                   attributeMap[address.address_base] = address.address_attribute;
                                                }
                                            }
 
@@ -1843,11 +1846,11 @@ class Wallet {
 
                                            return [
                                                keyMap,
-                                               addressBases,
+                                               attributeMap,
                                                output
                                            ];
                                        })
-                                       .then(([keyMap, addressBases, output]) => {
+                                       .then(([keyMap, attributeMap, output]) => {
                                            let fieldMap = {
                                                'transaction_id'  : 'output_transaction_id',
                                                'transaction_date': 'output_transaction_date',
@@ -1872,7 +1875,7 @@ class Wallet {
                                                'address_key_identifier'
                                            ]), (v, k) => fieldMap[k] ? fieldMap[k] : k));
 
-                                           return this.signAndStoreTransaction(srcInputs, [output], addressBases, keyMap, config.WALLET_TRANSACTION_REFRESH_VERSION)
+                                           return this.signAndStoreTransaction(srcInputs, [output], attributeMap, keyMap, config.WALLET_TRANSACTION_REFRESH_VERSION)
                                                       .then((transaction) => {
                                                           return transaction;
                                                       });
@@ -1908,12 +1911,12 @@ class Wallet {
         });
     }
 
-    signAndStoreTransaction(srcInputs, dstOutputs, addressBases, privateKeyMap, transactionVersion) {
+    signAndStoreTransaction(srcInputs, dstOutputs, addressAttributeMap, privateKeyMap, transactionVersion) {
         return ntp.getTime()
                   .then(time => {
                       const transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
 
-                      return walletUtils.signTransaction(srcInputs, dstOutputs, privateKeyMap, transactionDate, transactionVersion)
+                      return walletUtils.signTransaction(srcInputs, dstOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
                                         .then(transaction =>
                                             walletUtils.verifyTransaction(transaction)
                                                        .then(isValid => {

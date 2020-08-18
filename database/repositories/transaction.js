@@ -40,11 +40,11 @@ export default class Transaction {
         });
     }
 
-    getAddressesUnstableTransactions(addresses, minIncludePathLength, excludeTransactionIDList) {
+    getWalletUnstableTransactions(addressKeyIdentifier, minIncludePathLength, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address IN ( ' + addresses.map(() => '?').join(',') + ' ) ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date DESC LIMIT 100', addresses.concat(excludeTransactionIDList),
+                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date DESC LIMIT 100', [addressKeyIdentifier].concat(excludeTransactionIDList),
                 (err, rows) => {
                     if (err) {
                         console.log(err);
@@ -100,11 +100,11 @@ export default class Transaction {
     getTransactionsByAddressKeyIdentifier(keyIdentifier) {
         return new Promise((resolve, reject) => {
             this.database.all(
-                'SELECT `transaction`.*, transaction_input.address as input_address, transaction_output.address as output_address, transaction_output.amount as amount FROM `transaction` \
+                'SELECT `transaction`.*, transaction_input.address as input_address, transaction_output.address as output_address, transaction_output.amount, transaction_output.address_key_identifier, transaction_output.output_position FROM `transaction` \
                 LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
                 LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id \
                 WHERE transaction_output.address_key_identifier = ? \
-                UNION SELECT `transaction`.*, transaction_input.address as input_address, transaction_output.address as output_address, transaction_output.amount as amount FROM `transaction` \
+                UNION SELECT `transaction`.*, transaction_input.address as input_address, transaction_output.address as output_address, transaction_output.amount, transaction_output.address_key_identifier, transaction_output.output_position FROM `transaction` \
                 LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id  \
                 LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
                 WHERE transaction_input.address_key_identifier = ? \
@@ -115,10 +115,9 @@ export default class Transaction {
                 ],
                 (err, rows) => {
                     if (err) {
-                        console.log(err);
                         return reject(err);
                     }
-                    resolve(rows);
+                    resolve(_.uniqBy(rows, row => row.transaction_id + row.output_position));
                 }
             );
         });

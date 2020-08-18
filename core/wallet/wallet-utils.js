@@ -711,7 +711,7 @@ class WalletUtils {
         return true;
     }
 
-    signTransaction(inputList, outputList, privateKeyMap, transactionDate, transactionVersion) {
+    signTransaction(inputList, outputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion) {
         if (!inputList || inputList.length === 0) {
             return Promise.reject('input list is required');
         }
@@ -752,25 +752,11 @@ class WalletUtils {
             });
         }).then(() => new Promise((resolve, reject) => {
             const addressBaseList = _.uniq(_.map(inputList, i => i.address_base));
-            const signatureList   = [];
-            async.eachSeries(addressBaseList, (addressBase, callback) => {
-                keychainRepository.getKeychainAddressBaseAttribute(addressBase)
-                                  .then(attribute => {
-                                      signatureList.push({
-                                          address_base     : addressBase,
-                                          address_attribute: attribute.address_attribute
-                                      });
-                                      callback();
-                                  })
-                                  .catch(() => {
-                                      callback('address_attribute_not_found: ' + addressBase);
-                                  });
-            }, (err) => {
-                if (err) {
-                    return reject(err);
-                }
-                return resolve(signatureList);
-            });
+            const signatureList   = _.map(addressBaseList, addressBase => ({
+                address_base     : addressBase,
+                address_attribute: addressAttributeMap[addressBase]
+            }));
+            return resolve(signatureList);
         }))
           .then((signatureList) => peer.getNodeAddress()
                                        .then(() => signatureList))
