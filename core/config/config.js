@@ -187,7 +187,7 @@ export const NODE_TEST_PORT                                    = 5080;
 export const HASH_LENGTH                                       = 44;
 export const PUBKEY_LENGTH                                     = 44;
 export const SIG_LENGTH                                        = 88;
-export const NODE_MILLIX_VERSION                               = '1.6.1';
+export const NODE_MILLIX_VERSION                               = '1.6.3';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -196,6 +196,7 @@ export const NODE_CERTIFICATE_KEY_PATH                         = DATA_BASE_DIR +
 export const NODE_CERTIFICATE_PATH                             = DATA_BASE_DIR + '/node_certificate.pem';
 export const WALLET_KEY_PATH                                   = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR + '/job.json';
+export const JOB_CONFIG_VERSION                                = 1;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
@@ -294,5 +295,6 @@ export default {
     PEER_ROTATION_MORE_THAN_MOST,
     PEER_ROTATION_MORE_THAN_ALL,
     PEER_ROTATION_CONFIG,
-    JOB_CONFIG_PATH
+    JOB_CONFIG_PATH,
+    JOB_CONFIG_VERSION
 };

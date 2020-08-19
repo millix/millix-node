@@ -215,12 +215,12 @@ class JobEngine {
         return true;
     }
 
-    loadConfig() {
+    loadConfig(resetConfig) {
         return new Promise(resolve => {
             const configFilePath = path.join(os.homedir(), config.JOB_CONFIG_PATH);
-            if (!fs.existsSync(configFilePath)) {
+            if (!fs.existsSync(configFilePath) || resetConfig) {
                 this.configJobEngine = defaultConfigJobEngine;
-                fs.writeFile(configFilePath, JSON.stringify(this.configJobEngine, null, '\t'), 'utf8', function(err) {
+                fs.writeFile(configFilePath, JSON.stringify(this.configJobEngine, null, '\t'), 'utf8', (err) => {
                     if (err) {
                         throw Error('failed to write keys file');
                     }
@@ -232,8 +232,24 @@ class JobEngine {
                     if (err) {
                         throw Error(err.message);
                     }
-                    this.configJobEngine = JSON.parse(data);
-                    resolve();
+                    try {
+                        this.configJobEngine = JSON.parse(data);
+                        if (this.configJobEngine.version !== config.JOB_CONFIG_VERSION) {
+                            // backup the old configuration file
+                            fs.writeFile(configFilePath + '.old', JSON.stringify(this.configJobEngine, null, '\t'), 'utf8', (err) => {
+                                if (err) {
+                                    throw Error('failed to write keys file');
+                                }
+                                this.loadConfig(true).then(resolve);
+                            });
+                        }
+                        else {
+                            resolve();
+                        }
+                    }
+                    catch (e) {
+                        return this.loadConfig(true).then(resolve);
+                    }
                 });
             }
         });
