@@ -196,6 +196,7 @@ export const NODE_CERTIFICATE_KEY_PATH                         = DATA_BASE_DIR +
 export const NODE_CERTIFICATE_PATH                             = DATA_BASE_DIR + '/node_certificate.pem';
 export const WALLET_KEY_PATH                                   = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR + '/job.json';
+export const JOB_CONFIG_VERSION                                = 1;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
@@ -294,7 +295,8 @@ export default {
     PEER_ROTATION_MORE_THAN_MOST,
     PEER_ROTATION_MORE_THAN_ALL,
     PEER_ROTATION_CONFIG,
-    JOB_CONFIG_PATH
+    JOB_CONFIG_PATH,
+    JOB_CONFIG_VERSION
 };
 
 // dev branch should be running in the test-network
