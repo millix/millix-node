@@ -528,6 +528,7 @@ class WalletUtils {
 
             console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
 
+            const transactionDate = new Date(transaction.transaction_date);
             if (transaction.version === config.WALLET_TRANSACTION_REFRESH_VERSION) {
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 if (!(isValidRefresh)) {
@@ -536,8 +537,11 @@ class WalletUtils {
 
                 resolve(isValidRefresh);
             }
+            else if (transactionDate.getTime() <= 1597838399000) { // old transactions version: before unspent auto-consumption feature.
+                resolve(true);
+            }
             else {
-                this.isConsumingExpiredOutputs(transaction.transaction_input_list, new Date(transaction.transaction_date))
+                this.isConsumingExpiredOutputs(transaction.transaction_input_list, transactionDate)
                     .then(isConsumingExpired => {
                         resolve(!isConsumingExpired);
                     })
