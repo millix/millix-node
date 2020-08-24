@@ -24,22 +24,43 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
      * @returns {*}
      */
     handler(app, req, res) {
-        if (!req.query.p0 || !req.query.p1) {
-            return res.status(400).send({
-                status : 'fail',
-                message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> are required'
-            });
+        let transactionPayload;
+        let privateKeyMap;
+        let addressMap;
+
+        if (req.method === 'GET') {
+            if (!req.query.p0 || !req.query.p1) {
+                return res.status(400).send({
+                    status : 'fail',
+                    message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> are required'
+                });
+            }
+            else {
+                transactionPayload = JSON.parse(req.query.p0);
+                privateKeyMap      = JSON.parse(req.query.p1);
+                addressMap         = JSON.parse(req.query.p2);
+            }
+        }
+        else {
+            transactionPayload = req.body.p0;
+            privateKeyMap      = req.body.p1;
+            addressMap         = req.body.p2;
         }
 
         try {
-            const transactionPayload = JSON.parse(req.query.p0);
-            const privateKeyMap      = JSON.parse(req.query.p1);
-
             ntp.getTime().then(time => {
                 const transactionDate    = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
                 const transactionVersion = transactionPayload.transaction_version;
                 const transactionInputs  = transactionPayload.transaction_input_list;
                 const transactionOutputs = transactionPayload.transaction_output_list;
+
+                let addressAttributeMap = {};
+
+                for (let [address, publicKey] of Object.entries(addressMap)) {
+                    addressAttributeMap[address] = {
+                        "key_public": publicKey
+                    }
+                }
 
                 new Promise((resolve) => {
                     if (transactionVersion === config.WALLET_TRANSACTION_REFRESH_VERSION) {
@@ -73,7 +94,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                 })
                     .then(shouldSign => {
                         if (shouldSign) {
-                            walletUtils.signTransaction(transactionInputs, transactionOutputs, privateKeyMap, transactionDate, transactionVersion)
+                            walletUtils.signTransaction(transactionInputs, transactionOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
                                        .then(signedTransaction => {
                                            console.log('[API] Successfully signed transaction transaction.');
                                            res.send(signedTransaction);
@@ -90,6 +111,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
             });
         }
         catch (e) {
+            console.log(`Error: ${e}`);
             return res.send({
                 status : 'fail',
                 message: 'transaction_sign_error'
