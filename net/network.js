@@ -646,6 +646,16 @@ class Network {
                     });
         }
 
+        // update bidirectional stream slots
+        if (ws.bidirectional || ws.reservedOutboundSlot) {
+            if (ws.inBound) {
+                this._bidirectionaInboundConnectionCount--;
+            }
+            else {
+                this._bidirectionaOutboundConnectionCount--;
+            }
+        }
+
         // remove from connection registry
         ws.connectionID && _.pull(this._connectionRegistry[ws.connectionID], ws);
         if (this._connectionRegistry[ws.connectionID] && this._connectionRegistry[ws.connectionID].length === 0) {
@@ -705,7 +715,7 @@ class Network {
                     peer.replyInboundStreamRequest(true, ws);
                 }
                 else {
-                    ws.bidirectional = true;
+                    ws.bidirectional = false;
                     peer.replyInboundStreamRequest(false, ws);
                 }
             }

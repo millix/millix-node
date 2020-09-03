@@ -241,7 +241,7 @@ class Wallet {
         });
     }
 
-    addTransaction(dstOutputs, srcOutputs) {
+    addTransaction(dstOutputs, srcOutputs, transactionVersion) {
         const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
@@ -344,7 +344,7 @@ class Wallet {
                                 amount                : change
                             });
                         }
-                        return this.signAndStoreTransaction(srcInputs, dstOutputs, addressAttributeMap, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION);
+                        return this.signAndStoreTransaction(srcInputs, dstOutputs, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION);
                     })
                     .then(transaction => peer.transactionSend(transaction))
                     .then((transaction) => {
@@ -421,15 +421,10 @@ class Wallet {
         }
     }
 
-    _checkIfWalletUpdate(addressesList) {
-        let walletID = this.getDefaultActiveWallet();
-        database.getRepository('keychain').getWalletAddresses(this.getDefaultActiveWallet())
-                .then(addresses => {
-                    let diff = _.difference(addressesList, _.map(addresses, e => e.address));
-                    if (diff.length !== addressesList.length) {
-                        eventBus.emit('wallet_update', walletID);
-                    }
-                });
+    _checkIfWalletUpdate(addressesKeyIdentifierSet) {
+        if (addressesKeyIdentifierSet.has(this.defaultKeyIdentifier)) {
+            eventBus.emit('wallet_update');
+        }
     }
 
     getAllTransactions() {
@@ -667,7 +662,7 @@ class Wallet {
                                                                                                                   .then(() => {
                                                                                                                       console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
                                                                                                                       eventBus.emit('transaction_new:' + transaction.transaction_id);
-                                                                                                                      this._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier));
+                                                                                                                      this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
 
                                                                                                                       eventBus.emit('wallet_event_log', {
                                                                                                                           type   : 'transaction_new',
@@ -805,20 +800,26 @@ class Wallet {
 
         return new Promise((resolve) => {
             async.eachSeries(Object.entries(spendersByShard), ([shardID, transactionIDs], callback) => {
-                console.log(`[Wallet] Marking transactions ${transactionIDs.join(', ')} on shard ${shardID} as invalid.`);
+                console.log(`[wallet] marking transactions ${transactionIDs.join(', ')} on shard ${shardID} as invalid.`);
 
-                database.getRepository('transaction', shardID)
-                        .markTransactionsAsInvalid(transactionIDs)
-                        .then(() => {
-                            console.log(`Set transactions ${transactionIDs} as invalid`);
-                            callback();
-                        })
-                        .catch((err) => {
-                            console.log(`Error while marking transactions as invalid: ${err}`);
-                            callback();
-                        });
+                const transactionRepository = database.getRepository('transaction', shardID);
+
+                if (!transactionRepository) {
+                    console.log(`[wallet] cannot set transactions ${transactionIDs} as invalid: shard not found`);
+                    return callback();
+                }
+
+                transactionRepository.markTransactionsAsInvalid(transactionIDs)
+                                     .then(() => {
+                                         console.log(`[wallet] set transactions ${transactionIDs} as invalid`);
+                                         callback();
+                                     })
+                                     .catch((err) => {
+                                         console.log(`[wallet] error while marking transactions as invalid: ${err}`);
+                                         callback();
+                                     });
             }, () => {
-                console.log('Finished setting all spenders as invalid');
+                console.log('[wallet] finished setting all spenders as invalid');
                 resolve();
             });
         });
@@ -1220,7 +1221,7 @@ class Wallet {
                                 amount                : 1
                             }
                         ]).then((transaction) => {
-                            this._checkIfWalletUpdate(_.map(transaction.transaction_output_list, o => o.address_base + o.address_version + o.address_key_identifier));
+                            this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
                             resolve();
                         }).catch(() => resolve());
                     });
@@ -1762,6 +1763,7 @@ class Wallet {
 
                 return database.getRepository('transaction').expireTransactions(time)
                                .then(() => {
+                                   eventBus.emit('wallet_update');
                                    unlock();
                                    resolve();
                                });
@@ -1791,95 +1793,29 @@ class Wallet {
                             }
 
                             return this.findAllExpiredOrNearExpiredOutputs(addressKeyIdentifier, time)
-                                       .then(inputs => {
-                                           if (inputs.length === 0) {
+                                       .then(outputs => {
+                                           if (outputs.length === 0) {
                                                throw new Error('no outputs that need to be refreshed');
                                            }
 
-                                           console.log(`[wallet] Found ${inputs.length} outputs that need to be refreshed.`);
+                                           console.log(`[wallet] Found ${outputs.length} outputs that need to be refreshed.`);
                                            return [
-                                               inputs,
+                                               outputs,
                                                addressKeyIdentifier
                                            ];
                                        });
                         })
-                        .then(([inputs, addressKeyIdentifier]) => {
-                            let neededAddresses = {};
-
-                            for (let input of inputs) {
-                                if (!(input.address in neededAddresses)) {
-                                    neededAddresses[input.address] = true;
-                                }
-                            }
-
-                            const extendedPrivateKey = this.getActiveWalletKey(walletID);
-
-                            //TODO - query address by address
-                            return this.getWalletAddresses()
-                                       .then(addresses => {
-                                           // Looking for the keys and address
-                                           // bases that are needed to spend
-                                           // these inputs
-                                           let keyMap       = {};
-                                           let attributeMap = [];
-
-                                           for (let address of addresses) {
-                                               if (address.address in neededAddresses) {
-                                                   const privateKey                   = walletUtils.derivePrivateKey(extendedPrivateKey, 0, address.address_position);
-                                                   keyMap[address.address_base]       = privateKey;
-                                                   attributeMap[address.address_base] = address.address_attribute;
-                                               }
-                                           }
-
-                                           // Creating output - using the first
-                                           // address in the list
-                                           const addressBase    = addresses[0].address_base;
-                                           const addressVersion = addresses[0].address_version;
-                                           const amount         = _.sum(_.map(inputs, i => i.amount));
-
-                                           const output = {
-                                               address_base          : addressBase,
-                                               address_version       : addressVersion,
-                                               address_key_identifier: addressKeyIdentifier,
-                                               amount
-                                           };
-
-                                           return [
-                                               keyMap,
-                                               attributeMap,
-                                               output
-                                           ];
-                                       })
-                                       .then(([keyMap, attributeMap, output]) => {
-                                           let fieldMap = {
-                                               'transaction_id'  : 'output_transaction_id',
-                                               'transaction_date': 'output_transaction_date',
-                                               'shard_id'        : 'output_shard_id'
-                                           };
-
-                                           const addressRepository = database.getRepository('address');
-
-                                           for (let input of inputs) {
-                                               const addressComponent   = addressRepository.getAddressComponent(input.address);
-                                               input['address_base']    = addressComponent['address'];
-                                               input['address_version'] = addressComponent['version'];
-                                           }
-
-                                           const srcInputs = _.map(inputs, o => _.mapKeys(_.pick(o, [
-                                               'transaction_id',
-                                               'output_position',
-                                               'transaction_date',
-                                               'shard_id',
-                                               'address_base',
-                                               'address_version',
-                                               'address_key_identifier'
-                                           ]), (v, k) => fieldMap[k] ? fieldMap[k] : k));
-
-                                           return this.signAndStoreTransaction(srcInputs, [output], attributeMap, keyMap, config.WALLET_TRANSACTION_REFRESH_VERSION)
-                                                      .then((transaction) => {
-                                                          return transaction;
-                                                      });
-                                       });
+                        .then(([outputs, addressKeyIdentifier]) => {
+                            // Creating output - using the first address
+                            const addressRepository                               = database.getRepository('address');
+                            const {address: addressBase, version: addressVersion} = addressRepository.getAddressComponent(outputs[0].address);
+                            const newOutput                                       = {
+                                address_base          : addressBase,
+                                address_version       : addressVersion,
+                                address_key_identifier: addressKeyIdentifier,
+                                amount                : _.sum(_.map(outputs, o => o.amount))
+                            };
+                            return this.addTransaction([newOutput], outputs, config.WALLET_TRANSACTION_REFRESH_VERSION);
                         })
                         .then((transaction) => {
                             console.log(`[wallet] Successfully stored and propagated refresh transaction ${transaction.transaction_id}`);
