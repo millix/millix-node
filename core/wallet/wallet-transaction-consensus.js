@@ -354,7 +354,7 @@ export class WalletTransactionConsensus {
 
     _selectNodesForConsensusRound(numberOfNodes = config.CONSENSUS_ROUND_NODE_COUNT, excludeNodeList = []) {
         return new Promise(resolve => {
-            resolve(_.sampleSize(_.difference(_.filter(network.registeredClients, ws => ws.outBound), excludeNodeList), numberOfNodes));
+            resolve(_.sampleSize(_.difference(_.filter(network.registeredClients, ws => ws.outBound || ws.bidirectional), excludeNodeList), numberOfNodes));
         });
     }
 
