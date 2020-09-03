@@ -42,9 +42,9 @@ export default class Transaction {
 
     getWalletUnstableTransactions(addressKeyIdentifier, minIncludePathLength, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT `transaction`.* FROM `transaction` ' +
+            this.database.all('SELECT DISTINCT`transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date DESC LIMIT 100', [addressKeyIdentifier].concat(excludeTransactionIDList),
+                              'WHERE transaction_output.address_key_identifier = ? AND transaction_output.status = 1 ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date DESC LIMIT 100', [addressKeyIdentifier].concat(excludeTransactionIDList),
                 (err, rows) => {
                     if (err) {
                         console.log(err);
@@ -366,7 +366,7 @@ export default class Transaction {
                                     status, output.create_date)
                                     .then(resolve)
                                     .catch(() => {
-                                        this.updateTransactionOutput(transaction.transaction_id, output.output_position, output.spent_date ? new Date(output.spend_date * 1000) : null,
+                                        this.updateTransactionOutput(transaction.transaction_id, output.output_position, output.spent_date ? new Date(output.spent_date * 1000) : null,
                                             output.stable_date ? new Date(output.stable_date * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null, status)
                                             .then(resolve)
                                             .catch(reject);
@@ -974,7 +974,7 @@ export default class Transaction {
     findUnstableTransaction(minIncludePathLength, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
             let search = (timestampAfter) => {
-                this.database.all('SELECT * FROM `transaction` WHERE +`transaction`.is_stable = 0 AND `transaction`.transaction_date < ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 100',
+                this.database.all('SELECT DISTINCT`transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE transaction_output.status = 1 AND +`transaction`.is_stable = 0 AND `transaction`.transaction_date < ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 100',
                     [timestampAfter].concat(excludeTransactionIDList), (err, rows) => {
                         if (err) {
                             console.log(err);

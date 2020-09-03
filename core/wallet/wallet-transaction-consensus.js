@@ -7,6 +7,7 @@ import config, {SHARD_ZERO_NAME} from '../config/config';
 import async from 'async';
 import _ from 'lodash';
 import wallet, {WALLET_MODE} from './wallet';
+import ntp from '../ntp';
 
 
 export class WalletTransactionConsensus {
@@ -616,19 +617,47 @@ export class WalletTransactionConsensus {
             });
         }
         else {
-            this._receivedConsensusTransactionValidation = {
-                ...data,
-                timestamp: Date.now(),
-                ws
-            };
-            peer.replyNodeAllocationRequest({
-                ...data,
-                allocated: true
-            }, ws)
-                .catch(() => {
+            database.firstShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction');
+                return new Promise((resolve, reject) => {
+                    transactionRepository.getTransaction(data.transaction_id)
+                                         .then(transaction => transaction ? resolve(transaction) : reject())
+                                         .catch(reject);
+                });
+            }).then(transaction => {
+                if (!transaction) {
+                    peer.replyNodeAllocationRequest({
+                        ...data,
+                        allocated: false
+                    }, ws).catch(() => {
+                    });
+                    return;
+                }
+
+                let expireDate = ntp.now();
+                expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                if ((expireDate - transaction.transaction_date) > 0) {
+                    peer.replyNodeAllocationRequest({
+                        ...data,
+                        allocated: false
+                    }, ws).catch(() => {
+                    });
+                    return;
+                }
+
+                this._receivedConsensusTransactionValidation = {
+                    ...data,
+                    timestamp: Date.now(),
+                    ws
+                };
+                peer.replyNodeAllocationRequest({
+                    ...data,
+                    allocated: true
+                }, ws).catch(() => {
                     console.log('[consensus][oracle] release node allocation after timeout... acknowledge not received');
                     this._receivedConsensusTransactionValidation = null;
                 });
+            });
         }
     }
 
