@@ -647,7 +647,7 @@ class Network {
         }
 
         // update bidirectional stream slots
-        if (ws.bidirectional) {
+        if (ws.bidirectional || ws.reservedOutboundSlot) {
             if (ws.inBound) {
                 this._bidirectionaInboundConnectionCount--;
             }
