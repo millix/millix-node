@@ -38,7 +38,14 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
             }
         }
         else {
-            transaction = req.body.p0;
+            if (!req.body.p0) {
+                return res.status(400).send({
+                    status : 'fail',
+                    message: 'p0<transaction_payload_signed> is required'
+                });
+            } else {
+                transaction = JSON.parse(req.body.p0);
+            }
         }
 
 
@@ -54,18 +61,18 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                                    });
                                }
 
-                               console.log(`Storing transaction submitted on API. Hash: ${transaction.transaction_id}`);
+                               console.log(`[api ${this.endpoint}] Storing transaction submitted on API. Hash: ${transaction.transaction_id}`);
 
                                database.getRepository('transaction')
                                        .addTransactionFromObject(transaction)
                                        .then(transaction => {
-                                           console.log(`Successfully stored transaction submitted on API. Hash: ${transaction.transaction_id}. Submitting to peers`);
+                                           console.log(`[api ${this.endpoint}] successfully stored transaction submitted on API. Hash: ${transaction.transaction_id}. Submitting to peers`);
                                            peer.transactionSend(transaction);
                                            res.send({status: 'success'});
                                            unlock();
                                        })
                                        .catch(err => {
-                                           console.log(`Error while storing transaction submitted on API ${err}`);
+                                           console.log(`[api ${this.endpoint}] error while storing transaction submitted on API ${err}`);
                                            res.send({
                                                status : 'fail',
                                                message: 'send_transaction_error'
@@ -73,10 +80,18 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                                            unlock();
                                        });
                            })
+                           .catch(err => {
+                               console.log(`[api ${this.endpoint}] error: ${err}`);
+                               res.send({
+                                   status : 'fail',
+                                   message: 'send_transaction_error'
+                               });
+                               unlock();
+                           });
             });
         }
-        catch (e) {
-            console.log(`Error: ${e}`);
+        catch (err) {
+            console.log(`[api ${this.endpoint}] error: ${err}`);
             return res.send({
                 status : 'fail',
                 message: 'send_transaction_error'

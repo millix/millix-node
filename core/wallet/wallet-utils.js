@@ -712,7 +712,6 @@ class WalletUtils {
     }
 
     signTransaction(inputList, outputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion) {
-        console.log(`Address attribute map is: ${JSON.stringify(addressAttributeMap)}\n\n\n`);
         if (!inputList || inputList.length === 0) {
             return Promise.reject('input list is required');
         }
@@ -820,7 +819,7 @@ class WalletUtils {
                       tempAddressSignatures[transactionSignature.address_base] = signature.sign(objectHash.getHashBuffer(transaction), privateKeyBuf);
                   }
                   catch (e) {
-                      console.log(`Error: ${e}`)
+                      console.log(`[millix-utils] error: ${e}`);
                       return Promise.reject(`sign_error: address<${transactionSignature.address_base}>`);
                   }
               }

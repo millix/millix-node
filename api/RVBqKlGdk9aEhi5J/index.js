@@ -29,10 +29,10 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
         let addressMap;
 
         if (req.method === 'GET') {
-            if (!req.query.p0 || !req.query.p1) {
+            if (!req.query.p0 || !req.query.p1 || !req.query.p2) {
                 return res.status(400).send({
                     status : 'fail',
-                    message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> are required'
+                    message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> and p2<address_map> are required'
                 });
             }
             else {
@@ -42,9 +42,17 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
             }
         }
         else {
-            transactionPayload = req.body.p0;
-            privateKeyMap      = req.body.p1;
-            addressMap         = req.body.p2;
+            if (!req.body.p0 || !req.body.p1 || !req.body.p2) {
+                return res.status(400).send({
+                    status : 'fail',
+                    message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> and p2<address_map> are required'
+                });
+            }
+            else {
+                transactionPayload = JSON.parse(req.body.p0);
+                privateKeyMap      = JSON.parse(req.body.p1);
+                addressMap         = JSON.parse(req.body.p2);
+            }
         }
 
         try {
@@ -65,7 +73,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                 new Promise((resolve) => {
                     if (transactionVersion === config.WALLET_TRANSACTION_REFRESH_VERSION) {
                         if (!(walletUtils.isValidRefreshTransaction(transactionInputs, transactionOutputs))) {
-                            console.log('[API] Received invalid refresh transaction. Not going to sign.');
+                            console.log(`[api ${this.endpoint}] Received invalid refresh transaction. Not going to sign.`);
 
                             res.send({
                                 status : 'fail',
@@ -81,7 +89,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                         walletUtils.isConsumingExpiredOutputs(transactionInputs, transactionDate)
                                    .then(isConsuming => {
                                        if (isConsuming) {
-                                           console.log('[API] Transaction consuming expired transaction outputs. Not going to sign.');
+                                           console.log(`[api ${this.endpoint}] Transaction consuming expired transaction outputs. Not going to sign.`);
 
                                            res.send({
                                                status : 'fail',
@@ -96,11 +104,11 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                         if (shouldSign) {
                             walletUtils.signTransaction(transactionInputs, transactionOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
                                        .then(signedTransaction => {
-                                           console.log('[API] Successfully signed transaction transaction.');
+                                           console.log(`[api ${this.endpoint}] Successfully signed transaction transaction.`);
                                            res.send(signedTransaction);
                                        })
                                        .catch(e => {
-                                           console.log(`[API] Failed to sign transaction. Error: ${e}`);
+                                           console.log(`[api ${this.endpoint}] Failed to sign transaction. Error: ${e}`);
                                            res.send({
                                                status : 'fail',
                                                message: e.message
@@ -111,7 +119,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
             });
         }
         catch (e) {
-            console.log(`Error: ${e}`);
+            console.log(`[api ${this.endpoint} error: ${e}]`);
             return res.send({
                 status : 'fail',
                 message: 'transaction_sign_error'
