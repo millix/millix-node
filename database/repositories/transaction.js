@@ -40,7 +40,7 @@ export default class Transaction {
         });
     }
 
-    getWalletUnstableTransactions(addressKeyIdentifier, minIncludePathLength, excludeTransactionIDList) {
+    getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT DISTINCT`transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
@@ -50,27 +50,7 @@ export default class Transaction {
                         console.log(err);
                         return reject(err);
                     }
-
-                    if (minIncludePathLength === undefined) {
-                        return resolve(rows);
-                    }
-                    else {
-                        let filteredRows = [];
-                        async.eachSeries(rows, (row, callback) => {
-
-                            this.getTransactionIncludePaths(row.transaction_id)
-                                .then(paths => {
-                                    if (_.some(paths, path => path.length >= minIncludePathLength)) {
-                                        filteredRows.push(row);
-                                    }
-                                    callback();
-                                });
-
-                        }, () => {
-                            resolve(filteredRows);
-                        });
-                    }
-
+                    return resolve(rows);
                 });
         });
     }
@@ -971,103 +951,16 @@ export default class Transaction {
         });
     }
 
-    findUnstableTransaction(minIncludePathLength, excludeTransactionIDList) {
+    findUnstableTransaction(excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
-            let search = (timestampAfter) => {
-                this.database.all('SELECT DISTINCT`transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE transaction_output.status = 1 AND +`transaction`.is_stable = 0 AND `transaction`.transaction_date < ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 100',
-                    [timestampAfter].concat(excludeTransactionIDList), (err, rows) => {
-                        if (err) {
-                            console.log(err);
-                            return reject(err);
-                        }
-                        else if (rows.length === 0) {
-                            resolve([]);
-                        }
-                        else if (minIncludePathLength === undefined) {
-                            return resolve(rows[0]);
-                        }
-                        else {
-                            async.eachSeries(rows, (row, callback) => {
-                                this.getTransactionIncludePaths(row.transaction_id)
-                                    .then(paths => {
-                                        if (_.some(paths, path => path.length >= minIncludePathLength)) {
-                                            return callback(row);
-                                        }
-                                        callback();
-                                    });
-
-                            }, (row) => {
-                                if (!row) {
-                                    search(rows[rows.length - 1].transaction_date);
-                                }
-                                else {
-                                    resolve([row]);
-                                }
-                            });
-                        }
-
-                    });
-            };
-
-            search(Math.floor(ntp.now().getTime() / 1000));
-        });
-    }
-
-    getTransactionIncludePaths(transactionID, maxDepth) {
-        maxDepth = maxDepth || config.CONSENSUS_ROUND_PATH_LENGTH_MIN;
-        return new Promise((resolve) => {
-            let visited = {};
-            const dfs   = (branches, depth) => {
-                let hasTransactions = false;
-                let newBranches     = [];
-
-                async.eachSeries(branches, (branch, branchCallback) => {
-                    if (branch.transactions.length === 0) {
-                        newBranches.push(branch);
-                        return branchCallback();
+            this.database.all('SELECT DISTINCT`transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE transaction_output.status = 1 AND +`transaction`.is_stable = 0 ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 1',
+                excludeTransactionIDList, (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
                     }
-
-                    async.eachSeries(branch.transactions, (transaction, callback) => {
-                        let newBranch          = _.cloneDeep(branch);
-                        newBranch.transactions = [];
-                        if (visited[transaction]) {
-                            newBranches.push(newBranch);
-                            return callback();
-                        }
-
-                        visited[transaction] = true;
-                        newBranch.path.push(transaction);
-                        newBranches.push(newBranch);
-
-                        database.applyShards((shardID) => {
-                            const transactionRepository = database.getRepository('transaction', shardID);
-                            return transactionRepository.getTransactionChildren(transaction);
-                        }).then(children => {
-                            if (children.length === 0) {
-                                return callback();
-                            }
-                            newBranch.transactions = children;
-                            hasTransactions        = true;
-                            callback();
-                        });
-                    }, () => branchCallback());
-                }, () => {
-                    if (!hasTransactions || depth >= maxDepth) {
-                        // retrieve branches
-                        return resolve(_.map(newBranches, branch => branch.path));
-                    }
-                    else {
-                        dfs(newBranches, depth + 1);
-                    }
+                    return resolve(rows);
                 });
-            };
-
-            dfs([
-                {
-                    transactions: [transactionID],
-                    path        : []
-                }
-            ], 0);
         });
     }
 

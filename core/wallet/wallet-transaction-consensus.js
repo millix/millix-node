@@ -832,12 +832,12 @@ export class WalletTransactionConsensus {
         return new Promise(resolve => {
             database.applyShards((shardID) => {
                 return database.getRepository('transaction', shardID)
-                               .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList);
+                               .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, excludeTransactionList);
             }).then(pendingTransactions => {
                 if (pendingTransactions.length === 0) {
                     return database.applyShards((shardID) => {
                         return database.getRepository('transaction', shardID)
-                                       .findUnstableTransaction(config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList);
+                                       .findUnstableTransaction(excludeTransactionList);
                     }).then(transactions => [
                         transactions,
                         false
