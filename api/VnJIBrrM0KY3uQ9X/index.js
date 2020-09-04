@@ -44,7 +44,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                     message: 'p0<transaction_payload_signed> is required'
                 });
             } else {
-                transaction = JSON.parse(req.body.p0);
+                transaction = req.body.p0;
             }
         }
 

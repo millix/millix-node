@@ -49,9 +49,9 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                 });
             }
             else {
-                transactionPayload = JSON.parse(req.body.p0);
-                privateKeyMap      = JSON.parse(req.body.p1);
-                addressMap         = JSON.parse(req.body.p2);
+                transactionPayload = req.body.p0;
+                privateKeyMap      = req.body.p1;
+                addressMap         = req.body.p2;
             }
         }
 
