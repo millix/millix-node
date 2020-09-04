@@ -1671,8 +1671,6 @@ class Wallet {
     }
 
     _doTransactionPruning() {
-        console.log('\n\n\nPRUNING\n\n\n');
-
         if (mutex.getKeyQueuedSize(['transaction-pruning']) > 0) { // a prune task is running.
             return Promise.resolve();
         }

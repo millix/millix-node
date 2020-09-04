@@ -823,6 +823,7 @@ class WalletUtils {
                       tempAddressSignatures[transactionSignature.address_base] = signature.sign(objectHash.getHashBuffer(transaction), privateKeyBuf);
                   }
                   catch (e) {
+                      console.log(`[millix-utils] error: ${e}`);
                       return Promise.reject(`sign_error: address<${transactionSignature.address_base}>`);
                   }
               }
