@@ -119,7 +119,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
             });
         }
         catch (e) {
-            console.log(`[api ${this.endpoint} error: ${e}]`);
+            console.log(`[api ${this.endpoint}] error: ${e}`);
             return res.send({
                 status : 'fail',
                 message: 'transaction_sign_error'
