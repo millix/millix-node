@@ -11,7 +11,6 @@ import database from '../../database/database';
 import wallet from './wallet';
 import async from 'async';
 import _ from 'lodash';
-import eventBus from '../event-bus';
 
 
 export class WalletSync {
@@ -54,7 +53,14 @@ export class WalletSync {
             });
         }, this.CARGO_MAX_LENGHT);
         this.queue         = new Queue((job, done) => {
-            if (this.executorQueue.length() < this.CARGO_MAX_LENGHT) {
+            if (job.attempt >= 2 * config.TRANSACTION_RETRY_SYNC_MAX) {
+                this.add(job.transaction_id, {
+                    attempt : job.attempt,
+                    priority: job.priority - Math.floor(job.attempt / config.TRANSACTION_RETRY_SYNC_MAX)
+                });
+                done();
+            }
+            else if (this.executorQueue.length() < this.CARGO_MAX_LENGHT) {
                 this.executorQueue.push(job);
                 done();
             }
@@ -246,7 +252,7 @@ export class WalletSync {
             this.queue.push({
                 transaction_id  : transactionID,
                 dispatch_request: true,
-                priority        : -1,
+                priority        : priority === undefined ? -1 : priority,
                 attempt
             });
         }

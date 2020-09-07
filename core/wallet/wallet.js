@@ -1127,39 +1127,6 @@ class Wallet {
         });
     }
 
-    _onTransactionIncludePathRequest(data, ws) {
-        let node             = ws.node;
-        let connectionID     = ws.connectionID;
-        const startTimestamp = Date.now();
-        eventBus.emit('wallet_event_log', {
-            type   : 'transaction_include_path_request',
-            content: data,
-            from   : node
-        });
-        mutex.lock(['transaction-include-path'], unlock => {
-            let transactionID          = data.transaction_id;
-            let maxDepth               = data.depth;
-            let excludeTransactionList = data.transaction_id_exclude_list || [];
-            database.getRepository('transaction')
-                    .getTransactionIncludePaths(transactionID, maxDepth)
-                    .then(paths => {
-                        let maxLength = _.reduce(paths, (max, path) => path.length > max ? path.length : max, 0);
-                        let path      = _.find(paths, path => path.length === maxLength);
-                        path          = _.difference(path, excludeTransactionList);
-                        let ws        = network.getWebSocketByID(connectionID);
-                        if (path.length > 0 && ws) {
-                            peer.transactionIncludePathResponse({
-                                transaction_id     : transactionID,
-                                transaction_id_list: path
-                            }, ws);
-                        }
-                        console.log(`[wallet] sending transaction include path to tx: ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
-                        unlock();
-                    });
-        }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
-    }
-
-
     getDefaultActiveWallet() {
         return Object.keys(this.getActiveWallets())[0];
     }
@@ -1228,104 +1195,8 @@ class Wallet {
         });
     }
 
-    _onTransactionIncludePathResponse(data, ws) {
-        eventBus.emit('wallet_event_log', {
-            type   : 'transaction_include_path_response',
-            content: data,
-            from   : ws.node
-        });
-        let path = data.transaction_id_list;
-        async.eachSeries(path, (transactionID, callback) => {
-            if (!this._transactionReceivedFromNetwork[transactionID] && !this._transactionRequested[transactionID]) {
-                database.firstShards((shardID) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    return new Promise((resolve, reject) => transactionRepository.hasTransaction(transactionID)
-                                                                                 .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
-                                                                                     hasTransaction,
-                                                                                     isAuditPoint,
-                                                                                     hasTransactionData,
-                                                                                     shardID
-                                                                                 ]) : reject()));
-                }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData, shardID]) => {
-                    if (hasTransactionData) {
-                        return callback();
-                    }
-
-                    (() => {
-                        if (isAuditPoint) {
-                            return database.getRepository('audit_point', shardID)
-                                           .deleteAuditPoint(transactionID);
-                        }
-                        else {
-                            return Promise.resolve();
-                        }
-                    })().then(() => {
-                        peer.transactionSyncRequest(transactionID, {priority: 2})
-                            .then(() => this._transactionRequested[transactionID] = Date.now())
-                            .catch(_ => _);
-                    });
-
-                    callback();
-                });
-            }
-        });
-
-    }
-
     getWalletAddresses() {
         return database.getRepository('keychain').getWalletAddresses(this.getDefaultActiveWallet());
-    }
-
-    // TODO - check
-    _doSyncTransactionIncludePath() {
-        return new Promise(resolve => {
-            database.applyShards((shardID) => {
-                return database.getRepository('transaction', shardID)
-                               .getWalletUnstableTransactions(this.defaultKeyIdentifier, 0, Array.from(walletTransactionConsensus.getRejectedTransactionList().keys()));
-            }).then(pendingTransactions => {
-                async.eachSeries(pendingTransactions, (pendingTransaction, callback) => {
-                    const transactionRepository = database.getRepository('transaction'); // shard zero
-                    transactionRepository.getTransactionIncludePaths(pendingTransaction.transaction_id)
-                                         .then(paths => {
-                                             let maxLength = _.reduce(paths, (max, path) => path.length > max ? path.length : max, 0);
-                                             if (maxLength >= config.CONSENSUS_ROUND_PATH_LENGTH_MIN) {
-                                                 return callback(); //dont
-                                                 // need
-                                                 // to
-                                                 // sync
-                                                 // more
-                                                 // transactions
-                                             }
-
-                                             let transactions = _.find(paths, path => path.length === maxLength);
-
-                                             if (maxLength <= 1) {
-                                                 transactionRepository.getTransactionObject(pendingTransaction.transaction_id)
-                                                                      .then(dbTransaction => dbTransaction ? dbTransaction : database.getRepository('transaction', pendingTransaction.shard_id)
-                                                                                                                                     .getTransactionObject(pendingTransaction.transaction_id))
-                                                                      .then(dbTransaction => {
-                                                                          peer.transactionSend(transactionRepository.normalizeTransactionObject(dbTransaction));
-                                                                          peer.transactionIncludePathRequest(pendingTransaction.transaction_id, transactions)
-                                                                              .then(([response, ws]) => {
-                                                                                  this._onTransactionIncludePathResponse(response, ws);
-                                                                              })
-                                                                              .catch(_ => _);
-                                                                          callback();
-                                                                      });
-                                             }
-                                             else {
-                                                 peer.transactionIncludePathRequest(pendingTransaction.transaction_id, transactions)
-                                                     .then(([response, ws]) => {
-                                                         this._onTransactionIncludePathResponse(response, ws);
-                                                     })
-                                                     .catch(() => {
-                                                     });
-                                                 callback();
-                                             }
-                                         }).catch(() => callback());
-                }, () => resolve());
-            }).catch(() => resolve());
-        });
     }
 
     _doAuditPointUpdate() {
@@ -1671,8 +1542,6 @@ class Wallet {
     }
 
     _doTransactionPruning() {
-        console.log('\n\n\nPRUNING\n\n\n');
-
         if (mutex.getKeyQueuedSize(['transaction-pruning']) > 0) { // a prune task is running.
             return Promise.resolve();
         }
@@ -1884,7 +1753,6 @@ class Wallet {
                       eventBus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
                       eventBus.on('transaction_validation_node_allocate', this._onTransactionValidationNodeAllocate.bind(this));
                       eventBus.on('transaction_validation_node_release', this._onTransactionValidationNodeRelease.bind(this));
-                      eventBus.on('transaction_include_path_request', this._onTransactionIncludePathRequest.bind(this));
                       eventBus.on('transaction_spend_request', this._onSyncTransactionSpendTransaction.bind(this));
                       eventBus.on('transaction_output_spend_request', this._onSyncOutputSpendTransaction.bind(this));
                       eventBus.on('transaction_output_spend_response', this._onSyncOutputSpendTransactionResponse.bind(this));
@@ -1945,7 +1813,6 @@ class Wallet {
         eventBus.removeAllListeners('shard_sync_request');
         eventBus.removeAllListeners('address_transaction_sync');
         eventBus.removeAllListeners('transaction_validation_request');
-        eventBus.removeAllListeners('transaction_include_path_request');
         eventBus.removeAllListeners('transaction_spend_request');
         eventBus.removeAllListeners('transaction_output_spend_request');
         eventBus.removeAllListeners('transaction_output_spend_response');

@@ -130,7 +130,6 @@ export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
 export const CONSENSUS_ROUND_NODE_COUNT                        = 3;
-export const CONSENSUS_ROUND_PATH_LENGTH_MIN                   = 1;
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 2;
 export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
 export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
@@ -187,7 +186,7 @@ export const NODE_TEST_PORT                                    = 5080;
 export const HASH_LENGTH                                       = 44;
 export const PUBKEY_LENGTH                                     = 44;
 export const SIG_LENGTH                                        = 88;
-export const NODE_MILLIX_VERSION                               = '1.6.5';
+export const NODE_MILLIX_VERSION                               = '1.6.6';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -258,7 +257,6 @@ export default {
     DATABASE_CONNECTION,
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
-    CONSENSUS_ROUND_PATH_LENGTH_MIN,
     CONSENSUS_VALIDATION_DEPTH_MAX,
     CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX,
     CONSENSUS_ROUND_VALIDATION_MAX,

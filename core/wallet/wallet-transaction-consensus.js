@@ -354,7 +354,7 @@ export class WalletTransactionConsensus {
 
     _selectNodesForConsensusRound(numberOfNodes = config.CONSENSUS_ROUND_NODE_COUNT, excludeNodeList = []) {
         return new Promise(resolve => {
-            resolve(_.sampleSize(_.difference(_.filter(network.registeredClients, ws => ws.outBound), excludeNodeList), numberOfNodes));
+            resolve(_.sampleSize(_.difference(_.filter(network.registeredClients, ws => ws.outBound || ws.bidirectional), excludeNodeList), numberOfNodes));
         });
     }
 
@@ -615,7 +615,7 @@ export class WalletTransactionConsensus {
         }
         else {
             database.firstShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction');
+                const transactionRepository = database.getRepository('transaction', shardID);
                 return new Promise((resolve, reject) => {
                     transactionRepository.getTransaction(data.transaction_id)
                                          .then(transaction => transaction ? resolve(transaction) : reject())
@@ -623,6 +623,7 @@ export class WalletTransactionConsensus {
                 });
             }).then(transaction => {
                 if (!transaction) {
+                    peer.transactionSyncRequest(data.transaction_id).then(_ => _);
                     peer.replyNodeAllocationRequest({
                         ...data,
                         allocated: false
@@ -832,12 +833,12 @@ export class WalletTransactionConsensus {
         return new Promise(resolve => {
             database.applyShards((shardID) => {
                 return database.getRepository('transaction', shardID)
-                               .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList);
+                               .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, excludeTransactionList);
             }).then(pendingTransactions => {
                 if (pendingTransactions.length === 0) {
                     return database.applyShards((shardID) => {
                         return database.getRepository('transaction', shardID)
-                                       .findUnstableTransaction(config.CONSENSUS_ROUND_PATH_LENGTH_MIN, excludeTransactionList);
+                                       .findUnstableTransaction(excludeTransactionList);
                     }).then(transactions => [
                         transactions,
                         false
