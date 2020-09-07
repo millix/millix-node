@@ -615,7 +615,7 @@ export class WalletTransactionConsensus {
         }
         else {
             database.firstShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction');
+                const transactionRepository = database.getRepository('transaction', shardID);
                 return new Promise((resolve, reject) => {
                     transactionRepository.getTransaction(data.transaction_id)
                                          .then(transaction => transaction ? resolve(transaction) : reject())
@@ -623,6 +623,7 @@ export class WalletTransactionConsensus {
                 });
             }).then(transaction => {
                 if (!transaction) {
+                    peer.transactionSyncRequest(data.transaction_id).then(_ => _);
                     peer.replyNodeAllocationRequest({
                         ...data,
                         allocated: false
