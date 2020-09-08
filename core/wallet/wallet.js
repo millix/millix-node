@@ -1448,7 +1448,7 @@ class Wallet {
     }
 
     _onTransactionValidationNodeAllocate(data, ws) {
-        walletTransactionConsensus.allocateNodeToValidateTransaction(data, ws);
+        walletTransactionConsensus.processAllocationToValidateTransaction(data, ws);
     }
 
     _onTransactionValidationNodeRelease(data, ws) {

@@ -605,7 +605,7 @@ export class WalletTransactionConsensus {
         this._receivedConsensusTransactionValidation = null;
     }
 
-    allocateNodeToValidateTransaction(data, ws) {
+    processAllocationToValidateTransaction(data, ws) {
         if (this._receivedConsensusTransactionValidation) {
             peer.replyNodeAllocationRequest({
                 ...data,
