@@ -513,21 +513,13 @@ class Peer {
                     const messageID = 'transaction_validation_response:' + content.transaction_id + ':' + content.consensus_round + ':' + ws.nodeID;
                     eventBus.removeAllListeners(messageID);
                     eventBus.once(messageID, function(eventData, eventWS) {
-
-                        console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node);
-
                         if (eventWS.nodeID !== ws.nodeID || eventWS.connectionID !== ws.connectionID) {
                             return;
                         }
-
-                        console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node);
                         if (!callbackCalled) {
-                            console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node, 'success');
+                            console.log('[peer] received validation response for ', eventData.transaction_id, ' from node ', eventWS.node);
                             callbackCalled = true;
-                            resolve([
-                                eventData,
-                                eventWS
-                            ]);
+                            resolve(eventData);
                         }
                     });
                     ws.send(data);
@@ -537,7 +529,7 @@ class Peer {
                             callbackCalled = true;
                             reject();
                         }
-                    }, config.CONSENSUS_VALIDATION_WAIT_TIME_MAX);
+                    }, config.NETWORK_LONG_TIME_WAIT_MAX);
                 }
                 else {
                     reject();
@@ -549,150 +541,6 @@ class Peer {
             }
 
         });
-    }
-
-    allocateNodeToValidateTransaction(content, ws) {
-        if (ws.inBound && !ws.bidirectional) {
-            return Promise.reject();
-        }
-
-        return new Promise((resolve, reject) => {
-            const payload = {
-                type: 'transaction_validation_node_allocate',
-                content
-            };
-
-            eventBus.emit('node_event_log', payload);
-
-            let data = JSON.stringify(payload);
-            try {
-                let callbackCalled = false;
-                if (ws.nodeConnectionReady) {
-                    const messageID = 'transaction_validation_node_allocate_response:' + ws.nodeID;
-                    eventBus.removeAllListeners(messageID);
-                    eventBus.once(messageID, function(eventData, eventWS) {
-                        if (eventWS.nodeID !== ws.nodeID || eventWS.connectionID !== ws.connectionID) {
-                            return;
-                        }
-
-                        console.log('[peer] received allocation response for ', eventData.transaction_id, ' from node ', eventWS.node);
-                        if (!callbackCalled) {
-                            callbackCalled = true;
-                            resolve([
-                                eventData,
-                                eventWS
-                            ]);
-                        }
-                    });
-                    ws.send(data);
-                    setTimeout(function() {
-                        if (!callbackCalled) {
-                            callbackCalled = true;
-                            reject();
-                        }
-                    }, config.NETWORK_SHORT_TIME_WAIT_MAX);
-                }
-                else {
-                    reject();
-                }
-            }
-            catch (e) {
-                console.log('[WARN]: try to send data over a closed connection.');
-                reject();
-            }
-        });
-
-    }
-
-    replyNodeAllocationRequest(content, ws) {
-        if (ws.outBound && !ws.bidirectional) {
-            return Promise.resolve();
-        }
-
-        return new Promise((resolve, reject) => {
-            let payload = {
-                type: 'transaction_validation_node_allocate_response:' + network.nodeID,
-                content
-            };
-
-            eventBus.emit('node_event_log', payload);
-
-            let data = JSON.stringify(payload);
-            try {
-                let callbackCalled = false;
-                if (ws.nodeConnectionReady) {
-                    const messageID = 'transaction_validation_node_allocate_acknowledge:' + ws.nodeID;
-                    eventBus.removeAllListeners(messageID);
-                    eventBus.once(messageID, function(eventData, eventWS) {
-                        if (eventWS.nodeID !== ws.nodeID || eventWS.connectionID !== ws.connectionID) {
-                            return;
-                        }
-
-                        console.log('[peer] received allocation acknowledge for consensus round of ', eventData.transaction_id, ' from node ', eventWS.nodeID);
-                        if (!callbackCalled) {
-                            callbackCalled = true;
-                            resolve();
-                        }
-                    });
-                    ws.send(data);
-                    setTimeout(function() {
-                        if (!callbackCalled) {
-                            callbackCalled = true;
-                            reject();
-                        }
-                    }, config.NETWORK_SHORT_TIME_WAIT_MAX);
-                }
-                else {
-                    reject();
-                }
-            }
-            catch (e) {
-                console.log('[WARN]: try to send data over a closed connection.');
-                reject();
-            }
-        });
-    }
-
-    acknowledgeAllocateNodeToValidateTransaction(content, ws) {
-        if (ws.inBound && !ws.bidirectional) {
-            return;
-        }
-
-        let payload = {
-            type: 'transaction_validation_node_allocate_acknowledge:' + network.nodeID,
-            content
-        };
-
-        eventBus.emit('node_event_log', payload);
-
-        let data = JSON.stringify(payload);
-        try {
-            ws.nodeConnectionReady && ws.send(data);
-        }
-        catch (e) {
-            console.log('[WARN]: try to send data over a closed connection.');
-        }
-    }
-
-    releaseNodeToValidateTransaction(content, ws) {
-        if (ws.inBound && !ws.bidirectional) {
-            return;
-        }
-
-        let payload = {
-            type: 'transaction_validation_node_release',
-            content
-        };
-
-        eventBus.emit('node_event_log', payload);
-
-        let data = JSON.stringify(payload);
-        try {
-            ws.nodeConnectionReady && ws.send(data);
-        }
-        catch (e) {
-            console.log('[WARN]: try to send data over a closed connection.');
-        }
     }
 
     auditPointValidationRequest(content, ws) {
@@ -718,13 +566,13 @@ class Peer {
         return content;
     }
 
-    transactionValidationResponse(message, ws) {
+    transactionValidationResponse(message, ws, isValidationResult) {
         if (ws.outBound && !ws.bidirectional) {
             return message;
         }
 
         let payload = {
-            type   : 'transaction_validation_response:' + message.transaction_id + ':' + message.consensus_round + ':' + network.nodeID,
+            type   : isValidationResult ? 'transaction_validation_response' : 'transaction_validation_response:' + message.transaction_id,
             content: message
         };
 
