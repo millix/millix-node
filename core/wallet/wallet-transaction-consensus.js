@@ -26,7 +26,8 @@ export class WalletTransactionConsensus {
              consensus_round_count             : int,
              consensus_round_response: array,
              timestamp: int,
-             resolve : func
+             resolve : func,
+             active  : bool
              }*/
         };
         this._transactionValidationRejected = new Set();
@@ -445,6 +446,7 @@ export class WalletTransactionConsensus {
         const validationRequired           = config.CONSENSUS_ROUND_VALIDATION_REQUIRED - consensusData.consensus_round_validation_count;
         const availableConsensusRoundCount = config.CONSENSUS_ROUND_VALIDATION_MAX - consensusData.consensus_round_count;
         if (consensusData.consensus_round_count === config.CONSENSUS_ROUND_VALIDATION_MAX - 1 || availableConsensusRoundCount < validationRequired) {
+            consensusData.active = false;
             this._transactionValidationRejected.add(transactionID);
             consensusData.resolve();
         }
@@ -459,7 +461,7 @@ export class WalletTransactionConsensus {
     processTransactionValidationResponse(data, ws) {
         const transactionID = data.transaction_id;
         const consensusData = this._consensusRoundState[transactionID];
-        if (!consensusData || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID]) {
+        if (!consensusData || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] || !consensusData.active) {
             return;
         }
 
@@ -494,7 +496,7 @@ export class WalletTransactionConsensus {
         const consensusResponseData      = this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count];
         consensusResponseData[ws.nodeID] = {response: data};
 
-        if (_.keys(consensusResponseData) < config.CONSENSUS_ROUND_NODE_COUNT) {
+        if (_.keys(consensusResponseData).length < config.CONSENSUS_ROUND_NODE_COUNT) {
             return;
         }
 
@@ -531,6 +533,7 @@ export class WalletTransactionConsensus {
             if (isDoubleSpend) {
                 consensusData.consensus_round_double_spend_count++;
                 if (consensusData.consensus_round_double_spend_count >= config.CONSENSUS_ROUND_DOUBLE_SPEND_MAX) {
+                    consensusData.active = false;
                     this._transactionValidationRejected.add(transactionID);
                     console.log('[consensus][request] the transaction ', transactionID, ' was not validated (due to double spend) during consensus round number ', consensusData.consensus_round_count);
                     return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
@@ -547,6 +550,7 @@ export class WalletTransactionConsensus {
             else if (isNotFound) {
                 consensusData.consensus_round_double_spend_count++;
                 if (consensusData.consensus_round_not_found_count >= config.CONSENSUS_ROUND_NOT_FOUND_MAX) {
+                    consensusData.active = false;
                     console.log('[consensus][request] the transaction ', transactionID, ' was not validated (due to not found reply) during consensus round number ', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
                     return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
@@ -561,6 +565,7 @@ export class WalletTransactionConsensus {
             console.log('[consensus][request] transaction ', transactionID, ' validated after receiving all replies for this consensus round');
             consensusData.consensus_round_validation_count++;
             if (consensusData.consensus_round_validation_count >= config.CONSENSUS_ROUND_VALIDATION_REQUIRED) {
+                consensusData.active = false;
                 return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
                     return transactionRepository.setPathAsStableFrom(transactionID);
                 }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
@@ -660,7 +665,8 @@ export class WalletTransactionConsensus {
                     consensus_round_not_found_count   : 0,
                     consensus_round_count             : 0,
                     consensus_round_response          : [{}],
-                    timestamp                         : Date.now()
+                    timestamp                         : Date.now(),
+                    active                            : true
                 };
                 return this._startConsensusRound(transactionID).then(() => {
                     // release spot
