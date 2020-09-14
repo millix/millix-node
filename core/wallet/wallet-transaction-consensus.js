@@ -473,12 +473,12 @@ export class WalletTransactionConsensus {
             from   : ws.node
         });
 
-        if (data.valid === false && !(data.cause in [
+        if (data.valid === false && ![
             'transaction_double_spend',
             'transaction_not_found',
             'transaction_invalid_amount',
             'transaction_validation_max_depth'
-        ])) {
+        ].includes(data.cause)) {
             delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][ws.nodeID];
             this._consensusRoundState[transactionID].requestPeerValidation();
             return;
