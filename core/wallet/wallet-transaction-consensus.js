@@ -452,10 +452,8 @@ export class WalletTransactionConsensus {
     }
 
     _nextConsensusRound(transactionID) {
-        const consensusData                = this._consensusRoundState[transactionID];
-        const validationRequired           = config.CONSENSUS_ROUND_VALIDATION_REQUIRED - consensusData.consensus_round_validation_count;
-        const availableConsensusRoundCount = config.CONSENSUS_ROUND_VALIDATION_MAX - consensusData.consensus_round_count;
-        if (consensusData.consensus_round_count === config.CONSENSUS_ROUND_VALIDATION_MAX - 1 || availableConsensusRoundCount < validationRequired) {
+        const consensusData = this._consensusRoundState[transactionID];
+        if (consensusData.consensus_round_count === config.CONSENSUS_ROUND_VALIDATION_MAX - 1) {
             consensusData.active = false;
             this._transactionValidationRejected.add(transactionID);
             consensusData.resolve();
@@ -592,7 +590,7 @@ export class WalletTransactionConsensus {
 
     doConsensusTransactionValidationWatchDog() {
         for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
-            if ((Date.now() - consensusData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
+            if (consensusData.active && (Date.now() - consensusData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
                 console.log('[consensus][watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
                 const consensusRoundResponseData = consensusData.consensus_round_response[consensusData.consensus_round_count];
                 for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
