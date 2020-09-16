@@ -82,7 +82,7 @@ export class WalletTransactionConsensus {
             let validTransaction    = null;
             let transactionNotFound = null;
             async.eachSeries(inputs, (input, callback) => {
-                database.firstShardZeroORShardRepository('transaction', input.transaction_id, transactionRepository => {
+                database.firstShardZeroORShardRepository('transaction', input.shard_id, transactionRepository => {
                     return new Promise((resolve, reject) => {
                         transactionRepository.getTransaction(input.transaction_id)
                                              .then(transaction => transaction ? resolve(transaction) : reject()).catch(reject);
@@ -90,6 +90,7 @@ export class WalletTransactionConsensus {
                 }).then(transaction => {
                     if (!transaction) {
                         transactionNotFound = {transaction_id: input.transaction_id};
+                        validTransaction    = null;
                         return callback(true);
                     }
                     else if (!validTransaction || transaction.transaction_date < validTransaction.transaction_date
@@ -179,76 +180,72 @@ export class WalletTransactionConsensus {
                         sourceTransactions.add(input.output_transaction_id);
                     }
 
-                    database.firstShards((shardID) => {
-                        return new Promise((resolve, reject) => {
-                            const transactionRepository = database.getRepository('transaction', shardID);
-                            transactionRepository.isInputDoubleSpend(input, transaction.transaction_id)
-                                                 .then(([isDoubleSpend, inputs]) => isDoubleSpend ? resolve([
-                                                     isDoubleSpend,
-                                                     inputs
-                                                 ]) : reject());
-                        });
-                    }).then(data => data || []).then(([isDoubleSpend, inputs]) => {
-                        if (isDoubleSpend) {
-                            inputs.push({transaction_id: transaction.transaction_id, ...input});
-                            this._getValidInputOnDoubleSpend(inputs)
-                                .then(({transaction_valid: validInput, transaction_not_found: transactionNotFound}) => {
-
-                                    if (validInput && validInput.transaction_id !== transaction.transaction_id) {
-                                        return callback({
-                                            cause              : 'transaction_double_spend',
-                                            transaction_id_fail: input.output_transaction_id,
-                                            message            : 'double spend found in ' + input.output_transaction_id
-                                        }, false);
-                                    }
-                                    else if (transactionNotFound) {
-                                        return callback({
-                                            cause              : 'transaction_not_found',
-                                            transaction_id_fail: transactionNotFound.transaction_id,
-                                            message            : 'no information found for ' + transactionNotFound.transaction_id
-                                        }, false);
-                                    }
-
-                                    let doubleSpendInputs = _.pull(inputs, validInput);
-                                    this._setAsDoubleSpend(doubleSpendInputs, input.output_transaction_id);
-                                    return callback(null, true);
-                                });
-                        }
-                        else {
-                            // get
-                            // the
-                            // total
-                            // millix
-                            // amount
-                            // of
-                            // this
-                            // input
-                            database.firstShards((shardID) => {
-                                return new Promise((resolve, reject) => {
-                                    const transactionRepository = database.getRepository('transaction', shardID);
-                                    transactionRepository.getOutput(input.output_transaction_id, input.output_position)
-                                                         .then(output => output ? resolve(output) : reject());
-                                });
-                            }).then(output => {
-                                if (!output) {
-                                    return callback({
-                                        cause              : 'transaction_not_found',
-                                        transaction_id_fail: input.output_transaction_id,
-                                        message            : 'no information found for ' + input.output_transaction_id
-                                    }, false);
-                                }
-                                inputTotalAmount += output.amount;
-                                return callback(null, true);
-                            })
-                                    .catch(() => {
-                                        return callback({
-                                            cause              : 'peer_error',
-                                            transaction_id_fail: transactionID,
-                                            message            : 'generic database error when getting data for transaction id ' + input.output_transaction_id
-                                        }, false);
+                    database.applyShards((shardID) => database.getRepository('transaction', shardID).getInputDoubleSpend(input, transaction.transaction_id)).then(data => data || [])
+                            .then(doubleSpendTransactions => {
+                                if (doubleSpendTransactions.length > 0) {
+                                    doubleSpendTransactions.push({
+                                        transaction_id: transaction.transaction_id,
+                                        shard_id      : transaction.shard_id,
+                                        ...input
                                     });
-                        }
-                    });
+                                    this._getValidInputOnDoubleSpend(doubleSpendTransactions)
+                                        .then(({transaction_valid: validInput, transaction_not_found: transactionNotFound}) => {
+
+                                            if (validInput && validInput.transaction_id !== transaction.transaction_id) {
+                                                return callback({
+                                                    cause              : 'transaction_double_spend',
+                                                    transaction_id_fail: input.output_transaction_id,
+                                                    message            : 'double spend found in ' + input.output_transaction_id
+                                                }, false);
+                                            }
+                                            else if (transactionNotFound) {
+                                                return callback({
+                                                    cause              : 'transaction_not_found',
+                                                    transaction_id_fail: transactionNotFound.transaction_id,
+                                                    message            : 'no information found for ' + transactionNotFound.transaction_id
+                                                }, false);
+                                            }
+
+                                            let doubleSpendInputs = _.filter(doubleSpendTransactions, i => i.transaction_id !== validInput.transaction_id);
+                                            this._setAsDoubleSpend(doubleSpendInputs, input.output_transaction_id);
+                                            return callback(null, true);
+                                        });
+                                }
+                                else {
+                                    // get
+                                    // the
+                                    // total
+                                    // millix
+                                    // amount
+                                    // of
+                                    // this
+                                    // input
+                                    database.firstShards((shardID) => {
+                                        return new Promise((resolve, reject) => {
+                                            const transactionRepository = database.getRepository('transaction', shardID);
+                                            transactionRepository.getOutput(input.output_transaction_id, input.output_position)
+                                                                 .then(output => output ? resolve(output) : reject());
+                                        });
+                                    }).then(output => {
+                                        if (!output) {
+                                            return callback({
+                                                cause              : 'transaction_not_found',
+                                                transaction_id_fail: input.output_transaction_id,
+                                                message            : 'no information found for ' + input.output_transaction_id
+                                            }, false);
+                                        }
+                                        inputTotalAmount += output.amount;
+                                        return callback(null, true);
+                                    })
+                                            .catch(() => {
+                                                return callback({
+                                                    cause              : 'peer_error',
+                                                    transaction_id_fail: transactionID,
+                                                    message            : 'generic database error when getting data for transaction id ' + input.output_transaction_id
+                                                }, false);
+                                            });
+                                }
+                            });
                 }, (err, valid) => {
                     if (!valid) { //not valid
                         return reject(err);
