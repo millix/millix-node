@@ -1764,13 +1764,16 @@ export default class Transaction {
     }
 
     getUnspentTransactionOutputsOlderThanOrExpired(addressKeyIdentifier, time) {
-        const seconds = Math.floor(time.valueOf() / 1000);
+        const createDate = Math.floor(time.valueOf() / 1000);
+        // only refresh outputs after 1 min (db insert)
+        const insertDate = Math.floor(Date.now() / 1000) - 60;
 
         return new Promise((resolve, reject) => {
             // TODO - return only necessary
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date <= ? OR transaction_output.status = 2) AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0', [
-                seconds,
-                addressKeyIdentifier
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date <= ? OR transaction_output.status = 2) AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0 AND `transaction`.transaction_date < ?', [
+                createDate,
+                addressKeyIdentifier,
+                insertDate
             ], (err, rows) => {
                 if (err) {
                     return reject(err);
