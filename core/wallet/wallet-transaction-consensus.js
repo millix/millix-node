@@ -79,23 +79,29 @@ export class WalletTransactionConsensus {
 
     _getValidInputOnDoubleSpend(inputs) {
         return new Promise(resolve => {
-            this._mapToAuditPointDistance(inputs)
-                .then(inputs => {
-                    let minDistance = _.minBy(_.map(inputs, i => i.distance));
-                    _.remove(inputs, i => i.distance > minDistance);
-                    inputs = _.map(inputs, e => e.input);
-
-                    let validOutput;
-                    if (inputs.length === 1) {
-                        validOutput = inputs[0];
+            let validTransaction    = null;
+            let transactionNotFound = null;
+            async.eachSeries(inputs, (input, callback) => {
+                database.firstShardZeroORShardRepository('transaction', input.transaction_id, transactionRepository => {
+                    return new Promise((resolve, reject) => {
+                        transactionRepository.getTransaction(input.transaction_id)
+                                             .then(transaction => transaction ? resolve(transaction) : reject()).catch(reject);
+                    });
+                }).then(transaction => {
+                    if (!transaction) {
+                        transactionNotFound = {transaction_id: input.transaction_id};
+                        return callback(true);
                     }
-                    else {
-                        // they have same distance pick the one with min hash
-                        // value;
-                        validOutput = _.minBy(inputs, i => i.transaction_id);
+                    else if (!validTransaction || transaction.transaction_date < validTransaction.transaction_date
+                             || ((transaction.transaction_date < validTransaction.transaction_date) && (transaction.transaction_id < validTransaction.transaction_id))) {
+                        validTransaction = transaction;
                     }
-                    resolve(validOutput);
-                });
+                    callback();
+                }).catch(() => callback());
+            }, () => resolve({
+                transaction_valid    : validTransaction,
+                transaction_not_found: transactionNotFound
+            }));
         });
     }
 
@@ -186,13 +192,20 @@ export class WalletTransactionConsensus {
                         if (isDoubleSpend) {
                             inputs.push({transaction_id: transaction.transaction_id, ...input});
                             this._getValidInputOnDoubleSpend(inputs)
-                                .then(validInput => {
+                                .then(({transaction_valid: validInput, transaction_not_found: transactionNotFound}) => {
 
-                                    if (validInput.transaction_id !== transaction.transaction_id) {
+                                    if (validInput && validInput.transaction_id !== transaction.transaction_id) {
                                         return callback({
                                             cause              : 'transaction_double_spend',
                                             transaction_id_fail: input.output_transaction_id,
                                             message            : 'double spend found in ' + input.output_transaction_id
+                                        }, false);
+                                    }
+                                    else if (transactionNotFound) {
+                                        return callback({
+                                            cause              : 'transaction_not_found',
+                                            transaction_id_fail: transactionNotFound.transaction_id,
+                                            message            : 'no information found for ' + transactionNotFound.transaction_id
                                         }, false);
                                     }
 
