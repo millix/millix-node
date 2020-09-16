@@ -419,7 +419,7 @@ export class WalletTransactionConsensus {
                                            // remove node from
                                            // consensus round
                                            if (this._consensusRoundState[transactionID]) {
-                                               delete this._consensusRoundState[transactionID].consensus_round_response[selectedWS.nodeID];
+                                               delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID];
                                                requestPeerValidation();
                                            }
                                        });
