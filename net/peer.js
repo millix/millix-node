@@ -798,7 +798,7 @@ class Peer {
         }
 
         let payload = {
-            type   : 'transaction_sync_by_date_response',
+            type   : 'transaction_sync_by_date_response:' + network.nodeID,
             content: {transaction_id_list: transactionList}
         };
 
