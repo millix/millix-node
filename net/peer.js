@@ -510,7 +510,7 @@ class Peer {
             try {
                 let callbackCalled = false;
                 if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
-                    const messageID = 'transaction_validation_response:' + content.transaction_id + ':' + content.consensus_round + ':' + ws.nodeID;
+                    const messageID = 'transaction_validation_response:' + content.transaction_id;
                     eventBus.removeAllListeners(messageID);
                     eventBus.once(messageID, function(eventData, eventWS) {
                         if (eventWS.nodeID !== ws.nodeID || eventWS.connectionID !== ws.connectionID) {
@@ -798,7 +798,7 @@ class Peer {
         }
 
         let payload = {
-            type   : 'transaction_sync_by_date_response',
+            type   : 'transaction_sync_by_date_response:' + network.nodeID,
             content: {transaction_id_list: transactionList}
         };
 
