@@ -107,21 +107,6 @@
         "enable": true
       }
     },
-    "transaction_include_path": {
-      "type": "function",
-      "group": "wallet",
-      "processor": "localhost_wallet",
-      "payload": {
-        "module": "wallet",
-        "function_name": "_doSyncTransactionIncludePath"
-      },
-      "priority": 0,
-      "option_list": {
-        "run_always": 1,
-        "run_delay": 10000,
-        "enable": true
-      }
-    },
     "transaction_spend_sync": {
       "type": "function",
       "group": "wallet",
