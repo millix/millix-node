@@ -1144,7 +1144,7 @@ export default class Transaction {
         });
     }
 
-    isInputDoubleSpend(input, transactionID) {
+    getInputDoubleSpend(input, transactionID) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT * FROM transaction_input WHERE output_transaction_id = ? AND output_position = ? AND transaction_id != ?',
                 [
@@ -1156,10 +1156,7 @@ export default class Transaction {
                         console.log(err);
                         return reject(err);
                     }
-                    resolve([
-                        rows ? rows.length !== 0 : false,
-                        rows
-                    ]);
+                    resolve(rows || []);
                 });
         });
     }
