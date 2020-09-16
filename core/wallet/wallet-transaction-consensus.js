@@ -596,10 +596,15 @@ export class WalletTransactionConsensus {
     doConsensusTransactionValidationWatchDog() {
         for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
             if ((Date.now() - consensusData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
-                console.log('[consensus][watchdog] killed by watch dog txid: ', transactionID);
-                consensusData.resolve();
-                delete this._consensusRoundState[transactionID];
-                this._transactionValidationRejected.add(transactionID);
+                console.log('[consensus][watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
+                const consensusRoundResponseData = consensusData.consensus_round_response[consensusData.consensus_round_count];
+                for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
+                    if (!consensusNodeResponseData.response) {
+                        delete consensusRoundResponseData[nodeID];
+                    }
+                }
+                consensusData.requestPeerValidation();
+                consensusData.timestamp = Date.now();
             }
         }
 
