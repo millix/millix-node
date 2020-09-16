@@ -194,7 +194,7 @@ class JobEngine {
         const localhostProcessors = _.filter(_.keys(this.configJobEngine.processor_list), processor => processor.startsWith('localhost'));
         _.each(localhostProcessors, processorName => {
             for (let i = 0; i < this.configJobEngine.processor_list[processorName].instances; i++) {
-                const processorTag = `job-engine-processor [${processorName}]`;
+                const processorTag = `job-engine-processor [${processorName}-${i}]`;
                 this.debug && console.log('[job-engine] starting processor', processorTag);
                 task.scheduleTask(processorTag, this._getTask.bind(this, processorTag, this.processors[processorName]), 0, false, true);
             }
