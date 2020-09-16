@@ -594,7 +594,7 @@ export class WalletTransactionConsensus {
     }
 
     doConsensusTransactionValidationWatchDog() {
-        for (let [transactionID, consensusData] in Object.entries(this._consensusRoundState)) {
+        for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
             if ((Date.now() - consensusData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
                 console.log('[consensus][watchdog] killed by watch dog txid: ', transactionID);
                 consensusData.resolve();
@@ -603,7 +603,7 @@ export class WalletTransactionConsensus {
             }
         }
 
-        for (let [nodeID, validationData] in Object.entries(this._transactionValidationState)) {
+        for (let [nodeID, validationData] of Object.entries(this._transactionValidationState)) {
             if ((Date.now() - validationData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
                 delete this._transactionValidationState[nodeID];
             }
