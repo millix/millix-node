@@ -2,9 +2,7 @@ PRAGMA foreign_keys= off;
 
 BEGIN TRANSACTION;
 
-UPDATE schema_information
-SET value = "5"
-WHERE key = "version";
+UPDATE schema_information SET value = "5" WHERE key = "version";
 
 CREATE INDEX IF NOT EXISTS idx_wallet_create_date ON wallet (create_date);
 CREATE INDEX IF NOT EXISTS idx_keychain_create_date ON keychain (create_date);
@@ -21,11 +19,12 @@ CREATE INDEX IF NOT EXISTS idx_address_version_create_date ON address_version (c
 
 CREATE TABLE object
 (
-    object_id   CHAR(20)     NOT NULL PRIMARY KEY,
-    object_name VARCHAR(255) NOT NULL UNIQUE,
-    status      SMALLINT     NOT NULL DEFAULT 1,
-    create_date INT          NOT NULL DEFAULT (strftime('%s', 'now'))
+    object_id   CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(object_id) <= 20),
+    object_name CHAR(255)    NOT NULL UNIQUE CHECK (length(object_name) <= 255),
+    status      SMALLINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
+CREATE INDEX idx_object_create_date ON object (create_date);
 
 
 INSERT INTO object (object_name, object_id)
@@ -88,8 +87,6 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('wallet_key_path', 'eGs9xpLg5IhnuNWTrDwp'),
        ('job_config_path', 'kixVXMz7RUxUKIgOn8Ii');
 
-UPDATE config
-SET config_id = (SELECT object_id FROM object WHERE object_name = config_name)
-WHERE config_name IN (SELECT object_name FROM object WHERE object_name = config_name);
+UPDATE config SET config_id = (SELECT object_id FROM object WHERE object_name = config_name) WHERE config_name IN (SELECT object_name FROM object WHERE object_name = config_name);
 
 COMMIT;

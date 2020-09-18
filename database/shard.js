@@ -2,6 +2,8 @@ import fs from 'fs';
 import config, {SHARD_ZERO_NAME} from '../core/config/config';
 import console from '../core/console';
 import {AuditPoint, AuditVerification, Schema, Transaction} from './repositories/repositories';
+import path from "path";
+import os from "os";
 
 export default class Shard {
     constructor(databaseFile, shardID) {
@@ -68,6 +70,11 @@ export default class Shard {
                     });
                 });
             };
+
+            let shardFolder  = path.dirname(this.databaseFile);
+            if (!fs.existsSync(shardFolder)) {
+                fs.mkdirSync(shardFolder);
+            }
 
             let doInitialize = false;
             if (!fs.existsSync(this.databaseFile)) {

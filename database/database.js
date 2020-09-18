@@ -1,4 +1,5 @@
 import config, {SHARD_ZERO_NAME} from '../core/config/config';
+import genesisConfig from '../core/genesis/genesis-config';
 import fs from 'fs';
 import mutex from '../core/mutex';
 import cryptoRandomString from 'crypto-random-string';
@@ -264,6 +265,14 @@ export class Database {
                       });
     }
 
+    _registerDefaultShards() {
+        const shardRepository = new ShardRepository(this.databaseMillix);
+        return new Promise(resolve => {
+            shardRepository.addShard(genesisConfig.genesis_shard_id, 'genesis', 'protocol', genesisConfig.genesis_shard_id + '.sqlite', path.join(this.databaseRootFolder, 'shard/'), true, 'mzPPDwP9BJvHXyvdoBSJJsCQViRTtPbcqA', 1579648257, '66n8CxBweCDRZWdvrg9caX7ckCh3Bgz5eDsJQtKYDbgVSAnRZMHCp41dnD4P1gvc6fjocFRhxDDWwtNh8JtpDpbE')
+                           .then(resolve).catch(resolve);
+        });
+    }
+
     _initializeShards() {
         const shardRepository      = new ShardRepository(this.databaseMillix);
         this.repositories['shard'] = shardRepository;
@@ -504,6 +513,7 @@ export class Database {
     initialize() {
         if (config.DATABASE_ENGINE === 'sqlite') {
             return this._initializeMillixSqlite3()
+                       .then(() => this._registerDefaultShards())
                        .then(() => this._initializeJobEngineSqlite3())
                        .then(() => this._migrateTables())
                        .then(() => this._initializeShards())
