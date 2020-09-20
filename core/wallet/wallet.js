@@ -1119,8 +1119,10 @@ class Wallet {
                 }, (err, transactions) => {
                     // get peers' current web socket
                     let ws = network.getWebSocketByID(connectionID);
-                    peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, transactions, ws);
-                    console.log(`[wallet] sending transactions spending from output tx: ${data.transaction_id}:${data.output_position} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                    if (ws) {
+                        peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, transactions, ws);
+                        console.log(`[wallet] sending transactions spending from output tx: ${data.transaction_id}:${data.output_position} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                    }
                     unlock();
                 });
             }).catch(() => unlock());

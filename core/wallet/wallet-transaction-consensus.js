@@ -77,7 +77,7 @@ export class WalletTransactionConsensus {
         });
     }
 
-    _getValidInputOnDoubleSpend(inputs, nodeID) {
+    _getValidInputOnDoubleSpend(doubleSpendTransactionID, inputs, nodeID) {
         return new Promise(resolve => {
             let responseType = 'transaction_valid';
             let responseData = null;
@@ -95,7 +95,8 @@ export class WalletTransactionConsensus {
                     }
                     else if (!responseData || transaction.transaction_date < responseData.transaction_date
                              || ((transaction.transaction_date < responseData.transaction_date) && (transaction.transaction_id < responseData.transaction_id))) {
-                        this._validateTransaction(transaction.transaction_id, nodeID, 0, new Set())
+
+                        this._validateTransaction(transaction.transaction_id, nodeID, 0, new Set([doubleSpendTransactionID]))
                             .then(() => {
                                 responseData = transaction;
                                 callback();
@@ -193,6 +194,9 @@ export class WalletTransactionConsensus {
                     if (!transactionVisitedSet.has(input.output_transaction_id)) {
                         sourceTransactions.add(input.output_transaction_id);
                     }
+                    else {
+                        return callback();
+                    }
 
                     database.applyShards((shardID) => database.getRepository('transaction', shardID).getInputDoubleSpend(input, transaction.transaction_id)).then(data => data || [])
                             .then(doubleSpendTransactions => {
@@ -202,7 +206,7 @@ export class WalletTransactionConsensus {
                                         shard_id      : transaction.shard_id,
                                         ...input
                                     });
-                                    this._getValidInputOnDoubleSpend(doubleSpendTransactions, nodeID)
+                                    this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID)
                                         .then(({response_type: responseType, data}) => {
 
                                             if (responseType === 'transaction_valid' && data.transaction_id !== transaction.transaction_id) {
