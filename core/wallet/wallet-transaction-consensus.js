@@ -272,7 +272,7 @@ export class WalletTransactionConsensus {
                                 }
                             });
                 }, (err, valid) => {
-                    if (!valid) { //not valid
+                    if (err && !valid) { //not valid
                         return reject(err);
                     }
 
@@ -305,7 +305,7 @@ export class WalletTransactionConsensus {
                             .then(() => callback(null, true))
                             .catch((err) => callback(err, false));
                     }, (err, valid) => {
-                        if (!valid) {
+                        if (err && !valid) {
                             return reject(err);
                         }
                         resolve();
