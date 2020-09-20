@@ -42,14 +42,18 @@ export default class Transaction {
 
     getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
+            // only refresh outputs after 30s (db insert)
+            const insertDate = Math.floor(Date.now() / 1000) - 30;
+
             let unstableDateStart = ntp.now();
             unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
             unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
             this.database.all('SELECT DISTINCT`transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? AND `transaction`.transaction_date > ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date DESC LIMIT 100', [
+                              'WHERE transaction_output.address_key_identifier = ? AND `transaction`.transaction_date > ? ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND `transaction`.create_date < ? ORDER BY transaction_date DESC LIMIT 100', [
                     addressKeyIdentifier,
-                    unstableDateStart
+                    unstableDateStart,
+                    insertDate
                 ].concat(excludeTransactionIDList),
                 (err, rows) => {
                     if (err) {
@@ -581,19 +585,21 @@ export default class Transaction {
 
     updateTransactionInput(transactionID, inputPosition, doubleSpendDate) {
         return new Promise((resolve, reject) => {
-            let sql = 'UPDATE transaction_input SET';
+            let sql        = 'UPDATE transaction_input SET';
+            let parameters = [];
 
             if (doubleSpendDate === null) {
-                sql += ' double_spend_date = NULL, is_double_spend = 0';
+                sql += ' double_spend_date = ?, is_double_spend = ?';
+                parameters.push(undefined, 0);
             }
             else if (doubleSpendDate) {
-                sql += ' double_spend_date = ' + Math.floor(doubleSpendDate.getTime() / 1000) + ', is_double_spend = 1';
+                sql += ' double_spend_date = ?, is_double_spend = ?';
+                parameters.push(Math.floor(doubleSpendDate.getTime() / 1000), 1);
             }
 
-            this.database.run(sql + ' WHERE transaction_id = ? and input_position = ?', [
-                transactionID,
-                inputPosition
-            ], (err) => {
+            parameters.push(transactionID, inputPosition);
+
+            this.database.run(sql + ' WHERE transaction_id = ? and input_position = ?', parameters, (err) => {
                 if (err) {
                     return reject(err);
                 }
@@ -959,11 +965,15 @@ export default class Transaction {
 
     findUnstableTransaction(excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
+            const insertDate      = Math.floor(Date.now() / 1000) - 30;
             let unstableDateStart = ntp.now();
             unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
             unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
-            this.database.all('SELECT DISTINCT`transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND +`transaction`.is_stable = 0 ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 1',
-                [unstableDateStart].concat(excludeTransactionIDList), (err, rows) => {
+            this.database.all('SELECT DISTINCT`transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND +`transaction`.is_stable = 0 ' + (excludeTransactionIDList ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 1',
+                [
+                    unstableDateStart,
+                    insertDate
+                ].concat(excludeTransactionIDList), (err, rows) => {
                     if (err) {
                         console.log(err);
                         return reject(err);
@@ -1084,13 +1094,17 @@ export default class Transaction {
                                                 .then(() => callbackOutputs());
                                     }, () => {
                                         async.eachSeries(transaction.transaction_input_list, (input, callbackInputs) => {
-                                            if (input.output_transaction_id === doubleSpendTransaction) {
-                                                database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateTransactionInput(transaction.transaction_id, input.input_position, now))
-                                                        .then(() => callbackInputs(true));
-                                            }
-                                            else {
-                                                callbackInputs();
-                                            }
+                                            database.applyShards((shardID) => database.getRepository('transaction', shardID).listOutputSpendTransaction(input.output_transaction_id, input.output_position))
+                                                    .then(transactions => {
+                                                        let spendDate = _.min(_.map(_.filter(transactions, t => t.transaction_id !== transaction.transaction_id), t => t.transaction_date));
+                                                        return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, !spendDate ? null : spendDate));
+                                                    })
+                                                    .then(() => {
+                                                        if (input.output_transaction_id === doubleSpendTransaction) {
+                                                            return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateTransactionInput(transaction.transaction_id, input.input_position, now));
+                                                        }
+                                                    })
+                                                    .then(() => callbackInputs());
                                         }, () => resolve());
                                     });
                                 });
@@ -1157,6 +1171,22 @@ export default class Transaction {
                         return reject(err);
                     }
                     resolve(rows || []);
+                });
+        });
+    }
+
+    listOutputSpendTransaction(transactionID, outputPosition) {
+        return new Promise((resolve, reject) => {
+            this.database.all('SELECT * FROM `transaction` INNER JOIN transaction_input ON `transaction`.transaction_id = transaction_input.transaction_id WHERE output_transaction_id = ? AND output_position = ?',
+                [
+                    transactionID,
+                    outputPosition
+                ], (err, rows) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    rows.forEach(row => row.transaction_date = new Date(row.transaction_date * 1000));
+                    resolve(rows);
                 });
         });
     }
@@ -1765,7 +1795,7 @@ export default class Transaction {
 
     getUnspentTransactionOutputsOlderThanOrExpired(addressKeyIdentifier, time) {
         const createDate = Math.floor(time.valueOf() / 1000);
-        // only refresh outputs after 1 min (db insert)
+        // only refresh outputs after 30s (db insert)
         const insertDate = Math.floor(Date.now() / 1000) - 60;
 
         return new Promise((resolve, reject) => {
