@@ -1491,6 +1491,34 @@ export default class Transaction {
         });
     }
 
+    getTransactionExtended(transactionID) {
+        return new Promise((resolve, reject) => {
+            this.database.all(
+                'SELECT `transaction`.*, TS.address_base, TS.signature, ' +
+                'TIN.input_position, TIN.output_transaction_id, TIN.output_shard_id, TIN.output_position, TIN.output_transaction_date, TIN.double_spend_date AS input_double_spend_date, TIN.is_double_spend AS input_is_double_spend, TIN.address AS input_address, TIN.address_key_identifier as input_address_key_identifier, ' +
+                'TOUT.output_position, TOUT.address AS output_address, TOUT.address_key_identifier AS output_address_key_identifier, TOUT.amount, TOUT.stable_date AS output_stable_date, TOUT.is_stable AS output_is_stable, TOUT.spent_date, TOUT.is_spent, TOUT.double_spend_date AS output_double_spend_date, TOUT.is_double_spend AS output_is_double_spend, TOUT.status AS output_status, ' +
+                'TPP.transaction_id_parent, TPC.transaction_id_child, ' +
+                'TA.audit_point_id ' +
+                'FROM `transaction` INNER JOIN transaction_signature AS TS ON `transaction`.transaction_id = TS.transaction_id ' +
+                'INNER JOIN transaction_input AS TIN ON `transaction`.transaction_id = TIN.transaction_id ' +
+                'INNER JOIN transaction_output AS TOUT ON `transaction`.transaction_id = TOUT.transaction_id ' +
+                'LEFT JOIN transaction_parent AS TPP ON `transaction`.transaction_id = TPP.transaction_id_child ' +
+                'LEFT JOIN transaction_parent AS TPC ON `transaction`.transaction_id = TPC.transaction_id_parent ' +
+                'LEFT JOIN audit_point AS TA ON `transaction`.transaction_id = TA.transaction_id ' +
+                'WHERE `transaction`.transaction_id = ?',
+                [transactionID], (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    rows.forEach(row => row.transaction_date = new Date(row.transaction_date * 1000));
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
     listTransactions(where, orderBy, limit, shardID) {
         return new Promise((resolve, reject) => {
             let {sql, parameters} = Database.buildQuery('SELECT * FROM `transaction`', where, orderBy, limit, shardID);
