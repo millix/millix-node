@@ -244,6 +244,24 @@
       "enable": true
     },
     {
+      "id": "wDyC195wgjPjM2Ut",
+      "name": "get_transaction",
+      "description": "returns a single record from table transaction as indicated by transaction_id in the indicated shard",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "IBHgAmydZbmTUAe8",
+      "name": "get_transaction_extended",
+      "description": "returns a single record with all information about a transaction as indicated by transaction_id in the indicated shard",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "KN2ZttYDEKzCulEZ",
       "name": "get_transaction_output",
       "description": "returns a single record from table transaction_output as indicated by transaction_id and output_position in the indicated shard",
