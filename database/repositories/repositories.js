@@ -10,9 +10,10 @@ import Schema from './schema';
 import Job from './job';
 import API from './api';
 import Shard from './shard';
+import Normalization from './normalization';
 
 export {
     Node, Keychain, Config, AuditPoint, Wallet, Address,
     AuditVerification, Transaction, Schema, Job, API,
-    Shard
+    Shard, Normalization
 };

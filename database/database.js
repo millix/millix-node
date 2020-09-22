@@ -8,7 +8,7 @@ import wallet from '../core/wallet/wallet';
 import console from '../core/console';
 import path from 'path';
 import async from 'async';
-import {Address, API, Config, Job, Keychain, Node, Schema, Shard as ShardRepository, Wallet} from './repositories/repositories';
+import {Address, API, Config, Job, Keychain, Node, Schema, Shard as ShardRepository, Wallet, Normalization} from './repositories/repositories';
 import Shard from './shard';
 import _ from 'lodash';
 
@@ -293,13 +293,14 @@ export class Database {
     }
 
     _initializeTables() {
-        this.repositories['node']     = new Node(this.databaseMillix);
-        this.repositories['keychain'] = new Keychain(this.databaseMillix);
-        this.repositories['config']   = new Config(this.databaseMillix);
-        this.repositories['wallet']   = new Wallet(this.databaseMillix);
-        this.repositories['address']  = new Address(this.databaseMillix);
-        this.repositories['job']      = new Job(this.databaseJobEngine);
-        this.repositories['api']      = new API(this.databaseMillix);
+        this.repositories['normalization'] = new Normalization(this.databaseMillix);
+        this.repositories['node']          = new Node(this.databaseMillix);
+        this.repositories['keychain']      = new Keychain(this.databaseMillix);
+        this.repositories['config']        = new Config(this.databaseMillix);
+        this.repositories['wallet']        = new Wallet(this.databaseMillix);
+        this.repositories['address']       = new Address(this.databaseMillix);
+        this.repositories['job']           = new Job(this.databaseJobEngine);
+        this.repositories['api']           = new API(this.databaseMillix);
 
         // initialize shard 0 (root)
         const dbShard            = new Shard();
@@ -309,12 +310,15 @@ export class Database {
         this.shards[SHARD_ZERO_NAME] = dbShard;
         this.knownShards.add(SHARD_ZERO_NAME);
 
+        this.repositories['address'].setNormalizationRepository(this.repositories['normalization']);
+        this.repositories['keychain'].setNormalizationRepository(this.repositories['normalization']);
         _.each(_.keys(this.shards), shard => {
             const transactionRepository = this.shards[shard].getRepository('transaction');
             transactionRepository.setAddressRepository(this.repositories['address']);
         });
 
-        return this.repositories['address'].loadAddressVersion();
+        return this.repositories['address'].loadAddressVersion()
+                                           .then(() => this.repositories['normalization'].load());
     }
 
     getShard(shardID) {

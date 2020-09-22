@@ -828,9 +828,9 @@ export default class Transaction {
                     let authors = [];
                     async.eachSeries(rows, (signature, callback) => {
                         this.addressRepository
-                            .getAddressBaseAttribute(signature.address_base)
+                            .getAddressBaseAttribute(signature.address_base, 'key_public')
                             .then(addressAttribute => {
-                                authors.push({...addressAttribute, ...signature});
+                                authors.push({address_attribute: {key_public: addressAttribute}, ...signature});
                                 callback();
                             });
                     }, () => resolve(authors));

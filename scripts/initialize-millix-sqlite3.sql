@@ -20,7 +20,6 @@ CREATE TABLE keychain
 (
     address_base      CHAR(34) NOT NULL PRIMARY KEY CHECK (length(address_base) <= 34),
     address_position  INT      NOT NULL CHECK (length(address_position) <= 10 AND TYPEOF(address_position) = 'integer'),
-    address_attribute TEXT     NOT NULL,
     wallet_id         CHAR(44) NOT NULL CHECK (length(wallet_id) <= 44),
     is_change         TINYINT  NOT NULL CHECK (length(is_change) <= 3 AND TYPEOF(is_change) = 'integer'),
     status            TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
@@ -52,7 +51,6 @@ CREATE TABLE address
     address_base           CHAR(34) NOT NULL CHECK (length(address_base) <= 34),
     address_version        CHAR(4)  NOT NULL CHECK (length(address_version) <= 4),
     address_key_identifier CHAR(34) NOT NULL CHECK (length(address_key_identifier) <= 34),
-    address_attribute      TEXT,
     status                 SMALLINT NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     create_date            INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (address_base, address_version, address_key_identifier)
@@ -60,6 +58,28 @@ CREATE TABLE address
 CREATE INDEX idx_address_address_base_address_key_identifier ON address (address, address_key_identifier);
 CREATE INDEX idx_address_address_key_identifier ON address (address_key_identifier);
 CREATE INDEX idx_address_create_date ON address (create_date);
+
+CREATE TABLE address_attribute
+(
+    address_base               CHAR(34) NOT NULL CHECK (length(address_base) <= 34),
+    address_attribute_type_id  CHAR(20) NOT NULL CHECK (length(address_attribute_type_id) <= 20),
+    value                      TEXT     NOT NULL,
+    status                     TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date                INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    PRIMARY KEY (address_base, address_attribute_type_id),
+    FOREIGN KEY (address_base) REFERENCES address (address_base),
+    FOREIGN KEY (address_attribute_type_id) REFERENCES address_attribute_type (address_attribute_type_id)
+);
+CREATE INDEX idx_address_attribute_create_date ON address_attribute (create_date);
+
+CREATE TABLE address_attribute_type
+(
+    address_attribute_type_id  CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(address_attribute_type_id) <= 20),
+    attribute_type             CHAR(255)    NOT NULL UNIQUE CHECK (length(attribute_type) <= 255),
+    status                     SMALLINT     NOT NULL DEFAULT 0 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date                INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+);
+CREATE INDEX idx_address_attribute_type_create_date ON address_attribute_type (create_date);
 
 CREATE TABLE `transaction`
 (
@@ -347,14 +367,14 @@ CREATE TABLE shard_attribute
 );
 CREATE INDEX idx_shard_attribute_create_date ON shard_attribute (create_date);
 
-CREATE TABLE object
+CREATE TABLE normalization
 (
-    object_id   CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(object_id) <= 20),
-    object_name CHAR(255)    NOT NULL UNIQUE CHECK (length(object_name) <= 255),
-    status      SMALLINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    normalization_id   CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(normalization_id) <= 20),
+    normalization_name CHAR(255)    NOT NULL UNIQUE CHECK (length(normalization_name) <= 255),
+    status             SMALLINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date        INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
-CREATE INDEX idx_object_create_date ON object (create_date);
+CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
 INSERT INTO schema_information (key, value) VALUES ("version", "8");
 
@@ -365,7 +385,7 @@ VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
        ("la0l", 0, 1, "(?<address>.*)(?<version>la0l)(?<identifier>.*)"),
        ("lb0l", 0, 0, "(?<address>.*)(?<version>lb0l)(?<identifier>.*)");
 
-INSERT INTO object (object_name, object_id)
+INSERT INTO normalization (normalization_name, normalization_id)
 VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('mode_test_network', 'mHUyg4ZLca4mt7umomEW'),
        ('node_port', 'A4FpnTLmqGSH7nvU9j4x'),
@@ -429,4 +449,7 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('peer_rotation_more_than_most', 'hVEmlU6bL4l3DNeOhdM3'),
        ('peer_rotation_more_than_all', 'wpwt2V5vrT28ngz9u3J3'),
        ('peer_rotation_config', 'H2ODFHCxOl1FErIqCDqG'),
-       ('shard_zero_name', 'rMSuKEh42OZaeVEgzG62');
+       ('shard_zero_name', 'rMSuKEh42OZaeVEgzG62'),
+       ('key_public', '9MgxVxyXsM2EozHVUZgw');
+
+INSERT INTO address_attribute_type (address_attribute_type_id, attribute_type) VALUES ('9MgxVxyXsM2EozHVUZgw', 'key_public');
