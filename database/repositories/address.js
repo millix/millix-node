@@ -146,7 +146,8 @@ export default class Address {
                     addressBase,
                     addressVersion,
                     addressKeyIdentifier
-                ], !addressAttribute ? () => resolve() : null);
+                ], !addressAttribute ? () => resolve() : () => {
+                });
 
                 if (!addressAttribute) {
                     return;
@@ -160,7 +161,8 @@ export default class Address {
                         addressBase,
                         attributeTypeID,
                         attributeValue
-                    ], (i === attributeEntries.length - 1) ? () => resolve() : null);
+                    ], (i === attributeEntries.length - 1) ? () => resolve() : () => {
+                    });
                 }
             });
         });
