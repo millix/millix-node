@@ -183,7 +183,7 @@ export default class Address {
                     if (err) {
                         return reject(err);
                     }
-                    resolve(row);
+                    resolve(row ? row.value : null);
                 });
         });
     }
