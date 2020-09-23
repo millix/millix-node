@@ -59,7 +59,8 @@ export default class Keychain {
                             address_position      : addressPosition,
                             address_attribute     : addressAttribute
                         });
-                    } : null;
+                    } : () => {
+                    };
                     this.database.run('INSERT INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?,?,?)', [
                         addressBase,
                         attributeTypeID,
