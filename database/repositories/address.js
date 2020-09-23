@@ -1,12 +1,18 @@
 import _ from 'lodash';
 import config from '../../core/config/config';
 import {Database} from '../database';
+import console from '../../core/console';
 
 export default class Address {
     constructor(database) {
-        this.database            = database;
-        this.addressVersionList  = [];
-        this.supportedVersionSet = new Set();
+        this.database                = database;
+        this.addressVersionList      = [];
+        this.supportedVersionSet     = new Set();
+        this.normalizationRepository = null;
+    }
+
+    setNormalizationRepository(repository) {
+        this.normalizationRepository = repository;
     }
 
     loadAddressVersion() {
@@ -133,51 +139,49 @@ export default class Address {
     }
 
     addAddress(address, addressBase, addressVersion, addressKeyIdentifier, addressAttribute) {
-        addressAttribute = JSON.stringify(addressAttribute);
         return new Promise((resolve) => {
-            this.database.run('INSERT INTO address (address, address_base, address_version, address_key_identifier, address_attribute) VALUES (?,?,?,?,?)', [
-                address,
-                addressBase,
-                addressVersion,
-                addressKeyIdentifier,
-                addressAttribute
-            ], (err) => {
-                if (err && addressAttribute) {
-                    this.database.run('UPDATE address SET address_attribute = ? WHERE address = ?', [
-                        addressAttribute,
-                        address
-                    ], () => {
-                        resolve();
-                    });
+            this.database.serialize(() => {
+                this.database.run('INSERT INTO address (address, address_base, address_version, address_key_identifier) VALUES (?,?,?,?)', [
+                    address,
+                    addressBase,
+                    addressVersion,
+                    addressKeyIdentifier
+                ], !addressAttribute ? () => resolve() : null);
+
+                if (!addressAttribute) {
                     return;
                 }
-                resolve();
+
+                const attributeEntries = Object.entries(addressAttribute);
+                for (let i = 0; i < attributeEntries.length; i++) {
+                    let [attributeName, attributeValue] = attributeEntries[i];
+                    let attributeTypeID                 = this.normalizationRepository.get(attributeName);
+                    this.database.run('INSERT INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?,?,?)', [
+                        addressBase,
+                        attributeTypeID,
+                        attributeValue
+                    ], (i === attributeEntries.length - 1) ? () => resolve() : null);
+                }
             });
         });
     }
 
-    getAddressBaseAttribute(addressBase) {
+    getAddressBaseAttribute(addressBase, attributeName) {
+        const attributeTypeID = this.normalizationRepository.get(attributeName);
+        if (!attributeTypeID) {
+            return Promise.reject('[address] attribute not found');
+        }
+
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT address_attribute FROM address WHERE address_base = ?', [addressBase],
+            this.database.get('SELECT value FROM address_attribute WHERE address_base = ? AND address_attribute_type_id = ?', [
+                    addressBase,
+                    attributeTypeID
+                ],
                 (err, row) => {
                     if (err) {
                         return reject(err);
                     }
-                    row['address_attribute'] = JSON.parse(row.address_attribute);
                     resolve(row);
-                });
-        });
-    }
-
-    getAddressesAttribute(addresses) {
-        return new Promise((resolve, reject) => {
-            this.database.all('SELECT * FROM address WHERE address in ( ' + addresses.map(() => '?').join(',') + ' )', addresses,
-                (err, rows) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    _.each(rows, row => row['address_attribute'] = JSON.parse(row.address_attribute));
-                    resolve(rows);
                 });
         });
     }
@@ -200,7 +204,9 @@ export default class Address {
     listAddress(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
 
-            let {sql, parameters} = Database.buildQuery('SELECT * FROM address', where, orderBy, limit);
+            let {sql, parameters} = Database.buildQuery('SELECT a.*, atp.attribute_type, at.value as attribute_value FROM address AS a  \
+                LEFT JOIN address_attribute AS at ON at.address_base = a.address_base \
+                LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id', where, orderBy, limit);
             this.database.all(
                 sql,
                 parameters,
@@ -209,8 +215,22 @@ export default class Address {
                         console.log(err);
                         return reject(err);
                     }
-                    _.map(rows, row => row.address_attribute = JSON.parse(row.address_attribute));
-                    resolve(rows);
+                    let addresses = {};
+                    rows.forEach(row => {
+                        let address = addresses[row.address];
+                        if (!address) {
+                            address                = _.pick(row, 'address', 'address_base', 'address_version', 'address_key_identifier', 'status', 'create_date');
+                            addresses[row.address] = address;
+                        }
+
+                        if (row.attribute_type) {
+                            if (!address.address_attribute) {
+                                address['address_attribute'] = {};
+                            }
+                            address['address_attribute'][row.attribute_type] = row.attribute_value;
+                        }
+                    });
+                    resolve(_.values(addresses));
                 }
             );
         });

@@ -1,4 +1,4 @@
-import {Database} from '../database';
+import database, {Database} from '../database';
 
 export default class Config {
     constructor(database) {
@@ -17,9 +17,14 @@ export default class Config {
     }
 
     addConfig(name, value, type) {
+        let id = database.getRepository('normalization').get(name);
+        if (!id) {
+            id = Database.generateID(20);
+        }
+
         return new Promise((resolve, reject) => {
             this.database.run('INSERT INTO config (config_id, config_name, value, type) VALUES (?,?,?,?)', [
-                Database.generateID(20),
+                id,
                 name.toLowerCase(),
                 value,
                 type

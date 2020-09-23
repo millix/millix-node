@@ -6,9 +6,6 @@ import peerRotation from '../../net/peer-rotation';
 import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
-import database from '../../database/database';
-import _ from 'lodash';
-import ntp from '../ntp';
 
 
 class Service {

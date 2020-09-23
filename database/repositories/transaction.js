@@ -834,9 +834,9 @@ export default class Transaction {
                     let authors = [];
                     async.eachSeries(rows, (signature, callback) => {
                         this.addressRepository
-                            .getAddressBaseAttribute(signature.address_base)
+                            .getAddressBaseAttribute(signature.address_base, 'key_public')
                             .then(addressAttribute => {
-                                authors.push({...addressAttribute, ...signature});
+                                authors.push({address_attribute: {key_public: addressAttribute}, ...signature});
                                 callback();
                             });
                     }, () => resolve(authors));
@@ -1252,7 +1252,7 @@ export default class Transaction {
 
     setTransactionAsStable(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE `transaction` SET stable_date=strftime(\'%s\',\'now\'), is_stable = 1 WHERE transaction_id = ?',
+            this.database.run('UPDATE `transaction` SET stable_date=CAST(strftime(\'%s\',\'now\') AS INTEGER), is_stable = 1 WHERE transaction_id = ?',
                 [transactionID], (err) => {
                     if (err) {
                         console.log(err);
@@ -1781,7 +1781,7 @@ export default class Transaction {
                                 err && console.log('[Database] Failed timeout signature. [message] ', err);
                                 this.database.run('DELETE FROM audit_verification WHERE transaction_id = ?', transactionID, (err) => {
                                     err && console.log('[Database] Failed timeout audit verification. [message] ', err);
-                                    this.database.run('UPDATE `transaction` SET timeout_date=strftime(\'%s\',\'now\'), is_timeout = 1, stable_date=strftime(\'%s\',\'now\'), is_stable = 1 WHERE transaction_id = ?', transactionID, (err) => {
+                                    this.database.run('UPDATE `transaction` SET timeout_date=CAST(strftime(\'%s\',\'now\') AS INTEGER), is_timeout = 1, stable_date=CAST(strftime(\'%s\',\'now\') AS INTEGER), is_stable = 1 WHERE transaction_id = ?', transactionID, (err) => {
                                         err && console.log('[Database] Failed timeout transaction. [message] ', err);
                                         this.database.run('COMMIT', (err) => {
                                             err && console.log('[Database] Failed commiting transaction. [message] ', err);
