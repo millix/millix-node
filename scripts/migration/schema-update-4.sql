@@ -11,7 +11,7 @@ CREATE TABLE shard
     shard_type     CHAR(255)     NOT NULL CHECK (length(shard_type) <= 255),
     schema_name    CHAR(255)     NOT NULL CHECK (length(schema_name) <= 255),
     schema_path    CHAR(1024)    NOT NULL CHECK (length(schema_path) <= 1024),
-    is_required    TINYINT       NOT NULL DEFAULT 1 CHECK (length(is_required) <= 3 AND TYPEOF(is_required) = 'integer'),
+    is_required    TINYINT       NOT NULL DEFAULT 1 CHECK (is_required = 0 OR is_required = 1),
     record_count   INT           NOT NULL DEFAULT 0 CHECK (length(record_count) <= 3 AND TYPEOF(record_count) = 'integer'),
     disk_size      INT           NOT NULL DEFAULT 0 CHECK (length(disk_size) <= 3 AND TYPEOF(disk_size) = 'integer'),
     node_id_origin CHAR(34)      NOT NULL CHECK (length(node_id_origin) <= 34),

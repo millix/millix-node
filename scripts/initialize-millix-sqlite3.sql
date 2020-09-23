@@ -21,7 +21,7 @@ CREATE TABLE keychain
     address_base      CHAR(34) NOT NULL PRIMARY KEY CHECK (length(address_base) <= 34),
     address_position  INT      NOT NULL CHECK (length(address_position) <= 10 AND TYPEOF(address_position) = 'integer'),
     wallet_id         CHAR(44) NOT NULL CHECK (length(wallet_id) <= 44),
-    is_change         TINYINT  NOT NULL CHECK (length(is_change) <= 3 AND TYPEOF(is_change) = 'integer'),
+    is_change         TINYINT  NOT NULL CHECK (is_change = 0 OR is_change=1),
     status            TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     create_date       INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     UNIQUE (wallet_id, is_change, address_position),
@@ -90,11 +90,11 @@ CREATE TABLE `transaction`
     version          CHAR(4)     NOT NULL DEFAULT '0a0' CHECK (length(version) <= 4),
     payload_hash     CHAR(50)    NOT NULL CHECK (length(payload_hash) <= 50),
     stable_date      INT         NULL CHECK (length(stable_date) <= 10 AND (TYPEOF(stable_date) IN ('integer', 'null'))),
-    is_stable        TINYINT     NOT NULL DEFAULT 0 CHECK (length(is_stable) <= 3 AND TYPEOF(is_stable) = 'integer'),
+    is_stable        TINYINT     NOT NULL DEFAULT 0 CHECK (is_stable = 0 OR is_stable = 1),
     parent_date      INT         NULL CHECK(length(parent_date) <= 10 AND TYPEOF(parent_date) IN ('integer', 'null')),
-    is_parent        TINYINT     NOT NULL DEFAULT 0 CHECK (length(is_parent) <= 3 AND TYPEOF(is_parent) = 'integer'),
+    is_parent        TINYINT     NOT NULL DEFAULT 0 CHECK (is_parent = 0 OR is_parent = 1),
     timeout_date     INT         NULL CHECK(length(timeout_date) <= 10 AND TYPEOF(timeout_date) IN ('integer', 'null')),
-    is_timeout       TINYINT     NOT NULL DEFAULT 0 CHECK (length(is_timeout) <= 3 AND TYPEOF(is_timeout) = 'integer'),
+    is_timeout       TINYINT     NOT NULL DEFAULT 0 CHECK (is_timeout = 0 OR is_timeout = 1),
     status           TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     create_date      INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
@@ -144,7 +144,7 @@ CREATE TABLE transaction_input
     output_shard_id         CHAR(50) NULL CHECK (length(output_shard_id) <= 50),
     output_transaction_date INT      NULL CHECK(length(output_transaction_date) <= 10 AND TYPEOF(output_transaction_date) IN ('integer', 'null')),
     double_spend_date       INT      NULL CHECK(length(double_spend_date) <= 10 AND TYPEOF(double_spend_date) IN ('integer', 'null')),
-    is_double_spend         TINYINT  NOT NULL DEFAULT 0 CHECK (length(is_double_spend) <= 3 AND TYPEOF(is_double_spend) = 'integer'),
+    is_double_spend         TINYINT  NOT NULL DEFAULT 0 CHECK (is_double_spend = 0 OR is_double_spend = 1),
     address                 CHAR(72) NULL CHECK (length(address) <= 72),
     address_key_identifier  CHAR(34) NULL CHECK (length(address_key_identifier) <= 34),
     status                  TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
@@ -168,11 +168,11 @@ CREATE TABLE transaction_output
     address_key_identifier CHAR(34) NOT NULL CHECK (length(address_key_identifier) <= 34),
     amount                 BIGINT   NOT NULL CHECK (TYPEOF(amount) IN ('integer','real')),
     stable_date            INT      NULL CHECK(length(stable_date) <= 10 AND TYPEOF(stable_date) IN ('integer', 'null')), -- NULL if not stable yet
-    is_stable              TINYINT  NOT NULL DEFAULT 0 CHECK (length(is_stable) <= 3 AND TYPEOF(is_stable) = 'integer'),
+    is_stable              TINYINT  NOT NULL DEFAULT 0 CHECK (is_stable = 0 OR is_stable = 1),
     spent_date             INT      NULL CHECK(length(spent_date) <= 10 AND TYPEOF(spent_date) IN ('integer', 'null')),
-    is_spent               TINYINT  NOT NULL DEFAULT 0 CHECK (length(is_spent) <= 3 AND TYPEOF(is_spent) = 'integer'),
+    is_spent               TINYINT  NOT NULL DEFAULT 0 CHECK (is_spent = 0 OR is_spent = 1),
     double_spend_date      INT      NULL CHECK(length(double_spend_date) <= 10 AND TYPEOF(double_spend_date) IN ('integer', 'null')), -- NOT NULL if double spend
-    is_double_spend        TINYINT  NOT NULL DEFAULT 0 CHECK (length(is_double_spend) <= 3 AND TYPEOF(is_double_spend) = 'integer'),
+    is_double_spend        TINYINT  NOT NULL DEFAULT 0 CHECK (is_double_spend = 0 OR is_double_spend = 1),
     status                 TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     create_date            INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (transaction_id, output_position),
@@ -218,7 +218,7 @@ CREATE TABLE audit_verification
     attempt_count      INT      NOT NULL DEFAULT 0 CHECK (length(attempt_count) <= 10 AND TYPEOF(attempt_count) = 'integer'),
     verification_count INT      NOT NULL DEFAULT 0 CHECK (length(verification_count) <= 10 AND TYPEOF(verification_count) = 'integer'),
     verified_date      INT      NULL CHECK(length(verified_date) <= 10 AND TYPEOF(verified_date) IN ('integer', 'null')),
-    is_verified        TINYINT  NOT NULL DEFAULT 0 CHECK (length(is_verified) <= 3 AND TYPEOF(is_verified) = 'integer'),
+    is_verified        TINYINT  NOT NULL DEFAULT 0 CHECK (is_verified = 0 OR is_verified = 1),
     status             TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     create_date        INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
@@ -303,9 +303,9 @@ CREATE INDEX idx_schema_information_create_date ON schema_information (create_da
 CREATE TABLE address_version
 (
     version         CHAR(4)      NOT NULL UNIQUE CHECK (length(version) <= 4),
-    is_main_network TINYINT      NOT NULL DEFAULT 1 CHECK (length(is_main_network) <= 3 AND TYPEOF(is_main_network) = 'integer'),
+    is_main_network TINYINT      NOT NULL DEFAULT 1 CHECK (is_main_network = 0 OR is_main_network = 1),
     regex_pattern   TEXT         NOT NULL,
-    is_default      TINYINT      NOT NULL DEFAULT 0 CHECK (length(is_default) <= 3 AND TYPEOF(is_default) = 'integer'),
+    is_default      TINYINT      NOT NULL DEFAULT 0 CHECK (is_default = 0 OR is_default = 1),
     status          TINYINT      NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     create_date     INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
@@ -333,7 +333,7 @@ CREATE TABLE shard
     shard_type     CHAR(255)     NOT NULL CHECK (length(shard_type) <= 255),
     schema_name    CHAR(255)     NOT NULL CHECK (length(schema_name) <= 255),
     schema_path    CHAR(1024)    NOT NULL CHECK (length(schema_path) <= 1024),
-    is_required    TINYINT       NOT NULL DEFAULT 1 CHECK (length(is_required) <= 3 AND TYPEOF(is_required) = 'integer'),
+    is_required    TINYINT       NOT NULL DEFAULT 1 CHECK (is_required = 0 OR is_required = 1),
     record_count   INT           NOT NULL DEFAULT 0 CHECK (length(record_count) <= 3 AND TYPEOF(record_count) = 'integer'),
     disk_size      INT           NOT NULL DEFAULT 0 CHECK (length(disk_size) <= 3 AND TYPEOF(disk_size) = 'integer'),
     node_id_origin CHAR(34)      NOT NULL CHECK (length(node_id_origin) <= 34),

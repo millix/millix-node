@@ -10,9 +10,9 @@ CREATE INDEX idx_schema_information_create_date ON schema_information (create_da
 CREATE TABLE address_version
 (
     version         CHAR(4)      NOT NULL UNIQUE CHECK (length(version) <= 4),
-    is_main_network TINYINT      NOT NULL DEFAULT 1 CHECK (length(is_main_network) <= 3 AND TYPEOF(is_main_network) = 'integer'),
+    is_main_network TINYINT      NOT NULL DEFAULT 1 CHECK (is_main_network = 0 OR is_main_network = 1),
     regex_pattern   TEXT         NOT NULL,
-    is_default      TINYINT      NOT NULL DEFAULT 0 CHECK (length(is_default) <= 3 AND TYPEOF(is_default) = 'integer'),
+    is_default      TINYINT      NOT NULL DEFAULT 0 CHECK (is_default = 0 OR is_default = 1),
     status          TINYINT      NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     create_date     INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
