@@ -17,17 +17,17 @@ CREATE INDEX IF NOT EXISTS idx_schema_information_create_date ON schema_informat
 CREATE INDEX IF NOT EXISTS idx_address_version_create_date ON address_version (create_date);
 
 
-CREATE TABLE object
+CREATE TABLE normalization
 (
-    object_id   CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(object_id) <= 20),
-    object_name CHAR(255)    NOT NULL UNIQUE CHECK (length(object_name) <= 255),
-    status      SMALLINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    normalization_id   CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(normalization_id) <= 20),
+    normalization_name CHAR(255)    NOT NULL UNIQUE CHECK (length(normalization_name) <= 255),
+    status             SMALLINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date        INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
-CREATE INDEX idx_object_create_date ON object (create_date);
+CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
 
-INSERT INTO object (object_name, object_id)
+INSERT INTO normalization (normalization_name, normalization_id)
 VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('mode_test_network', 'mHUyg4ZLca4mt7umomEW'),
        ('node_port', 'A4FpnTLmqGSH7nvU9j4x'),
@@ -85,8 +85,15 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('node_certificate_key_path', 'n7W8tfvrrCewkCNxQylw'),
        ('node_certificate_path', 'tRuUYRNdJDoeaWkWZzb2'),
        ('wallet_key_path', 'eGs9xpLg5IhnuNWTrDwp'),
-       ('job_config_path', 'kixVXMz7RUxUKIgOn8Ii');
+       ('job_config_path', 'kixVXMz7RUxUKIgOn8Ii'),
+       ('peer_rotation_settings', 'useBqrZ9F8Gv6aVH85pB'),
+       ('peer_rotation_more_than_average', 'Z2z0wVCm6Ai1p7OG4MfN'),
+       ('peer_rotation_more_than_most', 'hVEmlU6bL4l3DNeOhdM3'),
+       ('peer_rotation_more_than_all', 'wpwt2V5vrT28ngz9u3J3'),
+       ('peer_rotation_config', 'H2ODFHCxOl1FErIqCDqG'),
+       ('shard_zero_name', 'rMSuKEh42OZaeVEgzG62'),
+       ('key_public', '9MgxVxyXsM2EozHVUZgw');
 
-UPDATE config SET config_id = (SELECT object_id FROM object WHERE object_name = config_name) WHERE config_name IN (SELECT object_name FROM object WHERE object_name = config_name);
+UPDATE config SET config_id = (SELECT normalization_id FROM normalization WHERE normalization_name = config_name) WHERE config_name IN (SELECT normalization_name FROM normalization WHERE normalization_name = config_name);
 
 COMMIT;

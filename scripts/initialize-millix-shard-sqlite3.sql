@@ -17,7 +17,7 @@ CREATE TABLE `transaction`
     timeout_date     INT         NULL CHECK(length(timeout_date) <= 10 AND TYPEOF(timeout_date) IN ('integer', 'null')),
     is_timeout       TINYINT     NOT NULL DEFAULT 0 CHECK (is_timeout = 0 OR is_timeout = 1),
     status           TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date      INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    create_date      INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
 CREATE INDEX idx_transaction_status_is_stable_transaction_date ON `transaction` (status, is_stable, transaction_date);
 CREATE INDEX idx_transaction_id_is_stable_is_parent ON `transaction` (transaction_id, is_stable, is_parent);
@@ -33,7 +33,7 @@ CREATE TABLE transaction_parent
     transaction_id_parent CHAR(50) NOT NULL CHECK (length(transaction_id_parent) <= 50),
     shard_id              CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
     status                TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date           INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    create_date           INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (transaction_id_parent, transaction_id_child),
     FOREIGN KEY (transaction_id_child) REFERENCES `transaction` (transaction_id)
 );
@@ -47,7 +47,7 @@ CREATE TABLE transaction_signature
     address_base   CHAR(34) NOT NULL CHECK (length(address_base) <= 34),
     signature      CHAR(88) NOT NULL CHECK (length(signature) <= 88),
     status         TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date    INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    create_date    INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (transaction_id, address_base),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
@@ -68,7 +68,7 @@ CREATE TABLE transaction_input
     address                 CHAR(72) NULL CHECK (length(address) <= 72),
     address_key_identifier  CHAR(34) NULL CHECK (length(address_key_identifier) <= 34),
     status                  TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date             INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    create_date             INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (transaction_id, input_position),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
@@ -93,7 +93,7 @@ CREATE TABLE transaction_output
     double_spend_date      INT      NULL CHECK(length(double_spend_date) <= 10 AND TYPEOF(double_spend_date) IN ('integer', 'null')), -- NOT NULL if double spend
     is_double_spend        TINYINT  NOT NULL DEFAULT 0 CHECK (is_double_spend = 0 OR is_double_spend = 1),
     status                 TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date            INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    create_date            INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (transaction_id, output_position),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
@@ -113,7 +113,7 @@ CREATE TABLE transaction_output_attribute
     shard_id                   CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
     value                      TEXT     NOT NULL,
     status                     TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date                INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    create_date                INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (transaction_output_id, transaction_output_type_id),
     FOREIGN KEY (transaction_output_id) REFERENCES transaction_output (transaction_id)
 );
@@ -128,7 +128,7 @@ CREATE TABLE audit_verification
     verified_date      INT      NULL CHECK(length(verified_date) <= 10 AND TYPEOF(verified_date) IN ('integer', 'null')),
     is_verified        TINYINT  NOT NULL DEFAULT 0 CHECK (is_verified = 0 OR is_verified = 1),
     status             TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date        INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    create_date        INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
 CREATE INDEX idx_audit_verification_transaction_id_is_verified ON audit_verification (transaction_id, is_verified);
@@ -141,7 +141,7 @@ CREATE TABLE audit_point
     transaction_id CHAR(50) NOT NULL CHECK (length(transaction_id) <= 50),
     shard_id       CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
     status         TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date    INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    create_date    INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (audit_point_id, transaction_id),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
@@ -155,7 +155,8 @@ CREATE TABLE schema_information
     key         TEXT         NOT NULL UNIQUE,
     value       TEXT         NOT NULL,
     status      TINYINT      NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER))  CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    create_date INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
+CREATE INDEX idx_schema_information_create_date ON schema_information (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "4");
+INSERT INTO schema_information (key, value) VALUES ("version", "9");

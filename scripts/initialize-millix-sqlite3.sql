@@ -313,16 +313,16 @@ CREATE INDEX idx_address_version_create_date ON address_version (create_date);
 
 CREATE TABLE api
 (
-    api_id             CHAR(16)  NOT NULL UNIQUE CHECK (length(api_id) <= 16),
-    name               CHAR(255) NOT NULL CHECK (length(name) <= 255),
-    description        CHAR(255) NOT NULL CHECK (length(description) <= 255),
-    method             CHAR(10)  NOT NULL CHECK (length(method) <= 10),
-    version_released   CHAR(10)  NOT NULL CHECK (length(version_released) <= 10),
-    version_deprecated CHAR(10)  NULL CHECK (length(version_deprecated) <= 10),
-    version_removed    CHAR(10)  NULL CHECK (length(version_removed) <= 10),
-    permission         TEXT         NOT NULL DEFAULT "true",
-    status             TINYINT      NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date        INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    api_id             CHAR(16)   NOT NULL UNIQUE CHECK (length(api_id) <= 16),
+    name               CHAR(255)  NOT NULL CHECK (length(name) <= 255),
+    description        CHAR(1024) NOT NULL CHECK (length(description) <= 1024),
+    method             CHAR(10)   NOT NULL CHECK (length(method) <= 10),
+    version_released   CHAR(10)   NOT NULL CHECK (length(version_released) <= 10),
+    version_deprecated CHAR(10)   NULL CHECK (length(version_deprecated) <= 10),
+    version_removed    CHAR(10)   NULL CHECK (length(version_removed) <= 10),
+    permission         TEXT       NOT NULL DEFAULT "true",
+    status             TINYINT    NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date        INT        NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK (length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
 CREATE INDEX idx_api_create_date ON api (create_date);
 
@@ -376,7 +376,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "8");
+INSERT INTO schema_information (key, value) VALUES ("version", "9");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),

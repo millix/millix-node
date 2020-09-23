@@ -9,8 +9,8 @@ CREATE TABLE api
     version_released   CHAR(10)  NOT NULL CHECK (length(version_released) <= 10),
     version_deprecated CHAR(10)  NULL CHECK (length(version_deprecated) <= 10),
     version_removed    CHAR(10)  NULL CHECK (length(version_removed) <= 10),
-    permission         TEXT         NOT NULL DEFAULT "true",
-    status             TINYINT      NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date        INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    permission         TEXT      NOT NULL DEFAULT "true",
+    status             TINYINT   NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date        INT       NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK (length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
 CREATE INDEX idx_api_create_date ON api (create_date);
