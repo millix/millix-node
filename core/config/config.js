@@ -150,6 +150,10 @@ export const AUDIT_POINT_PRUNE_COUNT                           = 250;
 export const TRANSACTION_PRUNE_AGE_MIN                         = 1440;
 export const TRANSACTION_PRUNE_COUNT                           = 1000;
 export const TRANSACTION_RETRY_SYNC_MAX                        = 100;
+export const TRANSACTION_INPUT_MAX                             = 128;
+export const TRANSACTION_OUTPUT_MAX                            = 128;
+export const TRANSACTION_PARENT_MAX                            = 16;
+export const TRANSACTION_SIGNATURE_MAX                         = 128;
 export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 3600;
 export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 4200;
 export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 4320;
@@ -185,9 +189,6 @@ export const MILLIX_CIRCULATION                                = 9e15;
 export const MODE_TEST                                         = false;
 export const NODE_TEST_HOST                                    = '127.0.0.1';
 export const NODE_TEST_PORT                                    = 5080;
-export const HASH_LENGTH                                       = 44;
-export const PUBKEY_LENGTH                                     = 44;
-export const SIG_LENGTH                                        = 88;
 export const NODE_MILLIX_VERSION                               = '1.6.8';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
@@ -277,6 +278,10 @@ export default {
     AUDIT_POINT_VALIDATION_WAIT_TIME_MAX,
     TRANSACTION_PRUNE_AGE_MIN,
     TRANSACTION_PRUNE_COUNT,
+    TRANSACTION_INPUT_MAX,
+    TRANSACTION_OUTPUT_MAX,
+    TRANSACTION_PARENT_MAX,
+    TRANSACTION_SIGNATURE_MAX,
     TRANSACTION_RETRY_SYNC_MAX,
     TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN,
     TRANSACTION_OUTPUT_REFRESH_OLDER_THAN,

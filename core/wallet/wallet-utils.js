@@ -593,7 +593,11 @@ class WalletUtils {
 
     isValidTransactionObject(transaction) {
 
-        if (!config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version)) {
+        if (!config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version) ||
+            transaction.transaction_input_list.length > config.TRANSACTION_INPUT_MAX ||
+            transaction.transaction_output_list.length > config.TRANSACTION_OUTPUT_MAX ||
+            transaction.transaction_parent_list.length > config.TRANSACTION_PARENT_MAX ||
+            transaction.transaction_signature_list.length > config.TRANSACTION_SIGNATURE_MAX) {
             return false;
         }
 
