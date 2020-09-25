@@ -37,7 +37,10 @@ class _l4kaEhMnhjB5yseq extends Endpoint {
                 is_timeout            : req.query.p5,
                 status                : req.query.p6
             }, orderBy, limit, shardID);
-        }, orderBy, limit, shardID).then(data => res.send(data));
+        }, orderBy, limit, shardID).then(data => {
+            data.forEach(row => row['transaction_date'] = Math.floor(row.transaction_date.getTime() / 1000));
+            res.send(data);
+        });
     }
 }
 

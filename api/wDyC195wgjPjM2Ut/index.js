@@ -29,7 +29,10 @@ class _wDyC195wgjPjM2Ut extends Endpoint {
             return new Promise((resolve, reject) => {
                 transactionRepository.getTransaction(req.query.p0).then(transaction => transaction ? resolve(transaction) : reject()).catch(reject);
             });
-        }).then(transaction => res.send(transaction)).catch(e => res.send(e.message));
+        }).then(transaction => {
+            transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
+            res.send(transaction)
+        }).catch(e => res.send(e.message));
     }
 }
 
