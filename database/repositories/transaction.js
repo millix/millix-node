@@ -475,7 +475,7 @@ export default class Transaction {
                                        (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
                                         !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
                                         !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0)) {
-                                       return null;
+                                       return this.deleteTransaction(transactionID).then(_ => null).catch(_ => null);
                                    }
 
                                    return transaction;

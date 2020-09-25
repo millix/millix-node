@@ -568,7 +568,13 @@ export class WalletTransactionConsensus {
                     transactionRepository.getTransactionObject(data.transaction_id_fail)
                                          .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject());
                 });
-            }).then(transaction => peer.transactionSendToNode(transaction, ws));
+            }).then(transaction => {
+                if (!transaction) {
+                    peer.transactionSyncRequest(data.transaction_id_fail, {dispatch_request: true}).then(_ => _).catch(_ => _);
+                    return;
+                }
+                peer.transactionSendToNode(transaction, ws);
+            });
         }
 
         const consensusResponseData      = this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count];
