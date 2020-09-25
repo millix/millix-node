@@ -916,8 +916,7 @@ class Wallet {
                                      .then(transaction => transaction ? resolve([
                                          transaction,
                                          transactionRepository
-                                     ]) : reject())
-                                     .catch(() => reject());
+                                     ]) : reject());
             });
         }).then(firstShardData => {
             const [transaction, transactionRepository] = firstShardData || [];
