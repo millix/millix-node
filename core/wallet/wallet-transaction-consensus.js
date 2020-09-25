@@ -77,9 +77,9 @@ export class WalletTransactionConsensus {
         });
     }
 
-    _getValidInputOnDoubleSpend(doubleSpendTransactionID, inputs, nodeID) {
+    _getValidInputOnDoubleSpend(doubleSpendTransactionID, inputs, nodeID, transactionVisitedSet, doubleSpendSet) {
         return new Promise(resolve => {
-            let responseType = 'transaction_valid';
+            let responseType = 'transaction_double_spend';
             let responseData = null;
             async.eachSeries(inputs, (input, callback) => {
                 database.firstShardZeroORShardRepository('transaction', input.shard_id, transactionRepository => {
@@ -93,20 +93,30 @@ export class WalletTransactionConsensus {
                         responseData = {transaction_id: input.transaction_id};
                         return callback(true);
                     }
-                    else if (!responseData || transaction.transaction_date < responseData.transaction_date
-                             || ((transaction.transaction_date < responseData.transaction_date) && (transaction.transaction_id < responseData.transaction_id))) {
+                    else if (!doubleSpendSet.has(transaction.transaction_id) && (!responseData || transaction.transaction_date < responseData.transaction_date
+                                                                                 || ((transaction.transaction_date < responseData.transaction_date) && (transaction.transaction_id < responseData.transaction_id)))) {
 
-                        this._validateTransaction(transaction.transaction_id, nodeID, 0, new Set([doubleSpendTransactionID]))
+                        let newVisitedTransactionSet = new Set(transactionVisitedSet);
+                        newVisitedTransactionSet.add(doubleSpendTransactionID);
+                        this._validateTransaction(transaction.transaction_id, nodeID, 0, newVisitedTransactionSet, doubleSpendSet)
                             .then(() => {
+                                responseType = 'transaction_valid';
                                 responseData = transaction;
                                 callback();
                             })
                             .catch(err => {
                                 if (err.cause === 'transaction_double_spend') {
+                                    doubleSpendSet.add(transaction.transaction_id);
                                     return callback();
                                 }
-                                responseType = 'transaction_double_spend_unresolved';
-                                responseData = transaction.transaction_id;
+                                else if (err.cause === 'transaction_not_found') {
+                                    responseType = 'transaction_not_found';
+                                    responseData = {transaction_id: err.transaction_id_fail};
+                                }
+                                else {
+                                    responseType = 'transaction_double_spend_unresolved';
+                                    responseData = {transaction_id: transaction.transaction_id};
+                                }
                                 callback(true);
                             });
                     }
@@ -133,7 +143,7 @@ export class WalletTransactionConsensus {
         }).then(() => callback()));
     }
 
-    _validateTransaction(transactionID, nodeID, depth, transactionVisitedSet) {
+    _validateTransaction(transactionID, nodeID, depth, transactionVisitedSet = new Set(), doubleSpendSet = new Set()) {
         return new Promise((resolve, reject) => {
             database.firstShards((shardID) => {
                 return new Promise((resolve, reject) => {
@@ -183,6 +193,13 @@ export class WalletTransactionConsensus {
                         message            : `not validated in a depth of ${depth}`
                     });
                 }
+                else if (doubleSpendSet.has(transactionID)) {
+                    return reject({
+                        cause              : 'transaction_double_spend',
+                        transaction_id_fail: transactionID,
+                        message            : 'double spend found in ' + transactionID
+                    });
+                }
 
                 transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
 
@@ -191,6 +208,14 @@ export class WalletTransactionConsensus {
                 // get inputs and check double
                 // spend
                 async.everySeries(transaction.transaction_input_list, (input, callback) => {
+                    if (doubleSpendSet.has(input.output_transaction_id)) {
+                        return callback({
+                            cause              : 'transaction_double_spend',
+                            transaction_id_fail: input.output_transaction_id,
+                            message            : 'double spend found in ' + input.output_transaction_id
+                        }, false);
+                    }
+
                     (() => {
                         if (!transactionVisitedSet.has(input.output_transaction_id)) {
                             sourceTransactions.add(input.output_transaction_id);
@@ -207,10 +232,11 @@ export class WalletTransactionConsensus {
                                     shard_id      : transaction.shard_id,
                                     ...input
                                 });
-                                this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID)
+                                this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet)
                                     .then(({response_type: responseType, data}) => {
 
-                                        if (responseType === 'transaction_valid' && data.transaction_id !== transaction.transaction_id) {
+                                        if ((responseType === 'transaction_double_spend' && !data) ||
+                                            (responseType === 'transaction_valid' && data.transaction_id !== transaction.transaction_id)) {
                                             return reject({
                                                 cause              : 'transaction_double_spend',
                                                 transaction_id_fail: input.output_transaction_id,
@@ -232,7 +258,9 @@ export class WalletTransactionConsensus {
                                             });
                                         }
 
+
                                         let doubleSpendInputs = _.filter(doubleSpendTransactions, i => i.transaction_id !== data.transaction_id);
+                                        doubleSpendInputs.forEach(doubleSpendInput => doubleSpendSet.add(doubleSpendInput.transaction_id));
                                         this._setAsDoubleSpend(doubleSpendInputs, input.output_transaction_id);
                                         resolve();
                                     });
@@ -306,7 +334,7 @@ export class WalletTransactionConsensus {
 
                     // check inputs transactions
                     async.everySeries(sourceTransactions, (srcTransaction, callback) => {
-                        this._validateTransaction(srcTransaction, nodeID, depth + 1, transactionVisitedSet)
+                        this._validateTransaction(srcTransaction, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
                             .then(() => callback(null, true))
                             .catch((err) => callback(err, false));
                     }, (err, valid) => {
@@ -324,6 +352,18 @@ export class WalletTransactionConsensus {
     _validateTransactionInConsensusRound(data, ws) {
         const {node, nodeID, connectionID} = ws;
         const transactionID                = data.transaction_id;
+
+        if (!this._transactionValidationState[ws.nodeID] ||
+            this._transactionValidationState[ws.nodeID].transaction_id !== data.transaction_id ||
+            !!this._transactionValidationState[ws.nodeID].timestamp) {
+            return peer.transactionValidationResponse({
+                cause                : 'transaction_validation_unexpected',
+                transaction_id_failed: transactionID,
+                transaction_id       : transactionID,
+                valid                : false,
+                type                 : 'validation_response'
+            }, ws, true);
+        }
 
         console.log('[consensus][oracle] request received to validate transaction ', transactionID);
         eventBus.emit('wallet_event_log', {
