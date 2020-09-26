@@ -40,7 +40,9 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
 
             const transaction = {};
             _.extend(transaction, _.pick(data[0], 'transaction_id', 'shard_id', 'transaction_date', 'node_id_origin', 'version', 'payload_hash', 'stable_date', 'is_stable', 'parent_date', 'is_parent', 'timeout_date', 'is_timeout', 'status', 'create_date'));
-            transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
+            if (!!transaction.transaction_date) {
+                transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
+            }
 
             const signatures                          = new Set();
             const inputs                              = new Set();

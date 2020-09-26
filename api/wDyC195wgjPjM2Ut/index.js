@@ -30,8 +30,17 @@ class _wDyC195wgjPjM2Ut extends Endpoint {
                 transactionRepository.getTransaction(req.query.p0).then(transaction => transaction ? resolve(transaction) : reject()).catch(reject);
             });
         }).then(transaction => {
-            transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
-            res.send(transaction)
+            if (!transaction) {
+                return res.send({
+                    status : 'transaction_not_found',
+                    message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
+                });
+            }
+
+            if (!!transaction.transaction_date) {
+                transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
+            }
+            res.send(transaction || {});
         }).catch(e => res.send(e.message));
     }
 }
