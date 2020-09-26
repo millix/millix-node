@@ -1,4 +1,5 @@
 import database from '../../database/database';
+import peer from '../../net/peer';
 import Endpoint from '../endpoint';
 import _ from 'lodash';
 
@@ -32,6 +33,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
             });
         }).then(data => {
             if (!data || data.length === 0) {
+                peer.transactionSyncRequest(req.query.p0).then(_ => _).catch(_ => _);
                 return res.send({
                     status : 'transaction_not_found',
                     message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
