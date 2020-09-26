@@ -41,7 +41,7 @@ export class Database {
         return this.databaseRootFolder;
     }
 
-    static buildQuery(sql, where, orderBy, limit, shardID) {
+    static buildQuery(sql, where, orderBy, limit, shardID, offset) {
         let parameters = [];
         if (where) {
             _.each(_.keys(where), key => {
@@ -88,6 +88,12 @@ export class Database {
             sql += ' LIMIT ?';
             parameters.push(limit);
         }
+
+        if (offset) {
+            sql += ' OFFSET ?';
+            parameters.push(offset);
+        }
+
         return {
             sql,
             parameters

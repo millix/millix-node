@@ -1549,9 +1549,9 @@ export default class Transaction {
         });
     }
 
-    listTransactions(where, orderBy, limit, shardID) {
+    listTransactions(where, orderBy, limit, shardID, offset) {
         return new Promise((resolve, reject) => {
-            let {sql, parameters} = Database.buildQuery('SELECT * FROM `transaction`', where, orderBy, limit, shardID);
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM `transaction`', where, orderBy, limit, shardID, offset);
             this.database.all(
                 sql,
                 parameters, (err, rows) => {
