@@ -368,7 +368,7 @@ export default class Transaction {
                     });
 
                     transaction.transaction_signature_list.forEach(signature => {
-                        promise = promise.then(() => new Promise(resolve => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signature.status, new Date(signature.create_date)).then(resolve).catch(resolve)));
+                        promise = promise.then(() => new Promise(resolve => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signature.status, signature.create_date).then(resolve).catch(resolve)));
                     });
 
                     promise.then(() => this.database.run('COMMIT', () => {
