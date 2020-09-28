@@ -30,7 +30,11 @@ class _72dlrjquBORj0rhx extends Endpoint {
             address               : req.query.p3,
             status                : req.query.p4
         }, orderBy, limit)
-                         .then(addresses => res.send(addresses));
+                         .then(addresses => res.send(addresses))
+                         .catch(e => res.send({
+                             api_status : 'fail',
+                             api_message: `unexpected generic api error: (${e})`
+                         }));
     }
 }
 

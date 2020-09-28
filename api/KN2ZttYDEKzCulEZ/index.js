@@ -20,20 +20,26 @@ class _KN2ZttYDEKzCulEZ extends Endpoint {
     handler(app, req, res) {
         if (!req.query.p0 || !req.query.p1 || !req.query.p2) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<transaction_id>, p1<output_position> and p2<shard_id> are required'
+                api_status : 'fail',
+                api_message: 'p0<transaction_id>, p1<output_position> and p2<shard_id> are required'
             });
         }
         const transactionRepository = database.getRepository('transaction', req.query.p2);
         if (!transactionRepository) {
-            return res.send({});
+            return res.send({
+                api_status : 'fail',
+                api_message: `shard database ${req.query.p2} not found`
+            });
         }
         transactionRepository.getTransactionOutput({
             transaction_id : req.query.p0,
             output_position: req.query.p1
         }).then(transactionOutput => {
             res.send(transactionOutput || {});
-        });
+        }).catch(e => res.send({
+            api_status : 'fail',
+            api_message: `unexpected generic api error: (${e})`
+        }));
     }
 }
 

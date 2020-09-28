@@ -29,8 +29,8 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
         if (req.method === 'GET') {
             if (!req.query.p0) {
                 return res.status(400).send({
-                    status : 'fail',
-                    message: 'p0<transaction_payload_signed> is required'
+                    api_status : 'fail',
+                    api_message: 'p0<transaction_payload_signed> is required'
                 });
             }
             else {
@@ -40,10 +40,11 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
         else {
             if (!req.body.p0) {
                 return res.status(400).send({
-                    status : 'fail',
-                    message: 'p0<transaction_payload_signed> is required'
+                    api_status : 'fail',
+                    api_message: 'p0<transaction_payload_signed> is required'
                 });
-            } else {
+            }
+            else {
                 transaction = req.body.p0;
             }
         }
@@ -55,46 +56,35 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                 walletUtils.verifyTransaction(transaction)
                            .then(valid => {
                                if (!valid) {
-                                   return res.status(400).send({
-                                       'status': 'fail',
-                                       message : 'bad_transaction_payload'
-                                   });
+                                   return Promise.reject('bad transaction payload');
                                }
 
                                console.log(`[api ${this.endpoint}] Storing transaction submitted on API. Hash: ${transaction.transaction_id}`);
 
-                               database.getRepository('transaction')
-                                       .addTransactionFromObject(transaction)
-                                       .then(transaction => {
-                                           console.log(`[api ${this.endpoint}] successfully stored transaction submitted on API. Hash: ${transaction.transaction_id}. Submitting to peers`);
-                                           peer.transactionSend(transaction);
-                                           res.send({status: 'success'});
-                                           unlock();
-                                       })
-                                       .catch(err => {
-                                           console.log(`[api ${this.endpoint}] error while storing transaction submitted on API ${err}`);
-                                           res.send({
-                                               status : 'fail',
-                                               message: 'send_transaction_error'
-                                           });
-                                           unlock();
-                                       });
+                               return database.getRepository('transaction')
+                                              .addTransactionFromObject(transaction)
+                                              .then(transaction => {
+                                                  console.log(`[api ${this.endpoint}] successfully stored transaction submitted on API. Hash: ${transaction.transaction_id}. Submitting to peers`);
+                                                  peer.transactionSend(transaction);
+                                                  res.send({api_status: 'success'});
+                                                  unlock();
+                                              });
                            })
-                           .catch(err => {
-                               console.log(`[api ${this.endpoint}] error: ${err}`);
+                           .catch(e => {
+                               console.log(`[api ${this.endpoint}] error: ${e}`);
                                res.send({
-                                   status : 'fail',
-                                   message: 'send_transaction_error'
+                                   api_status : 'fail',
+                                   api_message: `unexpected generic api error: (${e})`
                                });
                                unlock();
                            });
             });
         }
-        catch (err) {
-            console.log(`[api ${this.endpoint}] error: ${err}`);
+        catch (e) {
+            console.log(`[api ${this.endpoint}] error: ${e}`);
             return res.send({
-                status : 'fail',
-                message: 'send_transaction_error'
+                api_status : 'fail',
+                api_message: `unexpected generic api error: (${e})`
             });
         }
     }

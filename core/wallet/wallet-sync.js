@@ -54,6 +54,7 @@ export class WalletSync {
         }, this.CARGO_MAX_LENGHT);
         this.queue         = new Queue((job, done) => {
             if (job.attempt >= 2 * config.TRANSACTION_RETRY_SYNC_MAX) {
+                delete this.pendingTransactions[job.transaction_id];
                 this.add(job.transaction_id, {
                     attempt : job.attempt,
                     priority: job.priority - Math.floor(job.attempt / config.TRANSACTION_RETRY_SYNC_MAX)

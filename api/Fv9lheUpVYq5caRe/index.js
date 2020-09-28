@@ -22,12 +22,12 @@ class _Fv9lheUpVYq5caRe extends Endpoint {
         //TODO: update is_timeout in the database
         if (!req.query.p0) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<key_identifier> is required'
+                api_status : 'fail',
+                api_message: 'p0<key_identifier> is required'
             });
         }
         wallet.getConsensus().resetTransactionValidationRejected();
-        res.send({status: 'success'});
+        res.send({api_status: 'success'});
     }
 }
 

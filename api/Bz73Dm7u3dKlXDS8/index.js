@@ -19,11 +19,14 @@ class _Bz73Dm7u3dKlXDS8 extends Endpoint {
     handler(app, req, res) {
         const addressRepository = database.getRepository('address');
         addressRepository.getAddressesCount()
-                         .then(data =>
-                             res.send({
-                                 address_count       : data.address_count,
-                                 key_identifier_count: data.address_key_identifier_count
-                             }));
+                         .then(data => res.send({
+                             address_count       : data.address_count,
+                             key_identifier_count: data.address_key_identifier_count
+                         }))
+                         .catch(e => res.send({
+                             api_status : 'fail',
+                             api_message: `unexpected generic api error: (${e})`
+                         }));
     }
 };
 

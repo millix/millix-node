@@ -46,7 +46,12 @@ class _FDLyQ5uo5t7jltiQ extends Endpoint {
                 spent_date_begin                      : req.query.p11,
                 spent_date_end                        : req.query.p12
             }, orderBy, limit, shardID);
-        }, orderBy, limit, shardID).then(data => res.send(data));
+        }, orderBy, limit, shardID)
+                .then(data => res.send(data))
+                .catch(e => res.send({
+                    api_status : 'fail',
+                    api_message: `unexpected generic api error: (${e})`
+                }));
     }
 }
 

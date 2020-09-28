@@ -19,18 +19,25 @@ export default class Endpoint {
                     .getNodeAttribute(nodeID, 'node_public_key')
                     .then(publicKey => {
                         if (!walletUtils.verify(publicKey, nodeSignature, server.nodeID)) {
-                            return res.status(401).send({status: 'invalid_node_identity'});
+                            return res.status(401).send({
+                                api_status : 'fail',
+                                api_message: 'invalid node identity'
+                            });
                         }
 
                         if (permission.private && server.nodeID !== nodeID) {
-                            return res.status(401).send({status: 'permission_denied'});
+                            return res.status(401).send({
+                                api_status : 'fail',
+                                api_message: 'permission denied'
+                            });
                         }
 
                         this.handler(app, req, res);
                     })
-                    .catch(() => {
-                        return res.status(401).send({status: 'node_identity_not_verified'});
-                    });
+                    .catch(e => res.send({
+                        api_status : 'fail',
+                        api_message: `unexpected generic api error: (${e})`
+                    }));
         }
         else {
             this.handler(app, req, res);

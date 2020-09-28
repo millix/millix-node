@@ -21,17 +21,18 @@ class _LLpSTquu4tZL8Nu5 extends Endpoint {
         const {p0: configID, p1: value} = req.query;
         if (!configID || value === undefined) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<config_id> and p1<value> are required'
+                api_status : 'fail',
+                api_message: 'p0<config_id> and p1<value> are required'
             });
         }
 
         const configurationRepository = database.getRepository('config');
         configurationRepository.updateConfigByID(configID, value)
-                               .then(() => res.send({status: 'success'}))
-                               .catch(() => {
-                                   res.send({status: 'fail'});
-                               });
+                               .then(() => res.send({api_status: 'success'}))
+                               .catch(e => res.send({
+                                   api_status : 'fail',
+                                   api_message: `unexpected generic api error: (${e})`
+                               }));
     }
 }
 

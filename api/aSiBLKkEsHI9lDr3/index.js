@@ -28,8 +28,8 @@ class _aSiBLKkEsHI9lDr3 extends Endpoint {
     handler(app, req, res) {
         if (!req.query.p0 || !req.query.p1 || req.query.p2 === undefined) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<shard_name>, p1<shard_type> and p2<is_required> are required'
+                api_status : 'fail',
+                api_message: 'p0<shard_name>, p1<shard_type> and p2<is_required> are required'
             });
         }
 
@@ -70,7 +70,11 @@ class _aSiBLKkEsHI9lDr3 extends Endpoint {
                            ])).then(() => resolve()).catch(() => resolve());
                        }))
                        .then(() => shardRepository.getShard({shard_id: shardInfo.shard_id}))
-                       .then(shardData => res.send(shardData));
+                       .then(shardData => res.send(shardData))
+                       .catch(e => res.send({
+                           api_status : 'fail',
+                           api_message: `unexpected generic api error: (${e})`
+                       }));
     }
 }
 

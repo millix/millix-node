@@ -26,33 +26,31 @@ class _PwwdU9lZbgMqS2DA extends Endpoint {
     handler(app, req, res) {
         if (!req.query.p0) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<public_key> is required'
+                api_status : 'fail',
+                api_message: 'p0<public_key> is required'
             });
         }
         try {
             if (!walletUtils.isValidNodeIdentity(req.params.nodeID, req.query.p0, server.nodeID, req.params.nodeSignature)) {
                 return res.send({
-                    status : 'fail',
-                    message: 'node_registration_error'
+                    api_status : 'fail',
+                    api_message: 'node registration error: invalid node identity'
                 });
             }
             const nodeRepository = database.getRepository('node');
             nodeRepository.addNodeAttribute(req.params.nodeID, 'node_public_key', req.query.p0)
                           .then(() => {
-                              res.send({status: 'success'});
+                              res.send({api_status: 'success'});
                           })
-                          .catch(() => {
-                              res.send({
-                                  status : 'fail',
-                                  message: 'node_registration_error'
-                              });
-                          });
+                          .catch(e => res.send({
+                              api_status : 'fail',
+                              api_message: `unexpected generic api error: (${e})`
+                          }));
         }
         catch (e) {
             res.send({
-                status : 'fail',
-                message: 'node_registration_error'
+                api_status : 'fail',
+                api_message: `unexpected generic api error: (${e})`
             });
         }
 

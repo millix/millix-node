@@ -26,7 +26,11 @@ class _0eoUqXNE715mBVqV extends Endpoint {
         nodeRepository.listNodes({status}, orderBy, limit)
                       .then(nodes => {
                           res.send(nodes);
-                      });
+                      })
+                      .catch(e => res.send({
+                          api_status : 'fail',
+                          api_message: `unexpected generic api error: (${e})`
+                      }));
     }
 }
 

@@ -29,7 +29,11 @@ class _quIoaHsl8h6IwyEI extends Endpoint {
         }, orderBy, limit)
                           .then((addresses) => {
                               res.send(addresses);
-                          });
+                          })
+                          .catch(e => res.send({
+                              api_status : 'fail',
+                              api_message: `unexpected generic api error: (${e})`
+                          }));
     }
 }
 
