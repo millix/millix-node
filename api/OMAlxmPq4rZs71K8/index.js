@@ -30,7 +30,10 @@ class _OMAlxmPq4rZs71K8 extends Endpoint {
         }, orderBy, limit).then(attributeList => {
             attributeList.forEach(attribute => attribute.schema_path = '${private_field}');
             res.send(attributeList);
-        });
+        }).catch(e => res.send({
+            api_status : 'fail',
+            api_message: `unexpected generic api error: (${e})`
+        }));
     }
 }
 

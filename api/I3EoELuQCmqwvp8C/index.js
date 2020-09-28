@@ -41,7 +41,12 @@ class _I3EoELuQCmqwvp8C extends Endpoint {
                 double_spend_date_end             : req.query.p6,
                 output_transaction_id             : req.query.p7
             }, orderBy, limit, shardID);
-        }, orderBy, limit, shardID).then(data => res.send(data));
+        }, orderBy, limit, shardID)
+                .then(data => res.send(data))
+                .catch(e => res.send({
+                    api_status : 'fail',
+                    api_message: `unexpected generic api error: (${e})`
+                }));
     }
 }
 

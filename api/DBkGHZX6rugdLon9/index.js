@@ -21,8 +21,8 @@ class _DBkGHZX6rugdLon9 extends Endpoint {
     handler(app, req, res) {
         if (!req.query.p0 || !req.query.p1) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<transaction_id> and p1<shard_id> are required'
+                api_status : 'fail',
+                api_message: 'p0<transaction_id> and p1<shard_id> are required'
             });
         }
 
@@ -31,7 +31,11 @@ class _DBkGHZX6rugdLon9 extends Endpoint {
             return res.send({});
         }
         auditVerificationRepository.getAuditVerification(req.query.p0)
-                                   .then(auditVerification => res.send(auditVerification || {}));
+                                   .then(auditVerification => res.send(auditVerification || {}))
+                                   .catch(e => res.send({
+                                       api_status : 'fail',
+                                       api_message: `unexpected generic api error: (${e})`
+                                   }));
     }
 }
 

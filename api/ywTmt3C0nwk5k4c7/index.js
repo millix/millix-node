@@ -21,15 +21,19 @@ class _ywTmt3C0nwk5k4c7 extends Endpoint {
     handler(app, req, res) {
         if (!req.query.p0) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<address> is required'
+                api_status : 'fail',
+                api_message: 'p0<address> is required'
             });
         }
         const keychainRepository = database.getRepository('keychain');
         keychainRepository.getAddress(req.query.p0)
                           .then(address => {
                               res.send(address);
-                          });
+                          })
+                          .catch(e => res.send({
+                              api_status : 'fail',
+                              api_message: `unexpected generic api error: (${e})`
+                          }));
     }
 }
 

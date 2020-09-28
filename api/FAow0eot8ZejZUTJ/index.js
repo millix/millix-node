@@ -25,22 +25,22 @@ class _FAow0eot8ZejZUTJ extends Endpoint {
         const shardAttribute = req.query.p1 ? JSON.parse(req.query.p1) : {};
         if (!shardID) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<shard_id> is required'
+                api_status : 'fail',
+                api_message: 'p0<shard_id> is required'
             });
         }
 
         if (!database.shardExists(shardID)) {
             return res.status(400).send({
-                status : 'fail',
-                message: `p0<${shardID}> does not exist`
+                api_status : 'fail',
+                api_message: `p0<${shardID}> does not exist`
             });
         }
 
         if (database.getShard(shardID)) {
             return res.status(400).send({
-                status : 'fail',
-                message: `p0<${shardID}> already supported`
+                api_status : 'fail',
+                api_message: `p0<${shardID}> already supported`
             });
         }
 
@@ -79,7 +79,11 @@ class _FAow0eot8ZejZUTJ extends Endpoint {
                            nodeRepository.addNodeAttribute(network.nodeID, 'shard_' + shardInfo.shard_type, JSON.stringify(shardAttributeList))
                                          .then(() => resolve()).catch(() => resolve());
                        }))
-                       .then(() => res.send({'status': 'success'}));
+                       .then(() => res.send({'api_status': 'success'}))
+                       .catch(e => res.send({
+                           api_status : 'fail',
+                           api_message: `unexpected generic api error: (${e})`
+                       }));
     }
 }
 

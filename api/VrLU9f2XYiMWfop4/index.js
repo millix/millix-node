@@ -39,7 +39,12 @@ class _VrLU9f2XYiMWfop4 extends Endpoint {
                 verified_date_begin   : req.query.p5,
                 verified_date_end     : req.query.p6
             }, orderBy, limit, dbShardID);
-        }, orderBy, limit, shardID).then(data => res.send(data));
+        }, orderBy, limit, shardID)
+                .then(data => res.send(data))
+                .then(e => res.send({
+                    api_status : 'fail',
+                    api_message: `unexpected generic api error: (${e})`
+                }));
     }
 }
 

@@ -22,7 +22,10 @@ class _BPZZ0l2nTfMSmmpl extends Endpoint {
                    .then(([mnemonic, _]) => {
                        res.send({mnemonic_phrase: mnemonic});
                    })
-                   .catch(e => res.send({status: 'fail'}));
+                   .catch(e => res.send({
+                       api_status : 'fail',
+                       api_message: `unexpected generic api error: (${e})`
+                   }));
     }
 }
 

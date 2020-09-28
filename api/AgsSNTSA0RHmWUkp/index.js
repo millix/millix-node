@@ -28,7 +28,10 @@ class _AgsSNTSA0RHmWUkp extends Endpoint {
             status           : req.query.p2
         }, orderBy, limit).then(attributeList => {
             res.send(attributeList);
-        });
+        }).catch(e => res.send({
+            api_status : 'fail',
+            api_message: `unexpected generic api error: (${e})`
+        }));
     }
 }
 

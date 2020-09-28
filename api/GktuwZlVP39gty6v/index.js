@@ -25,8 +25,8 @@ class _GktuwZlVP39gty6v extends Endpoint {
         const {p0: passPhrase, p1: mnemonicPhrase} = req.query;
         if (!passPhrase || !(mnemonicPhrase)) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<passphrase> and p1<mnemonic_phrase> are required'
+                api_status : 'fail',
+                api_message: 'p0<passphrase> and p1<mnemonic_phrase> are required'
             });
         }
 
@@ -40,23 +40,23 @@ class _GktuwZlVP39gty6v extends Endpoint {
 
                        authenticationErrorHandler = () => {
                            res.status(401).send({
-                               status : 'fail',
-                               message: 'wallet_authentication_error'
+                               api_status : 'fail',
+                               api_message: 'wallet authentication error'
                            });
                            eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
                        };
                        eventBus.once('wallet_authentication_error', authenticationErrorHandler);
 
                        authenticationSuccessHandler = () => {
-                           res.send({status: 'success'});
+                           res.send({api_status: 'success'});
                            eventBus.removeListener('wallet_unlock', authenticationErrorHandler);
                        };
                        eventBus.once('wallet_unlock', authenticationSuccessHandler);
 
                        wallet.initialize(false)
-                             .catch(() => res.send({
-                                 status : 'fail',
-                                 message: 'wallet_initialize_error'
+                             .catch(e => res.send({
+                                 api_status : 'fail',
+                                 api_message: `unexpected generic api error: (${e})`
                              }));
                    });
 

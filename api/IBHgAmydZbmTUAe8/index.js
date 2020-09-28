@@ -23,8 +23,8 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
     handler(app, req, res) {
         if (!req.query.p0 || !req.query.p1) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<transaction_id> and p1<shard_id> are required'
+                api_status : 'fail',
+                api_message: 'p0<transaction_id> and p1<shard_id> are required'
             });
         }
         database.firstShardZeroORShardRepository('transaction', req.query.p1, transactionRepository => {
@@ -35,8 +35,8 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
             if (!data || data.length === 0) {
                 peer.transactionSyncRequest(req.query.p0).then(_ => _).catch(_ => _);
                 return res.send({
-                    status : 'transaction_not_found',
-                    message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
+                    api_status : 'fail',
+                    api_message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
                 });
             }
 
@@ -111,7 +111,10 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
             });
 
             res.send(transaction);
-        }).catch(e => res.send(e.message));
+        }).catch(e => res.send({
+            api_status : 'fail',
+            api_message: `unexpected generic api error: (${e})`
+        }));
     }
 }
 

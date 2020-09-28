@@ -31,8 +31,8 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
         if (req.method === 'GET') {
             if (!req.query.p0 || !req.query.p1 || !req.query.p2) {
                 return res.status(400).send({
-                    status : 'fail',
-                    message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> and p2<address_map> are required'
+                    api_status : 'fail',
+                    api_message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> and p2<address_map> are required'
                 });
             }
             else {
@@ -44,8 +44,8 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
         else {
             if (!req.body.p0 || !req.body.p1 || !req.body.p2) {
                 return res.status(400).send({
-                    status : 'fail',
-                    message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> and p2<address_map> are required'
+                    api_status : 'fail',
+                    api_message: 'p0<transaction_payload_unsigned> and p1<private_key_hex> and p2<address_map> are required'
                 });
             }
             else {
@@ -66,8 +66,8 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
 
                 for (let [address, publicKey] of Object.entries(addressMap)) {
                     addressAttributeMap[address] = {
-                        "key_public": publicKey
-                    }
+                        'key_public': publicKey
+                    };
                 }
 
                 new Promise((resolve) => {
@@ -76,8 +76,8 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                             console.log(`[api ${this.endpoint}] Received invalid refresh transaction. Not going to sign.`);
 
                             res.send({
-                                status : 'fail',
-                                message: 'Invalid refresh transaction'
+                                api_status : 'fail',
+                                api_message: 'invalid refresh transaction'
                             });
                             resolve(false);
                         }
@@ -92,8 +92,8 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                                            console.log(`[api ${this.endpoint}] Transaction consuming expired transaction outputs. Not going to sign.`);
 
                                            res.send({
-                                               status : 'fail',
-                                               message: 'Consuming transactions that have expired'
+                                               api_status : 'fail',
+                                               api_message: 'the transaction is consuming outputs that have expired'
                                            });
                                        }
                                        resolve(!isConsuming);
@@ -110,8 +110,8 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                                        .catch(e => {
                                            console.log(`[api ${this.endpoint}] Failed to sign transaction. Error: ${e}`);
                                            res.send({
-                                               status : 'fail',
-                                               message: e.message
+                                               api_status : 'fail',
+                                               api_message: `unexpected generic api error: (${e})`
                                            });
                                        });
                         }
@@ -120,9 +120,9 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
         }
         catch (e) {
             console.log(`[api ${this.endpoint}] error: ${e}`);
-            return res.send({
-                status : 'fail',
-                message: 'transaction_sign_error'
+            res.send({
+                api_status : 'fail',
+                api_message: `unexpected generic api error: (${e})`
             });
         }
     }

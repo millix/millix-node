@@ -24,14 +24,14 @@ class _PKUv2JfV87KpEZwE extends Endpoint {
     handler(app, req, res) {
         if (!req.query.p0) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<address_base> is required'
+                api_status : 'fail',
+                api_message: 'p0<address_base> is required'
             });
         }
         else if (!wallet.initialized) {
             return res.status(401).send({
-                status : 'fail',
-                message: 'wallet_not_initialized'
+                api_status : 'fail',
+                api_message: 'the wallet is not initialized'
             });
         }
 
@@ -42,17 +42,17 @@ class _PKUv2JfV87KpEZwE extends Endpoint {
                               const extendedPrivateKey = wallet.getActiveWallets()[walletID];
                               if (!extendedPrivateKey) {
                                   return res.status(401).send({
-                                      status : 'fail',
-                                      message: 'wallet_not_active'
+                                      api_status : 'fail',
+                                      api_message: 'the wallet is not active'
                                   });
                               }
 
                               const privateKey = walletUtils.derivePrivateKey(extendedPrivateKey, address.is_change, address.address_position);
                               res.send({private_key_hex: privateKey.toString('hex')});
                           })
-                          .catch(() => res.send({
-                              status : 'fail',
-                              message: 'address_not_found'
+                          .catch(e => res.send({
+                              api_status : 'fail',
+                              api_message: `unexpected generic api error: (${e})`
                           }));
     }
 }

@@ -14,7 +14,9 @@ class _4wR3kjTwwC67R94Z extends Endpoint {
     }
 
     /**
-     * executes the sqlite optimize database function on the indicated shard_id, or on all shards if shard_id is not provided. this API pauses the node service, tasks and network until it is finished
+     * executes the sqlite optimize database function on the indicated
+     * shard_id, or on all shards if shard_id is not provided. this API pauses
+     * the node service, tasks and network until it is finished
      * @param app
      * @param req (p0: shard_id)
      * @param res
@@ -26,14 +28,17 @@ class _4wR3kjTwwC67R94Z extends Endpoint {
         database.runVacuum()
                 .then(() => database.runWallCheckpoint())
                 .then(() => {
-                    wallet.initialize(true)
-                          .then(() => network.initialize())
-                          .then(() => peer.initialize())
-                          .then(() => {
-                              res.send({status: 'success'});
-                          });
+                    return wallet.initialize(true)
+                                 .then(() => network.initialize())
+                                 .then(() => peer.initialize())
+                                 .then(() => {
+                                     res.send({api_status: 'success'});
+                                 });
                 })
-                .catch(() => res.send({status: 'fail'}));
+                .catch(e => res.send({
+                    api_status : 'fail',
+                    api_message: `unexpected generic api error: (${e})`
+                }));
     }
 }
 

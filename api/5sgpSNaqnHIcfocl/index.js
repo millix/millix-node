@@ -20,21 +20,24 @@ class _5sgpSNaqnHIcfocl extends Endpoint {
      */
     handler(app, req, res) {
         if (!req.query.p0) {
-            return res.status(400).send({status: 'p0<is_running> is required'});
+            return res.status(400).send({
+                api_status : 'fail',
+                api_message: 'p0<is_running> is required'
+            });
         }
         const isOnline = !!req.query.p0;
         if (isOnline && network.initialized === false) {
             network.initialize();
-            res.send({status: 'success'});
+            res.send({api_status: 'success'});
         }
         else if (!isOnline && network.initialized === true) {
             network.stop();
-            res.send({status: 'success'});
+            res.send({api_status: 'success'});
         }
         else {
             res.send({
-                status : 'fail',
-                message: 'not_updated'
+                api_status : 'fail',
+                api_message: 'not updated'
             });
         }
     }

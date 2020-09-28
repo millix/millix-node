@@ -40,7 +40,10 @@ class _l4kaEhMnhjB5yseq extends Endpoint {
         }, orderBy, limit, shardID).then(data => {
             data.forEach(row => row['transaction_date'] = Math.floor(row.transaction_date.getTime() / 1000));
             res.send(data);
-        });
+        }).catch(e => res.send({
+            api_status : 'fail',
+            api_message: `unexpected generic api error: (${e})`
+        }));
     }
 }
 

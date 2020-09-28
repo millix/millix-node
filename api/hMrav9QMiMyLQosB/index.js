@@ -27,17 +27,17 @@ class _hMrav9QMiMyLQosB extends Endpoint {
         const {p0: version, p1: isMainNetwork, p2: regexPattern, p3: isDefault} = req.query;
         if (!version || isMainNetwork === undefined || !regexPattern || isDefault === undefined) {
             return res.status(400).send({
-                status: 'fail',
-                message: 'p0<version>, p1<is_main_network>, p2<regex_pattern> and p3<is_default> are required'
+                api_status : 'fail',
+                api_message: 'p0<version>, p1<is_main_network>, p2<regex_pattern> and p3<is_default> are required'
             });
         }
 
         const addressRepository = database.getRepository('address');
         addressRepository.addAddressVersion(version, !!isMainNetwork, regexPattern, !!isDefault)
-                         .then(() => res.send({status: 'success'}))
-                         .catch(() => res.send({
-                             status : 'fail',
-                             message: 'supported_version_not_added'
+                         .then(() => res.send({api_status: 'success'}))
+                         .catch(e => res.send({
+                             api_status : 'fail',
+                             api_message: `unexpected generic api error: (${e})`
                          }));
     }
 }

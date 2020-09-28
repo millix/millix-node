@@ -22,12 +22,10 @@ class _Lb2fuhVMDQm1DrLL extends Endpoint {
               .then(address => {
                   res.send(address);
               })
-              .catch(() => {
-                  return res.status(400).send({
-                      status: 'fail',
-                      message: 'wallet_not_activated'
-                  });
-              });
+              .catch(e => res.send({
+                  api_status : 'fail',
+                  api_message: `unexpected generic api error: (${e})`
+              }));
     }
 }
 

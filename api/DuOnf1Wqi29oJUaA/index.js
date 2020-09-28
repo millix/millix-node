@@ -23,8 +23,8 @@ class _DuOnf1Wqi29oJUaA extends Endpoint {
         const {p0: nodePrefix, p1: nodeIpAddress, p2: nodePort, p3: nodePortApi} = req.query;
         if (!nodePrefix || !nodeIpAddress || !nodePort || !nodePortApi) {
             return res.status(400).send({
-                status : 'fail',
-                message: 'p0<node_prefix>, p1<node_ip_address>, p2<node_port> and p3<node_port_api> are required'
+                api_status : 'fail',
+                api_message: 'p0<node_prefix>, p1<node_ip_address>, p2<node_port> and p3<node_port_api> are required'
             });
         }
 
@@ -36,13 +36,11 @@ class _DuOnf1Wqi29oJUaA extends Endpoint {
             node_port_api  : nodePortApi
         }).then(() => {
             network.addNode(nodePrefix, nodeIpAddress, nodePort, nodePortApi);
-            res.send({status: 'success'});
-        }).catch(() => {
-            res.send({
-                status : 'fail',
-                message: 'node_already_exists'
-            });
-        });
+            res.send({api_status: 'success'});
+        }).catch(e => res.send({
+            api_status : 'fail',
+            api_message: `unexpected generic api error: (${e})`
+        }));
     }
 }
 
