@@ -66,7 +66,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 'input_output_position'         : 'output_position',
                 'input_output_shard_id'         : 'output_shard_id',
                 'input_output_transaction_date' : 'output_transaction_date',
-                'input_output_transaction_id'   : 'input_output_transaction_id',
+                'input_output_transaction_id'   : 'output_transaction_id',
                 'input_address'                 : 'address',
                 'input_status'                  : 'status',
                 'input_create_date'             : 'create_date',
