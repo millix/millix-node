@@ -63,6 +63,10 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 'input_double_spend_date'       : 'double_spend_date',
                 'input_is_double_spend'         : 'is_double_spend',
                 'input_address_key_identifier'  : 'address_key_identifier',
+                'input_output_position'         : 'output_position',
+                'input_output_shard_id'         : 'output_shard_id',
+                'input_output_transaction_date' : 'output_transaction_date',
+                'input_output_transaction_id'   : 'input_output_transaction_id',
                 'input_address'                 : 'address',
                 'input_status'                  : 'status',
                 'input_create_date'             : 'create_date',
@@ -90,7 +94,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
 
                 if (!inputs.has(row.input_position)) {
                     inputs.add(row.input_position);
-                    transaction['transaction_input_list'].push(_.mapKeys(_.pick(row, 'input_position', 'output_transaction_id', 'output_shard_id', 'output_position', 'output_transaction_date', 'input_double_spend_date', 'input_is_double_spend', 'input_address', 'input_address_key_identifier', 'input_status', 'input_create_date'), keyMapFunction));
+                    transaction['transaction_input_list'].push(_.mapKeys(_.pick(row, 'input_position', 'input_output_transaction_id', 'input_output_shard_id', 'input_output_position', 'input_output_transaction_date', 'input_double_spend_date', 'input_is_double_spend', 'input_address', 'input_address_key_identifier', 'input_status', 'input_create_date'), keyMapFunction));
                 }
 
                 if (!outputs.has(row.output_position)) {
