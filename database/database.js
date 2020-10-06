@@ -7,7 +7,7 @@ import wallet from '../core/wallet/wallet';
 import console from '../core/console';
 import path from 'path';
 import async from 'async';
-import {Address, API, Config, Job, Keychain, Node, Schema, Shard as ShardRepository, Wallet} from './repositories/repositories';
+import {Address, API, Config, Job, Keychain, Node, Schema, Shard as ShardRepository, Wallet, Trigger} from './repositories/repositories';
 import Shard from './shard';
 import _ from 'lodash';
 
@@ -291,6 +291,7 @@ export class Database {
         this.repositories['address']  = new Address(this.databaseMillix);
         this.repositories['job']      = new Job(this.databaseJobEngine);
         this.repositories['api']      = new API(this.databaseMillix);
+        this.repositories['trigger']  = new Trigger(this.databaseMillix);
 
         // initialize shard 0 (root)
         const dbShard            = new Shard();

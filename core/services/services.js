@@ -6,6 +6,7 @@ import peerRotation from '../../net/peer-rotation';
 import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
+import triggerEngine from '../../trigger/trigger';
 import database from '../../database/database';
 import _ from 'lodash';
 import ntp from '../ntp';
@@ -39,6 +40,7 @@ class Service {
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => wallet._doTransactionOutputRefresh())
+                         .then(() =>  triggerEngine.initialize())
                          .catch(e => {
                              console.log(e);
                          });
