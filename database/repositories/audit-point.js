@@ -44,12 +44,15 @@ export default class AuditPoint {
                         return unlock();
                     }
 
-                    this.database.all('SELECT DISTINCT transaction_output.transaction_id, transaction_output.shard_id FROM transaction_output ' +
-                                      'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
-                                      'LEFT JOIN audit_verification ON transaction_output.transaction_id = audit_verification.transaction_id ' +
-                                      'LEFT JOIN audit_point ON transaction_output.transaction_id = audit_point.transaction_id ' +
-                                      'WHERE `transaction`.status = 1 AND `transaction`.is_stable = 1 AND transaction_output.is_double_spend = 0 AND transaction_output.is_stable = 1 AND audit_point.transaction_id IS NULL AND audit_verification.transaction_id IS NULL ' +
-                                      'ORDER BY `transaction`.transaction_date DESC LIMIT ' + (config.AUDIT_POINT_CANDIDATE_MAX - pendingCandidates.length), (err, rows) => {
+                    this.database.all('SELECT DISTINCT transaction_output.transaction_id, transaction_output.shard_id \
+                                        FROM transaction_output \
+                                        INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
+                                        WHERE transaction_output.is_double_spend = 0 \
+                                        AND transaction_output.is_stable = 1 \
+                                        AND +`transaction`.status = 1 \
+                                        AND transaction_output.transaction_id NOT IN (SELECT transaction_id from audit_point) \
+                                        AND transaction_output.transaction_id NOT IN (SELECT transaction_id from audit_verification) \
+                                        LIMIT ' + (config.AUDIT_POINT_CANDIDATE_MAX - pendingCandidates.length), (err, rows) => {
                         if (err) {
                             reject(err);
                             return unlock();

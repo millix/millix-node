@@ -1017,11 +1017,13 @@ class Peer {
         database.getRepository('node')
                 .getNodeAttribute(content.node_id, content.attribute_type)
                 .then(attributeValue => {
-                    this.nodeAttributeResponse({
-                        node_id       : content.node_id,
-                        attribute_type: content.attribute_type,
-                        value         : attributeValue
-                    }, ws);
+                    if (attributeValue) {
+                        this.nodeAttributeResponse({
+                            node_id       : content.node_id,
+                            attribute_type: content.attribute_type,
+                            value         : attributeValue
+                        }, ws);
+                    }
                 })
                 .catch(_ => _);
     }

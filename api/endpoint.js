@@ -18,7 +18,13 @@ export default class Endpoint {
             database.getRepository('node')
                     .getNodeAttribute(nodeID, 'node_public_key')
                     .then(publicKey => {
-                        if (!walletUtils.verify(publicKey, nodeSignature, server.nodeID)) {
+                        if (!publicKey) {
+                            return res.status(401).send({
+                                api_status : 'fail',
+                                api_message: 'unknown node identity'
+                            });
+                        }
+                        else if (!walletUtils.verify(publicKey, nodeSignature, server.nodeID)) {
                             return res.status(401).send({
                                 api_status : 'fail',
                                 api_message: 'invalid node identity'
