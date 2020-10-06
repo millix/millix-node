@@ -44,8 +44,9 @@ class _FDLyQ5uo5t7jltiQ extends Endpoint {
                 'transaction_output.stable_date_end'  : req.query.p9,
                 is_spent                              : req.query.p10,
                 spent_date_begin                      : req.query.p11,
-                spent_date_end                        : req.query.p12
-            }, orderBy, limit, shardID);
+                spent_date_end                        : req.query.p12,
+                'transaction_output.shard_id'         : shardID
+            }, orderBy, limit);
         }, orderBy, limit, shardID)
                 .then(data => res.send(data))
                 .catch(e => res.send({
