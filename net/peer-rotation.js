@@ -32,7 +32,7 @@ export class PeerRotation {
             let nodeRepository = database.getRepository('node');
             nodeRepository
                 .getNodeAttribute(network.nodeID, 'peer_rotation_settings')
-                .then(attribute => resolve(attribute))
+                .then(attribute => attribute ? resolve(attribute) : Promise.reject())
                 .catch(() => {
                     let attribute = JSON.stringify(config.PEER_ROTATION_CONFIG);
                     nodeRepository.addNodeAttribute(network.nodeID, 'peer_rotation_settings', attribute)

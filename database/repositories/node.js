@@ -35,10 +35,25 @@ export default class Node {
                     attributeType,
                     nodeID
                 ], (err, row) => {
-                    if (err || !row) {
+                    if (err) {
                         return reject();
                     }
-                    resolve(row.value);
+                    resolve(row ? row.value : undefined);
+                });
+        });
+    }
+
+    getNodeAttributeByAttributeID(nodeID, attributeID) {
+        return new Promise((resolve, reject) => {
+            this.database.get('SELECT value FROM node_attribute  WHERE attribute_type_id = ? AND node_id = ?',
+                [
+                    attributeID,
+                    nodeID
+                ], (err, row) => {
+                    if (err) {
+                        return reject();
+                    }
+                    resolve(row ? row.value : undefined);
                 });
         });
     }

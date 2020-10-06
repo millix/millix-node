@@ -354,7 +354,10 @@ class Network {
 
                 database.getRepository('node')
                         .getNodeAttribute(peerNodeID, 'node_public_key')
-                        .then(_ => {
+                        .then(attribute => {
+                            if (!attribute) {
+                                return Promise.reject();
+                            }
                             let payload = {
                                 type   : 'node_handshake',
                                 content: {
