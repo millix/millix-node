@@ -2,11 +2,13 @@ import fs from 'fs';
 import config, {SHARD_ZERO_NAME} from '../core/config/config';
 import console from '../core/console';
 import {AuditPoint, AuditVerification, Schema, Transaction} from './repositories/repositories';
-import path from "path";
-import os from "os";
+import path from 'path';
+import os from 'os';
+import {Database} from './database';
 
 export default class Shard {
     constructor(databaseFile, shardID) {
+        this.debug        = true;
         this.databaseFile = databaseFile;
         this.shardID      = shardID;
         this.repositories = {};
@@ -71,7 +73,7 @@ export default class Shard {
                 });
             };
 
-            let shardFolder  = path.dirname(this.databaseFile);
+            let shardFolder = path.dirname(this.databaseFile);
             if (!fs.existsSync(shardFolder)) {
                 fs.mkdirSync(shardFolder);
             }
@@ -87,6 +89,8 @@ export default class Shard {
                 }
 
                 console.log('[shard] connected to the shard database: ', this.shardID);
+
+                this.debug && Database.enableDebugger(this.database);
 
                 if (doInitialize) {
                     console.log('[shard] initializing database');
