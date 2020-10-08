@@ -206,8 +206,8 @@ export default class Address {
     listAddress(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
 
-            let {sql, parameters} = Database.buildQuery('SELECT a.*, atp.attribute_type, at.value as attribute_value FROM address AS a  \
-                LEFT JOIN address_attribute AS at ON at.address_base = a.address_base \
+            let {sql, parameters} = Database.buildQuery('SELECT address.*, atp.attribute_type, at.value as attribute_value FROM address  \
+                LEFT JOIN address_attribute AS at ON at.address_base = address.address_base \
                 LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id', where, orderBy, limit);
             this.database.all(
                 sql,

@@ -21,7 +21,7 @@ class _l4kaEhMnhjB5yseq extends Endpoint {
     handler(app, req, res) {
         const orderBy = req.query.p7 || 'create_date desc';
         const limit   = parseInt(req.query.p8) || 1000;
-        const shardID = req.query.p9;
+        const shardID = req.query.p9 || undefined;
 
         database.applyShards((dbShardID) => {
             const transactionRepository = database.getRepository('transaction', dbShardID);
@@ -35,8 +35,9 @@ class _l4kaEhMnhjB5yseq extends Endpoint {
                 is_stable             : req.query.p3,
                 is_parent             : req.query.p4,
                 is_timeout            : req.query.p5,
-                status                : req.query.p6
-            }, orderBy, limit, shardID);
+                status                : req.query.p6,
+                shard_id              : shardID
+            }, orderBy, limit);
         }, orderBy, limit, shardID).then(data => {
             data.forEach(row => row['transaction_date'] = Math.floor(row.transaction_date.getTime() / 1000));
             res.send(data);

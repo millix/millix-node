@@ -26,10 +26,8 @@ class _wDyC195wgjPjM2Ut extends Endpoint {
                 api_message: 'p0<transaction_id> and p1<shard_id> are required'
             });
         }
-        database.firstShardZeroORShardRepository('transaction', req.query.p1, transactionRepository => {
-            return new Promise((resolve, reject) => {
-                transactionRepository.getTransaction(req.query.p0).then(transaction => transaction ? resolve(transaction) : reject()).catch(reject);
-            });
+        database.firstShardORShardZeroRepository('transaction', req.query.p1, transactionRepository => {
+            return transactionRepository.getTransaction(req.query.p0, req.query.p1);
         }).then(transaction => {
             if (!transaction) {
                 peer.transactionSyncRequest(req.query.p0).then(_ => _).catch(_ => _);
@@ -42,7 +40,10 @@ class _wDyC195wgjPjM2Ut extends Endpoint {
             if (!!transaction.transaction_date) {
                 transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
             }
-            res.send(transaction || {});
+            res.send(transaction || {
+                api_status : 'fail',
+                api_message: `the transaction ${req.query.p0} was not found at shard with the id ${req.query.p1}`
+            });
         }).catch(e => res.send({
             api_status : 'fail',
             api_message: `unexpected generic api error: (${e})`

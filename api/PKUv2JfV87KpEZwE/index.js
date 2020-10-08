@@ -17,7 +17,7 @@ class _PKUv2JfV87KpEZwE extends Endpoint {
      * the master key that is temporarily stored in node memory for the active
      * wallet
      * @param app
-     * @param req (p0: address_base<required>)
+     * @param req (p0: address<required>)
      * @param res
      * @returns {*}
      */

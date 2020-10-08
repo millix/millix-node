@@ -24,7 +24,7 @@ class _yefPsK2TvkZmC6M4 extends Endpoint {
                 api_message: 'p0<is_running> is required'
             });
         }
-        const isRun = !!req.query.p0;
+        const isRun = req.query.p0 === 'true';
         if (isRun && !services.initialized) {
             services.initialize({initialize_wallet_event: true});
             res.send({api_status: 'success'});
