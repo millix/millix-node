@@ -62,7 +62,7 @@ class _8s9Auqlc7RHbpxsJ extends Endpoint {
                                     console.log(`[api ${this.endpoint}] Failed to invoke trigger ${triggerName}. Error: ${err}`);
                                     return res.send({
                                         status : 'fail',
-                                        message: `Failed to remove trigger: ${err}`
+                                        message: `Failed to invoke trigger: ${err}`
                                     });
                                 });
         }

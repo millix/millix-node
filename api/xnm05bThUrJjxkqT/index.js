@@ -13,7 +13,7 @@ const unupdateableFields = ['id', 'last_trigger_state', 'create_date'];
 
 class _xnm05bThUrJjxkqT extends Endpoint {
     constructor() {
-        super('vu35sd0ipsex2pDf');
+        super('xnm05bThUrJjxkqT');
     }
 
     /**
@@ -91,4 +91,4 @@ class _xnm05bThUrJjxkqT extends Endpoint {
 }
 
 
-export default new _vu35sd0ipsex2pDf();
+export default new _xnm05bThUrJjxkqT();

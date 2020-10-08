@@ -37,7 +37,23 @@ class _Hehn7N0KBVvuFQHf extends Endpoint {
         }
 
         try {
-            console.log(`[api ${this.endpoint}] Received request to add new trigger. Validating`);
+            console.log(`[api ${this.endpoint}] Received request to add new trigger ${trigger.name}. Validating`);
+
+            if (trigger.name === undefined) {
+                console.log(`[api ${this.endpoint} Missing trigger name`);
+                return res.send({
+                    status: 'failure',
+                    message: 'Missing trigger name',
+                });
+            }
+
+            if (triggerEngine.checkTriggerExists(trigger.name)) {
+                console.log(`[api ${this.endpoint}] Trigger ${trigger.name} already exists`);
+                return res.send({
+                    status: 'failure',
+                    message: 'Trigger already exists'
+                });
+            }
 
             try {
                 validateTrigger(trigger);
