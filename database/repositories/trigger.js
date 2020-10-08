@@ -32,11 +32,12 @@ export default class Trigger {
                     console.log(`[database] Inserted trigger ${trigger.name} of type ${trigger.type}`);
                     resolve();
                 }
-            })
-        })
+            });
+        });
     }
 
     addTriggerWithActions(trigger, actions) {
+        const self = this;
         return new Promise((resolve, reject) => {
             this.database.run('BEGIN TRANSACTION', err => {
                 if (err) {
@@ -51,33 +52,34 @@ export default class Trigger {
                     trigger.shard_id,
                     trigger.data_source,
                     trigger.data_source_type,
-                    trigger.data_source_variable,
+                    JSON.stringify(trigger.data_source_variable),
                     trigger.variable_1,
                     trigger.variable_2,
                     trigger.variable_operator,
                     trigger.allow_adhoc
-                ], (err) => {
+                ], function(err) {
                     if (err) {
                         return reject(err.message);
                     }
 
                     console.log(`[database] Inserted trigger ${trigger.name} of type ${trigger.type}`);
 
-                    for (let action of Actions) {
-                        this.addAction(this.lastId, action)
+                    for (let action of actions) {
+                        self.addAction(this.lastID, action)
                             .catch(err => {
                                 return reject(err.message);
-                            })
+                            });
                     }
 
                     console.log(`[database] Inserted ${actions.length} trigger actions`);
 
-                    this.database.run('COMMIT', (err) => {
+                    self.database.run('COMMIT', (err) => {
                         if (err) {
                             return reject(err.message);
-                        } else  {
+                        }
+                        else {
                             console.log(`[database] Successfully commited database transaction`);
-                            resolve(this.lastId);
+                            resolve(this.lastID);
                         }
                     });
                 });
@@ -91,11 +93,13 @@ export default class Trigger {
             this.database.get(sql, parameters, (err, row) => {
                 if (err) {
                     return reject(err.message);
-                } else {
+                }
+                else {
+                    row.data_source_variable = JSON.parse(row.data_source_variable);
                     resolve(row);
                 }
-            })
-        })
+            });
+        });
     }
 
     getTriggerId(triggerName) {
@@ -103,15 +107,17 @@ export default class Trigger {
             this.database.get('SELECT id FROM trigger WHERE trigger_name = ?', [triggerName], (err, row) => {
                 if (err) {
                     return reject(err.message);
-                } else {
+                }
+                else {
                     if (row === undefined) {
                         resolve(null);
-                    } else {
+                    }
+                    else {
                         resolve(row.id);
                     }
                 }
-            })
-        })
+            });
+        });
     }
 
     getAllTriggers() {
@@ -121,15 +127,18 @@ export default class Trigger {
                     reject(err.message);
                 }
                 else {
+                    for (let row of rows) {
+                        row.data_source_variable = JSON.parse(row.data_source_variable);
+                    }
                     resolve(rows);
                 }
-            })
-        })
+            });
+        });
     }
 
     updateTrigger(triggerID, trigger) {
         return new Promise((resolve, reject) => {
-            let set = _.pick(trigger, [
+            let set             = _.pick(trigger, [
                 'name',
                 'type',
                 'object_guid',
@@ -142,19 +151,24 @@ export default class Trigger {
                 'variable_2',
                 'variable_operator',
                 'allow_adhoc',
-                'status',
+                'status'
             ]);
+            set['trigger_name'] = set['name'];
+            delete set['name'];
+            set['trigger_type'] = set['type'];
+            delete set['type'];
             set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
-            const { sql, parameters } = Database.buildUpdate('UPDATE trigger', set, {id: triggerID});
-            this.database.run(sql, parameters,  (err) => {
+            const {sql, parameters} = Database.buildUpdate('UPDATE trigger', set, {id: triggerID});
+            this.database.run(sql, parameters, (err) => {
                 if (err) {
                     reject(err.message);
-                } else {
+                }
+                else {
                     console.log(`[database] Updated trigger with id ${triggerID}`);
                     resolve();
                 }
-            })
-        })
+            });
+        });
     }
 
     updateTriggerAction(triggerID, triggerAction) {
@@ -165,42 +179,62 @@ export default class Trigger {
                 'action',
                 'action_variable',
                 'priority',
-                'status',
+                'status'
             ]);
+            if (set.action !== undefined) {
+                set.action = JSON.stringify(set.action);
+            }
             set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
-            const { sql, parameters } = Database.buildUpdate('UPDATE trigger_action', set, {trigger_id: triggerID, name: triggerAction.name});
-            this.database.run(sql, parameters,  (err) => {
+            const {sql, parameters} = Database.buildUpdate('UPDATE trigger_action', set, {
+                trigger_id: triggerID,
+                name      : triggerAction.name
+            });
+            this.database.run(sql, parameters, (err) => {
                 if (err) {
                     reject(err.message);
-                } else {
+                }
+                else {
                     console.log(`[database] Updated trigger action ${triggerAction.name}`);
                     resolve();
                 }
-            })
-        })
+            });
+        });
     }
 
     setLastTriggerStatus(triggerID, status) {
         return new Promise((resolve, reject) => {
-            this.database.run(`UPDATE trigger SET last_trigger_state = ?, update_date = ? WHERE id = ?`, [status, Math.floor(ntp.now().getTime() / 1000), triggerID], (err) => {
+            this.database.run(`UPDATE trigger SET last_trigger_state = ?, update_date = ? WHERE id = ?`, [
+                status,
+                Math.floor(ntp.now().getTime() / 1000),
+                triggerID
+            ], (err) => {
                 if (err) {
                     reject(err.message);
-                } else {
+                }
+                else {
                     console.log(`[database] Set trigger ${triggerID} last status to ${status}`);
                     resolve();
                 }
-            })
-        })
+            });
+        });
     }
 
     setTriggerActionResult(triggerActionID, result, timestamp) {
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE trigger_action SET last_action_message = ?, last_action_date = ?, update_date = ? WHERE id = ?', [result, timestamp, timestamp, triggerActionID], (err) => {
+            this.database.run('UPDATE trigger_action SET last_action_message = ?, last_action_date = ?, update_date = ? WHERE id = ?', [
+                result,
+                timestamp,
+                timestamp,
+                triggerActionID
+            ], (err) => {
                 if (err) {
                     reject(err.message);
+                } else  {
+                    console.log('[database] Updated trigger action result');
+                    resolve();
                 }
-            })
-        })
+            });
+        });
     }
 
     checkTriggerExists(triggerName) {
@@ -208,50 +242,79 @@ export default class Trigger {
             this.database.get('SELECT id FROM trigger WHERE trigger_name = ?', [triggerName], (err, row) => {
                 if (err) {
                     reject(err.message);
-                } else {
+                }
+                else {
                     resolve(row !== undefined);
                 }
-            })
-        })
+            });
+        });
     }
 
     checkTriggerActionExists(triggerName, action) {
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT trigger_action.id FROM trigger_action INNER JOIN trigger ON trigger_action.trigger_id = trigger.id WHERE trigger.name = ? AND trigger_action.action = ?', [triggerName, action], (err, row) => {
+            this.database.get('SELECT trigger_action.id FROM trigger_action INNER JOIN trigger ON trigger_action.trigger_id = trigger.id WHERE trigger.name = ? AND trigger_action.action = ?', [
+                triggerName,
+                action
+            ], (err, row) => {
                 if (err) {
                     reject(err.message);
-                } else {
+                }
+                else {
                     resolve(row !== undefined);
                 }
-            })
-        })
+            });
+        });
     }
 
-    removeTrigger(triggerName) {
+    removeTrigger(triggerName, triggerID) {
         return new Promise((resolve, reject) => {
-            this.database.run('DELETE FROM trigger WHERE trigger_name = ?', [triggerName], (err) => {
+            this.database.run('BEGIN TRANSACTION', err => {
                 if (err) {
                     return reject(err.message);
                 }
-                else {
-                    console.log(`[database] Removed trigger ${triggerName}`);
-                    resolve();
-                }
-            })
-        })
+
+                this.database.run('DELETE FROM trigger WHERE trigger_name = ?', [triggerName], (err) => {
+                    if (err) {
+                        return reject(err.message);
+                    }
+                    else {
+                        this.database.run('DELETE FROM trigger_action WHERE trigger_id = ?', [triggerID], (err) => {
+                            if (err) {
+                                return reject(err.message);
+                            }
+                            else {
+                                this.database.run('COMMIT', (err) => {
+                                    if (err) {
+                                        return reject(err.message);
+                                    }
+                                    else {
+                                        console.log(`[database] Removed trigger ${triggerName}`);
+                                        resolve();
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+        });
     }
 
     removeTriggerAction(triggerID, actionName) {
         return new Promise((resolve, reject) => {
-            this.database.run('DELETE FROM trigger_action WHERE trigger_id = ? AND name = ?', [triggerID, actionName], (err) => {
+            this.database.run('DELETE FROM trigger_action WHERE trigger_id = ? AND name = ?', [
+                triggerID,
+                actionName
+            ], (err) => {
                 if (err) {
                     return reject(err.message);
-                } else {
+                }
+                else {
                     console.log(`[database] Removed trigger action`);
                     resolve();
                 }
-            })
-        })
+            });
+        });
     }
 
     addAction(triggerID, triggerAction) {
@@ -260,10 +323,9 @@ export default class Trigger {
                 triggerID,
                 triggerAction.name,
                 triggerAction.trigger_result,
-                triggerAction.action,
+                JSON.stringify(triggerAction.action),
                 triggerAction.action_variable,
                 triggerAction.priority
-
             ], (err) => {
                 if (err) {
                     return reject(err.message);
@@ -272,8 +334,8 @@ export default class Trigger {
                     console.log(`[database] Inserted trigger action ${triggerAction.name} for trigger ID ${triggerID}`);
                     resolve();
                 }
-            })
-        })
+            });
+        });
     }
 
     getActions(trigger_id) {
@@ -285,8 +347,8 @@ export default class Trigger {
                 else {
                     resolve(rows);
                 }
-            })
-        })
+            });
+        });
     }
 
     getAllActions() {
@@ -294,10 +356,11 @@ export default class Trigger {
             this.database.all('SELECT * FROM trigger_action', [], (err, rows) => {
                 if (err) {
                     return reject(err.message);
-                } else {
+                }
+                else {
                     resolve(rows);
                 }
-            })
-        })
+            });
+        });
     }
 }

@@ -23,6 +23,7 @@
   "dependencies": {
     "@babel/register": "7.8.3",
     "async": "^2.6.2",
+    "axios": "^0.20.0",
     "bitcore-lib": "^8.1.1",
     "bitcore-mnemonic": "^8.1.1",
     "body-parser": "^1.19.0",

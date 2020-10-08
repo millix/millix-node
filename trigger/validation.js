@@ -11,7 +11,7 @@ function validateTrigger(trigger) {
     _validateString(trigger.shard_id, 32, false, "shard_id");
     _validateString(trigger.data_source, 1000, true, "data_source");
     _validateString(trigger.data_source_type, 1000, true, "data_source_type");
-    _validateString(trigger.data_source_variable, 4000, false, "data_source_variable");
+    _validateObject(trigger.data_source_variable, "data_source_variable");
     _validateString(trigger.variable_1, 200, true, "variable_1");
     _validateString(trigger.variable_2, 200, true, "variable_2");
     _validateString(trigger.variable_operator, 40, true, "variable_operator");
@@ -29,19 +29,25 @@ function _validateAllowAdhoc(allowAdhoc) {
     }
 }
 
+function _validateObject(o, requiredFields, fieldName) {
+    if (!(o instanceof Object)) {
+        throw Error(`${fieldName} must be object`);
+    }
+}
+
 
 function validateTriggerAction(triggerAction) {
-    _validateString(triggerAction.trigger_id, 32, true, "trigger_id");
     _validateString(triggerAction.name, 200, true, "name");
-    _validateString(triggerAction.trigger_result, 1000, true,  "trigger_result");
-    _validateString(triggerAction.action, 1000, true, "trigger_action");
-    _validateString(triggerAction.action_variable, 4000, false, "action_variable");
     _validateTriggerActionPriority(triggerAction.priority);
 }
 
 function _validateString(s, length, necessary, fieldName, regex) {
-    if (necessary || (!(s))) {
+    if (necessary && (!(s))) {
         throw Error(`${fieldName} is necessary but not set`)
+    }
+
+    if (!(necessary) && (!(s))) {
+        return;
     }
 
     if (!(typeof s === 'string' || s instanceof String)) {

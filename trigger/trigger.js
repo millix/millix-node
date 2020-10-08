@@ -3,6 +3,11 @@ import ntp from '../core/ntp';
 import axios from 'axios';
 
 
+function test() {
+    console.log('\n\n\nTEEEST\n\n');
+}
+
+
 class TriggerEngine {
     constructor() {
         this._triggers          = {};
@@ -10,40 +15,50 @@ class TriggerEngine {
         this._triggerActions    = {};
         this.initialized        = false;
         this.repository         = undefined;
-        this._modules = {}  // TODO
+        this._modules           = {
+            'test': {
+                test: test
+            }
+        };  // TODO
     }
 
     // Reads all the triggers and trigger actions and stores it in memory
     initialize() {
         this.repository = database.getRepository('trigger');
-        console.log('[Trigger] Initializing trigger engine. Getting triggers from the database');
+        console.log('[Trigger Engine] Initializing trigger engine. Getting triggers from the database');
 
         return this.repository.getAllTriggers()
                    .then(trigger_rows => {
                        for (let triggerRow of trigger_rows) {
-                           this._triggers[trigger.id]            = triggerRow;
-                           this._triggerNamesToIDs[trigger.name] = trigger.id;
-                           this._triggerActions[trigger.id]      = [];
+                           console.log(`[Trigger Engine] Trigger Row: ${JSON.stringify(triggerRow)}`);
+                           this._triggers[triggerRow.id]                    = triggerRow;
+                           this._triggerNamesToIDs[triggerRow.trigger_name] = triggerRow.id;
+                           this._triggerActions[triggerRow.id]              = [];
                        }
 
-                       console.log(`[Trigger] ${trigger_rows.length} triggers retrieved from the database`);
-                       console.log('[Trigger] Getting trigger actions from the database');
+                       console.log(`[Trigger Engine] ${trigger_rows.length} triggers retrieved from the database`);
+                       console.log('[Trigger Engine] Getting trigger actions from the database');
 
-                       this.repository.getAllTriggerActions()
+                       this.repository.getAllActions()
                            .then(triggerActionRows => {
                                for (let triggerActionRow of triggerActionRows) {
-                                   const triggerID = triggerActionRow.trigger_id;
+                                   triggerActionRow.action = JSON.parse(triggerActionRow.action);
+                                   const triggerID         = triggerActionRow.trigger_id;
                                    this._triggerActions[triggerID].push(triggerActionRow);
                                }
 
-                               console.log(`[Trigger] ${triggerActionRows.length} trigger actions retrieved from the database`);
-                               console.log(`[Trigger] Successfully initialized`);
+                               console.log(`[Trigger Engine] ${triggerActionRows.length} trigger actions retrieved from the database`);
+                               console.log(`[Trigger Engine] Successfully initialized`);
 
                                this.initialized = true;
+                           })
+                           .catch(err => {
+                               console.log(`[Trigger Engine] Failed to get all actions: ${err}`);
+                               throw err;
                            });
                    })
                    .catch(err => {
-                       console.log(`[Trigger] Error while initializing: ${err}`);
+                       console.log(`[Trigger Engine] Error while initializing: ${err}`);
                        throw Error('Could not initialize trigger engine');
                    });
     }
@@ -69,14 +84,14 @@ class TriggerEngine {
 
         const triggerID = this._triggerNamesToIDs[triggerName];
 
-        this.repository.addAction(triggerID, action)
-            .then(_ => {
-                this._triggerActions[triggerID].push(action);
-                console.log('[Trigger Engine] Successfully added new trigger action');
-            })
-            .catch(err => {
-                throw Error(`Could not add trigger action. Error:  ${err}`);
-            });
+        return this.repository.addAction(triggerID, action)
+                   .then(_ => {
+                       this._triggerActions[triggerID].push(action);
+                       console.log('[Trigger Engine] Successfully added new trigger action');
+                   })
+                   .catch(err => {
+                       throw Error(`Could not add trigger action. Error:  ${err}`);
+                   });
     }
 
     checkTriggerExists(triggerName) {
@@ -87,7 +102,7 @@ class TriggerEngine {
 
     isTriggerDisabled(triggerName) {
         const triggerID = this._triggerNamesToIDs[triggerName];
-        const trigger = this._triggers[triggerID];
+        const trigger   = this._triggers[triggerID];
         return (trigger.status === 0);
     }
 
@@ -117,7 +132,7 @@ class TriggerEngine {
 
         return this.repository.updateTrigger(triggerID, trigger)
                    .then(_ => {
-                       let existingTrigger = this._triggers[triggerName];
+                       let existingTrigger = this._triggers[triggerID];
 
                        for (let fieldName of Object.keys(trigger)) {
                            // Making sure it sets only fields that exist (user
@@ -134,13 +149,39 @@ class TriggerEngine {
                    });
     }
 
+    updateTriggerAction(triggerName, action) {
+        const triggerID = this._triggerNamesToIDs[triggerName];
+
+        return this.repository.updateTriggerAction(triggerID, action)
+                   .then(_ => {
+                       let actions = this._triggerActions[triggerID];
+
+                       for (let existingAction of actions) {
+                           if (existingAction.name === action.name) {
+                               for (let fieldName of Object.keys(action)) {
+                                   // Making sure it sets only fields that
+                                   // exist (user might send additional fields
+                                   // by error)
+                                   if (fieldName in existingAction) {
+                                       existingAction[fieldName] = action[fieldName];
+                                   }
+                               }
+                           }
+                       }
+
+                       console.log(`[Trigger Engine] Updated trigger action ${action.name}`);
+                   })
+                   .catch(err => {
+                       throw Error(`Could not update trigger action ${action.name}. Error: ${err}`);
+                   });
+    }
+
     removeTrigger(triggerName) {
         console.log(`[Trigger Engine] Removing trigger ${triggerName}`);
+        const triggerID = this._triggerNamesToIDs[triggerName];
 
-        return this.repository.removeTrigger(triggerName)
+        return this.repository.removeTrigger(triggerName, triggerID)
                    .then(_ => {
-                       const triggerID = this._triggerNamesToIDs[triggerName];
-
                        delete this._triggerNamesToIDs[triggerName];
                        delete this._triggers[triggerID];
                        delete this._triggerActions[triggerID];
@@ -156,7 +197,7 @@ class TriggerEngine {
         console.log(`[Trigger Engine] Removing trigger action for trigger ${triggerName}`);
         const triggerID = this._triggerNamesToIDs[triggerName];
 
-        return this.repository.removeTriggerAction(triggerID, triggerName)
+        return this.repository.removeTriggerAction(triggerID, action)
                    .then(_ => {
                        let actions                     = this._triggerActions[triggerID];
                        actions                         = actions.filter(a => a.action !== action);
@@ -169,77 +210,75 @@ class TriggerEngine {
                    });
     }
 
-    async invokeTrigger(triggerName) {
+    invokeTrigger(triggerName) {
         const triggerID = this._triggerNamesToIDs[triggerName];
         let status;
 
-        try {
-            this._invokeTrigger(triggerName);
-            status = 1;
-        } catch(err) {
-            console.log(`[Trigger Engine] Error while invoking trigger ${triggerName}. Error: ${err}`);
-            status = 0;
-        } finally {
-            try {
-                await this.repository.setLastTriggerStatus(triggerID, status);
-                console.log(`[Trigger Engine] Set last trigger status of trigger ${triggerName} to ${status}`);
-            }
-            catch (err) {
-                console.log(`[Trigger Engine] Failed to set last trigger status to ${status} for trigger ${triggerName}. Err: ${err}`);
-            }
-        }
+        return this._invokeTrigger(triggerName)
+                   .then(_ => {
+                       console.log(`[Trigger Engine] Invoked trigger ${triggerName}. Setting last state to 1`);
+                       status = 1;
+                       this.repository.setLastTriggerStatus(triggerID, status);
+                   })
+                   .catch(err => {
+                       console.log(`[Trigger Engine] Error while invoking trigger ${triggerName}. Error: ${err}`);
+                       status = 0;
+                       this.repository.setLastTriggerStatus(triggerID, status);
+                       throw err;
+                   });
     }
 
     // Called by the API endpoint
-    async _invokeTrigger(triggerName) {
+    _invokeTrigger(triggerName) {
         const triggerID = this._triggerNamesToIDs[triggerName];
         const trigger   = this._triggers[triggerID];
 
-        let requestResult;
-        if (trigger.data_source_type === 'url') {
-            // TODO  - make this work with promise
-            requestResult = await this._invokeURLTrigger(trigger);
-        }  else {
+        if (trigger.data_source_type !== 'url') {
             throw new Error(`Unsupported data source type ${trigger.data_source_type}`);
         }
 
-        const actualValue   = requestResult[trigger.variable_1];
-        if (actualValue === undefined) {
-            throw new Error(`No field ${trigger.variable_1} in the response`);
-        }
+        return this._invokeURLTrigger(trigger).then(requestResult => {
+            const actualValue = requestResult[trigger.variable_1];
+            if (actualValue === undefined) {
+                throw new Error(`No field ${trigger.variable_1} in the response`);
+            }
 
-        const thresholdValue = trigger.variable_2;
-        const operator      = trigger.variable_operator;
+            const thresholdValue = trigger.variable_2;
+            const operator       = trigger.variable_operator;
 
-        switch (operator) {
-            case '=':
-                if (actualValue === thresholdValue) {
-                    this._activateTrigger(triggerName);
-                }
-                break;
-            case '<':
-                if (actualValue < thresholdValue) {
-                    this._activateTrigger(triggerName);
-                }
-                break;
-            case '<=':
-                if (actualValue <= thresholdValue) {
-                    this._activateTrigger(triggerName);
-                }
-                break;
-            case '>':
-                if (actualValue > thresholdValue) {
-                    this._activateTrigger(triggerName);
-                }
-                break;
-            case '>=':
-                if (actualValue >= thresholdValue) {
-                    this._activateTrigger(triggerName);
-                }
-                break;
-            default:
-                throw new Error(`Invalid operator ${operator}`);
-        }
+            let res;
+            switch (operator) {
+                case '=':
+                    if (actualValue === thresholdValue) {
+                        res = this._activateTrigger(triggerName);
+                    }
+                    break;
+                case '<':
+                    if (actualValue < thresholdValue) {
+                        res = this._activateTrigger(triggerName);
+                    }
+                    break;
+                case '<=':
+                    if (actualValue <= thresholdValue) {
+                        res = this._activateTrigger(triggerName);
+                    }
+                    break;
+                case '>':
+                    if (actualValue > thresholdValue) {
+                        res = this._activateTrigger(triggerName);
+                    }
+                    break;
+                case '>=':
+                    if (actualValue >= thresholdValue) {
+                        res = this._activateTrigger(triggerName);
+                    }
+                    break;
+                default:
+                    throw new Error(`Invalid operator ${operator}`);
+            }
+
+            return res;
+        });
     }
 
     _invokeURLTrigger(trigger) {
@@ -255,12 +294,12 @@ class TriggerEngine {
         console.log(`[Trigger Engine] Full URL: ${url}`);
 
         return axios.get(url)
-             .then(response => {
-                 return response;
-             })
-             .catch(err => {
-                 throw new Error(`Failed to perform HTTP request: ${err.message}`);
-             });
+                    .then(response => {
+                        return response.data;
+                    })
+                    .catch(err => {
+                        throw new Error(`Failed to perform HTTP request: ${err.message}`);
+                    });
     }
 
     _activateTrigger(triggerName) {
@@ -274,8 +313,9 @@ class TriggerEngine {
 
         console.log(`[Trigger Engine] Kicking of ${triggerActions.length} trigger actions for trigger ${triggerName}`);
 
-        const timestamp      = Math.floor(ntp.now().getTime() / 1000);
+        const timestamp = Math.floor(ntp.now().getTime() / 1000);
 
+        let promises = [];
         for (let triggerAction of triggerActions) {
             if (triggerAction.status === 0) {
                 console.log(`[Trigger Engine] Skipping trigger action because it is disabled`);
@@ -292,8 +332,11 @@ class TriggerEngine {
                 message = err.message.substring(0, 1000);
             }
 
-            this.repository.setTriggerActionResult(triggerAction.id, message, timestamp);
+            promises.push(this.repository.setTriggerActionResult(triggerAction.id, message, timestamp));
         }
+
+        let promise = Promise.all(promises);
+        return promise;
     }
 
     _runTriggerAction(triggerAction) {
@@ -301,13 +344,12 @@ class TriggerEngine {
 
         console.log(`[Trigger Action] Executing trigger action ${JSON.stringify(action)}`);
 
-        // let input = triggerAction.action_variable;
-
         for (let step of action) {
             if (step.action_type === 'function') {
                 try {
                     this._invokeActionFunction(step.module, step.function);
-                } catch (err) {
+                }
+                catch (err) {
                     throw Error(`Error while invoking trigger action: ${err}`);
                 }
             }
@@ -317,7 +359,7 @@ class TriggerEngine {
     _invokeActionFunction(moduleName, functionName) {
         console.log(`[Trigger Engine] Invoking ${moduleName}.${functionName}`);
         const module = this._modules[moduleName];
-        module[functionName];
+        module[functionName]();
     }
 }
 
