@@ -97,14 +97,18 @@ class Wallet {
                         if (process.stdout.clearLine) {
                             process.stdout.clearLine();
                         }
-
                         console.enable();
+                        console.log("[wallet] activating wallet")
                         resolve(passphrase);
                     }
                 );
             }
             eventBus.removeAllListeners('wallet_key');
-            eventBus.once('wallet_key', resolve);
+            eventBus.once('wallet_key', passphrase => {
+                console.enable();
+                console.log("[wallet] activating wallet")
+                resolve(passphrase);
+            });
             eventBus.emit('wallet_ready', {create: isNewMnemonic});
         });
     }
@@ -1791,8 +1795,7 @@ class Wallet {
                                           });
                        })
                        .catch((err) => {
-                           console.log(err);
-                           throw Error('Could not initialize wallet');
+                           throw Error(`Could not initialize wallet ${err}`);
                        });
         }
         else {
