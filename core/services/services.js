@@ -37,7 +37,9 @@ class Service {
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => wallet._doTransactionOutputRefresh())
                          .catch(e => {
-                             console.log(e);
+                             console.log(`[services] ${e.message}`);
+                             this.initialized = false;
+                             return this.initialize(options);
                          });
     }
 

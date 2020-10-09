@@ -2,6 +2,7 @@ import console from './core/console';
 import db from './database/database';
 import wallet from './core/wallet/wallet';
 import config from './core/config/config';
+import configLoader from './core/config/config-loader';
 import genesisConfig from './core/genesis/genesis-config';
 import request from 'request';
 import services from './core/services/services';
@@ -48,7 +49,7 @@ if (argv.dataFolder) {
     config.DATABASE_CONNECTION.FOLDER = argv.dataFolder;
 }
 
-if (argv.debug === "true") {
+if (argv.debug === 'true') {
     config.MODE_DEBUG = true;
 }
 
@@ -59,12 +60,14 @@ process.on('SIGINT', function() {
     process.exit(0);
 });
 
-process.on('exit', async () => {
+process.on('exit', async() => {
     await db.close();
 });
 
 console.log('starting millix-core');
 db.initialize()
+  .then(() => configLoader.cleanConfigsFromDatabase())
+  .then(() => configLoader.load(false))
   .then(() => services.initialize())
   .then(() => {
       logManager.logSize = 1000;
