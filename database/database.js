@@ -46,7 +46,8 @@ export class Database {
         let parameters = [];
         if (where) {
             _.each(_.keys(where), key => {
-                if (where[key] === undefined) {
+                if (where[key] === undefined ||
+                    ((key.endsWith('_begin') || key.endsWith('_min') || key.endsWith('_end') || key.endsWith('_max')) && !where[key])) {
                     return;
                 }
 
@@ -388,11 +389,14 @@ export class Database {
         }
     }
 
-    firstShardZeroORShardRepository(repositoryName, shardID, func) {
+    _firstWithShardZeroRepository(repositoryName, shardID, isShardZeroFirst, func) {
         return new Promise(resolve => {
-            async.eachSeries([
+            async.eachSeries(isShardZeroFirst ? [
                 SHARD_ZERO_NAME,
                 shardID
+            ] : [
+                shardID,
+                SHARD_ZERO_NAME
             ], (shardID, callback) => {
                 const repository = this.getRepository(repositoryName, shardID);
                 if (repository) {
@@ -405,6 +409,14 @@ export class Database {
                 }
             }, (data) => resolve(data));
         });
+    }
+
+    firstShardZeroORShardRepository(repositoryName, shardID, func) {
+        return this._firstWithShardZeroRepository(repositoryName, shardID, true, func);
+    }
+
+    firstShardORShardZeroRepository(repositoryName, shardID, func) {
+        return this._firstWithShardZeroRepository(repositoryName, shardID, false, func);
     }
 
     applyShardZeroAndShardRepository(repositoryName, shardID, func) {

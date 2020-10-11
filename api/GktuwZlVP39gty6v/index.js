@@ -30,10 +30,10 @@ class _GktuwZlVP39gty6v extends Endpoint {
             });
         }
 
+        let authenticationErrorHandler, authenticationSuccessHandler;
         walletUtils.storeMnemonic(mnemonicPhrase, true)
                    .then(() => wallet.stop())
                    .then(() => {
-                       let authenticationErrorHandler, authenticationSuccessHandler;
                        eventBus.once('wallet_ready', () => {
                            eventBus.emit('wallet_key', passPhrase);
                        });
@@ -49,15 +49,19 @@ class _GktuwZlVP39gty6v extends Endpoint {
 
                        authenticationSuccessHandler = () => {
                            res.send({api_status: 'success'});
-                           eventBus.removeListener('wallet_unlock', authenticationErrorHandler);
+                           eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
                        };
                        eventBus.once('wallet_unlock', authenticationSuccessHandler);
 
-                       wallet.initialize(false)
-                             .catch(e => res.send({
-                                 api_status : 'fail',
-                                 api_message: `unexpected generic api error: (${e})`
-                             }));
+                       return wallet.initialize(false);
+                   })
+                   .catch(e => {
+                       eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
+                       eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
+                       res.send({
+                           api_status : 'fail',
+                           api_message: `unexpected generic api error: (${e})`
+                       });
                    });
 
     }

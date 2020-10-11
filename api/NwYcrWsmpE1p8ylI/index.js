@@ -17,7 +17,7 @@ class _NwYcrWsmpE1p8ylI extends Endpoint {
         return new Promise((resolve, reject) => {
             fs.readFile(mnemonicFile, 'utf8', function(err, data) {
                 if (err) {
-                    return reject();
+                    return reject(err);
                 }
                 try {
                     const keys = JSON.parse(data);
@@ -25,11 +25,11 @@ class _NwYcrWsmpE1p8ylI extends Endpoint {
                         return resolve(keys.mnemonic_phrase);
                     }
                     else {
-                        return reject();
+                        return reject('bad mnemonic file: there is no mnemonic_phrase');
                     }
                 }
                 catch (e) {
-                    return reject();
+                    return reject(e);
                 }
             });
         });
@@ -52,36 +52,42 @@ class _NwYcrWsmpE1p8ylI extends Endpoint {
             });
         }
 
+        let authenticationErrorHandler, authenticationSuccessHandler;
         this._getMnemonicPhrase(mnemonicFilePath)
-            .then(mnemonicPhrase => walletUtils.storeMnemonic(mnemonicPhrase, true)
-                                               .then(() => wallet.stop())
-                                               .then(() => {
-                                                   let authenticationErrorHandler, authenticationSuccessHandler;
-                                                   eventBus.once('wallet_ready', () => {
-                                                       eventBus.emit('wallet_key', passPhrase);
-                                                   });
+            .then(mnemonicPhrase => {
+                return walletUtils.storeMnemonic(mnemonicPhrase, true)
+                                  .then(() => wallet.stop())
+                                  .then(() => {
+                                      eventBus.once('wallet_ready', () => {
+                                          eventBus.emit('wallet_key', passPhrase);
+                                      });
 
-                                                   authenticationErrorHandler = () => {
-                                                       res.status(401).send({
-                                                           api_status : 'fail',
-                                                           api_message: 'wallet authentication error'
-                                                       });
-                                                       eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
-                                                   };
-                                                   eventBus.once('wallet_authentication_error', authenticationErrorHandler);
+                                      authenticationErrorHandler = () => {
+                                          res.status(401).send({
+                                              api_status : 'fail',
+                                              api_message: 'wallet authentication error'
+                                          });
+                                          eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
+                                      };
+                                      eventBus.once('wallet_authentication_error', authenticationErrorHandler);
 
-                                                   authenticationSuccessHandler = () => {
-                                                       res.send({api_status: 'success'});
-                                                       eventBus.removeListener('wallet_unlock', authenticationErrorHandler);
-                                                   };
-                                                   eventBus.once('wallet_unlock', authenticationSuccessHandler);
+                                      authenticationSuccessHandler = () => {
+                                          res.send({api_status: 'success'});
+                                          eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
+                                      };
+                                      eventBus.once('wallet_unlock', authenticationSuccessHandler);
 
-                                                   return wallet.initialize(false);
-                                               }))
-            .catch((e) => res.send({
-                api_status : 'fail',
-                api_message: `unexpected generic api error: (${e})`
-            }));
+                                      return wallet.initialize(false);
+                                  });
+            })
+            .catch((e) => {
+                authenticationErrorHandler && eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
+                authenticationSuccessHandler && eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
+                res.send({
+                    api_status : 'fail',
+                    api_message: `unexpected generic api error: (${e})`
+                });
+            });
     }
 }
 

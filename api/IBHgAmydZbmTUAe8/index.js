@@ -27,9 +27,12 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 api_message: 'p0<transaction_id> and p1<shard_id> are required'
             });
         }
-        database.firstShardZeroORShardRepository('transaction', req.query.p1, transactionRepository => {
+        database.firstShardORShardZeroRepository('transaction', req.query.p1, transactionRepository => {
             return new Promise((resolve, reject) => {
-                transactionRepository.getTransactionExtended(req.query.p0).then(data => data.length > 0 ? resolve(data) : reject()).catch(reject);
+                transactionRepository.getTransactionExtended({
+                    'transaction.transaction_id': req.query.p0,
+                    'transaction.shard_id'      : req.query.p1
+                }).then(data => data.length > 0 ? resolve(data) : reject()).catch(reject);
             });
         }).then(data => {
             if (!data || data.length === 0) {

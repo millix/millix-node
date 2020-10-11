@@ -26,16 +26,15 @@ class _DBkGHZX6rugdLon9 extends Endpoint {
             });
         }
 
-        const auditVerificationRepository = database.getRepository('audit_verification', req.query.p1);
-        if (!auditVerificationRepository) {
-            return res.send({});
-        }
-        auditVerificationRepository.getAuditVerification(req.query.p0)
-                                   .then(auditVerification => res.send(auditVerification || {}))
-                                   .catch(e => res.send({
-                                       api_status : 'fail',
-                                       api_message: `unexpected generic api error: (${e})`
-                                   }));
+        database.firstShardORShardZeroRepository('audit_verification', req.query.p1, (auditVerificationRepository) => {
+            return auditVerificationRepository.getAuditVerification(req.query.p0, req.query.p1);
+        }).then(auditVerification => res.send(auditVerification || {
+            api_status : 'fail',
+            api_message: `audit verification of transaction ${req.query.p0} was not found at shard with id ${req.query.p1}`
+        })).catch(e => res.send({
+            api_status : 'fail',
+            api_message: `unexpected generic api error: (${e})`
+        }));
     }
 }
 

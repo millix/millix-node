@@ -145,6 +145,15 @@
       "enable": true
     },
     {
+      "id": "hXwPQrVhLEALFsIJ",
+      "name": "list_config_public",
+      "description": "returns returns public config values",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "4wR3kjTwwC67R94Z",
       "name": "optimize_database",
       "description": "executes the sqlite optimize database function on the indicated shard_id, or on all shards if shard_id is not provided. this API pauses the node service, tasks and network until it is finished",

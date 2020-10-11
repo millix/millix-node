@@ -24,7 +24,7 @@ class _I3EoELuQCmqwvp8C extends Endpoint {
     handler(app, req, res) {
         const orderBy = req.query.p8 || 'create_date desc';
         const limit   = parseInt(req.query.p9) || 1000;
-        const shardID = req.query.p10;
+        const shardID = req.query.p10 || undefined;
 
         database.applyShards((dbShardID) => {
             const transactionRepository = database.getRepository('transaction', dbShardID);
@@ -39,8 +39,9 @@ class _I3EoELuQCmqwvp8C extends Endpoint {
                 is_double_spend                   : req.query.p4,
                 double_spend_date_begin           : req.query.p5,
                 double_spend_date_end             : req.query.p6,
-                output_transaction_id             : req.query.p7
-            }, orderBy, limit, shardID);
+                output_transaction_id             : req.query.p7,
+                'transaction_input.shard_id'      : shardID
+            }, orderBy, limit);
         }, orderBy, limit, shardID)
                 .then(data => res.send(data))
                 .catch(e => res.send({

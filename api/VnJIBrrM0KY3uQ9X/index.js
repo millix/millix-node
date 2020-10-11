@@ -52,7 +52,6 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
 
         try {
             mutex.lock(['submit_transaction'], (unlock) => {
-                console.log('Locked!');
                 walletUtils.verifyTransaction(transaction)
                            .then(valid => {
                                if (!valid) {

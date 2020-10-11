@@ -22,9 +22,13 @@ export default class AuditVerification {
         });
     }
 
-    getAuditVerification(transactionID) {
+    getAuditVerification(transactionID, shardID) {
+        const {sql, parameters} = Database.buildQuery('SELECT * from audit_verification', {
+            transaction_id: transactionID,
+            shard_id      : shardID
+        });
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT * from audit_verification WHERE transaction_id = ?', [transactionID],
+            this.database.get(sql, parameters,
                 (err, row) => {
                     if (err) {
                         return reject(err);

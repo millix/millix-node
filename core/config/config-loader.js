@@ -12,7 +12,12 @@ class _ConfigLoader {
         ]);
     }
 
-    load() {
+    cleanConfigsFromDatabase() {
+        return db.getRepository('config')
+                 .deleteAll();
+    }
+
+    load(overwriteDefaultConfigsFromDatabase = true) {
         return new Promise(resolve => {
             let dbConfigs = {
                 config: {},
@@ -37,7 +42,10 @@ class _ConfigLoader {
                                   default:
                                       value = JSON.parse(data.value);
                               }
-                              config[configName]           = value;
+                              if (overwriteDefaultConfigsFromDatabase) {
+                                  config[configName] = value;
+                              }
+
                               dbConfigs.config[configName] = value;
                               dbConfigs.type[configName]   = data.type;
                               callback();

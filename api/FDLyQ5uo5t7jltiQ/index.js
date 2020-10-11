@@ -25,7 +25,7 @@ class _FDLyQ5uo5t7jltiQ extends Endpoint {
     handler(app, req, res) {
         const orderBy = req.query.p13 || 'create_date desc';
         const limit   = parseInt(req.query.p14) || 1000;
-        const shardID = req.query.p15;
+        const shardID = req.query.p15 || undefined;
         database.applyShards((dbShardID) => {
             const transactionRepository = database.getRepository('transaction', dbShardID);
             if (!transactionRepository) {

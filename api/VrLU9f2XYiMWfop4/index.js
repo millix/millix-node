@@ -1,6 +1,5 @@
 import Endpoint from '../endpoint';
 import database from '../../database/database';
-import async from 'async';
 
 
 /**
@@ -24,7 +23,7 @@ class _VrLU9f2XYiMWfop4 extends Endpoint {
     handler(app, req, res) {
         const orderBy = req.query.p7 || 'create_date desc';
         const limit   = parseInt(req.query.p8) || 1000;
-        const shardID = req.query.p9;
+        const shardID = req.query.p9 || undefined;
         database.applyShards((dbShardID) => {
             const auditVerificationRepository = database.getRepository('audit_verification', dbShardID);
             if (!auditVerificationRepository) {
@@ -37,11 +36,12 @@ class _VrLU9f2XYiMWfop4 extends Endpoint {
                 verification_count_max: req.query.p3,
                 is_verified           : req.query.p4,
                 verified_date_begin   : req.query.p5,
-                verified_date_end     : req.query.p6
-            }, orderBy, limit, dbShardID);
+                verified_date_end     : req.query.p6,
+                shard_id              : shardID
+            }, orderBy, limit);
         }, orderBy, limit, shardID)
                 .then(data => res.send(data))
-                .then(e => res.send({
+                .catch(e => res.send({
                     api_status : 'fail',
                     api_message: `unexpected generic api error: (${e})`
                 }));

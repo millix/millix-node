@@ -23,9 +23,9 @@ class _AgsSNTSA0RHmWUkp extends Endpoint {
         const limit          = parseInt(req.query.p4) || 1000;
         const nodeRepository = database.getRepository('node');
         nodeRepository.listNodeAttribute({
-            node_id          : req.query.p0,
-            attribute_type_id: req.query.p1,
-            status           : req.query.p2
+            node_id                           : req.query.p0,
+            'node_attribute.attribute_type_id': req.query.p1,
+            'node_attribute.status'           : req.query.p2
         }, orderBy, limit).then(attributeList => {
             res.send(attributeList);
         }).catch(e => res.send({

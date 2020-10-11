@@ -25,8 +25,8 @@ class _5sgpSNaqnHIcfocl extends Endpoint {
                 api_message: 'p0<is_running> is required'
             });
         }
-        const isOnline = !!req.query.p0;
-        if (isOnline && network.initialized === false) {
+        const isOnline = req.query.p0 === 'true';
+        if (isOnline && !network.initialized) {
             network.initialize();
             res.send({api_status: 'success'});
         }

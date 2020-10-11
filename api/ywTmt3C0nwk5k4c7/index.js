@@ -28,7 +28,10 @@ class _ywTmt3C0nwk5k4c7 extends Endpoint {
         const keychainRepository = database.getRepository('keychain');
         keychainRepository.getAddress(req.query.p0)
                           .then(address => {
-                              res.send(address);
+                              res.send(address || {
+                                  api_status : 'fail',
+                                  api_message: `the keychain address ${req.query.p0} was not found`
+                              });
                           })
                           .catch(e => res.send({
                               api_status : 'fail',

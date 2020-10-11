@@ -24,11 +24,11 @@ class _72dlrjquBORj0rhx extends Endpoint {
         const limit             = parseInt(req.query.p6) || 1000;
         const addressRepository = database.getRepository('address');
         addressRepository.listAddress({
-            address_base          : req.query.p0,
+            'address.address_base': req.query.p0,
             address_version       : req.query.p1,
             address_key_identifier: req.query.p2,
             address               : req.query.p3,
-            status                : req.query.p4
+            'address.status'      : req.query.p4
         }, orderBy, limit)
                          .then(addresses => res.send(addresses))
                          .catch(e => res.send({

@@ -26,18 +26,18 @@ class _hbBmFhIpJS87W1Fy extends Endpoint {
                 api_message: 'p0<transaction_id>, p1<input_position>, p2<shard_id> are required'
             });
         }
-        const transactionRepository = database.getRepository('transaction', req.query.p2);
-        if (!transactionRepository) {
-            return res.send({
-                api_status : 'fail',
-                api_message: `shard database ${req.query.p2} not found`
+
+        database.firstShardORShardZeroRepository('transaction', req.query.p2, transactionRepository => {
+            return transactionRepository.getTransactionInput({
+                transaction_id: req.query.p0,
+                input_position: req.query.p1,
+                shard_id      : req.query.p2
             });
-        }
-        transactionRepository.getTransactionInput({
-            transaction_id: req.query.p0,
-            input_position: req.query.p1
         }).then(transactionInput => {
-            res.send(transactionInput || {});
+            res.send(transactionInput || {
+                api_status : 'fail',
+                api_message: `the transaction input ${req.query.p1} of transaction id ${req.query.p0} was not found at shard with id ${req.query.p2}`
+            });
         }).catch(e => res.send({
             api_status : 'fail',
             api_message: `unexpected generic api error: (${e})`

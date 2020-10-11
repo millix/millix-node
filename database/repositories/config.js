@@ -5,6 +5,14 @@ export default class Config {
         this.database = database;
     }
 
+    deleteAll() {
+        return new Promise((resolve) => {
+            this.database.get('DELETE FROM config', () => {
+                resolve();
+            });
+        });
+    }
+
     getConfig(name) {
         return new Promise(resolve => {
             this.database.get('SELECT * FROM config WHERE config_name=?', [name.toLowerCase()], (err, row) => {
