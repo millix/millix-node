@@ -757,19 +757,26 @@ class Network {
             console.log('[network] starting network');
             database.getRepository('node')
                     .resetNodeState()
-                    .then(() => publicIp.v4())
-                    .then(ip => {
-                        let dnsResolve4 = util.promisify(dns.resolve4);
-                        return dnsResolve4(config.NODE_HOST)
-                            .then(addresses => {
-                                if (addresses.includes(ip)) {
-                                    return config.NODE_HOST;
-                                }
-                                else {
-                                    return ip;
-                                }
-                            })
-                            .catch(() => ip);
+                    .then(() => {
+                        if (config.NODE_HOST_FORCE) {
+                            return config.NODE_HOST;
+                        }
+                        else {
+                            return publicIp.v4()
+                                           .then(ip => {
+                                               let dnsResolve4 = util.promisify(dns.resolve4);
+                                               return dnsResolve4(config.NODE_HOST)
+                                                   .then(addresses => {
+                                                       if (addresses.includes(ip)) {
+                                                           return config.NODE_HOST;
+                                                       }
+                                                       else {
+                                                           return ip;
+                                                       }
+                                                   })
+                                                   .catch(() => ip);
+                                           });
+                        }
                     })
                     .then(ip => {
                         console.log('[network] node public-ip', ip);

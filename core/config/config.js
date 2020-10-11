@@ -5,6 +5,7 @@ export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
 export const NODE_HOST                                         = 'localhost';
+export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
@@ -240,6 +241,7 @@ export default {
     MODE_TEST_NETWORK,
     NODE_PORT,
     NODE_HOST,
+    NODE_HOST_FORCE,
     NODE_BIND_IP,
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,

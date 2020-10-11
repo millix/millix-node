@@ -73,15 +73,17 @@ class Peer {
                            nodes = _.map(nodes, node => _.pick(node, [
                                'node_prefix',
                                'node_address',
+                               'node_port_api',
                                'node_port',
                                'node_id'
                            ]));
 
                            nodes.push({
-                               node_prefix : config.WEBSOCKET_PROTOCOL,
-                               node_address: network.nodePublicIp,
-                               node_port   : config.NODE_PORT,
-                               node_id     : network.nodeID
+                               node_prefix  : config.WEBSOCKET_PROTOCOL,
+                               node_address : network.nodePublicIp,
+                               node_port_api: config.NODE_PORT_API,
+                               node_port    : config.NODE_PORT,
+                               node_id      : network.nodeID
                            }); // add self
 
                            if (nodes.length === 0) {
@@ -919,14 +921,8 @@ class Peer {
         const nodeRepository = database.getRepository('node');
         async.eachSeries(nodes, (data, callback) => {
             data.node_port_api = data.node_port_api || config.NODE_PORT_API;
-            if (network.addNode(data.node_prefix, data.node_address, data.node_port, data.node_port_api, data.node_id)) {
-                nodeRepository.addNode(data)
-                              .then(() => callback())
-                              .catch(() => callback());
-            }
-            else {
-                callback();
-            }
+            network.addNode(data.node_prefix, data.node_address, data.node_port, data.node_port_api, data.node_id);
+            callback();
         }, () => {
             nodeRepository.addNodeAttribute(ws.nodeID, 'peer_count', nodes.length)
                           .then(_ => _)
