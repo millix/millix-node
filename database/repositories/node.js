@@ -136,7 +136,10 @@ export default class Node {
                     else {
                         const set               = _.pick(node, [
                             'status',
-                            'node_id'
+                            'node_prefix',
+                            'node_address',
+                            'node_port',
+                            'node_api_port'
                         ]);
                         set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
                         const {sql, parameters} = Database.buildUpdate('UPDATE node', set, {node_id: node.node_id});
@@ -156,7 +159,10 @@ export default class Node {
         return new Promise(resolve => {
             const set               = _.pick(node, [
                 'status',
-                'node_id'
+                'node_prefix',
+                'node_address',
+                'node_port',
+                'node_api_port'
             ]);
             set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
             const {sql, parameters} = Database.buildUpdate('UPDATE node', set, {node_id: node.node_id});
