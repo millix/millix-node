@@ -244,15 +244,14 @@ CREATE INDEX idx_audit_point_create_date ON audit_point (create_date);
 
 CREATE TABLE node
 (
-    node_id         CHAR(34)    NULL CHECK (length(node_id) <= 34),
+    node_id         CHAR(34)    NOT NULL PRIMARY KEY CHECK (length(node_id) <= 34),
     node_prefix     CHAR(10)    NOT NULL CHECK (length(node_prefix) <= 10),
-    node_ip_address CHAR(45)    NOT NULL CHECK (length(node_ip_address) <= 45),
+    node_address CHAR(45)       NOT NULL CHECK (length(node_address) <= 45),
     node_port       INT         NOT NULL CHECK (length(node_port) <= 10 AND TYPEOF(node_port) = 'integer'),
     node_port_api   INT         NOT NULL CHECK (length(node_port_api) <= 10 AND TYPEOF(node_port_api) = 'integer'),
     status          TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     update_date     INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(update_date) <= 10 AND TYPEOF(update_date) = 'integer'),
-    create_date     INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
-    PRIMARY KEY (node_prefix, node_ip_address, node_port)
+    create_date     INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
 CREATE INDEX idx_node_create_date ON node (create_date);
 
@@ -376,7 +375,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "9");
+INSERT INTO schema_information (key, value) VALUES ("version", "10");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
@@ -447,6 +446,8 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('peer_rotation_more_than_all', 'wpwt2V5vrT28ngz9u3J3'),
        ('peer_rotation_config', 'H2ODFHCxOl1FErIqCDqG'),
        ('shard_zero_name', 'rMSuKEh42OZaeVEgzG62'),
-       ('key_public', '9MgxVxyXsM2EozHVUZgw');
+       ('key_public', '9MgxVxyXsM2EozHVUZgw'),
+       ('node_key_public', 'GKj5UNJmpx5qCGQnaJjA'),
+       ('node_bind_ip', 'Apw9ovpclfW6LvSVYqYD');
 
 INSERT INTO address_attribute_type (address_attribute_type_id, attribute_type) VALUES ('9MgxVxyXsM2EozHVUZgw', 'key_public');

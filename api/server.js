@@ -99,7 +99,7 @@ class Server {
                                    ecdhCurve: 'prime256v1'
                                }, app);
 
-                               httpsServer.listen(config.NODE_PORT_API, () => {
+                               httpsServer.listen(config.NODE_PORT_API, config.NODE_BIND_IP, () => {
                                    console.log(`[api] listening on port ${config.NODE_PORT_API}`);
                                    this.nodeID         = walletUtils.getNodeIdFromCertificate(certificatePem, 'pem');
                                    this.nodePrivateKey = nodePrivateKey;

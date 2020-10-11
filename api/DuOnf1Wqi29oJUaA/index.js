@@ -14,7 +14,7 @@ class _DuOnf1Wqi29oJUaA extends Endpoint {
     /**
      * inserts a new record to table node.
      * @param app
-     * @param req (p0: node_prefix<required>, p1: node_ip_address<required>,
+     * @param req (p0: node_prefix<required>, p1: node_address<required>,
      *     p2: node_port<required>, p3: node_port_api<required>)
      * @param res
      * @returns {*}
@@ -24,16 +24,16 @@ class _DuOnf1Wqi29oJUaA extends Endpoint {
         if (!nodePrefix || !nodeIpAddress || !nodePort || !nodePortApi) {
             return res.status(400).send({
                 api_status : 'fail',
-                api_message: 'p0<node_prefix>, p1<node_ip_address>, p2<node_port> and p3<node_port_api> are required'
+                api_message: 'p0<node_prefix>, p1<node_address>, p2<node_port> and p3<node_port_api> are required'
             });
         }
 
         const nodeRepository = database.getRepository('node');
         nodeRepository.addNode({
-            node_prefix    : nodePrefix,
-            node_ip_address: nodeIpAddress,
-            node_port      : nodePort,
-            node_port_api  : nodePortApi
+            node_prefix  : nodePrefix,
+            node_address : nodeIpAddress,
+            node_port    : nodePort,
+            node_port_api: nodePortApi
         }).then(() => {
             network.addNode(nodePrefix, nodeIpAddress, nodePort, nodePortApi);
             res.send({api_status: 'success'});

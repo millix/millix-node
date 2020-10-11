@@ -118,11 +118,11 @@ export default class Node {
     }
 
     addNode(node) {
-        let url = node.node_prefix + node.node_ip_address + ':' + node.node_port;
+        let url = node.node_prefix + node.node_address + ':' + node.node_port;
         return new Promise((resolve, reject) => {
-            this.database.run('INSERT INTO node (node_prefix, node_ip_address, node_port, node_port_api, node_id, status) VALUES (?,?,?,?,?,?)', [
+            this.database.run('INSERT INTO node (node_prefix, node_address, node_port, node_port_api, node_id, status) VALUES (?,?,?,?,?,?)', [
                 node.node_prefix,
-                node.node_ip_address,
+                node.node_address,
                 node.node_port,
                 node.node_port_api,
                 node.node_id,
@@ -139,15 +139,10 @@ export default class Node {
                             'node_id'
                         ]);
                         set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
-                        const {sql, parameters} = Database.buildUpdate('UPDATE node', set, _.pick(node, [
-                            'node_prefix',
-                            'node_ip_address',
-                            'node_port',
-                            'node_port_api'
-                        ]));
-                        this.database.run(sql, parameters, () => {
+                        const {sql, parameters} = Database.buildUpdate('UPDATE node', set, {node_id: node.node_id});
+                        this.database.run(sql, parameters, err => {
                             console.log(`[database] update node ${url} with id ${node.node_id}`);
-                            return reject();
+                            return err ? reject() : resolve();
                         });
                         return;
                     }
@@ -164,12 +159,7 @@ export default class Node {
                 'node_id'
             ]);
             set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
-            const {sql, parameters} = Database.buildUpdate('UPDATE node', set, _.pick(node, [
-                'node_prefix',
-                'node_ip_address',
-                'node_port',
-                'node_port_api'
-            ]));
+            const {sql, parameters} = Database.buildUpdate('UPDATE node', set, {node_id: node.node_id});
             this.database.run(sql, parameters, () => {
                 return resolve();
             });

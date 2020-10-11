@@ -10,6 +10,8 @@ import walletUtils from '../core/wallet/wallet-utils';
 import https from 'https';
 import base58 from 'bs58';
 import publicIp from 'public-ip';
+import util from 'util';
+import dns from 'dns';
 
 const WebSocketServer = Server;
 
@@ -64,11 +66,11 @@ class Network {
         let url = prefix + ip + ':' + port;
         if (!this._nodeList[url]) {
             this._nodeList[url] = {
-                node_prefix    : prefix,
-                node_ip_address: ip,
-                node_port      : port,
-                node_port_api  : portApi,
-                node_id        : id
+                node_prefix  : prefix,
+                node_address : ip,
+                node_port    : port,
+                node_port_api: portApi,
+                node_id      : id
             };
             return true;
         }
@@ -204,7 +206,7 @@ class Network {
             ecdhCurve: 'prime256v1'
         });
 
-        server.listen(config.NODE_PORT);
+        server.listen(config.NODE_PORT, config.NODE_BIND_IP);
 
         let wss = new WebSocketServer({server});
 
@@ -269,7 +271,7 @@ class Network {
                 .listNodes()
                 .then((nodes) => {
                     async.eachSeries(nodes, (node, callback) => {
-                        this.addNode(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id);
+                        this.addNode(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id);
                         callback();
                     }, () => {
                         _.each(config.NODE_INITIAL_LIST, ({url, port_api: portApi}) => {
@@ -302,7 +304,7 @@ class Network {
         console.log('[network] dead nodes size:', inactiveClients.size, ' | active nodes: (', this.registeredClients.length, '/', config.NODE_CONNECTION_INBOUND_MAX + config.NODE_CONNECTION_OUTBOUND_MAX, ')');
 
         inactiveClients.forEach(node => {
-            this._connectTo(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id).catch(this.noop);
+            this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id).catch(this.noop);
         });
         return Promise.resolve();
     }
@@ -329,11 +331,11 @@ class Network {
 
             let url = config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT;
             node    = {
-                node_prefix    : config.WEBSOCKET_PROTOCOL,
-                node_ip_address: this.nodePublicIp,
-                node_port      : config.NODE_PORT,
-                node_port_api  : config.NODE_PORT_API,
-                node           : url
+                node_prefix  : config.WEBSOCKET_PROTOCOL,
+                node_address : this.nodePublicIp,
+                node_port    : config.NODE_PORT,
+                node_port_api: config.NODE_PORT_API,
+                node         : url
             };
 
             if (!isInboundConnection) {
@@ -455,7 +457,15 @@ class Network {
                     // request peer attributes
                     this._requestAllNodeAttribute(peerNodeID, ws);
                     // send peer list to the new node
-                    peer.sendNodeList(ws);
+                    peer.sendNodeList(ws).then(_ => _);
+
+                    database.getRepository('node')
+                            .addNode({
+                                ...this.nodeList[ws.node],
+                                status: 2
+                            })
+                            .then(() => eventBus.emit('node_list_update'))
+                            .catch(() => eventBus.emit('node_list_update'));
 
                     eventBus.emit('peer_connection_new', ws);
                     eventBus.emit('node_status_update');
@@ -502,27 +512,19 @@ class Network {
             this._registerWebsocketConnection(ws);
             if (ws.outBound) {
                 let node                = {
-                    node_prefix    : ws.nodePrefix,
-                    node_ip_address: ws.nodeIPAddress,
-                    node_port      : ws.nodePort,
-                    node_port_api  : ws.nodePortApi,
-                    node_id        : ws.nodeID
+                    node_prefix  : ws.nodePrefix,
+                    node_address : ws.nodeIPAddress,
+                    node_port    : parseInt(ws.nodePort),
+                    node_port_api: parseInt(ws.nodePortApi),
+                    node_id      : ws.nodeID
                 };
                 this._nodeList[ws.node] = node;
-                database.getRepository('node')
-                        .addNode({
-                            ...node,
-                            status: 2
-                        })
-                        .then(() => eventBus.emit('node_list_update'))
-                        .catch(() => {
-                        });
             }
 
-            if (ws.inBound && registry.node_prefix && registry.node_ip_address && registry.node_port && registry.node_port_api && registry.node) {
+            if (ws.inBound && registry.node_prefix && registry.node_address && registry.node_port && registry.node_port_api && registry.node) {
                 let node                      = _.pick(registry, [
                     'node_prefix',
-                    'node_ip_address',
+                    'node_address',
                     'node_port',
                     'node_port_api',
                     'node_id',
@@ -530,14 +532,6 @@ class Network {
                 ]);
                 ws.node                       = registry.node;
                 this._nodeList[registry.node] = node;
-                database.getRepository('node')
-                        .addNode({
-                            ...node,
-                            status: 2
-                        })
-                        .then(() => eventBus.emit('node_list_update'))
-                        .catch(() => {
-                        });
             }
 
             const content = {};
@@ -646,7 +640,7 @@ class Network {
                     .updateNode({
                         ...this._nodeList[ws.node],
                         status: !this._nodeRegistry[ws.nodeID] ? 1 : 2
-                    });
+                    }).then(_ => _);
         }
 
         // update bidirectional stream slots
@@ -707,6 +701,14 @@ class Network {
                 // send peer list to the new node
                 peer.sendNodeList(ws);
 
+                database.getRepository('node')
+                        .addNode({
+                            ...this.nodeList[ws.node],
+                            status: 2
+                        })
+                        .then(() => eventBus.emit('node_list_update'))
+                        .catch(() => eventBus.emit('node_list_update'));
+
                 eventBus.emit('peer_connection_new', ws);
                 eventBus.emit('node_status_update');
             }
@@ -756,6 +758,19 @@ class Network {
             database.getRepository('node')
                     .resetNodeState()
                     .then(() => publicIp.v4())
+                    .then(ip => {
+                        let dnsResolve4 = util.promisify(dns.resolve4);
+                        return dnsResolve4(config.NODE_HOST)
+                            .then(addresses => {
+                                if (addresses.includes(ip)) {
+                                    return config.NODE_HOST;
+                                }
+                                else {
+                                    return ip;
+                                }
+                            })
+                            .catch(() => ip);
+                    })
                     .then(ip => {
                         console.log('[network] node public-ip', ip);
                         this.nodePublicIp = ip;
