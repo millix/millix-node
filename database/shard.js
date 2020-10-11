@@ -8,7 +8,7 @@ import {Database} from './database';
 
 export default class Shard {
     constructor(databaseFile, shardID) {
-        this.debug        = true;
+        this.debug        = false;
         this.databaseFile = databaseFile;
         this.shardID      = shardID;
         this.repositories = {};
