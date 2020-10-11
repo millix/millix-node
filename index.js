@@ -36,6 +36,10 @@ if (argv.host) {
     config.NODE_HOST = argv.host;
 }
 
+if (argv.hostForce) {
+    config.NODE_HOST_FORCE = argv.hostForce;
+}
+
 if (argv.testHost) {
     config.NODE_TEST_HOST = argv.testHost;
 }
