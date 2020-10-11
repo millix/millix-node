@@ -30,8 +30,8 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
         database.firstShardORShardZeroRepository('transaction', req.query.p1, transactionRepository => {
             return new Promise((resolve, reject) => {
                 transactionRepository.getTransactionExtended({
-                    'transaction.transaction_id': req.query.p0,
-                    'transaction.shard_id'      : req.query.p1
+                    '`transaction`.transaction_id': req.query.p0,
+                    '`transaction`.shard_id'      : req.query.p1
                 }).then(data => data.length > 0 ? resolve(data) : reject()).catch(reject);
             });
         }).then(data => {
