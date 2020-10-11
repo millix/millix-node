@@ -20,6 +20,10 @@ if (argv.initialPeers) {
     config.NODE_INITIAL_LIST = argv.initialPeers;
 }
 
+if (argv.bind) {
+    config.NODE_BIND_IP = argv.bind;
+}
+
 if (argv.port) {
     config.NODE_PORT = argv.port;
 }

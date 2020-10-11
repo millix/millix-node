@@ -5,6 +5,7 @@ export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
 export const NODE_HOST                                         = 'localhost';
+export const NODE_BIND_IP                                      = '0.0.0.0';
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = true;
@@ -231,7 +232,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE    = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR             = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR       = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                   = '9';
+    DATABASE_CONNECTION.SCHEMA_VERSION                   = '10';
 }
 
 export default {
@@ -239,6 +240,7 @@ export default {
     MODE_TEST_NETWORK,
     NODE_PORT,
     NODE_HOST,
+    NODE_BIND_IP,
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
     NODE_INITIAL_LIST,

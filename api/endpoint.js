@@ -4,8 +4,9 @@ import server from './server';
 
 export default class Endpoint {
     constructor(endpoint) {
-        this.endpoint = endpoint;
-        this.baseURL  = '/api/:nodeID/:nodeSignature/';
+        this.endpoint      = endpoint;
+        this.baseURL       = '/api/:nodeID/:nodeSignature/';
+        this.normalization = database.getRepository('normalization');
     }
 
     handler() {
@@ -16,7 +17,7 @@ export default class Endpoint {
         if (permission.require_identity) {
             const {nodeID, nodeSignature} = req.params;
             database.getRepository('node')
-                    .getNodeAttribute(nodeID, 'node_public_key')
+                    .getNodeAttributeByAttributeID(nodeID, this.normalization.get('node_key_public'))
                     .then(publicKey => {
                         if (!publicKey) {
                             return res.status(401).send({

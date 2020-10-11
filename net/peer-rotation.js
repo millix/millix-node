@@ -232,13 +232,13 @@ export class PeerRotation {
             return rotation()
                 .then(([node, peerToDisconnect]) => {
                     if (node) {
-                        console.log(`[peer-rotation] new peer found ${node.node_id} - ${node.node_ip_address}`);
+                        console.log(`[peer-rotation] new peer found ${node.node_id} - ${node.node_address}`);
                         if (peerToDisconnect && peerToDisconnect.close) {
 
                             let handlerID;
                             peerToDisconnect.onUnregister = () => {
                                 clearTimeout(handlerID);
-                                network._connectTo(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id)
+                                network._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
                                        .then(() => {
                                            console.log('[peer-rotation] peer rotation done.');
                                            this._peerRotationStarted = false;
@@ -269,7 +269,7 @@ export class PeerRotation {
                         }
                         else {
                             console.log(`[peer-rotation] no connection to be drop`);
-                            network._connectTo(node.node_prefix, node.node_ip_address, node.node_port, node.node_port_api, node.node_id)
+                            network._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
                                    .then(() => {
                                        console.log('[peer-rotation] peer rotation done.');
                                        this._peerRotationStarted = false;
