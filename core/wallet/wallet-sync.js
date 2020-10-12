@@ -308,8 +308,10 @@ export class WalletSync {
         }));
     }
 
-    getTransactionSyncQueue() {
-        return this.queue;
+    getTransactionSyncData(transactionID) {
+        return new Promise(resolve => {
+            this.queue._store.getTask(transactionID, (_, data) => resolve(data));
+        });
     }
 
     _doSyncTransactionSpend() {
