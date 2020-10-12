@@ -308,6 +308,10 @@ export class WalletSync {
         }));
     }
 
+    getTransactionSyncQueue() {
+        return this.queue;
+    }
+
     _doSyncTransactionSpend() {
         if (!this.transactionSpendQueue) {
             return Promise.resolve();

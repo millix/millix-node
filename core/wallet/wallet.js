@@ -98,7 +98,7 @@ class Wallet {
                             process.stdout.clearLine();
                         }
                         console.enable();
-                        console.log("[wallet] activating wallet")
+                        console.log('[wallet] activating wallet');
                         resolve(passphrase);
                     }
                 );
@@ -106,7 +106,7 @@ class Wallet {
             eventBus.removeAllListeners('wallet_key');
             eventBus.once('wallet_key', passphrase => {
                 console.enable();
-                console.log("[wallet] activating wallet")
+                console.log('[wallet] activating wallet');
                 resolve(passphrase);
             });
             eventBus.emit('wallet_ready', {create: isNewMnemonic});
@@ -957,69 +957,75 @@ class Wallet {
                         routing_request_node_id: data.routing_request_node_id
                     }, ws);
 
-                    mutex.lock(['routing-transaction'], unlock => {
-
-                        let requestNodeID = data.routing ? data.routing_request_node_id : nodeID;
-                        let transactionID = data.transaction_id;
-
-                        if (requestNodeID === undefined) {
-                            return unlock();
+                    walletSync.getTransactionSyncQueue().getTask(data.transaction_id, (err, data) => {
+                        if (data && data.attempt >= 2 * config.TRANSACTION_RETRY_SYNC_MAX) {
+                            return;
                         }
 
-                        let requestNodeList = this._transactionOnRoute[requestNodeID];
-                        if (requestNodeList && requestNodeList[transactionID]) { // its being processed
-                            return unlock();
-                        }
+                        mutex.lock(['routing-transaction'], unlock => {
 
-                        if (this._transactionOnRoute[requestNodeID]) {
-                            this._transactionOnRoute[requestNodeID][transactionID] = true;
-                        }
-                        else {
-                            this._transactionOnRoute[requestNodeID] = {
-                                [transactionID]: true
-                            };
-                        }
+                            let requestNodeID = data.routing ? data.routing_request_node_id : nodeID;
+                            let transactionID = data.transaction_id;
 
-                        eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
-                        eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, (routedData) => {
-                            if (!this._transactionOnRoute[routedData.routing_request_node_id]) {
-                                console.log('[Wallet] Routed package not requested ?!', routedData);
-                                return;
+                            if (requestNodeID === undefined) {
+                                return unlock();
                             }
 
-                            delete this._transactionOnRoute[routedData.routing_request_node_id][routedData.transaction.transaction_id];
-
-                            if (!routedData.transaction) {
-                                console.log('[Wallet] Routed package does not contain a transaction ?!', routedData);
-                                return;
+                            let requestNodeList = this._transactionOnRoute[requestNodeID];
+                            if (requestNodeList && requestNodeList[transactionID]) { // its being processed
+                                return unlock();
                             }
 
-                            let ws = network.getWebSocketByID(connectionID);
-
-                            if (!ws || !ws.nodeID) {
-                                console.log('[Wallet] Route destination not available', routedData);
-                                return;
+                            if (this._transactionOnRoute[requestNodeID]) {
+                                this._transactionOnRoute[requestNodeID][transactionID] = true;
+                            }
+                            else {
+                                this._transactionOnRoute[requestNodeID] = {
+                                    [transactionID]: true
+                                };
                             }
 
-                            peer.transactionSendToNode(routedData.transaction, ws);
-                            console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
-                        });
-
-                        setTimeout(function() {
                             eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
-                        }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+                            eventBus.once('transactionRoutingResponse:' + requestNodeID + ':' + transactionID, (routedData) => {
+                                if (!this._transactionOnRoute[routedData.routing_request_node_id]) {
+                                    console.log('[Wallet] Routed package not requested ?!', routedData);
+                                    return;
+                                }
 
-                        unlock();
-                        peer.transactionSyncRequest(transactionID, {
-                            depth           : data.depth,
-                            routing         : true,
-                            request_node_id : requestNodeID,
-                            dispatch_request: true
-                        })
-                            .then(_ => _)
-                            .catch(_ => _);
-                        this._transactionRequested[transactionID] = Date.now();
-                    }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
+                                delete this._transactionOnRoute[routedData.routing_request_node_id][routedData.transaction.transaction_id];
+
+                                if (!routedData.transaction) {
+                                    console.log('[Wallet] Routed package does not contain a transaction ?!', routedData);
+                                    return;
+                                }
+
+                                let ws = network.getWebSocketByID(connectionID);
+
+                                if (!ws || !ws.nodeID) {
+                                    console.log('[Wallet] Route destination not available', routedData);
+                                    return;
+                                }
+
+                                peer.transactionSendToNode(routedData.transaction, ws);
+                                console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                            });
+
+                            setTimeout(function() {
+                                eventBus.removeAllListeners('transactionRoutingResponse:' + requestNodeID + ':' + transactionID);
+                            }, config.NETWORK_SHORT_TIME_WAIT_MAX);
+
+                            unlock();
+                            peer.transactionSyncRequest(transactionID, {
+                                depth           : data.depth,
+                                routing         : true,
+                                request_node_id : requestNodeID,
+                                dispatch_request: true
+                            })
+                                .then(_ => _)
+                                .catch(_ => _);
+                            this._transactionRequested[transactionID] = Date.now();
+                        }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
+                    });
                 }
             });
         });
