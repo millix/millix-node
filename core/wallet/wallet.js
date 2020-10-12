@@ -958,8 +958,8 @@ class Wallet {
                     }, ws);
 
                     walletSync.getTransactionSyncData(data.transaction_id)
-                              .then(data => {
-                                  if (data && data.attempt >= 2 * config.TRANSACTION_RETRY_SYNC_MAX) {
+                              .then(transactionSyncData => {
+                                  if (transactionSyncData && transactionSyncData.attempt >= 2 * config.TRANSACTION_RETRY_SYNC_MAX) {
                                       return;
                                   }
 
