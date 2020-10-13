@@ -120,14 +120,23 @@ export class WalletSync {
 
                 database.firstShardZeroORShardRepository('transaction', shardID, (transactionRepository) => {
                     return new Promise((resolve, reject) => {
-                        transactionRepository.getTransactionOutput({transaction_id: transactionID})
-                                             .then(output => output ? resolve(output) : reject())
+                        transactionRepository.getTransactionInput({
+                            output_transaction_id: transactionID,
+                            output_shard_id      : shardID,
+                            output_position      : outputPosition
+                        })
+                                             .then(input => input ? transactionRepository.getTransaction(input.transaction_id) : reject())
+                                             .then(transaction => resolve(transaction))
                                              .catch(() => reject());
                     });
-                }).then(output => {
+                }).then(spendingTransaction => {
                     // skip if we already know that the tx is spent
-                    if (output && output.is_spent === 1) {
-                        return callback();
+                    if (spendingTransaction) {
+                        return database.applyShardZeroAndShardRepository('transaction', shardID, transactionRepository => {
+                            return transactionRepository.updateTransactionOutput(transactionID, outputPosition, spendingTransaction.transaction_date);
+                        }).then(() => {
+                            callback();
+                        });
                     }
 
                     peer.transactionOutputSpendRequest(transactionID, outputPosition)
