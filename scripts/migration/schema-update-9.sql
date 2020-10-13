@@ -458,6 +458,9 @@ ALTER TABLE new_shard_attribute RENAME TO shard_attribute;
 
 CREATE INDEX idx_shard_attribute_create_date ON shard_attribute (create_date);
 
+DROP TABLE IF EXISTS object;
+DROP TABLE IF EXISTS normalization;
+
 CREATE TABLE normalization
 (
     normalization_id   CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(normalization_id) <= 20),
@@ -532,6 +535,12 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('key_public', '9MgxVxyXsM2EozHVUZgw');
 
 INSERT OR REPLACE INTO address_attribute_type (address_attribute_type_id, attribute_type) VALUES ('9MgxVxyXsM2EozHVUZgw', 'key_public');
+
+UPDATE config SET config_id = (SELECT normalization_id FROM normalization WHERE normalization_name = config_name) WHERE config_name IN (SELECT normalization_name FROM normalization);
+UPDATE node_attribute SET attribute_type_id = coalesce((SELECT normalization_id FROM normalization AS N WHERE normalization_name = (SELECT attribute_type FROM node_attribute_type WHERE attribute_type_id = node_attribute.attribute_type_id)), attribute_type_id);
+UPDATE node_attribute_type SET attribute_type_id = (SELECT normalization_id FROM normalization WHERE normalization_name = attribute_type) WHERE attribute_type IN (SELECT normalization_name FROM normalization);
+UPDATE address_attribute SET address_attribute_type_id = coalesce((SELECT normalization_id FROM normalization WHERE normalization_name = (SELECT attribute_type FROM address_attribute_type WHERE address_attribute_type_id = address_attribute.address_attribute_type_id)), address_attribute_type_id);
+UPDATE address_attribute_type SET address_attribute_type_id = (SELECT normalization_id FROM normalization WHERE normalization_name = attribute_type) WHERE attribute_type IN (SELECT normalization_name FROM normalization);
 
 UPDATE schema_information SET value = "9" WHERE key = "version";
 
