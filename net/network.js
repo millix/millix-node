@@ -303,10 +303,13 @@ class Network {
 
         console.log('[network] dead nodes size:', inactiveClients.size, ' | active nodes: (', this.registeredClients.length, '/', config.NODE_CONNECTION_INBOUND_MAX + config.NODE_CONNECTION_OUTBOUND_MAX, ')');
 
-        inactiveClients.forEach(node => {
-            this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id).catch(this.noop);
+        return new Promise(resolve => {
+            async.eachLimit(inactiveClients, 4, (node, callback) => {
+                this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
+                    .then(() => setTimeout(callback, 1000))
+                    .catch(() => setTimeout(callback, 1000));
+            }, () => resolve());
         });
-        return Promise.resolve();
     }
 
     getNodeIdFromWebSocket(ws) {
@@ -684,8 +687,29 @@ class Network {
 
         peer.nodeAttributeRequest({
             node_id       : nodeID,
-            attribute_type: 'transaction_count'
+            attribute_type: 'peer_count'
         }, ws);
+
+        peer.nodeAttributeRequest({
+            node_id       : nodeID,
+            attribute_type: 'job_list'
+        }, ws);
+
+        peer.nodeAttributeRequest({
+            node_id       : nodeID,
+            attribute_type: 'address_default'
+        }, ws);
+
+        peer.nodeAttributeRequest({
+            node_id       : nodeID,
+            attribute_type: 'node_about'
+        }, ws);
+
+        peer.nodeAttributeRequest({
+            node_id       : nodeID,
+            attribute_type: 'peer_connection'
+        }, ws);
+
     }
 
     _onConnectionReady(content, ws) {
@@ -787,6 +811,7 @@ class Network {
                                        this.nodePublicKey  = base58.encode(publicKey.toBuffer());
                                        this.nodeID         = walletUtils.getNodeIdFromPublicKey(this.nodePublicKey);
                                        this._initializeServer(certificatePem, certificatePrivateKeyPem);
+                                       eventBus.emit('network_ready');
                                        resolve();
                                    });
                     })

@@ -583,6 +583,31 @@ export default class Transaction {
         });
     }
 
+    updateAllTransactionInput(transactionID, doubleSpendDate) {
+        return new Promise((resolve, reject) => {
+            let sql        = 'UPDATE transaction_input SET';
+            let parameters = [];
+
+            if (doubleSpendDate === null) {
+                sql += ' double_spend_date = ?, is_double_spend = ?';
+                parameters.push(undefined, undefined);
+            }
+            else if (doubleSpendDate) {
+                sql += ' double_spend_date = ?, is_double_spend = ?';
+                parameters.push(Math.floor(doubleSpendDate.getTime() / 1000), 1);
+            }
+
+            parameters.push(transactionID);
+
+            this.database.run(sql + ' WHERE transaction_id = ?', parameters, (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                resolve();
+            });
+        });
+    }
+
     updateTransactionInput(transactionID, inputPosition, doubleSpendDate) {
         return new Promise((resolve, reject) => {
             let sql        = 'UPDATE transaction_input SET';
@@ -1087,6 +1112,7 @@ export default class Transaction {
                 async.eachOfSeries(transactions, (transaction, idx, callback) => {
                     const doubleSpendTransaction = doubleSpendTransactions[idx];
                     database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.setTransactionAsStable(transaction.transaction_id))
+                            .then(() => database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateAllTransactionInput(transaction.transaction_id, null)))
                             .then(() => {
                                 return new Promise(resolve => {
                                     async.eachSeries(transaction.transaction_output_list, (output, callbackOutputs) => {
