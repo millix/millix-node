@@ -20,7 +20,7 @@
     },
     {
       "id": "vM27tlHkqbRej6tP",
-      "name": "list_node_extended",
+      "name": "list_node_memory_extended",
       "description": "returns a list of all peer nodes (node table and memory list) known by the host.  it returns the newest records by default",
       "method": "GET",
       "version_released": "1.2.0",
