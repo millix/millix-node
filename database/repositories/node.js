@@ -5,12 +5,20 @@ import _ from 'lodash';
 
 export default class Node {
     constructor(database) {
-        this.database = database;
+        this.database                = database;
+        this.normalizationRepository = null;
+    }
+
+    setNormalizationRepository(repository) {
+        this.normalizationRepository = repository;
     }
 
     addNodeAttributeType(attributeType) {
         return new Promise(resolve => {
-            let nodeAttributeID = Database.generateID(20);
+            let nodeAttributeID = this.normalizationRepository.get(attributeType);
+            if (!nodeAttributeID) {
+                nodeAttributeID = Database.generateID(20);
+            }
             this.database.run('INSERT INTO node_attribute_type (attribute_type_id, attribute_type) VALUES (?, ?)',
                 [
                     nodeAttributeID,
@@ -61,18 +69,35 @@ export default class Node {
     addNodeAttribute(nodeID, attributeType, attributeValue) {
         return this.addNodeAttributeType(attributeType)
                    .then(attributeTypeID => {
-                       this.database.run('INSERT OR REPLACE INTO node_attribute (node_id, attribute_type_id, value) VALUES (?,?,?)',
-                           [
-                               nodeID,
-                               attributeTypeID,
-                               attributeValue
-                           ],
-                           (err) => {
-                               if (err) {
-                                   throw Error(err.message);
-                               }
-                           });
+                       return new Promise((resolve, reject) => {
+                           this.database.run('INSERT OR REPLACE INTO node_attribute (node_id, attribute_type_id, value) VALUES (?,?,?)',
+                               [
+                                   nodeID,
+                                   attributeTypeID,
+                                   attributeValue
+                               ],
+                               (err) => {
+                                   if (err) {
+                                       return reject(err.message);
+                                   }
+                                   resolve();
+                               });
+                       });
                    });
+    }
+
+    getConnectionStatistics() {
+        return new Promise((resolve, reject) => {
+            this.database.get('SELECT COUNT(CASE WHEN update_date > strftime("%s","now", "-1 day") THEN 1 ELSE NULL END) AS peer_connection_count_day,\n' +
+                              'COUNT(CASE WHEN update_date > strftime("%s","now", "-1 hour") THEN 1 ELSE NULL END) AS peer_connection_count_hour,\n' +
+                              'COUNT(CASE WHEN update_date > strftime("%s","now", "-1 minute") THEN 1 ELSE NULL END) AS peer_connection_count_minute\n' +
+                              'FROM node', (err, row) => {
+                if (err) {
+                    return reject(err.message);
+                }
+                resolve(row);
+            });
+        });
     }
 
     eachNode(callback) {
@@ -114,6 +139,19 @@ export default class Node {
             this.database.get(sql, parameters, (err, row) => {
                 resolve(row);
             });
+        });
+    }
+
+    listNodesExtended() {
+        return new Promise(resolve => {
+            this.database.all('SELECT node.*,\n' +
+                              'node_attribute.attribute_type_id, node_attribute.value, node_attribute.status as attribute_status, node_attribute.create_date as attribute_create_date,\n' +
+                              'node_attribute_type.attribute_type FROM node\n' +
+                              'LEFT JOIN node_attribute ON node.node_id = node_attribute.node_id\n' +
+                              'LEFT JOIN node_attribute_type ON node_attribute_type.attribute_type_id = node_attribute.attribute_type_id',
+                (err, rows) => {
+                    resolve(rows || []);
+                });
         });
     }
 

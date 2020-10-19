@@ -11,7 +11,7 @@ import peer from '../../net/peer';
 import async from 'async';
 import _ from 'lodash';
 import genesisConfig from '../genesis/genesis-config';
-import config from '../config/config';
+import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
 import network from '../../net/network';
 import mutex from '../mutex';
 import ntp from '../ntp';
@@ -1182,13 +1182,34 @@ class Wallet {
                            })
                            .then(() => nodeRepository.addNodeAttribute(network.nodeID, 'transaction_count', totalTransactions))
                            .then(resolve).catch(resolve);
-        }).then(() => jobRepository.getJobs()
+        }).then(() => jobRepository.getJobs() // update job attribute
                                    .then(jobs => {
                                        return nodeRepository.addNodeAttribute(network.nodeID, 'job_list', JSON.stringify(_.map(jobs, job => ({
                                            job_name: job.job_name,
                                            status  : job.status
                                        }))));
-                                   }));// update job attribute
+                                   }))
+          .then(() => { // update node_about
+              return database.getRepository('schema')
+                             .get({key: 'version'})
+                             .then(versionInfo => {
+                                 if (!versionInfo) {
+                                     return Promise.reject('[wallet] cannot create node about attribute');
+                                 }
+                                 return nodeRepository.addNodeAttribute(network.nodeID, 'node_about', JSON.stringify({
+                                     node_version    : NODE_MILLIX_VERSION,
+                                     node_create_date: versionInfo.create_date,
+                                     node_update_date: NODE_MILLIX_BUILD_DATE
+                                 }));
+                             });
+          })
+          .then(() => { // update peer_connection
+              return database.getRepository('node')
+                             .getConnectionStatistics()
+                             .then(connectionStats => {
+                                 return nodeRepository.addNodeAttribute(network.nodeID, 'peer_connection', JSON.stringify(connectionStats));
+                             });
+          });
     }
 
     _doDAGProgress() {
@@ -1751,6 +1772,13 @@ class Wallet {
                   });
     }
 
+    updateDefaultAddressAttribute() {
+        let nodeRepository    = database.getRepository('node');
+        let addressRepository = database.getRepository('address');
+        const defaultAddress  = this.defaultKeyIdentifier + addressRepository.getDefaultAddressVersion().version + this.defaultKeyIdentifier;
+        return nodeRepository.addNodeAttribute(network.nodeID, 'address_default', defaultAddress);
+    }
+
     _initializeEvents() {
         walletSync.initialize()
                   .then(() => walletTransactionConsensus.initialize())
@@ -1796,6 +1824,12 @@ class Wallet {
                            this._initializeEvents();
                            return database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
                                           .then(defaultKeyIdentifier => {
+                                              if (network.nodeID) {
+                                                  this.updateDefaultAddressAttribute().then(_ => _);
+                                              }
+                                              else {
+                                                  eventBus.once('network_ready', () => this.updateDefaultAddressAttribute().then(_ => _));
+                                              }
                                               this.defaultKeyIdentifier = defaultKeyIdentifier;
                                               this.initialized          = true;
                                               return walletID;

@@ -66,7 +66,7 @@ CREATE TABLE transaction_input
     output_shard_id         CHAR(50) NULL CHECK (length(output_shard_id) <= 50),
     output_transaction_date INT      NULL CHECK(length(output_transaction_date) <= 10 AND TYPEOF(output_transaction_date) IN ('integer', 'null')),
     double_spend_date       INT      NULL CHECK(length(double_spend_date) <= 10 AND TYPEOF(double_spend_date) IN ('integer', 'null')),
-    is_double_spend         TINYINT  NOT NULL DEFAULT 0 CHECK (is_double_spend = 0 OR is_double_spend = 1),
+    is_double_spend         TINYINT  NULL DEFAULT 0 CHECK (is_double_spend = 0 OR is_double_spend = 1 OR is_double_spend IS NULL),
     address                 CHAR(72) NULL CHECK (length(address) <= 72),
     address_key_identifier  CHAR(34) NULL CHECK (length(address_key_identifier) <= 34),
     status                  TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),

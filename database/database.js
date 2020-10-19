@@ -352,6 +352,7 @@ export class Database {
 
         this.repositories['address'].setNormalizationRepository(this.repositories['normalization']);
         this.repositories['keychain'].setNormalizationRepository(this.repositories['normalization']);
+        this.repositories['node'].setNormalizationRepository(this.repositories['normalization']);
         _.each(_.keys(this.shards), shard => {
             const transactionRepository = this.shards[shard].getRepository('transaction');
             transactionRepository.setAddressRepository(this.repositories['address']);

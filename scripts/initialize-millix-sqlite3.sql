@@ -144,7 +144,7 @@ CREATE TABLE transaction_input
     output_shard_id         CHAR(50) NULL CHECK (length(output_shard_id) <= 50),
     output_transaction_date INT      NULL CHECK(length(output_transaction_date) <= 10 AND TYPEOF(output_transaction_date) IN ('integer', 'null')),
     double_spend_date       INT      NULL CHECK(length(double_spend_date) <= 10 AND TYPEOF(double_spend_date) IN ('integer', 'null')),
-    is_double_spend         TINYINT  NOT NULL DEFAULT 0 CHECK (is_double_spend = 0 OR is_double_spend = 1),
+    is_double_spend         TINYINT  NULL DEFAULT 0 CHECK (is_double_spend = 0 OR is_double_spend = 1 OR is_double_spend IS NULL),
     address                 CHAR(72) NULL CHECK (length(address) <= 72),
     address_key_identifier  CHAR(34) NULL CHECK (length(address_key_identifier) <= 34),
     status                  TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
@@ -375,7 +375,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "10");
+INSERT INTO schema_information (key, value) VALUES ("version", "11");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
@@ -448,6 +448,9 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('shard_zero_name', 'rMSuKEh42OZaeVEgzG62'),
        ('key_public', '9MgxVxyXsM2EozHVUZgw'),
        ('node_key_public', 'GKj5UNJmpx5qCGQnaJjA'),
-       ('node_bind_ip', 'Apw9ovpclfW6LvSVYqYD');
+       ('node_bind_ip', 'Apw9ovpclfW6LvSVYqYD'),
+       ('address_default', 'T4CefCfUyoc4CWv7cZ5V'),
+       ('node_about', 'ijDj2VlTyJBl5R4iTCmG'),
+       ('peer_connection', '8FPirjQYaFIEIF2y7OEA');
 
 INSERT INTO address_attribute_type (address_attribute_type_id, attribute_type) VALUES ('9MgxVxyXsM2EozHVUZgw', 'key_public');

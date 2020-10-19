@@ -1,5 +1,6 @@
 import {DATABASE_CONNECTION} from '../../core/config/config';
 import Migration from '../../scripts/migration/migration';
+import {Database} from '../database';
 
 export default class Schema {
     constructor(database) {
@@ -14,6 +15,18 @@ export default class Schema {
                     return reject(err);
                 }
                 resolve(row.value);
+            });
+        });
+    }
+
+    get(where) {
+        const {sql, parameters} = Database.buildQuery('SELECT * FROM schema_information', where);
+        return new Promise((resolve, reject) => {
+            this.database.get(sql, parameters, (err, rows) => {
+                if (err) {
+                    return reject(err);
+                }
+                resolve(rows);
             });
         });
     }
