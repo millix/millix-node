@@ -65,12 +65,16 @@ class Network {
     addNode(prefix, ip, port, portApi, id) {
         let url = prefix + ip + ':' + port;
         if (!this._nodeList[url]) {
+            const now           = Math.floor(Date.now() / 1000);
             this._nodeList[url] = {
                 node_prefix  : prefix,
                 node_address : ip,
                 node_port    : port,
                 node_port_api: portApi,
-                node_id      : id
+                node_id      : id,
+                create_date  : now,
+                update_date  : now,
+                status       : -1
             };
             return true;
         }
@@ -514,12 +518,16 @@ class Network {
         if (this._registerWebsocketToNodeID(ws)) {
             this._registerWebsocketConnection(ws);
             if (ws.outBound) {
+                const now               = Math.floor(Date.now() / 1000);
                 let node                = {
                     node_prefix  : ws.nodePrefix,
                     node_address : ws.nodeIPAddress,
                     node_port    : parseInt(ws.nodePort),
                     node_port_api: parseInt(ws.nodePortApi),
-                    node_id      : ws.nodeID
+                    node_id      : ws.nodeID,
+                    create_date  : now,
+                    update_date  : now,
+                    status       : -1
                 };
                 this._nodeList[ws.node] = node;
             }
@@ -533,6 +541,10 @@ class Network {
                     'node_id',
                     'node'
                 ]);
+                const now                     = Math.floor(Date.now() / 1000);
+                node['create_date']           = now;
+                node['update_date']           = now;
+                node['status']                = -1;
                 ws.node                       = registry.node;
                 this._nodeList[registry.node] = node;
             }

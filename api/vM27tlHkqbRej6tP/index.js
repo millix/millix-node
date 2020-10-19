@@ -5,7 +5,7 @@ import _ from 'lodash';
 
 
 /**
- * api list_node_extended
+ * api list_node_memory_extended
  */
 class _vM27tlHkqbRej6tP extends Endpoint {
     constructor() {
@@ -16,12 +16,14 @@ class _vM27tlHkqbRej6tP extends Endpoint {
      * returns a list of all peer nodes (node table and memory list) known by
      * the host.  it returns the newest records by default
      * @param app
-     * @param req (p0: status, p1: record_limit=1000)
+     * @param req (p0: status, p1: order_by="create_date desc", p2:
+     *     record_limit=1000)
      * @param res
      */
     handler(app, req, res) {
         const status         = !!req.query.p0 ? req.query.p0 : undefined;
-        const limit          = parseInt(req.query.p1) || 1000;
+        const orderBy        = req.query.p1 || 'create_date desc';
+        const limit          = parseInt(req.query.p2) || 1000;
         const nodeRepository = database.getRepository('node');
 
         let keyMap = {
@@ -60,20 +62,22 @@ class _vM27tlHkqbRej6tP extends Endpoint {
                               }
                           });
 
-                          result = _.sortBy(result, (item) => -item.create_date);
-
                           if (status === undefined) {
                               _.values(network.nodeList).forEach(node => {
                                   if (!nodeMap[node.node_id]) {
                                       let nodeItem                    = _.pick(node, 'node_id', 'node_prefix', 'node_address', 'node_port', 'node_port_api', 'status', 'update_date', 'create_date');
-                                      nodeItem['create_date']         = null;
-                                      nodeItem['update_date']         = null;
-                                      nodeItem['status']              = null;
                                       nodeItem['node_attribute_list'] = [];
                                       nodeMap[node.node_id]           = nodeItem;
                                       result.push(nodeItem);
                                   }
                               });
+                          }
+
+                          if (orderBy) {
+                              const regExp = /^(?<column>\w+) (?<order>asc|desc)$/.exec(orderBy);
+                              if (regExp && regExp.groups && regExp.groups.column && regExp.groups.order) {
+                                  result = _.orderBy(result, regExp.groups.column, regExp.groups.order);
+                              }
                           }
 
                           res.send(_.slice(result, 0, limit));
