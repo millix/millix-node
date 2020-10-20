@@ -308,7 +308,7 @@ class Network {
         console.log('[network] dead nodes size:', inactiveClients.size, ' | active nodes: (', this.registeredClients.length, '/', config.NODE_CONNECTION_INBOUND_MAX + config.NODE_CONNECTION_OUTBOUND_MAX, ')');
 
         return new Promise(resolve => {
-            async.eachLimit(inactiveClients, 4, (node, callback) => {
+            async.eachLimit(_.shuffle(Array.from(inactiveClients)), 4, (node, callback) => {
                 this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
                     .then(() => setTimeout(callback, 1000))
                     .catch(() => setTimeout(callback, 1000));

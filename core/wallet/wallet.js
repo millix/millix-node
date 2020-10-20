@@ -1209,7 +1209,39 @@ class Wallet {
                              .then(connectionStats => {
                                  return nodeRepository.addNodeAttribute(network.nodeID, 'peer_connection', JSON.stringify(connectionStats));
                              });
-          });
+          }).then(() => {
+                return new Promise(resolve => {
+                    let attributes = [];
+                    async.eachSeries([
+                        'shard_protocol',
+                        'transaction_count',
+                        'peer_count',
+                        'address_default',
+                        'node_about',
+                        'peer_connection'
+                    ], (attributeType, callback) => {
+                        database.getRepository('node')
+                                .getNodeAttribute(network.nodeID, attributeType)
+                                .then(attributeValue => {
+                                    if (attributeValue) {
+                                        attributes.push({
+                                            node_id       : network.nodeID,
+                                            attribute_type: attributeType,
+                                            value         : attributeValue
+                                        });
+                                    }
+                                    callback();
+                                });
+                    }, () => {
+                        async.eachLimit(network.registeredClients, 4, (ws, wsCallback) => {
+                            attributes.forEach(attribute => {
+                                peer.nodeAttributeResponse(attribute, ws);
+                            });
+                            setTimeout(wsCallback, 250);
+                        }, () => resolve());
+                    });
+                });
+            });
     }
 
     _doDAGProgress() {
