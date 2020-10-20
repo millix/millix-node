@@ -79,11 +79,11 @@ export class PeerRotation {
     }
 
     _getOlderPeer() {
-        const peers = network.outboundClients;
+        const peers = network.registeredClients;
         if (peers.length === 0) {
             return null;
         }
-        return _.minBy(_.filter(peers, peer => !config.NODE_CONNECTION_STATIC.includes(peer.nodeID)), peer => peer.createTime);
+        return _.minBy(_.filter(peers, peer => (peer.outBound || peer.inBound && peer.bidirectional) && !config.NODE_CONNECTION_STATIC.includes(peer.nodeID)), peer => peer.createTime);
     }
 
     _getOlderPeerNotSupportingCommonShards() {
@@ -210,6 +210,18 @@ export class PeerRotation {
             const outboundClients = network.outboundClients;
             if (outboundClients.length < config.NODE_CONNECTION_OUTBOUND_MAX - 1) {
                 console.log(`[peer-rotation] fill available slots (${outboundClients.length} of ${config.NODE_CONNECTION_OUTBOUND_MAX})`);
+
+                const peerToDisconnect = this._getOlderPeer();
+                if (peerToDisconnect && peerToDisconnect.close) {
+                    console.log(`[peer-rotation] drop with node id ${peerToDisconnect.nodeID} - ${peerToDisconnect.url}`);
+                    if (peerToDisconnect.readyState === WebSocket.CLOSED || peerToDisconnect.readyState === WebSocket.CLOSING) {
+                        network._unregisterWebsocket(peerToDisconnect);
+                    }
+                    else {
+                        peerToDisconnect.close();
+                    }
+                }
+
                 return network.retryConnectToInactiveNodes()
                               .then(() => {
                                   console.log('[peer-rotation] peer rotation done.');

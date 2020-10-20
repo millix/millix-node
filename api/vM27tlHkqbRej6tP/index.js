@@ -62,7 +62,7 @@ class _vM27tlHkqbRej6tP extends Endpoint {
                               }
                           });
 
-                          if (status === undefined) {
+                          if (status === undefined || status === '-1') {
                               _.values(network.nodeList).forEach(node => {
                                   if (!nodeMap[node.node_id]) {
                                       let nodeItem                    = _.pick(node, 'node_id', 'node_prefix', 'node_address', 'node_port', 'node_port_api', 'status', 'update_date', 'create_date');
