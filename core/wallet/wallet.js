@@ -649,6 +649,16 @@ class Wallet {
                                                                                       }
 
                                                                                       let transactionRepository = shardZeroTransactionRepository;
+
+                                                                                      if ([
+                                                                                          '0a10',
+                                                                                          '0b10',
+                                                                                          'la1l',
+                                                                                          'lb1l'
+                                                                                      ].includes(transaction.version)) {
+                                                                                          transaction.transaction_date = new Date(transaction.transaction_date * 1000).toISOString();
+                                                                                      }
+
                                                                                       if (new Date(transaction.transaction_date).getTime() <= (Date.now() - config.TRANSACTION_PRUNE_AGE_MIN * 60000)) {
                                                                                           let shardTransactionRepository = database.getRepository('transaction', transaction.shard_id);
                                                                                           if (shardTransactionRepository || hasKeyIdentifier) {
@@ -721,7 +731,7 @@ class Wallet {
                                                                                                                       }
                                                                                                                       if (!isRequestedBySync || hasKeyIdentifier) {
                                                                                                                           let ws = network.getWebSocketByID(connectionID);
-                                                                                                                          peer.transactionSend(transaction, ws);
+                                                                                                                          peer.transactionSend(data.transaction, ws);
                                                                                                                       }
                                                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                                                       delete this._transactionRequested[transaction.transaction_id];
@@ -1764,8 +1774,10 @@ class Wallet {
                                                                return Promise.reject('tried to sign and store and invalid transaction');
                                                            }
                                                            else {
+                                                               const dbTransaction = _.cloneDeep(transaction);
+                                                               dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
                                                                return database.getRepository('transaction')
-                                                                              .addTransactionFromObject(transaction);
+                                                                              .addTransactionFromObject(dbTransaction);
                                                            }
                                                        }))
                                         .then(transaction => transaction);

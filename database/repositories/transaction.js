@@ -429,7 +429,12 @@ export default class Transaction {
             'address_attribute',
             'signature'
         ])), 'address_base');
-        transaction['transaction_date']           = transactionDB.transaction_date.toISOString();
+        transaction['transaction_date']           = [
+                                                        '0a0',
+                                                        '0b0',
+                                                        'la0l',
+                                                        'lb0l'
+                                                    ].includes(transactionDB.version) ? transactionDB.transaction_date.toISOString() : Math.floor(transactionDB.transaction_date.getTime() / 1000);
         transaction['version']                    = transactionDB.version;
         transaction['node_id_origin']             = transactionDB.node_id_origin;
         transaction['shard_id']                   = transactionDB.shard_id;

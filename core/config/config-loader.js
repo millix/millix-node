@@ -8,7 +8,18 @@ class _ConfigLoader {
     constructor() {
         this.reservedConfigNameList = new Set([
             'DATABASE_CONNECTION',
-            'NODE_MILLIX_VERSION'
+            'NODE_MILLIX_VERSION',
+            'TRANSACTION_INPUT_MAX',
+            'TRANSACTION_OUTPUT_MAX',
+            'TRANSACTION_PARENT_MAX',
+            'TRANSACTION_SIGNATURE_MAX',
+            'TRANSACTION_OUTPUT_REFRESH_OLDER_THAN',
+            'TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN',
+            'WALLET_TRANSACTION_DEFAULT_VERSION',
+            'WALLET_TRANSACTION_REFRESH_VERSION',
+            'WALLET_TRANSACTION_SUPPORTED_VERSION',
+            'JOB_CONFIG_VERSION',
+            'SHARD_ZERO_NAME'
         ]);
     }
 
