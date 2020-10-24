@@ -528,8 +528,25 @@ class WalletUtils {
 
             console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
 
-            const transactionDate = new Date(transaction.transaction_date);
-            if (transaction.version === config.WALLET_TRANSACTION_REFRESH_VERSION) {
+            let transactionDate;
+            if ([
+                '0a10',
+                '0b10',
+                'la1l',
+                'lb1l'
+            ].includes(transaction.version)) {
+                transactionDate = new Date(transaction.transaction_date * 1000);
+            }
+            else {
+                transactionDate = new Date(transaction.transaction_date);
+            }
+
+            if ([
+                '0b0',
+                '0b10',
+                'lb0l',
+                'lb1l'
+            ].includes(transaction.version)) {
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 if (!(isValidRefresh)) {
                     console.log('[wallet-utils] Rejecting refresh transaction');
@@ -812,7 +829,7 @@ class WalletUtils {
               transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
               transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
               transaction['payload_hash']            = objectHash.getCHash288(transaction);
-              transaction['transaction_date']        = timeNow.toISOString();
+              transaction['transaction_date']        = Math.floor(timeNow.getTime() / 1000);
               transaction['node_id_origin']          = network.nodeID;
               transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
               transaction['version']                 = transactionVersion;
