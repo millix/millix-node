@@ -21,60 +21,404 @@ export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
         port_api: 5500
     },
     {
-        url     : 'wss://18.138.163.22:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00001.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://18.138.163.22:10001',
-        port_api: 5500
+        'url'     : 'wss://node-00002.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://3.0.29.177:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00003.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://3.0.29.177:10001',
-        port_api: 5500
+        'url'     : 'wss://node-00004.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node0.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00005.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node1.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00006.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node2.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00007.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node3.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00008.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node4.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00009.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node5.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00010.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node6.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00011.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node7.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00012.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node8.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00013.millix.com:10000',
+        'port_api': 5500
     },
     {
-        url     : 'wss://node9.millix.org:10000',
-        port_api: 5500
+        'url'     : 'wss://node-00014.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00015.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00016.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00017.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00018.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00019.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00020.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00021.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00022.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00023.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00024.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00025.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00026.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00027.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00028.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00029.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00030.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00031.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00032.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00033.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00034.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00035.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00036.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00037.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00038.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00039.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00040.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00041.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00042.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00043.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00044.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00045.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00046.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00047.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00048.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00049.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00050.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00051.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00052.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00053.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00054.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00055.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00056.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00057.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00058.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00059.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00060.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00061.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00062.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00063.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00064.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00065.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00066.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00067.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00068.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00069.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00070.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00071.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00072.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00073.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00074.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00075.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00076.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00077.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00078.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00079.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00080.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00081.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00082.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00083.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00084.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00085.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00086.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00087.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00088.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00089.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00090.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00091.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00092.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00093.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00094.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00095.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00096.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00097.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00098.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00099.millix.com:10000',
+        'port_api': 5500
+    },
+    {
+        'url'     : 'wss://node-00100.millix.com:10000',
+        'port_api': 5500
     }
 ];
 export const NODE_INITIAL_LIST_TEST_NETWORK                    = [
@@ -165,19 +509,23 @@ export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
 export const WALLET_LOG_SIZE_MAX                               = 1000;
-export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a0';
-export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la0l';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a10';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la1l';
 export const WALLET_TRANSACTION_DEFAULT_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK : WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK;
-export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b0';
-export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb0l';
+export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b10';
+export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb1l';
 export const WALLET_TRANSACTION_REFRESH_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK : WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a0',
-    '0b0'
+    '0b0',
+    '0a10',
+    '0b10'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la0l',
-    'lb0l'
+    'lb0l',
+    'la1l',
+    'lb1l'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
 export const WALLET_SPENT_TRANSACTION_PRUNE                    = false;
@@ -191,8 +539,8 @@ export const MILLIX_CIRCULATION                                = 9e15;
 export const MODE_TEST                                         = false;
 export const NODE_TEST_HOST                                    = '127.0.0.1';
 export const NODE_TEST_PORT                                    = 5080;
-export const NODE_MILLIX_BUILD_DATE                            = 1603109344;
-export const NODE_MILLIX_VERSION                               = '1.6.10';
+export const NODE_MILLIX_BUILD_DATE                            = 1603556695;
+export const NODE_MILLIX_VERSION                               = '1.7.0';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
