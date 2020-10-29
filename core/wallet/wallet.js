@@ -613,7 +613,7 @@ class Wallet {
         let maximumOldest = ntp.now();
         maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
-        return maximumOldest.getTime() > transactionDate.getTime();
+        return maximumOldest.getTime() < transactionDate.getTime();
     }
 
     _onNewTransaction(data, ws, isRequestedBySync) {
