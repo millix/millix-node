@@ -34,6 +34,7 @@ class Wallet {
         this._transactionReceivedFromNetwork = {};
         this._transactionOnRoute             = {};
         this._transactionRequested           = {};
+        this._transactionFundingActiveWallet = {};
         this.defaultKeyIdentifier            = undefined;
         this._lockProcessNewTransaction      = 0;
         this._maxBacklogThresholdReached     = false;
@@ -148,6 +149,10 @@ class Wallet {
         }
 
         throw Error('Wallet not activated');
+    }
+
+    getKeyIdentifier() {
+        return this.defaultKeyIdentifier;
     }
 
     deriveAndSaveAddress(walletID, isChange, addressPosition) {
@@ -452,8 +457,11 @@ class Wallet {
         return !!this._transactionRequested[transactionID];
     }
 
-    requestTransactionFromNetwork(transactionID) {
-        peer.transactionSyncRequest(transactionID)
+    requestTransactionFromNetwork(transactionID, options = {}, isTransactionFundingWallet = false) {
+        if (isTransactionFundingWallet) {
+            this._transactionFundingActiveWallet[transactionID] = Date.now();
+        }
+        peer.transactionSyncRequest(transactionID, options)
             .then(() => this._transactionRequested[transactionID] = Date.now())
             .catch(_ => _);
     }
@@ -572,6 +580,42 @@ class Wallet {
         }
     }
 
+    _shouldProcessTransaction(transaction) {
+        if (!!this._transactionFundingActiveWallet[transaction.transaction_id]) {
+            return true;
+        }
+
+        for (const output of transaction.transaction_output_list) {
+            if (output.address_key_identifier === this.defaultKeyIdentifier) {
+                return true;
+            }
+        }
+
+        for (const input of transaction.transaction_input_list) {
+            if (input.address_key_identifier === this.defaultKeyIdentifier) {
+                return true;
+            }
+        }
+
+        let transactionDate;
+        if ([
+            '0a0',
+            '0b0',
+            'la0l',
+            'lb0l'
+        ].includes(transaction.version)) {
+            transactionDate = new Date(transaction.transaction_date);
+        }
+        else {
+            transactionDate = new Date(transaction.transaction_date * 1000);
+        }
+
+        let maximumOldest = ntp.now();
+        maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+
+        return maximumOldest.getTime() < transactionDate.getTime();
+    }
+
     _onNewTransaction(data, ws, isRequestedBySync) {
 
         let node         = ws.node;
@@ -599,6 +643,11 @@ class Wallet {
             return;
         }
 
+        // check if we should accept this transaction
+        if (!this._shouldProcessTransaction(transaction)) {
+            return walletSync.removeTransactionSync(transaction.transaction_id);
+        }
+
         this._transactionReceivedFromNetwork[transaction.transaction_id] = true;
         return this.syncShardIfNotExists(transaction, ws)
                    .then(() => {
@@ -623,6 +672,7 @@ class Wallet {
                                                                 if (hasTransaction && !(isAuditPoint && !hasTransactionData && this.transactionHasKeyIdentifier(transaction))) {
                                                                     delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                     delete this._transactionRequested[transaction.transaction_id];
+                                                                    delete this._transactionFundingActiveWallet[transaction.transaction_id];
                                                                     return eventBus.emit('transaction_new:' + transaction.transaction_id);
                                                                 }
 
@@ -639,11 +689,15 @@ class Wallet {
                                                                                           eventBus.emit('badTransaction:' + transaction.transaction_id);
                                                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                           delete this._transactionRequested[transaction.transaction_id];
+                                                                                          delete this._transactionFundingActiveWallet[transaction.transaction_id];
                                                                                           return false;
                                                                                       }
 
-                                                                                      let syncPriority     = this.getTransactionSyncPriority(transaction);
-                                                                                      let hasKeyIdentifier = this.transactionHasKeyIdentifier(transaction);
+                                                                                      const isFundingWallet  = this._transactionFundingActiveWallet[transaction.transaction_id];
+                                                                                      const syncPriority     = isFundingWallet ? 1 : this.getTransactionSyncPriority(transaction);
+                                                                                      const hasKeyIdentifier = this.transactionHasKeyIdentifier(transaction);
+                                                                                      delete this._transactionFundingActiveWallet[transaction.transaction_id];
+
                                                                                       if (syncPriority === 1) {
                                                                                           console.log('[wallet-key-identifier] ', transaction);
                                                                                       }
@@ -701,6 +755,10 @@ class Wallet {
                                                                                                                                   }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
                                                                                                                                       if (!hasTransaction || isAuditPoint && hasKeyIdentifier) {
                                                                                                                                           console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
+                                                                                                                                          // only flag transactions that don't have the key identifier and are from a wallet funding lineage, or transactions that are not from a funding lineage and have the key identifier
+                                                                                                                                          if (isFundingWallet || hasKeyIdentifier) {
+                                                                                                                                              this._transactionFundingActiveWallet[inputTransaction.output_transaction_id] = Date.now();
+                                                                                                                                          }
                                                                                                                                           peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority})
                                                                                                                                               .then(() => this._transactionRequested[inputTransaction.output_transaction_id] = Date.now())
                                                                                                                                               .catch(_ => _);
@@ -744,6 +802,10 @@ class Wallet {
                        console.log('[Wallet] cleanup dangling transaction ', transaction.transaction_id, '. [message]: ', err);
                        delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                        delete this._transactionRequested[transaction.transaction_id];
+                       walletSync.add(transaction.transaction_id, {
+                           delay   : 5000,
+                           priority: this.getTransactionSyncPriority(transaction)
+                       });
                    });
     }
 
@@ -1618,30 +1680,6 @@ class Wallet {
         });
     }
 
-    _doTransactionPruning() {
-        if (mutex.getKeyQueuedSize(['transaction-pruning']) > 0) { // a prune task is running.
-            return Promise.resolve();
-        }
-
-        return new Promise(resolve => {
-            mutex.lock(['transaction-pruning'], unlock => {
-                this.lockProcessNewTransaction();
-                database.getRepository('audit_point') // shard zero
-                        .pruneTransaction()
-                        .then(() => {
-                            unlock();
-                            resolve();
-                            this.unlockProcessNewTransaction();
-                        })
-                        .catch(() => {
-                            unlock();
-                            resolve();
-                            this.unlockProcessNewTransaction();
-                        });
-            });
-        });
-    }
-
     _doAuditPointPruning() {
         return new Promise(resolve => {
             mutex.lock(['audit-point-pruning'], unlock => {
@@ -1806,7 +1844,7 @@ class Wallet {
                                                                return Promise.reject('tried to sign and store and invalid transaction');
                                                            }
                                                            else {
-                                                               const dbTransaction = _.cloneDeep(transaction);
+                                                               const dbTransaction            = _.cloneDeep(transaction);
                                                                dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
                                                                return database.getRepository('transaction')
                                                                               .addTransactionFromObject(dbTransaction);

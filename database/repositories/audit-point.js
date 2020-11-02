@@ -263,45 +263,6 @@ export default class AuditPoint {
         });
     }
 
-    pruneTransaction() {
-        return new Promise((resolve, reject) => {
-            this.database.all('SELECT transaction_id FROM `transaction` where status = 0 LIMIT ' + Math.min(config.TRANSACTION_PRUNE_COUNT, 250), (err, rows) => {
-                if (err) {
-                    console.log(err);
-                    return reject();
-                }
-                let transactions = rows.map(transaction => transaction.transaction_id);
-                console.log('[Database] ', transactions.length, ' transactions will be pruned');
-
-                if (transactions.length === 0) {
-                    return resolve();
-                }
-
-                this.database.serialize(() => {
-                    this.database.run('DELETE FROM transaction_input WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                        err && console.log('[Database] Failed pruning inputs. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM transaction_output WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                        err && console.log('[Database] Failed pruning outputs. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM transaction_signature WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                        err && console.log('[Database] Failed pruning signatures. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM transaction_parent WHERE transaction_id_child IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                        err && console.log('[Database] Failed pruning parents. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM audit_verification WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                        err && console.log('[Database] Failed pruning audit verifications. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM `transaction` WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
-                        resolve();
-                    });
-                });
-            });
-        });
-    }
-
     deleteAuditPoint(transactionID) {
         return new Promise((resolve) => {
             this.database.serialize(() => {
