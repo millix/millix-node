@@ -44,15 +44,10 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             // only refresh outputs after 30s (db insert)
             const insertDate = Math.floor(Date.now() / 1000) - 30;
-
-            let unstableDateStart = ntp.now();
-            unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-            unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
             this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? AND `transaction`.transaction_date > ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND `transaction`.create_date < ? ORDER BY transaction_date DESC LIMIT 100', [
+                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND `transaction`.create_date < ? ORDER BY transaction_date DESC LIMIT 100', [
                     addressKeyIdentifier,
-                    unstableDateStart,
                     insertDate
                 ].concat(excludeTransactionIDList),
                 (err, rows) => {
@@ -1643,9 +1638,19 @@ export default class Transaction {
                     const supportedShardAuditTransactions = {};
                     _.each(supportedShardIDList, shardID => supportedShardAuditTransactions[shardID] = []);
                     async.eachSeries(transactionList, (transaction, callback) => {
+                        if (transaction.is_stable === 0) {
+                            return this.deleteTransaction(transaction.transaction_id)
+                                       .then(() => callback())
+                                       .catch(() => callback());
+                        }
+
                         this.getTransactionObject(transaction.transaction_id)
                             .then(transaction => {
-                                if (supportedShardAuditTransactions[transaction.shard_id]) {
+                                if (_.find(transaction.transaction_input_list, _.matchesProperty('is_double_spend', 1)) ||
+                                    _.find(transaction.transaction_output_list, _.matchesProperty('is_double_spend', 1))) {
+                                    return this.deleteTransaction(transaction.transaction_id);
+                                }
+                                else if (supportedShardAuditTransactions[transaction.shard_id]) {
                                     // is supported shard? move transaction to
                                     // shard
                                     return auditPointRepository.getAuditPoint(transaction.transaction_id)
@@ -1854,15 +1859,15 @@ export default class Transaction {
 
     getUnspentTransactionOutputsOlderThanOrExpired(addressKeyIdentifier, time) {
         const createDate = Math.floor(time.valueOf() / 1000);
-        // only refresh outputs after 30s (db insert)
-        const insertDate = Math.floor(Date.now() / 1000) - 60;
+        // only refresh outputs stable since 30s ago
+        const stableDate = Math.floor(Date.now() / 1000) - 60;
 
         return new Promise((resolve, reject) => {
             // TODO - return only necessary
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date <= ? OR transaction_output.status = 2) AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0 AND `transaction`.transaction_date < ?', [
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date <= ? OR transaction_output.status = 2) AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0 AND `transaction`.is_stable = 1 AND `transaction`.stable_date < ?', [
                 createDate,
                 addressKeyIdentifier,
-                insertDate
+                stableDate
             ], (err, rows) => {
                 if (err) {
                     return reject(err);
