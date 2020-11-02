@@ -1680,30 +1680,6 @@ class Wallet {
         });
     }
 
-    _doTransactionPruning() {
-        if (mutex.getKeyQueuedSize(['transaction-pruning']) > 0) { // a prune task is running.
-            return Promise.resolve();
-        }
-
-        return new Promise(resolve => {
-            mutex.lock(['transaction-pruning'], unlock => {
-                this.lockProcessNewTransaction();
-                database.getRepository('audit_point') // shard zero
-                        .pruneTransaction()
-                        .then(() => {
-                            unlock();
-                            resolve();
-                            this.unlockProcessNewTransaction();
-                        })
-                        .catch(() => {
-                            unlock();
-                            resolve();
-                            this.unlockProcessNewTransaction();
-                        });
-            });
-        });
-    }
-
     _doAuditPointPruning() {
         return new Promise(resolve => {
             mutex.lock(['audit-point-pruning'], unlock => {

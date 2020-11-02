@@ -1638,9 +1638,19 @@ export default class Transaction {
                     const supportedShardAuditTransactions = {};
                     _.each(supportedShardIDList, shardID => supportedShardAuditTransactions[shardID] = []);
                     async.eachSeries(transactionList, (transaction, callback) => {
+                        if (transaction.is_stable === 0) {
+                            return this.deleteTransaction(transaction.transaction_id)
+                                       .then(() => callback())
+                                       .catch(() => callback());
+                        }
+
                         this.getTransactionObject(transaction.transaction_id)
                             .then(transaction => {
-                                if (supportedShardAuditTransactions[transaction.shard_id]) {
+                                if (_.find(transaction.transaction_input_list, _.matchesProperty('is_double_spend', 1)) ||
+                                    _.find(transaction.transaction_output_list, _.matchesProperty('is_double_spend', 1))) {
+                                    return this.deleteTransaction(transaction.transaction_id);
+                                }
+                                else if (supportedShardAuditTransactions[transaction.shard_id]) {
                                     // is supported shard? move transaction to
                                     // shard
                                     return auditPointRepository.getAuditPoint(transaction.transaction_id)
