@@ -2,6 +2,7 @@ import database from '../../database/database';
 import peer from '../../net/peer';
 import Endpoint from '../endpoint';
 import _ from 'lodash';
+import walletSync from '../../core/wallet/wallet-sync';
 
 
 /**
@@ -37,10 +38,10 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
         }).then(data => {
             if (!data || data.length === 0) {
                 peer.transactionSyncRequest(req.query.p0).then(_ => _).catch(_ => _);
-                return res.send({
-                    api_status : 'fail',
+                return this._getErrorStatus(req.query.p0).then(errorStatus => res.send({
+                    api_status : errorStatus,
                     api_message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
-                });
+                }));
             }
 
             const transaction = {};
@@ -122,6 +123,24 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
             api_status : 'fail',
             api_message: `unexpected generic api error: (${e})`
         }));
+    }
+
+    _getErrorStatus(transactionID) {
+        return walletSync.getTransactionData(transactionID)
+                         .then((data) => {
+                             if (!data) {
+                                 return 'fail:not_found';
+                             }
+                             else if (data.type === 'sync') {
+                                 return 'fail:not_found:pending';
+                             }
+                             else if (data.type === 'unresolved') {
+                                 return 'fail:not_found:timeout';
+                             }
+                             else {
+                                 throw new Error('unexpected error');
+                             }
+                         });
     }
 }
 

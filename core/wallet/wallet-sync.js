@@ -339,7 +339,45 @@ export class WalletSync {
 
     getTransactionSyncData(transactionID) {
         return new Promise(resolve => {
+            if (!this.queue) {
+                return resolve();
+            }
             this.queue._store.getTask(transactionID, (_, data) => resolve(data));
+        });
+    }
+
+    getTransactionData(transactionID) {
+        return this.getTransactionSyncData(transactionID)
+                   .then((data) => {
+                       if (data) {
+                           return {
+                               type: 'sync',
+                               data
+                           };
+                       }
+                       else {
+                           return this.getTransactionUnresolvedData(transactionID)
+                                      .then(data => {
+                                          if (data) {
+                                              return {
+                                                  type: 'unresolved',
+                                                  data
+                                              };
+                                          }
+                                          else {
+                                              return null;
+                                          }
+                                      });
+                       }
+                   });
+    }
+
+    getTransactionUnresolvedData(transactionID) {
+        return new Promise(resolve => {
+            if (!this.unresolvedTransactionQueue) {
+                return resolve();
+            }
+            this.unresolvedTransactionQueue._store.getTask(transactionID, (_, data) => resolve(data));
         });
     }
 
