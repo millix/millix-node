@@ -1,6 +1,7 @@
 import database from '../../database/database';
 import Endpoint from '../endpoint';
 import peer from '../../net/peer';
+import walletSync from '../../core/wallet/wallet-sync';
 
 
 /**
@@ -31,23 +32,39 @@ class _wDyC195wgjPjM2Ut extends Endpoint {
         }).then(transaction => {
             if (!transaction) {
                 peer.transactionSyncRequest(req.query.p0).then(_ => _).catch(_ => _);
-                return res.send({
-                    api_status : 'fail',
-                    api_message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
-                });
+                return this._getErrorStatus(req.query.p0)
+                           .then(errorStatus => res.send({
+                               api_status : errorStatus,
+                               api_message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
+                           }));
             }
 
             if (!!transaction.transaction_date) {
                 transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
             }
-            res.send(transaction || {
-                api_status : 'fail',
-                api_message: `the transaction ${req.query.p0} was not found at shard with the id ${req.query.p1}`
-            });
+            res.send(transaction);
         }).catch(e => res.send({
             api_status : 'fail',
             api_message: `unexpected generic api error: (${e})`
         }));
+    }
+
+    _getErrorStatus(transactionID) {
+        return walletSync.getTransactionData(transactionID)
+                         .then((data) => {
+                             if (!data) {
+                                 return 'fail:not_found';
+                             }
+                             else if (data.type === 'sync') {
+                                 return 'fail:not_found:pending';
+                             }
+                             else if (data.type === 'unresolved') {
+                                 return 'fail:not_found:timeout';
+                             }
+                             else {
+                                 throw new Error('unexpected error');
+                             }
+                         });
     }
 }
 
