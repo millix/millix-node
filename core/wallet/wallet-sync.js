@@ -377,7 +377,7 @@ export class WalletSync {
             if (!this.unresolvedTransactionQueue) {
                 return resolve();
             }
-            this.unresolvedTransactionQueue._store.getTask(transactionID, (_, data) => resolve(data));
+            this.unresolvedTransactionQueue._store.getTask('transaction_' + transactionID, (_, data) => resolve(data));
         });
     }
 
