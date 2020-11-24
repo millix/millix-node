@@ -812,6 +812,11 @@ class WalletUtils {
                                                                                .then(parents => parents.length ? resolve(parents) : reject()));
               }).then(parents => {
                   if (!parents) {
+                      return database.getRepository('transaction').getTopNTransactions(2);
+                  }
+                  return parents;
+              }).then(parents => {
+                  if (!parents) {
                       throw Error('parent_transaction_not_available');
                   }
 
