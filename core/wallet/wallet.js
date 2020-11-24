@@ -358,6 +358,8 @@ class Wallet {
                     .then(transaction => peer.transactionSend(transaction))
                     .then((transaction) => {
                         resolve(transaction);
+                        //wait 1 second then start the validation process
+                        setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
                         unlock();
                     })
                     .catch((e) => {
@@ -433,6 +435,8 @@ class Wallet {
     _checkIfWalletUpdate(addressesKeyIdentifierSet) {
         if (addressesKeyIdentifierSet.has(this.defaultKeyIdentifier)) {
             eventBus.emit('wallet_update');
+            // start consensus in 1s
+            setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
         }
     }
 
@@ -791,6 +795,7 @@ class Wallet {
                                                                                                                           let ws = network.getWebSocketByID(connectionID);
                                                                                                                           peer.transactionSend(data.transaction, ws);
                                                                                                                       }
+                                                                                                                      setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 0);
                                                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                                                       delete this._transactionRequested[transaction.transaction_id];
                                                                                                                   });
