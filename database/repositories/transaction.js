@@ -42,13 +42,11 @@ export default class Transaction {
 
     getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
-            // only refresh outputs after 30s (db insert)
-            const insertDate = Math.floor(Date.now() / 1000) - 30;
             this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND `transaction`.create_date < ? ORDER BY transaction_date DESC LIMIT 100', [
-                    addressKeyIdentifier,
-                    insertDate
+                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 ORDER BY transaction_date DESC LIMIT 100',
+                [
+                    addressKeyIdentifier
                 ].concat(excludeTransactionIDList),
                 (err, rows) => {
                     if (err) {
@@ -804,7 +802,7 @@ export default class Transaction {
 
     isTransactionStable(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT transaction_id FROM `transaction` WHERE transaction_id = ? AND is_stable = 0',
+            this.database.get('SELECT transaction_id FROM `transaction` WHERE transaction_id = ? AND is_stable = 1',
                 [transactionID], (err, row) => {
                     if (err) {
                         return reject(err);
@@ -838,6 +836,7 @@ export default class Transaction {
                                                                     .catch(() => callback());
                                            }
                                            else {
+                                               unstableInputs.push(input);
                                                callback();
                                            }
                                        });
@@ -994,7 +993,7 @@ export default class Transaction {
             let unstableDateStart = ntp.now();
             unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
             unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
-            this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND +`transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date DESC LIMIT 1',
+            this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND +`transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date ASC LIMIT 1',
                 [
                     unstableDateStart,
                     insertDate
@@ -1238,6 +1237,11 @@ export default class Transaction {
                     mutex.lock(['path-as-stable' + (this.database.shardID ? '_' + this.database.shardID : '')], pathAsStableUnlock => {
                         mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], transactionUnlock => {
                             const transactionRepository = transaction.repository;
+                            if (!transactionRepository) {
+                                transactionUnlock();
+                                pathAsStableUnlock();
+                                return callback();
+                            }
                             transactionRepository.setTransactionAsStable(transaction.transaction_id)
                                                  .then(() => transactionRepository.setOutputAsStable(transaction.transaction_id))
                                                  .then(() => transactionRepository.setInputsAsSpend(transaction.transaction_id))
@@ -1346,6 +1350,21 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.all(
                 'SELECT * FROM `transaction` where is_parent = 0 ORDER BY RANDOM() LIMIT 2',
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
+    getTopNTransactions(limit) {
+        return new Promise((resolve, reject) => {
+            this.database.all(
+                'SELECT * FROM `transaction` ORDER BY transaction_date desc LIMIT ' + limit,
                 (err, rows) => {
                     if (err) {
                         console.log(err);
