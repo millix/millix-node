@@ -385,7 +385,7 @@ export class Database {
             return this.repositories[repositoryName];
         }
         catch (e) {
-            console.log('[database] repository not found');
+            console.log('[database] repository not found', repositoryName, shardID);
             return null;
         }
     }

@@ -7,11 +7,14 @@ import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
 import walletUtils from '../core/wallet/wallet-utils';
+import objectHash from '../core/crypto/object-hash';
 import https from 'https';
 import base58 from 'bs58';
 import publicIp from 'public-ip';
 import util from 'util';
 import dns from 'dns';
+import DHT from 'bittorrent-dht';
+import signature, {verifyBuffer} from '../core/crypto/signature';
 
 const WebSocketServer = Server;
 
@@ -30,6 +33,7 @@ class Network {
         this.nodeConnectionID                     = this.generateNewID();
         this._selfConnectionNode                  = new Set();
         this.initialized                          = false;
+        this.dht                                  = null;
         this.noop                                 = () => {
         };
     }
@@ -278,13 +282,11 @@ class Network {
                         this.addNode(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id);
                         callback();
                     }, () => {
-                        _.each(config.NODE_INITIAL_LIST, ({url, port_api: portApi}) => {
-                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[^:]+):(?<port>\d+)$/);
-                            let prefix    = matches.groups['prefix'];
-                            let ipAddress = matches.groups['ip_address'];
-                            let port      = matches.groups['port'];
-                            if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && ipAddress && port && portApi)) {
-                                this.addNode(prefix, ipAddress, port, portApi);
+                        _.each(config.NODE_INITIAL_LIST, ({host, port_protocol: port, port_api: portApi}) => {
+                            let prefix = config.WEBSOCKET_PROTOCOL;
+                            let url    = `${prefix}://${host}:${port}`;
+                            if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && host && port && portApi)) {
+                                this.addNode(prefix, host, port, portApi);
                             }
                         });
                         this.retryConnectToInactiveNodes().then(_ => _).catch(_ => _);
@@ -822,7 +824,51 @@ class Network {
                                        this.nodePrivateKey = privateKey;
                                        this.nodePublicKey  = base58.encode(publicKey.toBuffer());
                                        this.nodeID         = walletUtils.getNodeIdFromPublicKey(this.nodePublicKey);
+                                       const nodeIDHash160 = objectHash.getSHA1Buffer(this.nodeID);
+                                       console.log(nodeIDHash160);
                                        this._initializeServer(certificatePem, certificatePrivateKeyPem);
+                                       const bootstrap = _.map(config.NODE_INITIAL_LIST, ({host, port_discovery: port}) => `${host}:${port}`);
+                                       this.dht        = new DHT({
+                                           nodeId: nodeIDHash160,
+                                           verify: (sign, value, publicKeyRaw) => {
+                                               publicKey = new Uint8Array(33);
+                                               publicKey.set(publicKeyRaw, 1);
+                                               publicKey[0] = 3;
+                                               return signature.verifyBuffer(objectHash.getHashBuffer(value), sign, publicKey);
+                                               ;
+                                           },
+                                           bootstrap
+                                       });
+                                       this.dht.on('node', node => {
+                                           console.log(`[network] new node discovered ${node.host}:${node.port}`);
+                                       });
+                                       this.dht.listen(config.NODE_PORT_DISCOVERY);
+                                       this.dht.on('listening', () => {
+                                           const address = this.dht.address();
+                                           console.log(`[network] dht listening @${address.address}:${address.port}`);
+                                       });
+                                       this.dht.on('ready', () => {
+                                           console.log('[network] dht ready');
+                                       });
+                                       /*const announceAddress = `${config.WEBSOCKET_PROTOCOL}${config.NODE_HOST}:${config.NODE_PORT}`;
+                                       const data            = {
+                                           k   : publicKey.toBuffer().slice(1, 33),
+                                           seq : 0,
+                                           v   : announceAddress,
+                                           sign: function(buf) {
+                                               return signature.sign(objectHash.getHashBuffer(buf), privateKey.toBuffer({size: 32}), 'buffer');
+                                           }
+                                       };
+                                       this.dht.put(data, (err, hash) => {
+                                           console.log('[network] error=', err);
+                                           console.log('[network] hash=', hash.toString('hex'));
+                                       });
+
+                                       this.dht.get('e7f2cd857a3fd52b9a23feddcdb7d7be269eafe0', (err, result) => {
+                                           console.log('[network] ', result);
+                                           console.log('[network] ', result && result.v.toString());
+                                       });*/
+
                                        eventBus.emit('network_ready');
                                        resolve();
                                    });
@@ -853,6 +899,10 @@ class Network {
         this._nodeRegistry       = {};
         // clean connection registry
         this._connectionRegistry = {};
+        if (this.dht) {
+            this.dht.destroy();
+            this.dht = null;
+        }
     }
 }
 

@@ -59,7 +59,7 @@ function asString(obj) {
 
 export default {
     STRING_JOIN_CHAR,
-    asString: asString
+    asString
 };
 
 

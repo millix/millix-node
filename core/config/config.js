@@ -2,6 +2,7 @@ export const MODE_DEBUG                                        = true;
 export const MODE_TEST_NETWORK                                 = true;
 export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
+export const NODE_PORT_DISCOVERY                               = 20000;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
 export const NODE_HOST                                         = 'localhost';
@@ -536,9 +537,6 @@ export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const MODE_TEST                                         = false;
-export const NODE_TEST_HOST                                    = '127.0.0.1';
-export const NODE_TEST_PORT                                    = 5080;
 export const NODE_MILLIX_BUILD_DATE                            = 1603556695;
 export const NODE_MILLIX_VERSION                               = '1.7.0';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = null;
@@ -590,6 +588,7 @@ export default {
     MODE_DEBUG,
     MODE_TEST_NETWORK,
     NODE_PORT,
+    NODE_PORT_DISCOVERY,
     NODE_HOST,
     NODE_HOST_FORCE,
     NODE_BIND_IP,
@@ -603,11 +602,8 @@ export default {
     NODE_CONNECTION_OUTBOUND_WHITELIST,
     NODE_PUBLIC,
     NODE_MILLIX_VERSION,
-    MODE_TEST,
-    NODE_TEST_HOST,
     NODE_KEY_PATH,
     NODE_PORT_API,
-    NODE_TEST_PORT,
     NODE_CERTIFICATE_KEY_PATH,
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,

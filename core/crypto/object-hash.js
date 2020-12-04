@@ -19,10 +19,20 @@ function getHashBuffer(obj, fromBuffer) {
     }
 }
 
+function getSHA1Buffer(obj, fromBuffer) {
+    if (!fromBuffer) {
+        return crypto.createHash('sha1').update(objectUtils.asString(obj), 'utf8').digest();
+    }
+    else {
+        return crypto.createHash('sha1').update(obj, 'utf8').digest();
+    }
+}
+
 export default {
     getCHash160,
     getCHash288,
-    getHashBuffer
+    getHashBuffer,
+    getSHA1Buffer
 };
 
 

@@ -28,6 +28,10 @@ if (argv.port) {
     config.NODE_PORT = argv.port;
 }
 
+if (argv.portDiscovery) {
+    config.NODE_PORT_DISCOVERY = argv.portDiscovery;
+}
+
 if (argv.apiPort) {
     config.NODE_PORT_API = argv.apiPort;
 }
