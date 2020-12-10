@@ -2,7 +2,9 @@ export const MODE_DEBUG                                        = true;
 export const MODE_TEST_NETWORK                                 = true;
 export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
-export const NODE_PORT_DISCOVERY                               = 20000;
+export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
+export const NODE_PORT_DISCOVERY_MAIN_NETWORK                  = 2000;
+export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
 export const NODE_HOST                                         = 'localhost';
@@ -14,462 +16,690 @@ export const NODE_PUBLIC                                       = false;
 export const MODE_NODE_FULL                                    = false;
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
-        url     : 'wss://18.136.162.158:10000',
-        port_api: 5500
+        host          : '18.136.162.158',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        url     : 'wss://18.136.162.158:10001',
-        port_api: 5500
+        host          : '18.136.162.158',
+        port_protocol : 10001,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00001.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00001.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00002.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00002.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00003.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00003.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00004.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00004.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00005.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00005.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00006.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00006.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00007.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00007.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00008.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00008.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00009.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00009.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00010.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00010.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00011.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00011.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00012.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00012.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00013.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00013.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00014.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00014.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00015.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00015.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00016.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00016.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00017.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00017.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00018.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00018.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00019.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00019.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00020.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00020.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00021.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00021.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00022.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00022.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00023.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00023.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00024.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00024.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00025.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00025.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00026.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00026.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00027.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00027.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00028.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00028.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00029.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00029.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00030.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00030.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00031.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00031.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00032.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00032.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00033.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00033.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00034.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00034.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00035.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00035.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00036.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00036.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00037.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00037.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00038.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00038.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00039.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00039.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00040.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00040.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00041.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00041.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00042.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00042.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00043.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00043.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00044.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00044.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00045.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00045.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00046.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00046.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00047.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00047.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00048.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00048.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00049.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00049.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00050.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00050.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00051.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00051.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00052.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00052.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00053.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00053.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00054.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00054.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00055.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00055.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00056.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00056.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00057.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00057.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00058.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00058.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00059.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00059.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00060.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00060.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00061.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00061.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00062.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00062.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00063.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00063.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00064.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00064.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00065.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00065.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00066.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00066.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00067.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00067.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00068.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00068.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00069.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00069.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00070.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00070.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00071.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00071.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00072.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00072.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00073.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00073.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00074.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00074.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00075.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00075.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00076.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00076.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00077.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00077.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00078.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00078.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00079.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00079.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00080.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00080.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00081.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00081.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00082.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00082.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00083.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00083.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00084.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00084.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00085.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00085.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00086.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00086.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00087.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00087.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00088.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00088.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00089.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00089.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00090.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00090.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00091.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00091.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00092.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00092.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00093.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00093.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00094.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00094.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00095.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00095.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00096.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00096.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00097.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00097.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00098.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00098.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00099.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00099.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     },
     {
-        'url'     : 'wss://node-00100.millix.com:10000',
-        'port_api': 5500
+        host          : 'node-00100.millix.com',
+        port_protocol : 10000,
+        port_api      : 5500,
+        port_discovery: 2000
     }
 ];
 export const NODE_INITIAL_LIST_TEST_NETWORK                    = [
     {
-        url     : 'wss://13.251.31.129:30000',
-        port_api: 35500
+        host          : '13.251.31.129',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://13.251.31.129:30001',
-        port_api: 35501
+        host          : '13.251.31.129',
+        port_protocol : 30001,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node0.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00001.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node1.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00002.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node2.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00003.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node3.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00004.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node4.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00005.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node5.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00006.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node6.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00007.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node7.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00008.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node8.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00009.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     },
     {
-        url     : 'wss://test-node9.millix.org:30000',
-        port_api: 35500
+        host          : 'test-node-00010.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
+        port_discovery: 4000
     }
 ];
 export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
