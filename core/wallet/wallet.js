@@ -1952,10 +1952,12 @@ class Wallet {
                                                               if (chainFromProxy.length < inputChain.length) {
                                                                   return Promise.reject('proxy_transaction_input_chain_too_small');
                                                               }
-                                                              for (let i = 0; i < inputChain.length; i++) {
-                                                                  if (inputChain[i] !== chainFromProxy[i]) {
-                                                                      return Promise.reject('proxy_transaction_input_chain_invalid');
-                                                                  }
+
+                                                              const sizeDiff = chainFromProxy.length - inputChain.length;
+                                                              inputChain     = new Set(inputChain);
+                                                              const diff     = chainFromProxy.filter(t => !inputChain.has(t));
+                                                              if (diff.length !== sizeDiff) {
+                                                                  return Promise.reject('proxy_transaction_input_chain_invalid');
                                                               }
                                                               return peer.transactionProxy(transaction, proxyWS);
                                                           });
@@ -1993,7 +1995,6 @@ class Wallet {
                   ])))
                   .then(([time, proxyCandidates]) => {
                       return new Promise(resolve => {
-                          proxyCandidates = [];
                           async.eachSeries(proxyCandidates, (proxyCandidate, callback) => {
                               network.getProxyInfo(base58.decode(proxyCandidate.value).slice(1, 33), proxyCandidate.node_id_origin)
                                      .then(proxyCandidateData => this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, time))
@@ -2004,12 +2005,12 @@ class Wallet {
                           if (!transaction) {
                               return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
                                                           .then(proxyCandidates => {
-                                                              return new Promise(resolve => {
+                                                              return new Promise((resolve, reject) => {
                                                                   async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
                                                                       this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, time)
                                                                           .then(callback)
                                                                           .catch(_ => callback());
-                                                                  }, resolve);
+                                                                  }, transaction => transaction ? resolve(transaction) : reject('proxy_not_found'));
                                                               });
                                                           });
                           }
