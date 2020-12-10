@@ -130,7 +130,7 @@ class Peer {
         let data = JSON.stringify(payload);
         network.registeredClients.forEach(ws => {
             try {
-                if (excludeWS !== ws && !(ws.outBound && !ws.bidirectional)) {
+                if (excludeWS !== ws) {
                     ws.nodeConnectionReady && ws.send(data);
                 }
             }
@@ -143,10 +143,6 @@ class Peer {
     }
 
     transactionSendToNode(transaction, ws) {
-        if (ws.outBound && !ws.bidirectional) {
-            return transaction;
-        }
-
         let payload = {
             type   : 'transaction_new',
             content: {transaction}
@@ -163,6 +159,129 @@ class Peer {
         }
 
         return transaction;
+    }
+
+    transactionProxyResponse(response, ws) {
+        let payload = {
+            type   : `transaction_new_response_proxy:${network.nodeID}:${response.transaction_id}`,
+            content: {...response}
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    transactionProxyResult(result, ws) {
+        let payload = {
+            type   : `transaction_new_proxy:${network.nodeID}:${result.transaction_id}`,
+            content: {...result}
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
+    }
+
+    transactionProxy(transaction, ws) {
+        return new Promise((resolve, reject) => {
+            let payload = {
+                type   : 'transaction_new_proxy',
+                content: transaction
+            };
+
+            eventBus.emit('node_event_log', payload);
+
+            let data = JSON.stringify(payload);
+            try {
+                const nodeID        = ws.nodeID;
+                const transactionID = transaction.transaction_id;
+                eventBus.removeAllListeners(`transaction_new_proxy:${nodeID}:${transactionID}`);
+                eventBus.once(`transaction_new_proxy:${nodeID}:${transactionID}`, (response) => {
+                    if (response.transaction_proxy_success) {
+                        console.log('[peer] transaction ', transactionID, ' proxied by node ', nodeID);
+                        resolve(transaction);
+                    }
+                    else {
+                        console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID);
+                        reject('transaction_proxy_rejected');
+                    }
+                });
+
+                ws.nodeConnectionReady && ws.send(data);
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                reject('proxy_network_error');
+            }
+        });
+    }
+
+    transactionProxyRequest(transaction, proxyData) {
+        return network._connectTo(proxyData.node_prefix, proxyData.node_host, proxyData.node_port, proxyData.node_port_api, proxyData.node_id)
+                      .then(ws => {
+                          return new Promise((resolve, reject) => {
+                              let payload = {
+                                  type   : 'transaction_new_request_proxy',
+                                  content: {
+                                      transaction_id        : transaction.transaction_id,
+                                      transaction_date      : transaction.transaction_date,
+                                      transaction_input_list: transaction.transaction_input_list,
+                                      transaction_output_fee: transaction.transaction_output_list[0]
+                                  }
+                              };
+
+                              eventBus.emit('node_event_log', payload);
+
+                              let data = JSON.stringify(payload);
+                              try {
+                                  if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                                      const transactionID = transaction.transaction_id;
+                                      const nodeID        = ws.nodeID;
+                                      let callbackCalled  = false;
+                                      eventBus.removeAllListeners(`transaction_new_response_proxy:${nodeID}:${transactionID}`);
+                                      eventBus.once(`transaction_new_response_proxy:${nodeID}:${transactionID}`, (eventData, eventWS) => {
+                                          console.log('[peer] received transaction proxy response for ', transactionID, ' from node ', nodeID);
+                                          resolve([
+                                              transaction,
+                                              eventData,
+                                              eventWS
+                                          ]);
+                                          callbackCalled = true;
+                                      });
+
+                                      ws.send(data);
+
+                                      setTimeout(function() {
+                                          if (!callbackCalled) {
+                                              eventBus.removeAllListeners(`transaction_new_proxy:${nodeID}:${transactionID}`);
+                                              reject('proxy_timeout');
+                                          }
+                                      }, config.NETWORK_LONG_TIME_WAIT_MAX * 5);
+
+                                  }
+                                  else {
+                                      return reject('proxy_connection_state_invalid');
+                                  }
+                              }
+                              catch (e) {
+                                  console.log('[WARN]: try to send data over a closed connection.');
+                                  return reject('proxy_network_error');
+                              }
+                          });
+                      });
     }
 
     auditPointValidationResponse(transactions, auditPointID, ws) {

@@ -87,6 +87,7 @@ CREATE TABLE `transaction`
     shard_id         CHAR(50)    NOT NULL CHECK (length(shard_id) <= 50),
     transaction_date INT         NOT NULL CHECK (length(transaction_date) <= 10 AND TYPEOF(transaction_date) = 'integer'),
     node_id_origin   CHAR(34)    NOT NULL CHECK (length(node_id_origin) <= 34),
+    node_id_proxy    CHAR(34)    NULL CHECK (length(node_id_proxy) <= 34),
     version          CHAR(4)     NOT NULL DEFAULT '0a0' CHECK (length(version) <= 4),
     payload_hash     CHAR(50)    NOT NULL CHECK (length(payload_hash) <= 50),
     stable_date      INT         NULL CHECK (length(stable_date) <= 10 AND (TYPEOF(stable_date) IN ('integer', 'null'))),
@@ -186,30 +187,31 @@ CREATE INDEX idx_transaction_output_address_is_stable_is_spent_is_double_spend O
 CREATE INDEX idx_transaction_output_transaction_id_is_stable_is_double_spend ON transaction_output (transaction_id, is_stable, is_double_spend);
 CREATE INDEX idx_transaction_output_transaction_id_is_spent ON transaction_output (transaction_id, is_spent);
 CREATE INDEX idx_transaction_output_create_date ON transaction_output (create_date);
+CREATE INDEX idx_transaction_output_output_position ON transaction_output (output_position);
 
 
 CREATE TABLE transaction_output_attribute
 (
-    transaction_output_id      CHAR(50) NOT NULL CHECK (length(transaction_output_id) <= 50),
-    transaction_output_type_id CHAR(20) NOT NULL CHECK (length(transaction_output_type_id) <= 20),
-    shard_id                   CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
-    value                      TEXT     NOT NULL,
-    status                     TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date                INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
-    PRIMARY KEY (transaction_output_id, transaction_output_type_id),
-    FOREIGN KEY (transaction_output_id) REFERENCES transaction_output (transaction_id),
-    FOREIGN KEY (transaction_output_type_id) REFERENCES transaction_output_type (transaction_output_type_id)
+    transaction_id      CHAR(50) NOT NULL CHECK (length(transaction_id) <= 50),
+    attribute_type_id   CHAR(20) NOT NULL CHECK (length(attribute_type_id) <= 20),
+    shard_id            CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
+    value               TEXT     NOT NULL,
+    status              TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date         INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    PRIMARY KEY (transaction_id, attribute_type_id),
+    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id),
+    FOREIGN KEY (attribute_type_id) REFERENCES transaction_output_attribute_type (attribute_type_id)
 );
 CREATE INDEX idx_transaction_output_attribute_create_date ON transaction_output_attribute (create_date);
 
-CREATE TABLE transaction_output_type
+CREATE TABLE transaction_output_attribute_type
 (
-    transaction_output_type_id CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(transaction_output_type_id) <= 20),
-    attribute_type             CHAR(255)    NOT NULL UNIQUE CHECK (length(attribute_type) <= 255),
-    status                     SMALLINT     NOT NULL DEFAULT 0 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date                INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    attribute_type_id   CHAR(20)     NOT NULL PRIMARY KEY CHECK (length(attribute_type_id) <= 20),
+    attribute_type      CHAR(255)    NOT NULL UNIQUE CHECK (length(attribute_type) <= 255),
+    status              SMALLINT     NOT NULL DEFAULT 0 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date         INT          NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
-CREATE INDEX idx_transaction_output_type_create_date ON transaction_output_type (create_date);
+CREATE INDEX idx_transaction_output_attribute_type_create_date ON transaction_output_attribute_type (create_date);
 
 CREATE TABLE audit_verification
 (
@@ -375,7 +377,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "11");
+INSERT INTO schema_information (key, value) VALUES ("version", "12");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
@@ -451,6 +453,8 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('node_bind_ip', 'Apw9ovpclfW6LvSVYqYD'),
        ('address_default', 'T4CefCfUyoc4CWv7cZ5V'),
        ('node_about', 'ijDj2VlTyJBl5R4iTCmG'),
-       ('peer_connection', '8FPirjQYaFIEIF2y7OEA');
+       ('peer_connection', '8FPirjQYaFIEIF2y7OEA'),
+       ('transaction_fee', '360NCKsWffvH48QDlh4a');
 
 INSERT INTO address_attribute_type (address_attribute_type_id, attribute_type) VALUES ('9MgxVxyXsM2EozHVUZgw', 'key_public');
+INSERT INTO transaction_output_attribute_type (attribute_type_id, attribute_type) VALUES ('360NCKsWffvH48QDlh4a', 'transaction_fee');

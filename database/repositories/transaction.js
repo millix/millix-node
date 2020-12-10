@@ -8,14 +8,114 @@ import async from 'async';
 import database, {Database} from '../database';
 import moment from 'moment';
 import console from '../../core/console';
+import peer from '../../net/peer';
+import wallet from '../../core/wallet/wallet';
 
 export default class Transaction {
     constructor(database) {
-        this.database = database;
+        this.database                = database;
+        this.normalizationRepository = null;
+    }
+
+    setNormalizationRepository(repository) {
+        this.normalizationRepository = repository;
     }
 
     setAddressRepository(repository) {
         this.addressRepository = repository;
+    }
+
+    isExpired(transactionDate) {
+        // verify if expire time is greater than
+        // transaction data
+        let expireDate = ntp.now();
+        expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+        return Math.round(expireDate.getTime() / 1000) >= transactionDate;
+    }
+
+    getTransactionInputChain(transaction) {
+        return new Promise(resolve => {
+            const dfs = (inputList, inputChain, processedInputTransactionSet = new Set()) => {
+                inputList.forEach(i => processedInputTransactionSet.add(i.transaction_id));
+                const pendingInputsSet = {};
+                async.eachSeries(inputList, (input, callback) => {
+                    const {transaction_id: inputTransactionID, shard_id: inputShardID} = input;
+                    database.firstShardZeroORShardRepository('transaction', inputShardID, transactionRepository => {
+                        return transactionRepository.getTransaction(inputTransactionID)
+                                                    .then(transaction => transaction ? [
+                                                        transaction,
+                                                        transactionRepository
+                                                    ] : Promise.reject());
+                    }).then(result => result || []).then(([transactionInput, transactionRepository]) => {
+                        if (transactionInput) {
+                            return transactionRepository.getTransactionInputs(transactionInput.transaction_id)
+                                                        .then(inputs => {
+                                                            transactionInput.transaction_input_list = inputs;
+                                                            return transactionInput;
+                                                        });
+                        }
+                        else {
+                            return new Promise(resolve => {
+                                const requestTransactionFromNetwork = () => {
+                                    wallet.enableTransactionSync(inputTransactionID);
+                                    return peer.transactionSyncRequest(inputTransactionID, {
+                                        priority        : 1,
+                                        dispatch_request: true
+                                    })
+                                               .then(() => wallet.flagTransactionAsRequested(inputTransactionID));
+                                };
+                                requestTransactionFromNetwork()
+                                    .then(() => {
+                                        eventBus.once('transaction_new:' + inputTransactionID, newTransaction => {
+                                            resolve({
+                                                ...newTransaction,
+                                                transaction_date: new Date(newTransaction.transaction_date)
+                                            });
+                                        });
+                                    })
+                                    .catch(() => {
+                                        setTimeout(() => requestTransactionFromNetwork(), config.NETWORK_LONG_TIME_WAIT_MAX * 2);
+                                    });
+                            });
+                        }
+                    }).then(transactionInput => {
+                        inputChain.push({
+                            transaction_id  : transactionInput.transaction_id,
+                            transaction_date: transactionInput.transaction_date
+                        });
+                        if (!database.getRepository('transaction').isExpired(Math.round(transactionInput.transaction_date.getTime() / 1000))) {
+                            for (const input of transactionInput.transaction_input_list) {
+                                if (!processedInputTransactionSet.has(input.output_transaction_id)) {
+                                    pendingInputsSet[input.output_transaction_id] = {
+                                        transaction_id: input.output_transaction_id,
+                                        shard_id      : input.output_shard_id
+                                    };
+                                }
+                            }
+                        }
+                        callback();
+                    });
+                }, () => {
+                    const pendingTransactionIDList = _.keys(pendingInputsSet);
+                    if (pendingTransactionIDList.length > 0) {
+                        dfs(_.map(pendingTransactionIDList, p => pendingInputsSet[p]), inputChain, processedInputTransactionSet);
+                    }
+                    else {
+                        inputChain = _.map(_.sortBy(inputChain, i => i.transaction_date), i => i.transaction_id);
+                        resolve(inputChain);
+                    }
+                });
+            };
+            dfs(_.uniq(_.map(transaction.transaction_input_list, i => ({
+                transaction_id: i.output_transaction_id,
+                shard_id      : i.output_shard_id
+            }))), [
+                {
+                    transaction_id  : transaction.transaction_id,
+                    transaction_date: transaction.transaction_date
+                }
+            ]);
+        });
     }
 
     getWalletBalance(keyIdentifier, stable) {
@@ -80,6 +180,55 @@ export default class Transaction {
         });
     }
 
+    getProxyCandidates(n, excludeNodeID) {
+        return new Promise((resolve, reject) => {
+            this.database.all(
+                'SELECT DISTINCT node_id_origin, address_key_identifier, value FROM `transaction` AS t \
+                 INNER JOIN transaction_input AS ti ON t.transaction_id = ti.transaction_id \
+                 INNER JOIN address_attribute AS a ON a.address_base = ti.address_key_identifier \
+                 WHERE a.address_attribute_type_id = "9MgxVxyXsM2EozHVUZgw" AND node_id_origin != ? ORDER BY transaction_date LIMIT ' + n,
+                [excludeNodeID],
+                (err, rows) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
+    getPeersAsProxyCandidate(nodeIDList) {
+        if (nodeIDList.length === 0) {
+            return Promise.resolve([]);
+        }
+        return new Promise((resolve, reject) => {
+            this.database.all(
+                'SELECT * FROM (SELECT node_id, value AS node_address_default FROM node_attribute WHERE node_id IN (' + nodeIDList.map(() => '?').join(',') + ') AND attribute_type_id=?) AS ad \
+                 INNER JOIN (SELECT node_id, value AS transaction_fee FROM node_attribute WHERE node_id IN (' + nodeIDList.map(() => '?').join(',') + ') AND attribute_type_id=?) AS f \
+                 ON f.node_id = ad.node_id ORDER BY RANDOM()',
+                nodeIDList
+                    .concat(this.normalizationRepository.get('address_default'))
+                    .concat(nodeIDList)
+                    .concat(this.normalizationRepository.get('transaction_fee')),
+                (err, rows) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    rows.forEach(row => {
+                        try {
+                            row.transaction_fee = JSON.parse(row.transaction_fee).transaction_fee_proxy;
+                        }
+                        catch (e) {
+
+                        }
+                    });
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
     getTransactionsByAddressKeyIdentifier(keyIdentifier) {
         return new Promise((resolve, reject) => {
             this.database.all(
@@ -103,6 +252,40 @@ export default class Transaction {
                     resolve(_.uniqBy(rows, row => row.transaction_id + row.output_position));
                 }
             );
+        });
+    }
+
+    addTransactionOutputAttribute(transactionID, shardID, attributeTypeID, attributeValue) {
+        return new Promise((resolve, reject) => {
+            this.database.run('INSERT INTO transaction_output_attribute (transaction_id, shard_id, attribute_type_id, value) VALUES (?,?,?,?)',
+                [
+                    transactionID,
+                    shardID,
+                    attributeTypeID,
+                    attributeValue
+                ],
+                (err) => {
+                    if (err) {
+                        return reject(err.message);
+                    }
+                    resolve();
+                });
+        });
+    }
+
+    getTransactionOutputAttributes(transactionID) {
+        return new Promise((resolve, reject) => {
+            this.database.all('SELECT * FROM transaction_output_attribute WHERE transaction_id=?',
+                [
+                    transactionID
+                ],
+                (err, rows) => {
+                    if (err) {
+                        return reject(err.message);
+                    }
+                    rows.forEach(row => row['attribute_type'] = this.normalizationRepository.getType(row.attribute_type_id));
+                    resolve(rows);
+                });
         });
     }
 
@@ -170,7 +353,14 @@ export default class Transaction {
                                 return transactionRepository.getTransactionParentDate(transaction.transaction_id);
                             }).then(dates => resolve(_.min(dates)));
                         });
-                    }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.version, parentDate));
+                    }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.node_id_proxy, transaction.version, parentDate));
+
+                    if (transaction.transaction_output_attribute) {
+                        _.keys(transaction.transaction_output_attribute).forEach(attributeType => {
+                            const attributeValue = transaction.transaction_output_attribute[attributeType];
+                            promise              = this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue));
+                        });
+                    }
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id));
@@ -298,20 +488,27 @@ export default class Transaction {
                     promise = promise.then(() => {
                         return new Promise((resolve, reject) => {
                             this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
-                                transaction.node_id_origin, transaction.version, transaction.parent_date,
+                                transaction.node_id_origin, transaction.node_id_proxy, transaction.version, transaction.parent_date,
                                 transaction.stable_date, transaction.timeout_date,
                                 transaction.status, transaction.create_date)
                                 .then(() => resolve())
                                 .catch(() => {
                                     this.updateTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
-                                        transaction.node_id_origin, transaction.version, transaction.parent_date,
+                                        transaction.node_id_origin, transaction.node_id_proxy, transaction.version, transaction.parent_date,
                                         transaction.stable_date, transaction.timeout_date,
                                         transaction.status, transaction.create_date)
                                         .then(() => resolve())
-                                        .catch(() => reject());
+                                        .catch(err => reject(err));
                                 });
                         });
                     });
+
+                    if (transaction.transaction_output_attribute) {
+                        _.keys(transaction.transaction_output_attribute).forEach(attributeType => {
+                            const attributeValue = transaction.transaction_output_attribute[attributeType];
+                            promise              = this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue));
+                        });
+                    }
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => new Promise(resolve => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id).then(resolve).catch(resolve)));
@@ -428,9 +625,22 @@ export default class Transaction {
                                                         'la0l',
                                                         'lb0l'
                                                     ].includes(transactionDB.version) ? transactionDB.transaction_date.toISOString() : Math.floor(transactionDB.transaction_date.getTime() / 1000);
-        transaction['version']                    = transactionDB.version;
-        transaction['node_id_origin']             = transactionDB.node_id_origin;
-        transaction['shard_id']                   = transactionDB.shard_id;
+        if (![
+            '0a0',
+            '0b0',
+            '0a10',
+            '0b10',
+            'la0l',
+            'lb0l',
+            'la1l',
+            'lb1l'
+        ].includes(transactionDB.version)) {
+            transaction['node_id_proxy']                = transactionDB.node_id_proxy;
+            transaction['transaction_output_attribute'] = transactionDB.transaction_output_attribute;
+        }
+        transaction['version']        = transactionDB.version;
+        transaction['node_id_origin'] = transactionDB.node_id_origin;
+        transaction['shard_id']       = transactionDB.shard_id;
         return transaction;
     }
 
@@ -440,7 +650,7 @@ export default class Transaction {
                 .then(transaction => {
 
                     if (!transaction) {
-                        return Promise.reject();
+                        return Promise.reject('transaction_not_found');
                     }
 
                     return this.getTransactionOutputs(transactionID)
@@ -464,6 +674,30 @@ export default class Transaction {
                                });
                 })
                 .then(transaction => {
+                    if (![
+                        '0a0',
+                        '0b0',
+                        '0a10',
+                        '0b10',
+                        'la0l',
+                        'lb0l',
+                        'la1l',
+                        'lb1l'
+                    ].includes(transaction.version)) {
+                        return this.getTransactionOutputAttributes(transactionID)
+                                   .then(outputAttributes => {
+                                       transaction['transaction_output_attribute'] = {};
+                                       outputAttributes.forEach(outputAttribute => {
+                                           transaction.transaction_output_attribute[outputAttribute.attribute_type] = JSON.parse(outputAttribute.value);
+                                       });
+                                       return transaction;
+                                   });
+                    }
+                    else {
+                        return Promise.resolve(transaction);
+                    }
+                })
+                .then(transaction => {
                     return this.getTransactionParents(transactionID)
                                .then(parents => {
                                    transaction.transaction_parent_list = parents;
@@ -480,7 +714,7 @@ export default class Transaction {
                                });
                 })
                 .then(transaction => resolve(transaction))
-                .catch(() => resolve(null));
+                .catch((e) => resolve(null));
         });
     }
 
@@ -868,19 +1102,20 @@ export default class Transaction {
         });
     }
 
-    addTransaction(transactionID, shardID, payloadHash, transactionDate, ipAddressOrigin, version, parentDate, stableDate, timeoutDate, status, createDate) {
+    addTransaction(transactionID, shardID, payloadHash, transactionDate, nodeIDOrigin, nodeIDProxy, version, parentDate, stableDate, timeoutDate, status, createDate) {
         if (!createDate) {
             createDate = Math.floor(ntp.now().getTime() / 1000);
         }
 
         return new Promise((resolve, reject) => {
-            this.database.run('INSERT INTO `transaction` (transaction_id, version, shard_id, payload_hash, transaction_date, node_id_origin, parent_date, is_parent, stable_date, is_stable, timeout_date, is_timeout, status, create_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
+            this.database.run('INSERT INTO `transaction` (transaction_id, version, shard_id, payload_hash, transaction_date, node_id_origin, node_id_proxy, parent_date, is_parent, stable_date, is_stable, timeout_date, is_timeout, status, create_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [
                 transactionID,
                 version,
                 shardID,
                 payloadHash,
                 transactionDate,
-                ipAddressOrigin,
+                nodeIDOrigin,
+                nodeIDProxy,
                 parentDate,
                 !!parentDate ? 1 : 0,
                 stableDate,
@@ -899,10 +1134,10 @@ export default class Transaction {
         });
     }
 
-    updateTransaction(transactionID, shardID, payloadHash, transactionDate, ipAddressOrigin, version, parentDate, stableDate, timeoutDate, status, createDate) {
+    updateTransaction(transactionID, shardID, payloadHash, transactionDate, nodeIDOrigin, nodeIDProxy, version, parentDate, stableDate, timeoutDate, status, createDate) {
         return new Promise((resolve, reject) => {
             this.database.run('UPDATE `transaction` SET version=coalesce(?, version), shard_id=coalesce(?, shard_id), payload_hash=coalesce(?, payload_hash), \
-                              transaction_date=coalesce(?, transaction_date), node_id_origin=coalesce(?, node_id_origin), parent_date=coalesce(?, parent_date), \
+                              transaction_date=coalesce(?, transaction_date), node_id_origin=coalesce(?, node_id_origin), node_id_proxy=coalesce(?, node_id_proxy), parent_date=coalesce(?, parent_date), \
                               is_parent=coalesce(?, is_parent), stable_date=coalesce(?, stable_date), is_stable=coalesce(?, is_stable), \
                               timeout_date=coalesce(?, timeout_date), is_timeout=coalesce(?, is_timeout), status=coalesce(?, status), create_date=coalesce(?, create_date) \
                               WHERE transaction_id=?', [
@@ -910,7 +1145,8 @@ export default class Transaction {
                 shardID,
                 payloadHash,
                 transactionDate,
-                ipAddressOrigin,
+                nodeIDOrigin,
+                nodeIDProxy,
                 parentDate,
                 !!parentDate ? 1 : 0,
                 stableDate,
@@ -1516,7 +1752,7 @@ export default class Transaction {
 
     getOutput(outputTransactionID, outputPosition) {
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT * FROM transaction_input where output_transaction_id = ? and output_position = ?', [
+            this.database.get('SELECT * FROM transaction_output where transaction_id = ? and output_position = ?', [
                     outputTransactionID,
                     outputPosition
                 ],
@@ -1554,7 +1790,6 @@ export default class Transaction {
             });
             this.database.get(sql, parameters, (err, row) => {
                     if (err) {
-                        console.log(err);
                         return reject(err);
                     }
 

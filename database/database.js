@@ -356,6 +356,7 @@ export class Database {
         _.each(_.keys(this.shards), shard => {
             const transactionRepository = this.shards[shard].getRepository('transaction');
             transactionRepository.setAddressRepository(this.repositories['address']);
+            transactionRepository.setNormalizationRepository(this.repositories['normalization']);
         });
 
         return this.repositories['address'].loadAddressVersion()

@@ -675,10 +675,12 @@ class WalletUtils {
 
         // verify signature
         let vTransaction = _.cloneDeep(_.omit(transaction, [
+            'transaction_output_attribute',
             'payload_hash',
             'transaction_id',
             'transaction_date',
             'node_id_origin',
+            'node_id_proxy',
             'shard_id',
             'version'
         ]));
@@ -696,6 +698,7 @@ class WalletUtils {
         vTransaction['payload_hash']     = objectHash.getCHash288(vTransaction);
         vTransaction['transaction_date'] = transaction.transaction_date;
         vTransaction['node_id_origin']   = transaction.node_id_origin;
+        vTransaction['node_id_proxy']    = transaction.node_id_proxy;
         vTransaction['shard_id']         = transaction.shard_id;
         vTransaction['version']          = transaction.version;
 
@@ -736,7 +739,15 @@ class WalletUtils {
         return true;
     }
 
-    signTransaction(inputList, outputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion) {
+    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion) {
+        if (feeOutputList.length < 1 || !feeOutputList[0].node_id_proxy) {
+            // there should be at least one output entry for the proxy (fees).
+            return Promise.reject('proxy/output fee information is required');
+        }
+
+        const nodeIDProxy = feeOutputList[0].node_id_proxy;
+        feeOutputList     = _.filter(feeOutputList, o => o.amount > 0);
+
         if (!inputList || inputList.length === 0) {
             return Promise.reject('input list is required');
         }
@@ -749,10 +760,9 @@ class WalletUtils {
             return Promise.reject('private key set is required');
         }
 
-        const keychainRepository = database.getRepository('keychain');
         return new Promise((resolve, reject) => {
             let allocatedFunds = 0;
-            const amount       = _.sum(_.map(outputList, o => o.amount));
+            const amount       = _.sum(_.map(outputList, o => o.amount)) + _.sum(_.map(feeOutputList, o => o.amount));
             async.eachSeries(inputList, (input, callback) => {
                 database.firstShards((shardID) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
@@ -797,12 +807,17 @@ class WalletUtils {
                       'address_version',
                       'address_key_identifier'
                   ])),
-                  transaction_output_list   : _.map(outputList, o => _.pick(o, [
+                  transaction_output_list   : _.map(feeOutputList, o => _.pick(o, [
                       'address_base',
                       'address_version',
                       'address_key_identifier',
                       'amount'
-                  ])),
+                  ])).concat(_.map(outputList, o => _.pick(o, [
+                      'address_base',
+                      'address_version',
+                      'address_key_identifier',
+                      'amount'
+                  ]))),
                   transaction_signature_list: signatureList
               };
 
@@ -830,12 +845,13 @@ class WalletUtils {
           .then(([transaction, timeNow]) => {
               transaction.transaction_input_list.forEach((input, idx) => input['input_position'] = idx);
               transaction.transaction_input_list = _.sortBy(transaction.transaction_input_list, 'input_position');
-              transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = idx);
+              transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = idx - feeOutputList.length);
               transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
               transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
               transaction['payload_hash']            = objectHash.getCHash288(transaction);
               transaction['transaction_date']        = Math.floor(timeNow.getTime() / 1000);
               transaction['node_id_origin']          = network.nodeID;
+              transaction['node_id_proxy']           = nodeIDProxy;
               transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
               transaction['version']                 = transactionVersion;
               const tempAddressSignatures            = {};
@@ -857,6 +873,16 @@ class WalletUtils {
                   transactionSignature['signature'] = tempAddressSignatures[transactionSignature.address_base];
               }
               transaction['transaction_id'] = objectHash.getCHash288(transaction);
+              if (feeOutputList.length > 0) {
+                  // transaction output attribute: fee
+                  transaction['transaction_output_attribute'] = {
+                      transaction_fee: _.map(feeOutputList, o => _.pick(o, [
+                          'node_id_proxy',
+                          'fee_type'
+                      ]))
+                  };
+                  transaction.transaction_output_attribute.transaction_fee.forEach((outputAttribute, idx) => outputAttribute['output_position'] = idx - feeOutputList.length);
+              }
               return transaction;
           });
     }

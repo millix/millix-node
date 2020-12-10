@@ -494,6 +494,9 @@ export const AUDIT_POINT_CANDIDATE_MAX                         = 512;
 export const AUDIT_POINT_VALIDATION_WAIT_TIME_MAX              = 60 * 1000;
 export const AUDIT_POINT_PRUNE_AGE_MIN                         = 1440;
 export const AUDIT_POINT_PRUNE_COUNT                           = 250;
+export const TRANSACTION_FEE_PROXY                             = 0;
+export const TRANSACTION_FEE_DEFAULT                           = 0;
+export const TRANSACTION_FEE_NETWORK                           = 0.0;
 export const TRANSACTION_PRUNE_AGE_MIN                         = 1440;
 export const TRANSACTION_PRUNE_COUNT                           = 1000;
 export const TRANSACTION_RETRY_SYNC_MAX                        = 100;
@@ -510,23 +513,27 @@ export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
 export const WALLET_LOG_SIZE_MAX                               = 1000;
-export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a10';
-export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la1l';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a20';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la2l';
 export const WALLET_TRANSACTION_DEFAULT_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK : WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK;
-export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b10';
-export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb1l';
+export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b20';
+export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb2l';
 export const WALLET_TRANSACTION_REFRESH_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK : WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a0',
     '0b0',
     '0a10',
-    '0b10'
+    '0b10',
+    '0a20',
+    '0b20'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la0l',
     'lb0l',
     'la1l',
-    'lb1l'
+    'lb1l',
+    'la2l',
+    'lb2l'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
 export const WALLET_SPENT_TRANSACTION_PRUNE                    = false;
@@ -581,7 +588,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE         = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                  = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR            = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                        = '11';
+    DATABASE_CONNECTION.SCHEMA_VERSION                        = '12';
 }
 
 export default {
@@ -626,6 +633,9 @@ export default {
     AUDIT_POINT_ATTEMPT_MAX,
     AUDIT_POINT_CANDIDATE_MAX,
     AUDIT_POINT_VALIDATION_WAIT_TIME_MAX,
+    TRANSACTION_FEE_PROXY,
+    TRANSACTION_FEE_NETWORK,
+    TRANSACTION_FEE_DEFAULT,
     TRANSACTION_PRUNE_AGE_MIN,
     TRANSACTION_PRUNE_COUNT,
     TRANSACTION_INPUT_MAX,
