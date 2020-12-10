@@ -48,6 +48,8 @@ CREATE INDEX idx_transaction_output_attribute_create_date ON transaction_output_
 
 CREATE INDEX idx_transaction_output_output_position ON transaction_output (output_position);
 
+DELETE FROM config WHERE config_name = 'node_initial_list';
+
 UPDATE schema_information SET value = "12" WHERE key = "version";
 
 COMMIT;

@@ -59,6 +59,8 @@ CREATE INDEX idx_transaction_output_attribute_type_create_date ON transaction_ou
 
 CREATE INDEX idx_transaction_output_output_position ON transaction_output (output_position);
 
+DELETE FROM config WHERE config_name = 'node_initial_list';
+
 INSERT OR IGNORE INTO normalization (normalization_name, normalization_id)
 VALUES ('transaction_fee', '360NCKsWffvH48QDlh4a');
 
