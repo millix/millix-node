@@ -11,6 +11,7 @@ import async from 'async';
 import {Address, API, Config, Job, Keychain, Node, Schema, Shard as ShardRepository, Wallet, Normalization} from './repositories/repositories';
 import Shard from './shard';
 import _ from 'lodash';
+import eventBus from '../core/event-bus';
 
 
 export class Database {
@@ -541,15 +542,28 @@ export class Database {
         const schema                = new Schema(this.databaseMillix);
         this.repositories['schema'] = schema;
         console.log('[database] check schema version');
+        let newVersion;
         return new Promise(resolve => {
             schema.getVersion()
                   .then(version => {
                       if (parseInt(version) < parseInt(config.DATABASE_CONNECTION.SCHEMA_VERSION)) {
-                          const newVersion = parseInt(version) + 1;
+                          newVersion = parseInt(version) + 1;
                           console.log('[database] migrating schema from version', version, ' to version ', newVersion);
-                          schema.migrate(newVersion, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
-                                .then(() => this._migrateTables())
-                                .then(() => resolve());
+                          eventBus.emit('wallet_notify_message', {
+                              message  : `[database] migrating main database from version ${version} to version ${newVersion}`,
+                              is_sticky: true,
+                              timestamp: Date.now()
+                          });
+                          return schema.migrate(newVersion, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
+                                       .then(() => this._migrateTables())
+                                       .then(() => {
+                                           eventBus.emit('wallet_notify_message', {
+                                               message  : `[database] migration completed: version ${newVersion}`,
+                                               is_sticky: false,
+                                               timestamp: Date.now()
+                                           });
+                                           resolve();
+                                       });
                       }
                       else {
                           console.log('[database] current schema version is ', version);
@@ -557,11 +571,24 @@ export class Database {
                       }
                   })
                   .catch((err) => {
-                      if (err.message.indexOf('no such table') > -1) {
+                      if (err.message.indexOf('no such table: schema_information') > -1) {
                           console.log('[database] migrating to version 1');
-                          schema.migrate(1, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
-                                .then(() => this._migrateTables())
-                                .then(() => resolve());
+                          eventBus.emit('wallet_notify_message', {
+                              message  : `[database] migrating main database to version 1`,
+                              is_sticky: true,
+                              timestamp: Date.now()
+                          });
+                          return schema.migrate(1, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
+                                       .then(() => this._migrateTables())
+                                       .then(() => resolve());
+                      }
+                      else {
+                          eventBus.emit('wallet_notify_message', {
+                              message  : `[database] migration error: version ${newVersion}\n(${err.message || err})`,
+                              is_sticky: true,
+                              timestamp: Date.now()
+                          });
+                          throw Error('[shard] migration ' + err.message);
                       }
                   });
         });

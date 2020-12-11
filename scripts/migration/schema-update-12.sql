@@ -65,7 +65,7 @@ INSERT OR IGNORE INTO normalization (normalization_name, normalization_id)
 VALUES ('transaction_fee', '360NCKsWffvH48QDlh4a');
 
 INSERT INTO transaction_output_attribute_type (attribute_type_id, attribute_type) VALUES ('360NCKsWffvH48QDlh4a', 'transaction_fee');
-UPDATE node_attribute SET attribute_type_id = coalesce((SELECT normalization_id FROM normalization WHERE normalization_name = (SELECT attribute_type FROM address_attribute_type WHERE address_attribute_type_id = address_attribute.address_attribute_type_id)), attribute_type_id);
+UPDATE node_attribute SET attribute_type_id = coalesce((SELECT normalization_id FROM normalization WHERE normalization_name = (SELECT attribute_type FROM node_attribute_type WHERE attribute_type_id = node_attribute.attribute_type_id)), attribute_type_id);
 UPDATE node_attribute_type SET attribute_type_id = (SELECT normalization_id FROM normalization WHERE normalization_name = attribute_type) WHERE attribute_type IN (SELECT normalization_name FROM normalization);
 
 UPDATE schema_information SET value = "12" WHERE key = "version";
