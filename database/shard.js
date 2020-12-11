@@ -5,6 +5,7 @@ import {AuditPoint, AuditVerification, Schema, Transaction} from './repositories
 import path from 'path';
 import os from 'os';
 import {Database} from './database';
+import eventBus from '../core/event-bus';
 
 export default class Shard {
     constructor(databaseFile, shardID) {
@@ -38,15 +39,28 @@ export default class Shard {
         const schema                = new Schema(this.database);
         this.repositories['schema'] = schema;
         console.log('[shard] check schema version');
+        let newVersion;
         return new Promise(resolve => {
             schema.getVersion()
                   .then(version => {
                       if (parseInt(version) < parseInt(config.DATABASE_CONNECTION.SCHEMA_VERSION)) {
-                          const newVersion = parseInt(version) + 1;
+                          newVersion = parseInt(version) + 1;
                           console.log('[shard] migrating schema from version', version, ' to version ', newVersion);
-                          schema.migrate(newVersion, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR)
-                                .then(() => this._migrateTables())
-                                .then(() => resolve());
+                          eventBus.emit('wallet_notify_message', {
+                              message  : `[database] migrating shard ${this.shardID} from version ${version} to version ${newVersion}`,
+                              is_sticky: true,
+                              timestamp: Date.now()
+                          });
+                          return schema.migrate(newVersion, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR)
+                                       .then(() => this._migrateTables())
+                                       .then(() => {
+                                           eventBus.emit('wallet_notify_message', {
+                                               message  : `[database] migration completed: version ${newVersion}`,
+                                               is_sticky: false,
+                                               timestamp: Date.now()
+                                           });
+                                           resolve();
+                                       });
                       }
                       else {
                           console.log('[shard] current schema version is ', version);
@@ -54,7 +68,12 @@ export default class Shard {
                       }
                   })
                   .catch((err) => {
-                      throw Error('[shard] migration' + err.message);
+                      eventBus.emit('wallet_notify_message', {
+                          message  : `[database] shard ${this.shardID} migration error: version ${newVersion}\n(${err.message || err})`,
+                          is_sticky: true,
+                          timestamp: Date.now()
+                      });
+                      throw Error('[shard] migration ' + err.message);
                   });
         });
     }

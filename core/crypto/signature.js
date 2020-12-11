@@ -20,9 +20,10 @@ export function sign(hash, privKey, format) {
     return base58.encode(result.signature);
 }
 
-export function verify(hash, b58Signature, b58PublicKey) {
+
+export function verifyBuffer(hash, signature, publicKey) {
     try {
-        return ecdsa.verify(hash, base58.decode(b58Signature), base58.decode(b58PublicKey));
+        return ecdsa.verify(hash, signature, publicKey);
     }
     catch (e) {
         console.log('signature verification exception: ' + e.toString());
@@ -30,9 +31,14 @@ export function verify(hash, b58Signature, b58PublicKey) {
     }
 }
 
+export function verify(hash, b58Signature, b58PublicKey) {
+    return verifyBuffer(hash, base58.decode(b58Signature), base58.decode(b58PublicKey));
+}
+
 export default {
     sign,
     signWithPrivateKeyObject,
-    verify
+    verify,
+    verifyBuffer
 };
 

@@ -2,6 +2,7 @@ export default class Normalization {
     constructor(database) {
         this.database = database;
         this.entries  = {};
+        this.types    = {};
     }
 
     load() {
@@ -11,7 +12,10 @@ export default class Normalization {
                     return reject(err.message);
                 }
 
-                rows.forEach(row => this.entries[row.normalization_name] = row.normalization_id);
+                rows.forEach(row => {
+                    this.entries[row.normalization_name] = row.normalization_id;
+                    this.types[row.normalization_id]     = row.normalization_name;
+                });
                 resolve();
             });
         });
@@ -19,6 +23,10 @@ export default class Normalization {
 
     get(name) {
         return this.entries[name];
+    }
+
+    getType(id) {
+        return this.types[id];
     }
 
 }

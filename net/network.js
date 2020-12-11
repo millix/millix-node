@@ -7,11 +7,15 @@ import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
 import walletUtils from '../core/wallet/wallet-utils';
+import objectHash from '../core/crypto/object-hash';
+import wallet from '../core/wallet/wallet';
 import https from 'https';
 import base58 from 'bs58';
 import publicIp from 'public-ip';
 import util from 'util';
 import dns from 'dns';
+import DHT from 'bittorrent-dht';
+import signature from '../core/crypto/signature';
 
 const WebSocketServer = Server;
 
@@ -30,6 +34,7 @@ class Network {
         this.nodeConnectionID                     = this.generateNewID();
         this._selfConnectionNode                  = new Set();
         this.initialized                          = false;
+        this.dht                                  = null;
         this.noop                                 = () => {
         };
     }
@@ -84,20 +89,23 @@ class Network {
     // general network functions
     _connectTo(prefix, ipAddress, port, portApi, id) {
 
-        if (!prefix || !ipAddress || !port || portApi === undefined) {
-            return Promise.resolve();
+        if (this._nodeRegistry[id] && this._nodeRegistry[id][0]) {
+            return Promise.resolve(this._nodeRegistry[id][0]);
+        }
+        else if (!prefix || !ipAddress || !port || portApi === undefined) {
+            return Promise.reject();
         }
         else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && id && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id)) {
             console.log('[network warn]: node id not in NODE_CONNECTION_OUTBOUND_WHITELIST');
-            return Promise.resolve();
+            return Promise.reject();
         }
 
         if (!this.hasOutboundConnectionsSlotAvailable()) {
             console.log('[network outgoing] outbound connections maxed out, rejecting new client ');
-            return Promise.resolve();
+            return Promise.reject();
         }
 
-        return new Promise((function(resolve, reject) {
+        return new Promise((resolve, reject) => {
 
             let url = prefix + ipAddress + ':' + port;
 
@@ -126,8 +134,9 @@ class Network {
                 ws.nodeConnectionReady = false;
                 ws.bidirectional       = false;
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
-                this._doHandshake(ws).then(_ => _);
-                resolve();
+                this._doHandshake(ws)
+                    .then(() => resolve(ws))
+                    .catch(reject);
             });
 
             ws.on('close', () => {
@@ -158,7 +167,7 @@ class Network {
             ws.on('message', this._onWebsocketMessage.bind(this, ws));
             console.log('[network outgoing] connecting to node');
 
-        }).bind(this));
+        });
     }
 
     _onWebsocketMessage(ws, message) {
@@ -278,13 +287,11 @@ class Network {
                         this.addNode(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id);
                         callback();
                     }, () => {
-                        _.each(config.NODE_INITIAL_LIST, ({url, port_api: portApi}) => {
-                            let matches   = url.match(/^(?<prefix>[A-z]+:\/\/)(?<ip_address>[^:]+):(?<port>\d+)$/);
-                            let prefix    = matches.groups['prefix'];
-                            let ipAddress = matches.groups['ip_address'];
-                            let port      = matches.groups['port'];
-                            if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && ipAddress && port && portApi)) {
-                                this.addNode(prefix, ipAddress, port, portApi);
+                        _.each(config.NODE_INITIAL_LIST, ({host, port_protocol: port, port_api: portApi}) => {
+                            let prefix = config.WEBSOCKET_PROTOCOL;
+                            let url    = `${prefix}://${host}:${port}`;
+                            if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && host && port && portApi)) {
+                                this.addNode(prefix, host, port, portApi);
                             }
                         });
                         this.retryConnectToInactiveNodes().then(_ => _).catch(_ => _);
@@ -409,87 +416,89 @@ class Network {
                 resolve(payload);
             }
         }).then(payload => {
-            let callbackCalled = false;
-            eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
-            eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, (eventData, _) => {
-                if (!callbackCalled) {
-                    callbackCalled       = true;
-                    let peerNodeID;
-                    const nodeRepository = database.getRepository('node');
+            return new Promise((resolve, reject) => {
+                let callbackCalled = false;
+                eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
+                eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, (eventData, _) => {
+                    if (!callbackCalled) {
+                        callbackCalled       = true;
+                        let peerNodeID;
+                        const nodeRepository = database.getRepository('node');
 
-                    if (payload.content.registration_required) {
-                        peerNodeID = eventData.node_id;
-                        if (!walletUtils.isValidNodeIdentity(peerNodeID, eventData.public_key, this.nodeID, eventData.signature)) {
-                            console.log('[network warn]: invalid node identity.');
-                            ws.terminate();
-                            return;
+                        if (payload.content.registration_required) {
+                            peerNodeID = eventData.node_id;
+                            if (!walletUtils.isValidNodeIdentity(peerNodeID, eventData.public_key, this.nodeID, eventData.signature)) {
+                                console.log('[network warn]: invalid node identity.');
+                                ws.terminate();
+                                return reject('invalid_node_identity');
+                            }
+                            else if (ws.inBound && config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(peerNodeID)) {
+                                console.log('[network warn]: node id not in NODE_CONNECTION_INBOUND_WHITELIST');
+                                ws.terminate();
+                                return reject('inbound_connection_blocked');
+                            }
+                            ws.nodeID = peerNodeID;
+                            nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', eventData.public_key)
+                                          .catch(() => {
+                                              console.log('[network warn]: registration error.');
+                                          });
                         }
-                        else if (ws.inBound && config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(peerNodeID)) {
-                            console.log('[network warn]: node id not in NODE_CONNECTION_INBOUND_WHITELIST');
-                            ws.terminate();
-                            return;
+                        else {
+                            const peerNodeID  = ws.nodeID;
+                            let nodePublicKey = this.getNodePublicKeyFromWebSocket(ws);
+                            if (!nodePublicKey) {
+                                console.log('[network warn]: cannot get node identity from certificate. ');
+                                ws.terminate();
+                                return reject('invalid_node_identity');
+                            }
+                            nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', nodePublicKey)
+                                          .catch(() => {
+                                              console.log('[network warn]: registration error.');
+                                          });
                         }
-                        ws.nodeID = peerNodeID;
-                        nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', eventData.public_key)
-                                      .catch(() => {
-                                          console.log('[network warn]: registration error.');
-                                          ws.terminate();
-                                      });
-                    }
-                    else {
-                        const peerNodeID  = ws.nodeID;
-                        let nodePublicKey = this.getNodePublicKeyFromWebSocket(ws);
-                        if (!nodePublicKey) {
-                            console.log('[network warn]: cannot get node identity from certificate. ');
-                            ws.terminate();
-                            return;
+                        // set connection ready
+                        let extra = {};
+
+                        if (ws.inBound && this.hasOutboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(peerNodeID))) {
+                            ws.reservedOutboundSlot = true;
+                            this._bidirectionaInboundConnectionCount++;
+                            extra['enable_inbound_stream'] = true;
                         }
-                        nodeRepository.addNodeAttribute(peerNodeID, 'node_public_key', nodePublicKey)
-                                      .catch(() => {
-                                          console.log('[network warn]: registration error.');
-                                          ws.terminate();
-                                      });
+
+                        peer.sendConnectionReady(extra, ws);
+
+                        // request peer attributes
+                        this._requestAllNodeAttribute(peerNodeID, ws);
+                        // send peer list to the new node
+                        peer.sendNodeList(ws).then(_ => _);
+
+                        database.getRepository('node')
+                                .addNode({
+                                    ...this.nodeList[ws.node],
+                                    status: 2
+                                })
+                                .then(() => eventBus.emit('node_list_update'))
+                                .catch(() => eventBus.emit('node_list_update'));
+
+                        eventBus.emit('peer_connection_new', ws);
+                        eventBus.emit('node_status_update');
+                        resolve();
                     }
-                    // set connection ready
-                    let extra = {};
+                });
 
-                    if (ws.inBound && this.hasOutboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(peerNodeID))) {
-                        ws.reservedOutboundSlot = true;
-                        this._bidirectionaInboundConnectionCount++;
-                        extra['enable_inbound_stream'] = true;
+                ws.readyState === ws.OPEN && ws.send(JSON.stringify(payload));
+
+                setTimeout(function() {
+                    if (!callbackCalled) {
+                        callbackCalled = true;
+                        eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
+                        ws.terminate();
+                        reject('handsharke_timeout');
                     }
-
-                    peer.sendConnectionReady(extra, ws);
-
-                    // request peer attributes
-                    this._requestAllNodeAttribute(peerNodeID, ws);
-                    // send peer list to the new node
-                    peer.sendNodeList(ws).then(_ => _);
-
-                    database.getRepository('node')
-                            .addNode({
-                                ...this.nodeList[ws.node],
-                                status: 2
-                            })
-                            .then(() => eventBus.emit('node_list_update'))
-                            .catch(() => eventBus.emit('node_list_update'));
-
-                    eventBus.emit('peer_connection_new', ws);
-                    eventBus.emit('node_status_update');
-                }
+                }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             });
-
-            ws.send(JSON.stringify(payload));
-
-            setTimeout(function() {
-                if (!callbackCalled) {
-                    callbackCalled = true;
-                    eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
-                    ws.terminate();
-                }
-            }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
         }).catch(e => {
-            console.log('[network warn]: error on connection handshake.');
+            console.log('[network warn]: error on connection handshake.', e);
             ws.terminate();
         });
     }
@@ -822,7 +831,51 @@ class Network {
                                        this.nodePrivateKey = privateKey;
                                        this.nodePublicKey  = base58.encode(publicKey.toBuffer());
                                        this.nodeID         = walletUtils.getNodeIdFromPublicKey(this.nodePublicKey);
+                                       const nodeIDHash160 = objectHash.getSHA1Buffer(this.nodeID);
                                        this._initializeServer(certificatePem, certificatePrivateKeyPem);
+                                       const bootstrap = _.map(config.NODE_INITIAL_LIST, ({host, port_discovery: port}) => `${host}:${port}`);
+                                       this.dht        = new DHT({
+                                           nodeId: nodeIDHash160,
+                                           verify: (sign, value, publicKeyRaw) => {
+                                               publicKey = new Uint8Array(33);
+                                               publicKey.set(publicKeyRaw, 1);
+
+                                               // check compressed public key
+                                               // for even y and odd y
+                                               publicKey[0] = 2;
+                                               let isValid  = signature.verifyBuffer(objectHash.getHashBuffer(value, true), sign, publicKey);
+                                               if (!isValid) {
+                                                   publicKey[0] = 3;
+                                                   isValid      = signature.verifyBuffer(objectHash.getHashBuffer(value, true), sign, publicKey);
+                                               }
+                                               return isValid;
+                                           },
+                                           bootstrap
+                                       });
+                                       this.dht.on('node', node => {
+                                           console.log(`[network] new node discovered ${node.host}:${node.port}`);
+                                       });
+                                       console.log(config.NODE_PORT_DISCOVERY);
+                                       this.dht.listen(config.NODE_PORT_DISCOVERY);
+                                       this.dht.on('listening', () => {
+                                           const address = this.dht.address();
+                                           console.log(`[network] dht listening @${address.address}:${address.port}`);
+                                       });
+                                       this.dht.on('ready', () => {
+                                           console.log('[network] dht ready');
+                                           // register default address in the
+                                           // dht
+                                           const walletID                    = wallet.getDefaultActiveWallet();
+                                           const defaultKeyIdentifierAddress = wallet.deriveAddress(walletID, 0, 0);
+                                           const addressVersion              = database.getRepository('address').getDefaultAddressVersion().version;
+                                           const extendedPrivateKey          = wallet.getActiveWalletKey(walletID);
+                                           const privateKey                  = walletUtils.derivePrivateKey(extendedPrivateKey, 0, 0);
+                                           this.addAddressToDHT({
+                                               address_base          : defaultKeyIdentifierAddress.address,
+                                               address_version       : addressVersion,
+                                               address_key_identifier: defaultKeyIdentifierAddress.address
+                                           }, base58.decode(defaultKeyIdentifierAddress.address_attribute.key_public).slice(1, 33), privateKey);
+                                       });
                                        eventBus.emit('network_ready');
                                        resolve();
                                    });
@@ -830,6 +883,77 @@ class Network {
                     .catch(() => {
                         setTimeout(() => this.initialize().then(() => resolve()), 1000);
                     });
+        });
+    }
+
+    _shouldUpdateProxyData(data, nodePublicIp, nodePort, nodeTransactionFee, nodeAddressDefault) {
+        return !data || data.node_host !== nodePublicIp
+               || data.node_port !== nodePort || data.node_proxy_fee !== nodeTransactionFee
+               || data.node_address_default !== nodeAddressDefault;
+    }
+
+    addAddressToDHT(address, publicKey, privateKey) {
+        const hash = objectHash.getSHA1Buffer(publicKey, true);
+        this.dht.get(hash, (err, result) => {
+            let previousProxyData;
+            let newSeqNumber;
+            if (result) {
+                previousProxyData = JSON.parse(result.v.toString());
+                newSeqNumber      = result.seq + 1;
+            }
+            else {
+                previousProxyData = {};
+                newSeqNumber      = 0;
+            }
+
+            const proxyData          = previousProxyData[this.nodeID];
+            const nodeAddressDefault = address.address_key_identifier + address.address_version + address.address_key_identifier;
+            if (this._shouldUpdateProxyData(proxyData, this.nodePublicIp, config.NODE_PORT, config.TRANSACTION_FEE_PROXY, nodeAddressDefault)) {
+                previousProxyData[this.nodeID] = {
+                    node_host           : this.nodePublicIp,
+                    node_prefix         : config.WEBSOCKET_PROTOCOL,
+                    node_port           : config.NODE_PORT,
+                    node_port_api       : config.NODE_PORT_API,
+                    node_proxy_fee      : config.TRANSACTION_FEE_PROXY,
+                    node_address_default: nodeAddressDefault
+                };
+            }
+            const data = {
+                k   : publicKey,
+                seq : newSeqNumber,
+                v   : JSON.stringify(previousProxyData),
+                sign: function(buf) {
+                    return signature.sign(objectHash.getHashBuffer(buf, true), privateKey, 'buffer');
+                }
+            };
+            this.dht.put(data, (err, hash) => {
+                console.log('[network] dht key identifier registered hash=', hash.toString('hex'), ', err=', err);
+            });
+        });
+    }
+
+    getProxyInfo(publicKey, proxyID) {
+        return new Promise((resolve, reject) => {
+            const hash = objectHash.getSHA1Buffer(publicKey, true);
+            this.dht.get(hash, (err, result) => {
+                if (err || !result) {
+                    return reject('proxy_not_found');
+                }
+                let data;
+                try {
+                    data = JSON.parse(result.v.toString());
+                }
+                catch (e) {
+                    return reject('bad_proxy_info');
+                }
+                const proxyData = data[proxyID];
+                if (proxyData) {
+                    proxyData['node_id'] = proxyID;
+                    return resolve(proxyData);
+                }
+
+                reject('proxy_not_found');
+            });
         });
     }
 
@@ -853,6 +977,10 @@ class Network {
         this._nodeRegistry       = {};
         // clean connection registry
         this._connectionRegistry = {};
+        if (this.dht) {
+            this.dht.destroy();
+            this.dht = null;
+        }
     }
 }
 

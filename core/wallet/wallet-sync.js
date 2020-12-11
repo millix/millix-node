@@ -182,7 +182,11 @@ export class WalletSync {
     }
 
     syncTransactionSpendingOutputs(transaction) {
+        const walletKeyIdentifier = wallet.getKeyIdentifier();
         for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
+            if (transaction.transaction_output_list[outputPosition].address_key_identifier !== walletKeyIdentifier) {
+                continue;
+            }
             this.transactionSpendQueue.push({
                 transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${outputPosition}`
             });

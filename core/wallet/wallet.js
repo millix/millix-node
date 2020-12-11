@@ -17,6 +17,7 @@ import mutex from '../mutex';
 import ntp from '../ntp';
 import path from 'path';
 import console from '../console';
+import base58 from 'bs58';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -250,7 +251,7 @@ class Wallet {
         });
     }
 
-    addTransaction(dstOutputs, srcOutputs, transactionVersion) {
+    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion) {
         const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
@@ -308,7 +309,7 @@ class Wallet {
                         }
                         outputs = _.orderBy(outputs, ['amount'], ['asc']);
 
-                        let remainingAmount       = _.sum(_.map(dstOutputs, o => o.amount));
+                        let remainingAmount       = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
                         const outputsToUse        = [];
                         const privateKeyMap       = {};
                         const addressAttributeMap = {};
@@ -341,7 +342,7 @@ class Wallet {
                             'address_key_identifier'
                         ]), (v, k) => keyMap[k] ? keyMap[k] : k));
 
-                        let amountSent     = _.sum(_.map(dstOutputs, o => o.amount));
+                        let amountSent     = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
                         let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
                         let change         = totalUsedCoins - amountSent;
                         if (change > 0) {
@@ -353,11 +354,13 @@ class Wallet {
                                 amount                : change
                             });
                         }
-                        return this.signAndStoreTransaction(srcInputs, dstOutputs, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION);
+                        return this.signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION);
                     })
                     .then(transaction => peer.transactionSend(transaction))
                     .then((transaction) => {
                         resolve(transaction);
+                        //wait 1 second then start the validation process
+                        setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
                         unlock();
                     })
                     .catch((e) => {
@@ -433,6 +436,8 @@ class Wallet {
     _checkIfWalletUpdate(addressesKeyIdentifierSet) {
         if (addressesKeyIdentifierSet.has(this.defaultKeyIdentifier)) {
             eventBus.emit('wallet_update');
+            // start consensus in 1s
+            setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
         }
     }
 
@@ -580,6 +585,14 @@ class Wallet {
         }
     }
 
+    enableTransactionSync(transactionID) {
+        this._transactionFundingActiveWallet[transactionID] = new Date();
+    }
+
+    flagTransactionAsRequested(transactionID) {
+        this._transactionRequested[transactionID] = Date.now();
+    }
+
     _shouldProcessTransaction(transaction) {
         if (!!this._transactionFundingActiveWallet[transaction.transaction_id]) {
             return true;
@@ -673,7 +686,7 @@ class Wallet {
                                                                     delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                     delete this._transactionRequested[transaction.transaction_id];
                                                                     delete this._transactionFundingActiveWallet[transaction.transaction_id];
-                                                                    return eventBus.emit('transaction_new:' + transaction.transaction_id);
+                                                                    return eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
                                                                 }
 
                                                                 return walletUtils.verifyTransaction(transaction)
@@ -704,11 +717,11 @@ class Wallet {
 
                                                                                       let transactionRepository = shardZeroTransactionRepository;
 
-                                                                                      if ([
-                                                                                          '0a10',
-                                                                                          '0b10',
-                                                                                          'la1l',
-                                                                                          'lb1l'
+                                                                                      if (![
+                                                                                          '0a0',
+                                                                                          '0b0',
+                                                                                          'la0l',
+                                                                                          'lb0l'
                                                                                       ].includes(transaction.version)) {
                                                                                           transaction.transaction_date = new Date(transaction.transaction_date * 1000).toISOString();
                                                                                       }
@@ -729,7 +742,7 @@ class Wallet {
                                                                                       return transactionRepository.addTransactionFromObject(transaction)
                                                                                                                   .then(() => {
                                                                                                                       console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
-                                                                                                                      eventBus.emit('transaction_new:' + transaction.transaction_id);
+                                                                                                                      eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
                                                                                                                       this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
 
                                                                                                                       eventBus.emit('wallet_event_log', {
@@ -791,6 +804,7 @@ class Wallet {
                                                                                                                           let ws = network.getWebSocketByID(connectionID);
                                                                                                                           peer.transactionSend(data.transaction, ws);
                                                                                                                       }
+                                                                                                                      setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 0);
                                                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                                                       delete this._transactionRequested[transaction.transaction_id];
                                                                                                                   });
@@ -1281,12 +1295,19 @@ class Wallet {
                              .then(connectionStats => {
                                  return nodeRepository.addNodeAttribute(network.nodeID, 'peer_connection', JSON.stringify(connectionStats));
                              });
-          }).then(() => {
+          }).then(() => { // update transaction_fee
+                return nodeRepository.addNodeAttribute(network.nodeID, 'transaction_fee', JSON.stringify({
+                    transaction_fee_default: config.TRANSACTION_FEE_DEFAULT,
+                    transaction_fee_network: config.TRANSACTION_FEE_NETWORK,
+                    transaction_fee_proxy  : config.TRANSACTION_FEE_PROXY
+                }));
+            }).then(() => {
                 return new Promise(resolve => {
                     let attributes = [];
                     async.eachSeries([
                         'shard_protocol',
                         'transaction_count',
+                        'transaction_fee',
                         'peer_count',
                         'address_default',
                         'node_about',
@@ -1331,7 +1352,10 @@ class Wallet {
                                 address_key_identifier: address.address_key_identifier,
                                 amount                : 1
                             }
-                        ]).then((transaction) => {
+                        ], {
+                            fee_type: 'transaction_fee_default',
+                            amount  : 1
+                        }).then((transaction) => {
                             this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
                             resolve();
                         }).catch(() => resolve());
@@ -1594,6 +1618,68 @@ class Wallet {
         walletTransactionConsensus.processTransactionValidationResponse(data, ws);
     }
 
+    _onTransactionProxyRequest(data, ws) {
+        mutex.lock(['transaction-proxy-request'], unlock => {
+            database.getRepository('transaction')
+                    .getTransactionInputChain(data)
+                    .then(inputChain => {
+                        peer.transactionProxyResponse({
+                            transaction_id         : data.transaction_id,
+                            transaction_input_chain: inputChain
+                        }, ws);
+                        unlock();
+                    });
+        }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX * 5);
+    }
+
+    _onTransactionProxy(transaction, ws) {
+        const {connectionID} = ws;
+        walletTransactionConsensus
+            ._validateTransaction(transaction)
+            .then(() => {
+                console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' was validated and proxied');
+                let ws = network.getWebSocketByID(connectionID);
+                return this._onNewTransaction(transaction, ws, true);
+                /*if (ws) {
+                 peer.transactionValidationResponse({
+                 transaction_id: transactionID,
+                 valid         : true,
+                 type          : 'validation_response'
+                 }, ws, true);
+                 }*/
+            })
+            .then(() => {
+                console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' stored');
+                const ws = network.getWebSocketByID(connectionID);
+                if (ws) {
+                    peer.transactionProxyResult({
+                        transaction_id           : transaction.transaction_id,
+                        transaction_proxy_success: true
+                    }, ws);
+                }
+            })
+            .catch((err) => {
+                console.log('[wallet][proxy] rejected: ', err);
+                const ws = network.getWebSocketByID(connectionID);
+
+                if (err.cause === 'consensus_timeout') {
+                    return;
+                }
+                else if (err.cause === 'transaction_not_found') {
+                    ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
+                    wallet.requestTransactionFromNetwork(err.transaction_id_fail);
+                }
+
+                if (ws) {
+                    peer.transactionProxyResult({
+                        ...err,
+                        transaction_id           : transaction.transaction_id,
+                        transaction_proxy_success: false
+                    }, ws);
+                }
+            });
+    }
+
     _doAuditPointWatchDog() {
         let auditPointID = Object.keys(this._activeAuditPointUpdateRound)[0];
         if (auditPointID && (new Date().getTime() - this._activeAuditPointUpdateRound[auditPointID].timestamp) >= config.AUDIT_POINT_VALIDATION_WAIT_TIME_MAX) {
@@ -1791,15 +1877,22 @@ class Wallet {
                         })
                         .then(([outputs, addressKeyIdentifier]) => {
                             // Creating output - using the first address
+                            const fee                                             = config.TRANSACTION_FEE_DEFAULT;
                             const addressRepository                               = database.getRepository('address');
                             const {address: addressBase, version: addressVersion} = addressRepository.getAddressComponent(outputs[0].address);
                             const newOutput                                       = {
                                 address_base          : addressBase,
                                 address_version       : addressVersion,
                                 address_key_identifier: addressKeyIdentifier,
-                                amount                : _.sum(_.map(outputs, o => o.amount))
+                                amount                : _.sum(_.map(outputs, o => o.amount)) - fee
                             };
-                            return this.addTransaction([newOutput], outputs, config.WALLET_TRANSACTION_REFRESH_VERSION);
+
+                            const outputFee = {
+                                fee_type: 'transaction_fee_default',
+                                amount  : fee
+                            };
+
+                            return this.addTransaction([newOutput], outputFee, outputs, config.WALLET_TRANSACTION_REFRESH_VERSION);
                         })
                         .then((transaction) => {
                             console.log(`[wallet] Successfully stored and propagated refresh transaction ${transaction.transaction_id}`);
@@ -1831,26 +1924,100 @@ class Wallet {
         });
     }
 
-    signAndStoreTransaction(srcInputs, dstOutputs, addressAttributeMap, privateKeyMap, transactionVersion) {
-        return ntp.getTime()
-                  .then(time => {
-                      const transactionDate = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
+    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, time) {
+        const transactionRepository = database.getRepository('transaction');
+        const addressRepository     = database.getRepository('address');
 
-                      return walletUtils.signTransaction(srcInputs, dstOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
-                                        .then(transaction =>
-                                            walletUtils.verifyTransaction(transaction)
-                                                       .then(isValid => {
-                                                           if (!isValid) {
-                                                               return Promise.reject('tried to sign and store and invalid transaction');
-                                                           }
-                                                           else {
-                                                               const dbTransaction            = _.cloneDeep(transaction);
-                                                               dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                                                               return database.getRepository('transaction')
-                                                                              .addTransactionFromObject(dbTransaction);
-                                                           }
-                                                       }))
-                                        .then(transaction => transaction);
+        const transactionDate                                                   = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
+        const {address: addressBase, version, identifier: addressKeyIdentifier} = addressRepository.getAddressComponent(proxyCandidateData.node_address_default);
+        let feeOutputs                                                          = [
+            {
+                ...outputFee,
+                node_id_proxy         : proxyCandidateData.node_id,
+                address_base          : addressBase,
+                address_version       : version,
+                address_key_identifier: addressKeyIdentifier
+            }
+        ];
+        return walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
+                          .then(transaction => ([
+                              transaction,
+                              proxyCandidateData
+                          ]))
+                          .then(([transaction, proxyCandidateData]) => peer.transactionProxyRequest(transaction, proxyCandidateData))
+                          .then(([transaction, proxyResponse, proxyWS]) => {
+                              return transactionRepository.getTransactionInputChain(transaction)
+                                                          .then(inputChain => {
+                                                              const chainFromProxy = proxyResponse.transaction_input_chain;
+                                                              if (chainFromProxy.length < inputChain.length) {
+                                                                  return Promise.reject('proxy_transaction_input_chain_too_small');
+                                                              }
+
+                                                              const sizeDiff = chainFromProxy.length - inputChain.length;
+                                                              inputChain     = new Set(inputChain);
+                                                              const diff     = chainFromProxy.filter(t => !inputChain.has(t));
+                                                              if (diff.length !== sizeDiff) {
+                                                                  return Promise.reject('proxy_transaction_input_chain_invalid');
+                                                              }
+                                                              return peer.transactionProxy(transaction, proxyWS);
+                                                          });
+                          })
+                          .then(transaction => walletUtils.verifyTransaction(transaction)
+                                                          .then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transaction))
+                          .then(transaction => {
+                              // store the transaction
+                              const dbTransaction            = _.cloneDeep(transaction);
+                              dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
+                              return database.getRepository('transaction')
+                                             .addTransactionFromObject(dbTransaction);
+                          })
+                          .then(transaction => {
+                              // register first
+                              // address to the
+                              // dht for receiving
+                              // proxy fees
+                              const address = _.pick(srcInputs[0], [
+                                  'address_base',
+                                  'address_version',
+                                  'address_key_identifier'
+                              ]);
+                              network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
+                              return transaction;
+                          });
+    };
+
+    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
+        const transactionRepository = database.getRepository('transaction');
+        return ntp.getTime()
+                  .then(time => transactionRepository.getProxyCandidates(10, network.nodeID).then(proxyCandidates => ([
+                      time,
+                      proxyCandidates
+                  ])))
+                  .then(([time, proxyCandidates]) => {
+                      return new Promise(resolve => {
+                          async.eachSeries(proxyCandidates, (proxyCandidate, callback) => {
+                              network.getProxyInfo(base58.decode(proxyCandidate.value).slice(1, 33), proxyCandidate.node_id_origin)
+                                     .then(proxyCandidateData => this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, time))
+                                     .then(callback)
+                                     .catch(_ => callback());
+                          }, resolve);
+                      }).then(transaction => {
+                          if (!transaction) {
+                              return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
+                                                          .then(proxyCandidates => {
+                                                              return new Promise((resolve, reject) => {
+                                                                  async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
+                                                                      this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, time)
+                                                                          .then(callback)
+                                                                          .catch(_ => callback());
+                                                                  }, transaction => transaction ? resolve(transaction) : reject('proxy_not_found'));
+                                                              });
+                                                          });
+                          }
+                          else {
+                              return transaction;
+                          }
+                      });
                   });
     }
 
@@ -1867,6 +2034,8 @@ class Wallet {
                   .then(() => {
                       eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
                       eventBus.on('peer_connection_closed', this._onPeerConnectionClosed.bind(this));
+                      eventBus.on('transaction_new_request_proxy', this._onTransactionProxyRequest.bind(this));
+                      eventBus.on('transaction_new_proxy', this._onTransactionProxy.bind(this));
                       eventBus.on('transaction_new', this._onNewTransaction.bind(this));
                       eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
                       eventBus.on('transaction_sync_by_date', this._onSyncTransactionByDate.bind(this));
@@ -1933,6 +2102,8 @@ class Wallet {
         walletSync.close().then(_ => _).catch(_ => _);
         eventBus.removeAllListeners('peer_connection_new');
         eventBus.removeAllListeners('peer_connection_closed');
+        eventBus.removeAllListeners('transaction_new_request_proxy');
+        eventBus.removeAllListeners('transaction_new_proxy');
         eventBus.removeAllListeners('transaction_new');
         eventBus.removeAllListeners('transaction_sync');
         eventBus.removeAllListeners('transaction_sync_by_date');
