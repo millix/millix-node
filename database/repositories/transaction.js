@@ -2040,6 +2040,9 @@ export default class Transaction {
                     this.database.run('DELETE FROM `transaction` WHERE transaction_id = ?', [transactionID], (err) => {
                         err && console.log('[Database] Failed pruning transactions. [message] ', err);
                     });
+                    this.database.run('DELETE FROM `transaction_output_attribute` WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
+                    });
                     this.database.run('COMMIT', () => {
                         resolve();
                         unlock();
