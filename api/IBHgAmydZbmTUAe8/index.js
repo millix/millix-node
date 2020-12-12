@@ -44,8 +44,9 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 }));
             }
 
-            const transaction = {};
-            _.extend(transaction, _.pick(data[0], 'transaction_id', 'shard_id', 'transaction_date', 'node_id_origin', 'version', 'payload_hash', 'stable_date', 'is_stable', 'parent_date', 'is_parent', 'timeout_date', 'is_timeout', 'status', 'create_date'));
+            const normalization = database.getRepository('normalization');
+            const transaction   = {};
+            _.extend(transaction, _.pick(data[0], 'transaction_id', 'shard_id', 'transaction_date', 'node_id_origin', 'node_id_proxy', 'version', 'payload_hash', 'stable_date', 'is_stable', 'parent_date', 'is_parent', 'timeout_date', 'is_timeout', 'status', 'create_date'));
             if (!!transaction.transaction_date) {
                 transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
             }
@@ -53,6 +54,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
             const signatures                          = new Set();
             const inputs                              = new Set();
             const outputs                             = new Set();
+            const outputAttributes                    = new Set();
             const parents                             = new Set();
             const auditPoints                         = new Set();
             transaction['transaction_signature_list'] = [];
@@ -82,6 +84,8 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 'output_is_double_spend'        : 'is_double_spend',
                 'output_status'                 : 'status',
                 'output_create_date'            : 'create_date',
+                'output_attribute_status'       : 'status',
+                'output_attribute_create_date'  : 'create_date',
                 'transaction_parent_status'     : 'status',
                 'transaction_parent_create_date': 'create_date',
                 'audit_point_status'            : 'status',
@@ -104,6 +108,16 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 if (!outputs.has(row.output_position)) {
                     outputs.add(row.output_position);
                     transaction['transaction_output_list'].push(_.mapKeys(_.pick(row, 'output_position', 'output_address', 'output_address_key_identifier', 'amount', 'output_stable_date', 'output_is_stable', 'spent_date', 'is_spent', 'output_double_spend_date', 'output_is_double_spend', 'output_status', 'output_create_date'), keyMapFunction));
+                }
+
+                if (!outputAttributes.has(row.output_attribute_type_id)) {
+                    outputAttributes.add(row.output_attribute_type_id);
+                    try {
+                        transaction['transaction_output_attribute'] = {[normalization.getType(row.output_attribute_type_id)]: JSON.parse(row.output_attribute_value)};
+                    }
+                    catch (e) {
+                        throw new Error('invalid_transaction_output_attribute');
+                    }
                 }
 
                 if (row.transaction_id_parent && !parents.has(row.transaction_id_parent)) {
