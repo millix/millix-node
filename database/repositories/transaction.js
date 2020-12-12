@@ -118,6 +118,19 @@ export default class Transaction {
         });
     }
 
+    getSuggestedNetworkFee(percent) {
+        if (percent <= 0) {
+            return Promise.resolve(0);
+        }
+
+        return new Promise((resolve) => {
+            this.database.get('SELECT min(amount) as v_min, max(amount) as v_max FROM transaction_output WHERE output_position=-1',
+                (err, row) => {
+                    resolve((row.v_max - row.v_min) * percent + row.v_min);
+                });
+        });
+    }
+
     getWalletBalance(keyIdentifier, stable) {
         return new Promise((resolve) => {
             this.database.get('SELECT SUM(amount) as amount FROM transaction_output ' +
