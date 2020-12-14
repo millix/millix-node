@@ -1924,11 +1924,12 @@ class Wallet {
         });
     }
 
-    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, time) {
+    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
         const transactionRepository = database.getRepository('transaction');
         const addressRepository     = database.getRepository('address');
+        const time = ntp.now();
 
-        const transactionDate                                                   = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
+        const transactionDate                                                   = new Date(Math.floor(time.getTime() / 1000) * 1000);
         const {address: addressBase, version, identifier: addressKeyIdentifier} = addressRepository.getAddressComponent(proxyCandidateData.node_address_default);
         let feeOutputs                                                          = [
             {
@@ -1988,16 +1989,12 @@ class Wallet {
 
     signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
         const transactionRepository = database.getRepository('transaction');
-        return ntp.getTime()
-                  .then(time => transactionRepository.getProxyCandidates(10, network.nodeID).then(proxyCandidates => ([
-                      time,
-                      proxyCandidates
-                  ])))
-                  .then(([time, proxyCandidates]) => {
+        return transactionRepository.getProxyCandidates(10, network.nodeID)
+                  .then(proxyCandidates => {
                       return new Promise(resolve => {
                           async.eachSeries(proxyCandidates, (proxyCandidate, callback) => {
                               network.getProxyInfo(base58.decode(proxyCandidate.value).slice(1, 33), proxyCandidate.node_id_origin)
-                                     .then(proxyCandidateData => this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, time))
+                                     .then(proxyCandidateData => this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion))
                                      .then(callback)
                                      .catch(_ => callback());
                           }, resolve);
@@ -2007,7 +2004,7 @@ class Wallet {
                                                           .then(proxyCandidates => {
                                                               return new Promise((resolve, reject) => {
                                                                   async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
-                                                                      this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, time)
+                                                                      this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion)
                                                                           .then(callback)
                                                                           .catch(_ => callback());
                                                                   }, transaction => transaction ? resolve(transaction) : reject('proxy_not_found'));

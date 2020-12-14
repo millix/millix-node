@@ -100,7 +100,7 @@ export class WalletTransactionConsensus {
                         return callback(true);
                     }
                     else if (!doubleSpendSet.has(transaction.transaction_id) && (!responseData || transaction.transaction_date < responseData.transaction_date
-                                                                                 || ((transaction.transaction_date < responseData.transaction_date) && (transaction.transaction_id < responseData.transaction_id)))) {
+                                                                                 || ((transaction.transaction_date === responseData.transaction_date) && (transaction.transaction_id < responseData.transaction_id)))) {
 
                         let newVisitedTransactionSet = new Set(transactionVisitedSet);
                         newVisitedTransactionSet.add(doubleSpendTransactionID);
