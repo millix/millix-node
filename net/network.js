@@ -731,6 +731,11 @@ class Network {
             attribute_type: 'peer_connection'
         }, ws);
 
+        peer.nodeAttributeRequest({
+            node_id       : nodeID,
+            attribute_type: 'transaction_fee'
+        }, ws);
+
     }
 
     _onConnectionReady(content, ws) {

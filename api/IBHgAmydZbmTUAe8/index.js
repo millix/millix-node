@@ -110,7 +110,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                     transaction['transaction_output_list'].push(_.mapKeys(_.pick(row, 'output_position', 'output_address', 'output_address_key_identifier', 'amount', 'output_stable_date', 'output_is_stable', 'spent_date', 'is_spent', 'output_double_spend_date', 'output_is_double_spend', 'output_status', 'output_create_date'), keyMapFunction));
                 }
 
-                if (!outputAttributes.has(row.output_attribute_type_id)) {
+                if (row.output_attribute_type_id && !outputAttributes.has(row.output_attribute_type_id)) {
                     outputAttributes.add(row.output_attribute_type_id);
                     try {
                         transaction['transaction_output_attribute'] = {[normalization.getType(row.output_attribute_type_id)]: JSON.parse(row.output_attribute_value)};

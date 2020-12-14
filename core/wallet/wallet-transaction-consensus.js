@@ -100,7 +100,7 @@ export class WalletTransactionConsensus {
                         return callback(true);
                     }
                     else if (!doubleSpendSet.has(transaction.transaction_id) && (!responseData || transaction.transaction_date < responseData.transaction_date
-                                                                                 || ((transaction.transaction_date < responseData.transaction_date) && (transaction.transaction_id < responseData.transaction_id)))) {
+                                                                                 || ((transaction.transaction_date.getTime() === responseData.transaction_date.getTime()) && (transaction.transaction_id < responseData.transaction_id)))) {
 
                         let newVisitedTransactionSet = new Set(transactionVisitedSet);
                         newVisitedTransactionSet.add(doubleSpendTransactionID);
@@ -784,11 +784,11 @@ export class WalletTransactionConsensus {
                 unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
                 return this._validateTransaction(transactionID, null, 0)
                            .then(() => {
-                               if ([
-                                   '0a10',
-                                   '0b10',
-                                   'la1l',
-                                   'lb1l'
+                               if (![
+                                   '0a0',
+                                   '0b0',
+                                   'la0l',
+                                   'lb0l'
                                ].includes(pendingTransaction.version)) {
                                    pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date * 1000);
                                }
