@@ -253,19 +253,22 @@ class Peer {
                                       let callbackCalled  = false;
                                       eventBus.removeAllListeners(`transaction_new_response_proxy:${nodeID}:${transactionID}`);
                                       eventBus.once(`transaction_new_response_proxy:${nodeID}:${transactionID}`, (eventData, eventWS) => {
-                                          console.log('[peer] received transaction proxy response for ', transactionID, ' from node ', nodeID);
-                                          resolve([
-                                              transaction,
-                                              eventData,
-                                              eventWS
-                                          ]);
-                                          callbackCalled = true;
+                                          if (!callbackCalled) {
+                                              callbackCalled = true;
+                                              console.log('[peer] received transaction proxy response for ', transactionID, ' from node ', nodeID);
+                                              resolve([
+                                                  transaction,
+                                                  eventData,
+                                                  eventWS
+                                              ]);
+                                          }
                                       });
 
                                       ws.send(data);
 
                                       setTimeout(function() {
                                           if (!callbackCalled) {
+                                              callbackCalled = true;
                                               eventBus.removeAllListeners(`transaction_new_proxy:${nodeID}:${transactionID}`);
                                               reject('proxy_timeout');
                                           }
