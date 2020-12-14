@@ -784,11 +784,11 @@ export class WalletTransactionConsensus {
                 unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
                 return this._validateTransaction(transactionID, null, 0)
                            .then(() => {
-                               if ([
-                                   '0a10',
-                                   '0b10',
-                                   'la1l',
-                                   'lb1l'
+                               if (![
+                                   '0a0',
+                                   '0b0',
+                                   'la0l',
+                                   'lb0l'
                                ].includes(pendingTransaction.version)) {
                                    pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date * 1000);
                                }
