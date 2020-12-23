@@ -1634,21 +1634,16 @@ class Wallet {
 
     _onTransactionProxy(transaction, ws) {
         const {connectionID} = ws;
+        walletTransactionConsensus.addTransactionToCache(transaction);
         walletTransactionConsensus
             ._validateTransaction(transaction)
             .then(() => {
                 console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' was validated and proxied');
                 let ws = network.getWebSocketByID(connectionID);
                 return this._onNewTransaction(transaction, ws, true);
-                /*if (ws) {
-                 peer.transactionValidationResponse({
-                 transaction_id: transactionID,
-                 valid         : true,
-                 type          : 'validation_response'
-                 }, ws, true);
-                 }*/
             })
             .then(() => {
+                walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
                 console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' stored');
                 const ws = network.getWebSocketByID(connectionID);
                 if (ws) {
@@ -1659,6 +1654,7 @@ class Wallet {
                 }
             })
             .catch((err) => {
+                walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
                 console.log('[wallet][proxy] rejected: ', err);
                 const ws = network.getWebSocketByID(connectionID);
 
@@ -1667,7 +1663,7 @@ class Wallet {
                 }
                 else if (err.cause === 'transaction_not_found') {
                     ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
-                    wallet.requestTransactionFromNetwork(err.transaction_id_fail);
+                    this.requestTransactionFromNetwork(err.transaction_id_fail);
                 }
 
                 if (ws) {
@@ -1927,7 +1923,7 @@ class Wallet {
     _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
         const transactionRepository = database.getRepository('transaction');
         const addressRepository     = database.getRepository('address');
-        const time = ntp.now();
+        const time                  = ntp.now();
 
         const transactionDate                                                   = new Date(Math.floor(time.getTime() / 1000) * 1000);
         const {address: addressBase, version, identifier: addressKeyIdentifier} = addressRepository.getAddressComponent(proxyCandidateData.node_address_default);
@@ -1990,32 +1986,32 @@ class Wallet {
     signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
         const transactionRepository = database.getRepository('transaction');
         return transactionRepository.getProxyCandidates(10, network.nodeID)
-                  .then(proxyCandidates => {
-                      return new Promise(resolve => {
-                          async.eachSeries(proxyCandidates, (proxyCandidate, callback) => {
-                              network.getProxyInfo(base58.decode(proxyCandidate.value).slice(1, 33), proxyCandidate.node_id_origin)
-                                     .then(proxyCandidateData => this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion))
-                                     .then(callback)
-                                     .catch(_ => callback());
-                          }, resolve);
-                      }).then(transaction => {
-                          if (!transaction) {
-                              return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
-                                                          .then(proxyCandidates => {
-                                                              return new Promise((resolve, reject) => {
-                                                                  async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
-                                                                      this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion)
-                                                                          .then(callback)
-                                                                          .catch(_ => callback());
-                                                                  }, transaction => transaction ? resolve(transaction) : reject('proxy_not_found'));
-                                                              });
-                                                          });
-                          }
-                          else {
-                              return transaction;
-                          }
-                      });
-                  });
+                                    .then(proxyCandidates => {
+                                        return new Promise(resolve => {
+                                            async.eachSeries(proxyCandidates, (proxyCandidate, callback) => {
+                                                network.getProxyInfo(base58.decode(proxyCandidate.value).slice(1, 33), proxyCandidate.node_id_origin)
+                                                       .then(proxyCandidateData => this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion))
+                                                       .then(callback)
+                                                       .catch(_ => callback());
+                                            }, resolve);
+                                        }).then(transaction => {
+                                            if (!transaction) {
+                                                return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
+                                                                            .then(proxyCandidates => {
+                                                                                return new Promise((resolve, reject) => {
+                                                                                    async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
+                                                                                        this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion)
+                                                                                            .then(callback)
+                                                                                            .catch(_ => callback());
+                                                                                    }, transaction => transaction ? resolve(transaction) : reject('proxy_not_found'));
+                                                                                });
+                                                                            });
+                                            }
+                                            else {
+                                                return transaction;
+                                            }
+                                        });
+                                    });
     }
 
     updateDefaultAddressAttribute() {

@@ -39,10 +39,19 @@ export class WalletTransactionConsensus {
         };
         this._transactionRetryValidation    = new Set();
         this._transactionValidationNotFound = new Set();
+        this._transactionObjectCache        = {};
     }
 
     initialize() {
         return Promise.resolve();
+    }
+
+    addTransactionToCache(transaction) {
+        this._transactionObjectCache[transaction.transaction_id] = transaction;
+    }
+
+    deleteTransactionFromCache(transactionID) {
+        delete this._transactionObjectCache[transactionID];
     }
 
     getRejectedTransactionList() {
@@ -94,6 +103,7 @@ export class WalletTransactionConsensus {
                                              .then(transaction => transaction ? resolve(transaction) : reject()).catch(reject);
                     });
                 }).then(transaction => {
+                    transaction = transaction || this._transactionObjectCache[input.transaction_id];
                     if (!transaction) {
                         responseType = 'transaction_not_found';
                         responseData = {transaction_id: input.transaction_id};
