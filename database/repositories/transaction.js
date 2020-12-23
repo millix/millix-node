@@ -61,18 +61,16 @@ export default class Transaction {
                                     return peer.transactionSyncRequest(inputTransactionID, {
                                         priority        : 1,
                                         dispatch_request: true
-                                    })
-                                               .then(() => wallet.flagTransactionAsRequested(inputTransactionID));
+                                    }).then(() => wallet.flagTransactionAsRequested(inputTransactionID));
                                 };
+                                eventBus.once('transaction_new:' + inputTransactionID, newTransaction => {
+                                    resolve({
+                                        ...newTransaction,
+                                        transaction_date: new Date(newTransaction.transaction_date)
+                                    });
+                                });
                                 requestTransactionFromNetwork()
-                                    .then(() => {
-                                        eventBus.once('transaction_new:' + inputTransactionID, newTransaction => {
-                                            resolve({
-                                                ...newTransaction,
-                                                transaction_date: new Date(newTransaction.transaction_date)
-                                            });
-                                        });
-                                    })
+                                    .then(_ => _)
                                     .catch(() => {
                                         setTimeout(() => requestTransactionFromNetwork(), config.NETWORK_LONG_TIME_WAIT_MAX * 2);
                                     });
