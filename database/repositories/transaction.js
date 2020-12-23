@@ -134,7 +134,7 @@ export default class Transaction {
             this.database.get('SELECT SUM(amount) as amount FROM transaction_output ' +
                               'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE transaction_output.address_key_identifier=? AND (`transaction`.is_stable = ' + (stable ? 1 : 0) +
-                              (stable ? ' AND transaction_output.status != 2) ' : ' OR transaction_output.status = 2) ') + 'AND is_spent = 0', [keyIdentifier],
+                              (stable ? ' AND transaction_output.status != 2) ' : ' OR transaction_output.status = 2) ') + 'AND is_spent = 0 AND is_double_spend = 0', [keyIdentifier],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });
@@ -155,7 +155,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 ORDER BY transaction_date DESC LIMIT 100',
+                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND transaction_output.is_double_spend=0 ORDER BY transaction_date DESC LIMIT 100',
                 [
                     addressKeyIdentifier
                 ].concat(excludeTransactionIDList),
