@@ -2134,7 +2134,7 @@ export default class Transaction {
 
         return new Promise((resolve, reject) => {
             // TODO - return only necessary
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date <= ? OR transaction_output.status = 2) AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0 AND `transaction`.is_stable = 1 AND `transaction`.stable_date < ?', [
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date <= ? OR transaction_output.status = 2) AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0 AND transaction_output.is_double_spend = 0 AND `transaction`.is_stable = 1 AND `transaction`.stable_date < ?', [
                 createDate,
                 addressKeyIdentifier,
                 stableDate
