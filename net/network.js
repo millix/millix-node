@@ -55,6 +55,10 @@ class Network {
         return this._nodeList;
     }
 
+    getNodeSocket(nodeID) {
+        return _.first(this._nodeRegistry[nodeID]);
+    }
+
     generateNewID() {
         return crypto.randomBytes(20).toString('hex');
     }
