@@ -698,9 +698,11 @@ class WalletUtils {
         vTransaction['payload_hash']     = objectHash.getCHash288(vTransaction);
         vTransaction['transaction_date'] = transaction.transaction_date;
         vTransaction['node_id_origin']   = transaction.node_id_origin;
-        vTransaction['node_id_proxy']    = transaction.node_id_proxy;
         vTransaction['shard_id']         = transaction.shard_id;
         vTransaction['version']          = transaction.version;
+        if (transaction.node_id_proxy) {
+            vTransaction['node_id_proxy'] = transaction.node_id_proxy;
+        }
 
         for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
             const sign              = addressSignatureList[i];

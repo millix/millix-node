@@ -1634,21 +1634,16 @@ class Wallet {
 
     _onTransactionProxy(transaction, ws) {
         const {connectionID} = ws;
+        walletTransactionConsensus.addTransactionToCache(transaction);
         walletTransactionConsensus
             ._validateTransaction(transaction)
             .then(() => {
                 console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' was validated and proxied');
                 let ws = network.getWebSocketByID(connectionID);
                 return this._onNewTransaction(transaction, ws, true);
-                /*if (ws) {
-                 peer.transactionValidationResponse({
-                 transaction_id: transactionID,
-                 valid         : true,
-                 type          : 'validation_response'
-                 }, ws, true);
-                 }*/
             })
             .then(() => {
+                walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
                 console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' stored');
                 const ws = network.getWebSocketByID(connectionID);
                 if (ws) {
@@ -1659,6 +1654,7 @@ class Wallet {
                 }
             })
             .catch((err) => {
+                walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
                 console.log('[wallet][proxy] rejected: ', err);
                 const ws = network.getWebSocketByID(connectionID);
 
@@ -1667,7 +1663,7 @@ class Wallet {
                 }
                 else if (err.cause === 'transaction_not_found') {
                     ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
-                    wallet.requestTransactionFromNetwork(err.transaction_id_fail);
+                    this.requestTransactionFromNetwork(err.transaction_id_fail);
                 }
 
                 if (ws) {
@@ -1924,10 +1920,10 @@ class Wallet {
         });
     }
 
-    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
+    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
         const transactionRepository = database.getRepository('transaction');
         const addressRepository     = database.getRepository('address');
-        const time = ntp.now();
+        const time                  = ntp.now();
 
         const transactionDate                                                   = new Date(Math.floor(time.getTime() / 1000) * 1000);
         const {address: addressBase, version, identifier: addressKeyIdentifier} = addressRepository.getAddressComponent(proxyCandidateData.node_address_default);
@@ -1960,62 +1956,66 @@ class Wallet {
                                                               if (diff.length !== sizeDiff) {
                                                                   return Promise.reject('proxy_transaction_input_chain_invalid');
                                                               }
-                                                              return peer.transactionProxy(transaction, proxyWS);
+                                                              return propagateTransaction ? peer.transactionProxy(transaction, proxyWS) : transaction;
                                                           });
                           })
                           .then(transaction => walletUtils.verifyTransaction(transaction)
-                                                          .then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transaction))
-                          .then(transaction => {
-                              // store the transaction
-                              const dbTransaction            = _.cloneDeep(transaction);
-                              dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                              return database.getRepository('transaction')
-                                             .addTransactionFromObject(dbTransaction);
-                          })
-                          .then(transaction => {
-                              // register first
-                              // address to the
-                              // dht for receiving
-                              // proxy fees
-                              const address = _.pick(srcInputs[0], [
-                                  'address_base',
-                                  'address_version',
-                                  'address_key_identifier'
-                              ]);
-                              network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
-                              return transaction;
-                          });
+                                                          .then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transaction));
     };
+
+    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
+        const transactionRepository = database.getRepository('transaction');
+        return transactionRepository.getProxyCandidates(10, network.nodeID)
+                                    .then(proxyCandidates => {
+                                        return new Promise(resolve => {
+                                            async.eachSeries(proxyCandidates, (proxyCandidate, callback) => {
+                                                network.getProxyInfo(base58.decode(proxyCandidate.value).slice(1, 33), proxyCandidate.node_id_origin)
+                                                       .then(proxyCandidateData => this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction))
+                                                       .then(callback)
+                                                       .catch(_ => callback());
+                                            }, resolve);
+                                        }).then(transaction => {
+                                            if (!transaction) {
+                                                return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
+                                                                            .then(proxyCandidates => {
+                                                                                return new Promise((resolve, reject) => {
+                                                                                    async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
+                                                                                        this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction)
+                                                                                            .then(callback)
+                                                                                            .catch(_ => callback());
+                                                                                    }, transaction => transaction ? resolve(transaction) : reject('proxy_not_found'));
+                                                                                });
+                                                                            });
+                                            }
+                                            else {
+                                                return transaction;
+                                            }
+                                        });
+                                    });
+    }
 
     signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
         const transactionRepository = database.getRepository('transaction');
-        return transactionRepository.getProxyCandidates(10, network.nodeID)
-                  .then(proxyCandidates => {
-                      return new Promise(resolve => {
-                          async.eachSeries(proxyCandidates, (proxyCandidate, callback) => {
-                              network.getProxyInfo(base58.decode(proxyCandidate.value).slice(1, 33), proxyCandidate.node_id_origin)
-                                     .then(proxyCandidateData => this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion))
-                                     .then(callback)
-                                     .catch(_ => callback());
-                          }, resolve);
-                      }).then(transaction => {
-                          if (!transaction) {
-                              return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
-                                                          .then(proxyCandidates => {
-                                                              return new Promise((resolve, reject) => {
-                                                                  async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
-                                                                      this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion)
-                                                                          .then(callback)
-                                                                          .catch(_ => callback());
-                                                                  }, transaction => transaction ? resolve(transaction) : reject('proxy_not_found'));
-                                                              });
-                                                          });
-                          }
-                          else {
-                              return transaction;
-                          }
-                      });
-                  });
+        return this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true)
+                   .then(transaction => {
+                       // store the transaction
+                       const dbTransaction            = _.cloneDeep(transaction);
+                       dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
+                       return transactionRepository.addTransactionFromObject(dbTransaction);
+                   })
+                   .then(transaction => {
+                       // register first
+                       // address to the
+                       // dht for receiving
+                       // proxy fees
+                       const address = _.pick(srcInputs[0], [
+                           'address_base',
+                           'address_version',
+                           'address_key_identifier'
+                       ]);
+                       network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
+                       return transaction;
+                   });
     }
 
     updateDefaultAddressAttribute() {

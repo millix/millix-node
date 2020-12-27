@@ -2,6 +2,7 @@ import Endpoint from '../endpoint';
 import walletUtils from '../../core/wallet/wallet-utils';
 import ntp from '../../core/ntp';
 import config from '../../core/config/config';
+import wallet from '../../core/wallet/wallet';
 
 
 /**
@@ -55,76 +56,58 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
             }
         }
 
-        try {
-            ntp.getTime().then(time => {
-                const transactionDate    = new Date(Math.floor(time.now.getTime() / 1000) * 1000);
-                const transactionVersion = transactionPayload.transaction_version;
-                const transactionInputs  = transactionPayload.transaction_input_list;
-                const transactionOutputs = transactionPayload.transaction_output_list;
+        const transactionVersion = transactionPayload.transaction_version || config.WALLET_TRANSACTION_DEFAULT_VERSION;
+        const transactionInputs  = transactionPayload.transaction_input_list;
+        const transactionOutputs = transactionPayload.transaction_output_list;
+        const outputFee          = transactionPayload.transaction_output_fee;
 
-                let addressAttributeMap = {};
+        let addressAttributeMap = {};
 
-                for (let [address, publicKey] of Object.entries(addressMap)) {
-                    addressAttributeMap[address] = {
-                        'key_public': publicKey
-                    };
+        (() => {
+
+            if (!Array.isArray(transactionInputs) || !Array.isArray(transactionOutputs) || typeof(outputFee) !== "object") {
+                return Promise.reject('invalid request body');
+            }
+
+            for (let [address, publicKey] of Object.entries(addressMap)) {
+                addressAttributeMap[address] = {
+                    'key_public': publicKey
+                };
+            }
+
+            if (transactionVersion === config.WALLET_TRANSACTION_REFRESH_VERSION) {
+                if (!walletUtils.isValidRefreshTransaction(transactionInputs, transactionOutputs)) {
+                    console.log(`[api ${this.endpoint}] Received invalid refresh transaction. Not going to sign.`);
+                    return Promise.reject('invalid refresh transaction');
                 }
-
-                new Promise((resolve) => {
-                    if (transactionVersion === config.WALLET_TRANSACTION_REFRESH_VERSION) {
-                        if (!(walletUtils.isValidRefreshTransaction(transactionInputs, transactionOutputs))) {
-                            console.log(`[api ${this.endpoint}] Received invalid refresh transaction. Not going to sign.`);
-
-                            res.send({
-                                api_status : 'fail',
-                                api_message: 'invalid refresh transaction'
-                            });
-                            resolve(false);
-                        }
-                        else {
-                            resolve(true);
-                        }
-                    }
-                    else {
-                        walletUtils.isConsumingExpiredOutputs(transactionInputs, transactionDate)
-                                   .then(isConsuming => {
-                                       if (isConsuming) {
-                                           console.log(`[api ${this.endpoint}] Transaction consuming expired transaction outputs. Not going to sign.`);
-
-                                           res.send({
-                                               api_status : 'fail',
-                                               api_message: 'the transaction is consuming outputs that have expired'
-                                           });
-                                       }
-                                       resolve(!isConsuming);
-                                   });
-                    }
-                })
-                    .then(shouldSign => {
-                        if (shouldSign) {
-                            walletUtils.signTransaction(transactionInputs, transactionOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
-                                       .then(signedTransaction => {
-                                           console.log(`[api ${this.endpoint}] Successfully signed transaction transaction.`);
-                                           res.send(signedTransaction);
-                                       })
-                                       .catch(e => {
-                                           console.log(`[api ${this.endpoint}] Failed to sign transaction. Error: ${e}`);
-                                           res.send({
-                                               api_status : 'fail',
-                                               api_message: `unexpected generic api error: (${e})`
-                                           });
-                                       });
-                        }
-                    });
-            });
-        }
-        catch (e) {
+                else {
+                    return Promise.resolve();
+                }
+            }
+            else {
+                const transactionDate = new Date(Math.floor(ntp.now().getTime() / 1000) * 1000);
+                return walletUtils.isConsumingExpiredOutputs(transactionInputs, transactionDate)
+                                  .then(isConsuming => {
+                                      if (isConsuming) {
+                                          console.log(`[api ${this.endpoint}] Transaction consuming expired transaction outputs. Not going to sign.`);
+                                          return Promise.reject('the transaction is consuming outputs that have expired');
+                                      }
+                                      return Promise.resolve();
+                                  });
+            }
+        })().then(() => {
+            return wallet.proxyTransaction(transactionInputs, transactionOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, false)
+                         .then(signedTransaction => {
+                             console.log(`[api ${this.endpoint}] Successfully signed transaction transaction.`);
+                             res.send(signedTransaction);
+                         });
+        }).catch(e => {
             console.log(`[api ${this.endpoint}] error: ${e}`);
             res.send({
                 api_status : 'fail',
                 api_message: `unexpected generic api error: (${e})`
             });
-        }
+        });
     }
 }
 
