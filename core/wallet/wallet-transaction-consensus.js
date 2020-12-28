@@ -513,9 +513,14 @@ export class WalletTransactionConsensus {
                                            // remove node from
                                            // consensus round
                                            if (this._consensusRoundState[transactionID]) {
-                                               delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID];
-                                               requestPeerValidation();
+                                               try {
+                                                   delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID];
+                                               }
+                                               catch (e) {
+                                                   console.log(e);
+                                               }
                                            }
+                                           requestPeerValidation();
                                        });
                                };
 
@@ -743,10 +748,9 @@ export class WalletTransactionConsensus {
                 return database.getRepository('transaction', shardID)
                                .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, excludeTransactionList)
                                .then(pendingTransactions => {
-                                   const now = Date.now();
                                    // filter out tx that were synced in the
-                                   // last 30s
-                                   return _.filter(pendingTransactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && now - transaction.create_date < 30));
+                                   // last 30s and not being validated yet
+                                   return _.filter(pendingTransactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && Date.now() - transaction.create_date < 30 && !this._consensusRoundState[transaction.transaction_id]));
                                });
             }).then(pendingTransactions => {
                 if (pendingTransactions.length === 0) {
@@ -754,7 +758,7 @@ export class WalletTransactionConsensus {
                         return database.getRepository('transaction', shardID)
                                        .findUnstableTransaction(excludeTransactionList);
                     }).then(transactions => [
-                        transactions,
+                        _.filter(transactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && Date.now() - transaction.create_date < 30 && !this._consensusRoundState[transaction.transaction_id])),
                         false
                     ]);
                 }
@@ -786,7 +790,12 @@ export class WalletTransactionConsensus {
                     this._transactionRetryValidation[transactionID] = Date.now();
                 }
 
-                // replace lock id with transaction id
+                if (this._consensusRoundState[transactionID]) {
+                    // remove locker
+                    delete this._consensusRoundState[lockerID];
+                    return resolve();
+                }
+
                 delete this._consensusRoundState[lockerID];
                 this._consensusRoundState[transactionID] = {};
 
@@ -815,7 +824,6 @@ export class WalletTransactionConsensus {
                                else {
                                    console.log('[consensus] transaction validated internally, starting consensus using oracles');
                                    // replace lock id with transaction id
-                                   delete this._consensusRoundState[lockerID];
                                    this._consensusRoundState[transactionID] = {
                                        consensus_round_validation_count  : 0,
                                        consensus_round_double_spend_count: 0,
@@ -851,7 +859,7 @@ export class WalletTransactionConsensus {
                                    if (!!validationState) {
                                        if (validationState.transaction_id_fail === err.transaction_id_fail) {
                                            validationState.transaction_not_found_count++;
-                                           if (validationState.transaction_not_found_count >= 5) {
+                                           if (validationState.transaction_not_found_count >= config.CONSENSUS_ROUND_NOT_FOUND_MAX) {
                                                if (!isTransactionFundingWallet) {
                                                    console.log('[consensus] transaction not validated internally, starting consensus using oracles');
                                                    // replace lock id with
@@ -900,9 +908,11 @@ export class WalletTransactionConsensus {
                                        };
                                    }
                                }
-                               delete this._transactionRetryValidation[transactionID];
-                               delete this._consensusRoundState[transactionID];
-                               resolve();
+                               setTimeout(() => {
+                                   delete this._transactionRetryValidation[transactionID];
+                                   delete this._consensusRoundState[transactionID];
+                                   resolve();
+                               }, 5000);
                            });
             }).catch(() => {
                 resolve();
