@@ -210,6 +210,20 @@ export class PeerRotation {
             const outboundClients = network.outboundClients;
             if (outboundClients.length < config.NODE_CONNECTION_OUTBOUND_MAX - 1) {
                 console.log(`[peer-rotation] fill available slots (${outboundClients.length} of ${config.NODE_CONNECTION_OUTBOUND_MAX})`);
+
+                if (outboundClients.length > 2) {
+                    const peerToDisconnect = this._getOlderPeer();
+                    if (peerToDisconnect && peerToDisconnect.close) {
+                        console.log(`[peer-rotation] drop with node id ${peerToDisconnect.nodeID} - ${peerToDisconnect.url}`);
+                        if (peerToDisconnect.readyState === WebSocket.CLOSED || peerToDisconnect.readyState === WebSocket.CLOSING) {
+                            network._unregisterWebsocket(peerToDisconnect);
+                        }
+                        else {
+                            peerToDisconnect.close();
+                        }
+                    }
+                }
+
                 return network.retryConnectToInactiveNodes()
                               .then(() => {
                                   console.log('[peer-rotation] peer rotation done.');
