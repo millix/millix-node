@@ -17,7 +17,15 @@ const argv = require('yargs')
     }).argv;
 
 if (argv.initialPeers) {
-    config.NODE_INITIAL_LIST = argv.initialPeers;
+    config.NODE_INITIAL_LIST = argv.initialPeers.map(e => {
+        const part = e.split(":");
+        return {
+            host          : part[0],
+            port_protocol : parseInt(part[1]),
+            port_api      : parseInt(part[2]),
+            port_discovery: parseInt(part[3])
+        }
+    });
 }
 
 if (argv.bind) {

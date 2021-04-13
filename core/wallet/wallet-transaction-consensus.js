@@ -310,6 +310,9 @@ export class WalletTransactionConsensus {
                         // input
                         database.firstShards((shardID) => {
                             return new Promise((resolve, reject) => {
+                                if (this._transactionObjectCache[input.output_transaction_id]) {
+                                    return resolve(this._transactionObjectCache[input.output_transaction_id].transaction_output_list[input.output_position]);
+                                }
                                 const transactionRepository = database.getRepository('transaction', shardID);
                                 transactionRepository.getOutput(input.output_transaction_id, input.output_position)
                                                      .then(output => output ? resolve(output) : reject());
@@ -364,7 +367,7 @@ export class WalletTransactionConsensus {
 
                     // check inputs transactions
                     async.everySeries(sourceTransactions, (srcTransaction, callback) => {
-                        this._validateTransaction(srcTransaction, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
+                        this._validateTransaction(this._transactionObjectCache[srcTransaction] || srcTransaction, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
                             .then(() => callback(null, true))
                             .catch((err) => callback(err, false));
                     }, (err, valid) => {

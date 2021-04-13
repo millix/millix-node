@@ -555,15 +555,15 @@ export class Database {
                               timestamp: Date.now()
                           });
                           return schema.migrate(newVersion, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR)
-                                       .then(() => this._migrateTables())
                                        .then(() => {
                                            eventBus.emit('wallet_notify_message', {
                                                message  : `[database] migration completed: version ${newVersion}`,
                                                is_sticky: false,
                                                timestamp: Date.now()
                                            });
-                                           resolve();
-                                       });
+                                       })
+                                       .then(() => this._migrateTables())
+                                       .then(() => resolve());
                       }
                       else {
                           console.log('[database] current schema version is ', version);

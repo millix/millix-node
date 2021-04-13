@@ -974,7 +974,7 @@ class Network {
         eventBus.removeAllListeners('inbound_stream_response');
         const wss = this.getWebSocket();
         if (wss) {
-            wss._server.close();
+            wss._server && wss._server.close();
             wss.close();
         }
 

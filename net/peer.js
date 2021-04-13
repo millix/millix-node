@@ -195,12 +195,14 @@ class Peer {
         }
     }
 
-    transactionProxy(transaction, ws) {
+    transactionProxy(transactionList, ws) {
         return new Promise((resolve, reject) => {
             let payload = {
                 type   : 'transaction_new_proxy',
-                content: transaction
+                content: transactionList
             };
+
+            const transaction = transactionList[0];
 
             eventBus.emit('node_event_log', payload);
 
@@ -212,7 +214,7 @@ class Peer {
                 eventBus.once(`transaction_new_proxy:${nodeID}:${transactionID}`, (response) => {
                     if (response.transaction_proxy_success) {
                         console.log('[peer] transaction ', transactionID, ' proxied by node ', nodeID);
-                        resolve(transaction);
+                        resolve(transactionList);
                     }
                     else {
                         console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID);
@@ -229,7 +231,9 @@ class Peer {
         });
     }
 
-    transactionProxyRequest(transaction, proxyData) {
+    transactionProxyRequest(transactionList, proxyData) {
+        const transaction = transactionList[0];
+        const feeOutput   = transactionList[transactionList.length - 1].transaction_output_list[0];
         return network._connectTo(proxyData.node_prefix, proxyData.node_host, proxyData.node_port, proxyData.node_port_api, proxyData.node_id)
                       .then(ws => {
                           return new Promise((resolve, reject) => {
@@ -239,7 +243,7 @@ class Peer {
                                       transaction_id        : transaction.transaction_id,
                                       transaction_date      : transaction.transaction_date,
                                       transaction_input_list: transaction.transaction_input_list,
-                                      transaction_output_fee: transaction.transaction_output_list[0]
+                                      transaction_output_fee: feeOutput
                                   }
                               };
 
@@ -257,7 +261,7 @@ class Peer {
                                               callbackCalled = true;
                                               console.log('[peer] received transaction proxy response for ', transactionID, ' from node ', nodeID);
                                               resolve([
-                                                  transaction,
+                                                  transactionList,
                                                   eventData,
                                                   eventWS
                                               ]);
