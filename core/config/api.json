@@ -377,6 +377,33 @@
       "version_released": "1.8.7",
       "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
+    },
+    {
+      "id": "Gox4NzTLDnpEr10v",
+      "name": "get_random_mnemonic",
+      "description": "returns a random mnemonic phrase",
+      "method": "GET",
+      "version_released": "1.8.7",
+      "permission": "{\"require_identity\": false, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "PMW9LXqUv7vXLpbA",
+      "name": "new_session",
+      "description": "uses the passphrase to activate the wallet used in the previous session",
+      "method": "GET",
+      "version_released": "1.8.7",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "OBexeX0f0MsnL1S3",
+      "name": "get_session",
+      "description": "get the active wallet in the node",
+      "method": "GET",
+      "version_released": "1.8.7",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
     }
   ]
 }

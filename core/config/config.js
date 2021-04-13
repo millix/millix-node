@@ -774,8 +774,8 @@ export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1616953037;
-export const NODE_MILLIX_VERSION                               = '1.9.0';
+export const NODE_MILLIX_BUILD_DATE                            = 1618291254;
+export const NODE_MILLIX_VERSION                               = '1.10.0';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -818,7 +818,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE         = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                  = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR            = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                        = '12';
+    DATABASE_CONNECTION.SCHEMA_VERSION                        = '13';
 }
 
 export default {

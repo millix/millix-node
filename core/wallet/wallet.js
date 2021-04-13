@@ -259,7 +259,7 @@ class Wallet {
                     if (!srcOutputs) {
                         return database.applyShards((shardID) => {
                             const transactionRepository = database.getRepository('transaction', shardID);
-                            return new Promise((resolve, reject) => transactionRepository.getFreeStableOutput(this.defaultKeyIdentifier)
+                            return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
                                                                                          .then(outputs => outputs.length ? resolve(outputs) : reject()));
                         }).then(resolve);
                     }
@@ -356,9 +356,12 @@ class Wallet {
                         }
                         return this.signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION);
                     })
-                    .then(transaction => peer.transactionSend(transaction))
-                    .then((transaction) => {
-                        resolve(transaction);
+                    .then(transactionList => {
+                        transactionList.forEach(transaction => peer.transactionSend(transaction));
+                        return transactionList;
+                    })
+                    .then((transactionList) => {
+                        resolve(transactionList);
                         //wait 1 second then start the validation process
                         setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
                         unlock();
@@ -706,7 +709,7 @@ class Wallet {
                                                                                           return false;
                                                                                       }
 
-                                                                                      const isFundingWallet  = this._transactionFundingActiveWallet[transaction.transaction_id];
+                                                                                      const isFundingWallet  = !!this._transactionFundingActiveWallet[transaction.transaction_id];
                                                                                       const syncPriority     = isFundingWallet ? 1 : this.getTransactionSyncPriority(transaction);
                                                                                       const hasKeyIdentifier = this.transactionHasKeyIdentifier(transaction);
                                                                                       delete this._transactionFundingActiveWallet[transaction.transaction_id];
@@ -1355,8 +1358,8 @@ class Wallet {
                         ], {
                             fee_type: 'transaction_fee_default',
                             amount  : 1
-                        }).then((transaction) => {
-                            this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
+                        }).then((transactionList) => {
+                            transactionList.forEach(transaction => this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))));
                             resolve();
                         }).catch(() => resolve());
                     });
@@ -1632,48 +1635,55 @@ class Wallet {
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX * 5);
     }
 
-    _onTransactionProxy(transaction, ws) {
+    _onTransactionProxy(transactionList, ws) {
         const {connectionID} = ws;
-        walletTransactionConsensus.addTransactionToCache(transaction);
-        walletTransactionConsensus
-            ._validateTransaction(transaction)
-            .then(() => {
+        let pipeline         = Promise.resolve();
+        transactionList.forEach(transaction => {
+            walletTransactionConsensus.addTransactionToCache(transaction);
+            pipeline = pipeline.then(() => walletTransactionConsensus._validateTransaction(transaction));
+        });
+
+        transactionList.forEach(transaction => {
+            pipeline = pipeline.then(() => {
                 console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' was validated and proxied');
                 let ws = network.getWebSocketByID(connectionID);
                 return this._onNewTransaction(transaction, ws, true);
-            })
-            .then(() => {
+            }).then(() => {
                 walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
                 console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' stored');
-                const ws = network.getWebSocketByID(connectionID);
-                if (ws) {
-                    peer.transactionProxyResult({
-                        transaction_id           : transaction.transaction_id,
-                        transaction_proxy_success: true
-                    }, ws);
-                }
-            })
-            .catch((err) => {
-                walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
-                console.log('[wallet][proxy] rejected: ', err);
-                const ws = network.getWebSocketByID(connectionID);
-
-                if (err.cause === 'consensus_timeout') {
-                    return;
-                }
-                else if (err.cause === 'transaction_not_found') {
-                    ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
-                    this.requestTransactionFromNetwork(err.transaction_id_fail);
-                }
-
-                if (ws) {
-                    peer.transactionProxyResult({
-                        ...err,
-                        transaction_id           : transaction.transaction_id,
-                        transaction_proxy_success: false
-                    }, ws);
-                }
             });
+        });
+
+        const transaction = transactionList[0];
+        pipeline.then(() => {
+            const ws = network.getWebSocketByID(connectionID);
+            if (ws) {
+                peer.transactionProxyResult({
+                    transaction_id           : transaction.transaction_id,
+                    transaction_proxy_success: true
+                }, ws);
+            }
+        }).catch((err) => {
+            transactionList.forEach(transaction => walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id));
+            console.log('[wallet][proxy] rejected: ', err);
+            const ws = network.getWebSocketByID(connectionID);
+
+            if (err.cause === 'consensus_timeout') {
+                return;
+            }
+            else if (err.cause === 'transaction_not_found') {
+                ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
+                this.requestTransactionFromNetwork(err.transaction_id_fail);
+            }
+
+            if (ws) {
+                peer.transactionProxyResult({
+                    ...err,
+                    transaction_id           : transaction.transaction_id,
+                    transaction_proxy_success: false
+                }, ws);
+            }
+        });
     }
 
     _doAuditPointWatchDog() {
@@ -1890,8 +1900,8 @@ class Wallet {
 
                             return this.addTransaction([newOutput], outputFee, outputs, config.WALLET_TRANSACTION_REFRESH_VERSION);
                         })
-                        .then((transaction) => {
-                            console.log(`[wallet] Successfully stored and propagated refresh transaction ${transaction.transaction_id}`);
+                        .then((transactionList) => {
+                            transactionList.forEach(transaction => console.log(`[wallet] Successfully stored and propagated refresh transaction ${transaction.transaction_id}`));
                             resolve();
                             unlock();
                         })
@@ -1937,12 +1947,13 @@ class Wallet {
             }
         ];
         return walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
-                          .then(transaction => ([
-                              transaction,
+                          .then(transactionList => ([
+                              transactionList,
                               proxyCandidateData
                           ]))
-                          .then(([transaction, proxyCandidateData]) => peer.transactionProxyRequest(transaction, proxyCandidateData))
-                          .then(([transaction, proxyResponse, proxyWS]) => {
+                          .then(([transactionList, proxyCandidateData]) => peer.transactionProxyRequest(transactionList, proxyCandidateData))
+                          .then(([transactionList, proxyResponse, proxyWS]) => {
+                              const transaction = transactionList[0];
                               return transactionRepository.getTransactionInputChain(transaction)
                                                           .then(inputChain => {
                                                               const chainFromProxy = proxyResponse.transaction_input_chain;
@@ -1956,11 +1967,14 @@ class Wallet {
                                                               if (diff.length !== sizeDiff) {
                                                                   return Promise.reject('proxy_transaction_input_chain_invalid');
                                                               }
-                                                              return propagateTransaction ? peer.transactionProxy(transaction, proxyWS) : transaction;
+                                                              return propagateTransaction ? peer.transactionProxy(transactionList, proxyWS) : transactionList;
                                                           });
                           })
-                          .then(transaction => walletUtils.verifyTransaction(transaction)
-                                                          .then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transaction));
+                          .then(transactionList => {
+                              let pipeline = Promise.resolve(true);
+                              transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction) : false));
+                              return pipeline.then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transactionList);
+                          });
     };
 
     proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
@@ -1974,8 +1988,8 @@ class Wallet {
                                                        .then(callback)
                                                        .catch(_ => callback());
                                             }, resolve);
-                                        }).then(transaction => {
-                                            if (!transaction) {
+                                        }).then(transactionList => {
+                                            if (!transactionList) {
                                                 return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
                                                                             .then(proxyCandidates => {
                                                                                 return new Promise((resolve, reject) => {
@@ -1983,12 +1997,12 @@ class Wallet {
                                                                                         this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction)
                                                                                             .then(callback)
                                                                                             .catch(_ => callback());
-                                                                                    }, transaction => transaction ? resolve(transaction) : reject('proxy_not_found'));
+                                                                                    }, transactionList => transactionList ? resolve(transactionList) : reject('proxy_not_found'));
                                                                                 });
                                                                             });
                                             }
                                             else {
-                                                return transaction;
+                                                return transactionList;
                                             }
                                         });
                                     });
@@ -1997,13 +2011,17 @@ class Wallet {
     signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
         const transactionRepository = database.getRepository('transaction');
         return this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true)
-                   .then(transaction => {
+                   .then(transactionList => {
                        // store the transaction
-                       const dbTransaction            = _.cloneDeep(transaction);
-                       dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                       return transactionRepository.addTransactionFromObject(dbTransaction);
+                       let pipeline = Promise.resolve();
+                       transactionList.forEach(transaction => {
+                           const dbTransaction            = _.cloneDeep(transaction);
+                           dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
+                           pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction));
+                       });
+                       return pipeline.then(() => transactionList);
                    })
-                   .then(transaction => {
+                   .then(transactionList => {
                        // register first
                        // address to the
                        // dht for receiving
@@ -2014,7 +2032,7 @@ class Wallet {
                            'address_key_identifier'
                        ]);
                        network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
-                       return transaction;
+                       return transactionList;
                    });
     }
 

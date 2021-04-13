@@ -797,31 +797,100 @@ class WalletUtils {
         }))
           .then((signatureList) => peer.getNodeAddress()
                                        .then(() => signatureList))
-          .then(signatureList => {
+          .then(signatureList => this.isConsumingExpiredOutputs(inputList, transactionDate).then(isConsumingExpiredOutputs => [
+              signatureList,
+              isConsumingExpiredOutputs
+          ]))
+          .then(([signatureList, isConsumingExpiredOutputs]) => {
+              let transactionList = [];
+              let transaction;
+              if (!isConsumingExpiredOutputs) {
+                  transaction = {
+                      transaction_input_list    : _.map(inputList, o => _.pick(o, [
+                          'output_transaction_id',
+                          'output_position',
+                          'output_transaction_date',
+                          'output_shard_id',
+                          'address_base',
+                          'address_version',
+                          'address_key_identifier'
+                      ])),
+                      transaction_output_list   : _.map(feeOutputList, o => _.pick(o, [
+                          'address_base',
+                          'address_version',
+                          'address_key_identifier',
+                          'amount'
+                      ])).concat(_.map(outputList, o => _.pick(o, [
+                          'address_base',
+                          'address_version',
+                          'address_key_identifier',
+                          'amount'
+                      ]))),
+                      transaction_signature_list: signatureList
+                  };
+              }
+              else {
+                  const refreshOutput      = {
+                      ..._.pick(inputList[0], [
+                          'address_base',
+                          'address_version',
+                          'address_key_identifier'
+                      ]),
+                      amount: _.sum(_.map(feeOutputList, o => o.amount).concat(_.map(outputList, o => o.amount)))
+                  };
+                  const refreshTransaction = {
+                      transaction_input_list    : _.map(inputList, o => _.pick(o, [
+                          'output_transaction_id',
+                          'output_position',
+                          'output_transaction_date',
+                          'output_shard_id',
+                          'address_base',
+                          'address_version',
+                          'address_key_identifier'
+                      ])),
+                      transaction_output_list   : [
+                          refreshOutput
+                      ],
+                      transaction_signature_list: signatureList
+                  };
 
-              let transaction = {
-                  transaction_input_list    : _.map(inputList, o => _.pick(o, [
-                      'output_transaction_id',
-                      'output_position',
-                      'output_transaction_date',
-                      'output_shard_id',
-                      'address_base',
-                      'address_version',
-                      'address_key_identifier'
-                  ])),
-                  transaction_output_list   : _.map(feeOutputList, o => _.pick(o, [
-                      'address_base',
-                      'address_version',
-                      'address_key_identifier',
-                      'amount'
-                  ])).concat(_.map(outputList, o => _.pick(o, [
-                      'address_base',
-                      'address_version',
-                      'address_key_identifier',
-                      'amount'
-                  ]))),
-                  transaction_signature_list: signatureList
-              };
+                  let signature;
+                  for (let transactionSignature of signatureList) {
+                      if(transactionSignature.address_base === refreshOutput.address_base){
+                          signature = _.cloneDeep(transactionSignature);
+                          break;
+                      }
+                  }
+
+                  transaction = {
+                      transaction_input_list    : [
+                          {
+                              'output_transaction_id'  : undefined,
+                              'output_position'        : 0,
+                              'output_transaction_date': Math.floor(transactionDate.getTime() / 1000),
+                              'output_shard_id'        : undefined,
+                              'address_base'           : refreshOutput.address_base,
+                              'address_version'        : refreshOutput.address_version,
+                              'address_key_identifier' : refreshOutput.address_key_identifier
+                          }
+                      ],
+                      transaction_output_list   : _.map(feeOutputList, o => _.pick(o, [
+                          'address_base',
+                          'address_version',
+                          'address_key_identifier',
+                          'amount'
+                      ])).concat(_.map(outputList, o => _.pick(o, [
+                          'address_base',
+                          'address_version',
+                          'address_key_identifier',
+                          'amount'
+                      ]))),
+                      transaction_signature_list: [signature]
+                  };
+
+                  transactionList.push(refreshTransaction);
+              }
+              transactionList.push(transaction);
 
               return database.firstShards((shardID) => {
                   const transactionRepository = database.getRepository('transaction', shardID);
@@ -837,55 +906,63 @@ class WalletUtils {
                       throw Error('parent_transaction_not_available');
                   }
 
-                  transaction['transaction_parent_list'] = _.map(parents, p => p.transaction_id).sort();
+                  transactionList.forEach(transaction => transaction['transaction_parent_list'] = _.map(parents, p => p.transaction_id).sort());
                   return [
-                      transaction,
+                      transactionList,
                       transactionDate
                   ];
               });
           })
-          .then(([transaction, timeNow]) => {
-              transaction.transaction_input_list.forEach((input, idx) => input['input_position'] = idx);
-              transaction.transaction_input_list = _.sortBy(transaction.transaction_input_list, 'input_position');
-              transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = idx - feeOutputList.length);
-              transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
-              transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
-              transaction['payload_hash']            = objectHash.getCHash288(transaction);
-              transaction['transaction_date']        = Math.floor(timeNow.getTime() / 1000);
-              transaction['node_id_origin']          = network.nodeID;
-              transaction['node_id_proxy']           = nodeIDProxy;
-              transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
-              transaction['version']                 = transactionVersion;
-              const tempAddressSignatures            = {};
-              for (let transactionSignature of transaction.transaction_signature_list) {
-                  const privateKeyHex = privateKeyMap[transactionSignature.address_base];
-                  if (!privateKeyHex) {
-                      return Promise.reject(`private_key_not_found: address<${transactionSignature.address_base}>`);
+          .then(([transactionList, timeNow]) => {
+              const hasRefreshTransaction = transactionList.length > 1;
+              for (let i = 0; i < transactionList.length; i++) {
+                  const transaction = transactionList[i];
+                  if (i === 1) { // update transaction to use refresh tx data
+                      transaction.transaction_input_list[0].output_transaction_id = transactionList[0].transaction_id;
+                      transaction.transaction_input_list[0].output_shard_id       = transactionList[0].shard_id;
                   }
-                  try {
-                      const privateKeyBuf                                      = Buffer.from(privateKeyHex, 'hex');
-                      tempAddressSignatures[transactionSignature.address_base] = signature.sign(objectHash.getHashBuffer(transaction), privateKeyBuf);
+                  transaction.transaction_input_list.forEach((input, idx) => input['input_position'] = idx);
+                  transaction.transaction_input_list = _.sortBy(transaction.transaction_input_list, 'input_position');
+                  transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = hasRefreshTransaction && i === 0 ? idx : idx - feeOutputList.length);
+                  transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
+                  transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
+                  transaction['payload_hash']            = objectHash.getCHash288(transaction);
+                  transaction['transaction_date']        = Math.floor(timeNow.getTime() / 1000);
+                  transaction['node_id_origin']          = network.nodeID;
+                  transaction['node_id_proxy']           = nodeIDProxy;
+                  transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
+                  transaction['version']                 = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
+                  const tempAddressSignatures            = {};
+                  for (let transactionSignature of transaction.transaction_signature_list) {
+                      const privateKeyHex = privateKeyMap[transactionSignature.address_base];
+                      if (!privateKeyHex) {
+                          return Promise.reject(`private_key_not_found: address<${transactionSignature.address_base}>`);
+                      }
+                      try {
+                          const privateKeyBuf                                      = Buffer.from(privateKeyHex, 'hex');
+                          tempAddressSignatures[transactionSignature.address_base] = signature.sign(objectHash.getHashBuffer(transaction), privateKeyBuf);
+                      }
+                      catch (e) {
+                          console.log(`[millix-utils] error: ${e}`);
+                          return Promise.reject(`sign_error: address<${transactionSignature.address_base}>`);
+                      }
                   }
-                  catch (e) {
-                      console.log(`[millix-utils] error: ${e}`);
-                      return Promise.reject(`sign_error: address<${transactionSignature.address_base}>`);
+                  for (let transactionSignature of transaction.transaction_signature_list) {
+                      transactionSignature['signature'] = tempAddressSignatures[transactionSignature.address_base];
+                  }
+                  transaction['transaction_id'] = objectHash.getCHash288(transaction);
+                  if ((hasRefreshTransaction && i === 1 || !hasRefreshTransaction) && feeOutputList.length > 0) {
+                      // transaction output attribute: fee
+                      transaction['transaction_output_attribute'] = {
+                          transaction_fee: _.map(feeOutputList, o => _.pick(o, [
+                              'node_id_proxy',
+                              'fee_type'
+                          ]))
+                      };
+                      transaction.transaction_output_attribute.transaction_fee.forEach((outputAttribute, idx) => outputAttribute['output_position'] = idx - feeOutputList.length);
                   }
               }
-              for (let transactionSignature of transaction.transaction_signature_list) {
-                  transactionSignature['signature'] = tempAddressSignatures[transactionSignature.address_base];
-              }
-              transaction['transaction_id'] = objectHash.getCHash288(transaction);
-              if (feeOutputList.length > 0) {
-                  // transaction output attribute: fee
-                  transaction['transaction_output_attribute'] = {
-                      transaction_fee: _.map(feeOutputList, o => _.pick(o, [
-                          'node_id_proxy',
-                          'fee_type'
-                      ]))
-                  };
-                  transaction.transaction_output_attribute.transaction_fee.forEach((outputAttribute, idx) => outputAttribute['output_position'] = idx - feeOutputList.length);
-              }
-              return transaction;
+              return transactionList;
           });
     }
 }

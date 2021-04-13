@@ -52,15 +52,15 @@ export default class Shard {
                               timestamp: Date.now()
                           });
                           return schema.migrate(newVersion, config.DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR)
-                                       .then(() => this._migrateTables())
                                        .then(() => {
                                            eventBus.emit('wallet_notify_message', {
                                                message  : `[database] migration completed: version ${newVersion}`,
                                                is_sticky: false,
                                                timestamp: Date.now()
                                            });
-                                           resolve();
-                                       });
+                                       })
+                                       .then(() => this._migrateTables())
+                                       .then(() => resolve());
                       }
                       else {
                           console.log('[shard] current schema version is ', version);

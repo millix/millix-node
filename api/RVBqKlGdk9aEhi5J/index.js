@@ -80,26 +80,13 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                     console.log(`[api ${this.endpoint}] Received invalid refresh transaction. Not going to sign.`);
                     return Promise.reject('invalid refresh transaction');
                 }
-                else {
-                    return Promise.resolve();
-                }
             }
-            else {
-                const transactionDate = new Date(Math.floor(ntp.now().getTime() / 1000) * 1000);
-                return walletUtils.isConsumingExpiredOutputs(transactionInputs, transactionDate)
-                                  .then(isConsuming => {
-                                      if (isConsuming) {
-                                          console.log(`[api ${this.endpoint}] Transaction consuming expired transaction outputs. Not going to sign.`);
-                                          return Promise.reject('the transaction is consuming outputs that have expired');
-                                      }
-                                      return Promise.resolve();
-                                  });
-            }
+            return Promise.resolve();
         })().then(() => {
             return wallet.proxyTransaction(transactionInputs, transactionOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, false)
-                         .then(signedTransaction => {
+                         .then(signedTransactionList => {
                              console.log(`[api ${this.endpoint}] Successfully signed transaction transaction.`);
-                             res.send(signedTransaction);
+                             res.send(signedTransactionList);
                          });
         }).catch(e => {
             console.log(`[api ${this.endpoint}] error: ${e}`);

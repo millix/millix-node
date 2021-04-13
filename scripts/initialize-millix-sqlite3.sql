@@ -454,7 +454,11 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('address_default', 'T4CefCfUyoc4CWv7cZ5V'),
        ('node_about', 'ijDj2VlTyJBl5R4iTCmG'),
        ('peer_connection', '8FPirjQYaFIEIF2y7OEA'),
-       ('transaction_fee', '360NCKsWffvH48QDlh4a');
+       ('transaction_fee', '360NCKsWffvH48QDlh4a'),
+       ('node_public_key', 'KkwWuh5VaHBYlk8lsduD'),
+       ('peer_count', 'OfhGqiGJID8WTOZHzl2b'),
+       ('shard_protocol', 'kbkMAkuyqOlSNKv7udFz'),
+       ('transaction_count', 'qhTfPzLhZENklxNbTQYW');
 
 INSERT INTO address_attribute_type (address_attribute_type_id, attribute_type) VALUES ('9MgxVxyXsM2EozHVUZgw', 'key_public');
 INSERT INTO transaction_output_attribute_type (attribute_type_id, attribute_type) VALUES ('360NCKsWffvH48QDlh4a', 'transaction_fee');

@@ -3,6 +3,8 @@ import Endpoint from '../endpoint';
 import fs from 'fs';
 import eventBus from '../../core/event-bus';
 import walletUtils from '../../core/wallet/wallet-utils';
+import services from '../../core/services/services';
+import database from '../../database/database';
 
 
 /**
@@ -32,7 +34,7 @@ class _GktuwZlVP39gty6v extends Endpoint {
 
         let authenticationErrorHandler, authenticationSuccessHandler;
         walletUtils.storeMnemonic(mnemonicPhrase, true)
-                   .then(() => wallet.stop())
+                   .then(() => services.stop())
                    .then(() => {
                        eventBus.once('wallet_ready', () => {
                            eventBus.emit('wallet_key', passPhrase);
@@ -48,12 +50,26 @@ class _GktuwZlVP39gty6v extends Endpoint {
                        eventBus.once('wallet_authentication_error', authenticationErrorHandler);
 
                        authenticationSuccessHandler = () => {
-                           res.send({api_status: 'success'});
+                           const walletID = wallet.getDefaultActiveWallet();
+                           database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
+                                   .then(keyIdentifier => {
+                                       const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
+                                       const privateKey     = wallet.getActiveWalletKey(walletID);
+                                       console.log(privateKey);
+                                       res.send({
+                                           api_status: 'success',
+                                           wallet    : {
+                                               id         : walletID,
+                                               private_key: privateKey.privateKey.toString(),
+                                               address    : `${keyIdentifier}${addressVersion}${keyIdentifier}`
+                                           }
+                                       });
+                                   });
                            eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
                        };
                        eventBus.once('wallet_unlock', authenticationSuccessHandler);
 
-                       return wallet.initialize(false);
+                       return services.initialize({initialize_wallet_event: false});
                    })
                    .catch(e => {
                        eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);

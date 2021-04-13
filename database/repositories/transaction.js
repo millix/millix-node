@@ -1576,6 +1576,17 @@ export default class Transaction {
         });
     }
 
+    getFreeOutput(addressKeyIndentifier) {
+        return new Promise((resolve) => {
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
+                              INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
+                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0',
+                [addressKeyIndentifier], (err, rows) => {
+                    resolve(rows);
+                });
+        });
+    }
+
     getLastTransactionByAddress(address) {
         return new Promise((resolve, reject) => {
             this.database.get(
