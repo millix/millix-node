@@ -1636,6 +1636,9 @@ class Wallet {
     }
 
     _onTransactionProxy(transactionList, ws) {
+        if (!(transactionList instanceof Array)) {
+            transactionList = [transactionList];
+        }
         const {connectionID} = ws;
         let pipeline         = Promise.resolve();
         transactionList.forEach(transaction => {
