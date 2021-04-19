@@ -284,6 +284,24 @@ export default class Transaction {
         });
     }
 
+    updateTransactionOutputAttribute(transactionID, shardID, attributeTypeID, attributeValue) {
+        return new Promise((resolve, reject) => {
+            this.database.run('UPDATE transaction_output_attribute SET shard_id = ?, value = ? WHERE transaction_id=? AND attribute_type_id=?',
+                [
+                    shardID,
+                    attributeValue,
+                    transactionID,
+                    attributeTypeID
+                ],
+                (err) => {
+                    if (err) {
+                        return reject(err.message);
+                    }
+                    resolve();
+                });
+        });
+    }
+
     getTransactionOutputAttributes(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT * FROM transaction_output_attribute WHERE transaction_id=?',
@@ -369,7 +387,7 @@ export default class Transaction {
                     if (transaction.transaction_output_attribute) {
                         _.keys(transaction.transaction_output_attribute).forEach(attributeType => {
                             const attributeValue = transaction.transaction_output_attribute[attributeType];
-                            promise              = this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue));
+                            promise              = promise.then(() => this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue)));
                         });
                     }
 
@@ -517,7 +535,8 @@ export default class Transaction {
                     if (transaction.transaction_output_attribute) {
                         _.keys(transaction.transaction_output_attribute).forEach(attributeType => {
                             const attributeValue = transaction.transaction_output_attribute[attributeType];
-                            promise              = this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue));
+                            promise              = promise.then(() => this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue))
+                                                                          .catch(_ => this.updateTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue))));
                         });
                     }
 
