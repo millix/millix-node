@@ -13,6 +13,7 @@ class LogManager {
         this.updateFrequency = updateFrequency;
         this.logSize         = logSize;
         this.log             = [];
+        this.lastIdx = 0;
         this._onUpdate       = null;
     }
 
@@ -81,6 +82,7 @@ class LogManager {
         }
         this.logsCache.push({
             ...data,
+            idx  : this.lastIdx++,
             content: JSON.stringify(data.content || '', null, '\t'),
             type   : data.type.split(':')[0],
             timestamp
