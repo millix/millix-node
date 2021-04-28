@@ -235,6 +235,7 @@ export class WalletTransactionConsensus {
 
                 let sourceTransactions = new Set();
                 let inputTotalAmount   = 0;
+                const outputUsedInTransaction = new Set();
                 // get inputs and check double
                 // spend
                 async.everySeries(transaction.transaction_input_list, (input, callback) => {
@@ -318,6 +319,7 @@ export class WalletTransactionConsensus {
                                                      .then(output => output ? resolve(output) : reject());
                             });
                         }).then(output => {
+                            let outputID = output.transaction_id + ':' + output.output_position;
                             if (!output) {
                                 return callback({
                                     cause              : 'transaction_not_found',
@@ -325,6 +327,14 @@ export class WalletTransactionConsensus {
                                     message            : 'no information found for ' + input.output_transaction_id
                                 }, false);
                             }
+                            else if (outputUsedInTransaction.has(outputID)) {
+                                return callback({
+                                    cause              : 'transaction_invalid',
+                                    transaction_id_fail: input.output_transaction_id,
+                                    message            : 'output already used ' + outputID
+                                }, false);
+                            }
+                            outputUsedInTransaction.add(outputID);
                             inputTotalAmount += output.amount;
                             return callback(null, true);
                         }).catch(() => {

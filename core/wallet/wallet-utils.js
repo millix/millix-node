@@ -625,13 +625,17 @@ class WalletUtils {
         transaction['transaction_signature_list'] = _.sortBy(transaction.transaction_signature_list, 'address_base');
         //verify addresses
         if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
+            const outputUsedInTransaction = new Set();
             for (let i = 0; i < transaction.transaction_input_list.length; i++) {
                 const input = transaction.transaction_input_list[i];
+                const outputID = input.output_transaction_id + ":" + input.output_position;
                 if (!this.isValidAddress(input.address_base)
                     || !this.isValidAddress(input.address_key_identifier)
-                    || !addressRepository.supportedVersionSet.has(input.address_version)) {
+                    || !addressRepository.supportedVersionSet.has(input.address_version)
+                    || outputUsedInTransaction.has(outputID)) {
                     return false;
                 }
+                outputUsedInTransaction.add(outputID);
             }
         }
 
