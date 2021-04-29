@@ -2037,6 +2037,9 @@ export default class Transaction {
                 this.database.run('DELETE FROM transaction_output WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
                     err && console.log('[Database] Failed pruning outputs. [message] ', err);
                 });
+                this.database.run('DELETE FROM transaction_output_attribute WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
+                    err && console.log('[Database] Failed pruning audit point. [message] ', err);
+                });
                 this.database.run('DELETE FROM transaction_signature WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
                     err && console.log('[Database] Failed pruning signatures. [message] ', err);
                 });
