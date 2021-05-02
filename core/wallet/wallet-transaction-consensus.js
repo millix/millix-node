@@ -319,7 +319,6 @@ export class WalletTransactionConsensus {
                                                      .then(output => output ? resolve(output) : reject());
                             });
                         }).then(output => {
-                            let outputID = output.transaction_id + ':' + output.output_position;
                             if (!output) {
                                 return callback({
                                     cause              : 'transaction_not_found',
@@ -327,7 +326,10 @@ export class WalletTransactionConsensus {
                                     message            : 'no information found for ' + input.output_transaction_id
                                 }, false);
                             }
-                            else if (outputUsedInTransaction.has(outputID)) {
+
+                            let outputID = output.transaction_id + ':' + output.output_position;
+
+                            if (outputUsedInTransaction.has(outputID)) {
                                 return callback({
                                     cause              : 'transaction_invalid',
                                     transaction_id_fail: input.output_transaction_id,
@@ -866,7 +868,7 @@ export class WalletTransactionConsensus {
                                    delete this._validationPrepareState[transactionID];
                                }
                                else if (err.cause === 'transaction_not_found') {
-                                   wallet.requestTransactionFromNetwork(err.transaction_id_fail, {priority: isTransactionFundingWallet ? 1 : 0}, isTransactionFundingWallet);
+                                   wallet.requestTransactionFromNetwork(err.transaction_id_fail, {priority: isTransactionFundingWallet ? 1 : 0,  dispatch_request: true}, isTransactionFundingWallet);
                                    // check if we should keep trying
                                    const validationState = this._validationPrepareState[transactionID];
                                    if (!!validationState) {
