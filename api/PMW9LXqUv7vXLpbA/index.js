@@ -54,7 +54,8 @@ class _PMW9LXqUv7vXLpbA extends Endpoint {
                             api_status: 'success',
                             wallet    : {
                                 id         : walletID,
-                                address    : `${keyIdentifier}${addressVersion}${keyIdentifier}`
+                                address    : `${keyIdentifier}${addressVersion}${keyIdentifier}`,
+                                address_key_identifier: keyIdentifier
                             }
                         });
                     });
