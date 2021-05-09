@@ -1974,8 +1974,8 @@ class Wallet {
                                                           });
                           })
                           .then(transactionList => {
-                              let pipeline = Promise.resolve(true);
-                              transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction) : false));
+                              let pipeline = new Promise(resolve => resolve(true));
+                              transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
                               return pipeline.then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transactionList);
                           });
     };
