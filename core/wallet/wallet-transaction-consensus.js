@@ -178,7 +178,7 @@ export class WalletTransactionConsensus {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     transactionRepository.getTransactionObject(transactionID)
                                          .then(transaction => transaction ? resolve([
-                                             transactionRepository.normalizeTransactionObject(transaction),
+                                             transaction,
                                              shardID
                                          ]) : reject());
                 });
@@ -199,7 +199,12 @@ export class WalletTransactionConsensus {
                     console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
                     return resolve();
                 }
-                else if (auditPointID) {
+
+                if (transaction.is_stable !== undefined) { // transaction object needs to be normalized
+                    transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
+                }
+
+                if (auditPointID) {
                     console.log('[consensus][oracle] validated in consensus round after found in Local audit point ', auditPointID, ' at depth ', depth);
                     return resolve();
                 }
@@ -233,8 +238,8 @@ export class WalletTransactionConsensus {
 
                 transactionVisitedSet.add(transactionID);
 
-                let sourceTransactions = new Set();
-                let inputTotalAmount   = 0;
+                let sourceTransactions        = new Set();
+                let inputTotalAmount          = 0;
                 const outputUsedInTransaction = new Set();
                 // get inputs and check double
                 // spend
@@ -868,7 +873,10 @@ export class WalletTransactionConsensus {
                                    delete this._validationPrepareState[transactionID];
                                }
                                else if (err.cause === 'transaction_not_found') {
-                                   wallet.requestTransactionFromNetwork(err.transaction_id_fail, {priority: isTransactionFundingWallet ? 1 : 0,  dispatch_request: true}, isTransactionFundingWallet);
+                                   wallet.requestTransactionFromNetwork(err.transaction_id_fail, {
+                                       priority        : isTransactionFundingWallet ? 1 : 0,
+                                       dispatch_request: true
+                                   }, isTransactionFundingWallet);
                                    // check if we should keep trying
                                    const validationState = this._validationPrepareState[transactionID];
                                    if (!!validationState) {

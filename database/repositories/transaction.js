@@ -48,52 +48,52 @@ export default class Transaction {
                                                     ] : Promise.reject());
                     }).then(result => result || []).then(([transactionInput, transactionRepository]) => {
                         if (transactionInput) {
-                            return transactionRepository.getTransactionInputs(transactionInput.transaction_id)
-                                                        .then(inputs => {
-                                                            transactionInput.transaction_input_list = inputs;
-                                                            return transactionInput;
-                                                        });
+                            if (transactionInput.is_stable) {
+                                return transactionInput;
+                            }
+                            else {
+                                return transactionRepository.getTransactionInputs(transactionInput.transaction_id)
+                                                            .then(inputs => {
+                                                                transactionInput.transaction_input_list = inputs;
+                                                                return transactionInput;
+                                                            });
+                            }
                         }
                         else {
-                            return new Promise(resolve => {
-                                const requestTransactionFromNetwork = () => {
-                                    wallet.enableTransactionSync(inputTransactionID);
-                                    return peer.transactionSyncRequest(inputTransactionID, {
-                                        priority        : 1,
-                                        dispatch_request: true
-                                    }).then(() => wallet.flagTransactionAsRequested(inputTransactionID));
-                                };
-                                eventBus.once('transaction_new:' + inputTransactionID, newTransaction => {
-                                    resolve({
-                                        ...newTransaction,
-                                        transaction_date: new Date(newTransaction.transaction_date)
-                                    });
-                                });
-                                requestTransactionFromNetwork()
-                                    .then(_ => _)
-                                    .catch(() => {
-                                        setTimeout(() => requestTransactionFromNetwork(), config.NETWORK_LONG_TIME_WAIT_MAX * 2);
-                                    });
-                            });
+                            return null;
                         }
                     }).then(transactionInput => {
+
+                        if (!transactionInput) {
+                            callback(true);
+                        }
+
                         inputChain.push({
                             transaction_id  : transactionInput.transaction_id,
                             transaction_date: transactionInput.transaction_date
                         });
-                        if (!database.getRepository('transaction').isExpired(Math.round(transactionInput.transaction_date.getTime() / 1000))) {
-                            for (const input of transactionInput.transaction_input_list) {
-                                if (!processedInputTransactionSet.has(input.output_transaction_id)) {
-                                    pendingInputsSet[input.output_transaction_id] = {
-                                        transaction_id: input.output_transaction_id,
-                                        shard_id      : input.output_shard_id
-                                    };
+
+                        if (transactionInput.transaction_input_list) {
+                            if (!database.getRepository('transaction').isExpired(Math.round(transactionInput.transaction_date.getTime() / 1000))) {
+                                for (const input of transactionInput.transaction_input_list) {
+                                    if (!processedInputTransactionSet.has(input.output_transaction_id)) {
+                                        pendingInputsSet[input.output_transaction_id] = {
+                                            transaction_id: input.output_transaction_id,
+                                            shard_id      : input.output_shard_id
+                                        };
+                                    }
                                 }
+                            }
+                            else {
+                                callback(true);
                             }
                         }
                         callback();
                     });
-                }, () => {
+                }, (cannotValidateTransaction) => {
+                    if (cannotValidateTransaction) {
+                        return resolve([]);
+                    }
                     const pendingTransactionIDList = _.keys(pendingInputsSet);
                     if (pendingTransactionIDList.length > 0) {
                         dfs(_.map(pendingTransactionIDList, p => pendingInputsSet[p]), inputChain, processedInputTransactionSet);
@@ -104,6 +104,8 @@ export default class Transaction {
                     }
                 });
             };
+
+
             dfs(_.uniq(_.map(transaction.transaction_input_list, i => ({
                 transaction_id: i.output_transaction_id,
                 shard_id      : i.output_shard_id

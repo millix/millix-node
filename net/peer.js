@@ -260,6 +260,11 @@ class Peer {
                                           if (!callbackCalled) {
                                               callbackCalled = true;
                                               console.log('[peer] received transaction proxy response for ', transactionID, ' from node ', nodeID);
+                                              eventBus.emit('node_event_log', {
+                                                  type   : 'transaction_new_response_proxy',
+                                                  content: eventData,
+                                                  from   : eventWS.node
+                                              });
                                               resolve([
                                                   transactionList,
                                                   eventData,
