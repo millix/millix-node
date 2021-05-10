@@ -215,6 +215,9 @@ export class WalletSync {
             return;
         }
         const beginTimestamp = timestamp - config.TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN;
+        if (database.getRepository('transaction').isExpired(timestamp)) {
+            return;
+        }
         // get transactions from shard, filtered by date
         database.applyShards((shardID) => {
             const transactionRepository = database.getRepository('transaction', shardID);

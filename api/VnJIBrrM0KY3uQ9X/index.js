@@ -62,10 +62,12 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                 transactionList.forEach(transaction => pipeline = pipeline.then(valid => valid ? walletUtils.verifyTransaction(transaction) : false));
                 pipeline.then(valid => {
                     if (!valid) {
+                        unlock();
                         return Promise.reject('bad transaction payload');
                     }
                     const proxyWS = network.getNodeSocket(transactionList[0].node_id_proxy);
                     if (!proxyWS) {
+                        unlock();
                         return Promise.reject('proxy unavailable');
                     }
 

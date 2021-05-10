@@ -27,8 +27,16 @@ class _Xim7SaikcsHICvfQ extends Endpoint {
             });
         }
         try {
-            const {address: addressBase, identifier: addressKeyIdentifier} = this.addressRepository.getAddressComponent(address);
-            res.send({is_valid: walletUtils.isValidAddress(addressBase) && walletUtils.isValidAddress(addressKeyIdentifier)});
+            const {
+                      address   : addressBase,
+                      identifier: addressKeyIdentifier, version: addressVersion
+                  } = this.addressRepository.getAddressComponent(address);
+            res.send({
+                is_valid              : walletUtils.isValidAddress(addressBase) && walletUtils.isValidAddress(addressKeyIdentifier),
+                address_base          : addressBase,
+                address_version       : addressVersion,
+                address_key_identifier: addressKeyIdentifier
+            });
         }
         catch (e) {
             res.send({

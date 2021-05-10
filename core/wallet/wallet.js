@@ -1956,26 +1956,15 @@ class Wallet {
                           ]))
                           .then(([transactionList, proxyCandidateData]) => peer.transactionProxyRequest(transactionList, proxyCandidateData))
                           .then(([transactionList, proxyResponse, proxyWS]) => {
-                              const transaction = transactionList[0];
-                              return transactionRepository.getTransactionInputChain(transaction)
-                                                          .then(inputChain => {
-                                                              const chainFromProxy = proxyResponse.transaction_input_chain;
-                                                              if (chainFromProxy.length < inputChain.length) {
-                                                                  return Promise.reject('proxy_transaction_input_chain_too_small');
-                                                              }
-
-                                                              const sizeDiff = chainFromProxy.length - inputChain.length;
-                                                              inputChain     = new Set(inputChain);
-                                                              const diff     = chainFromProxy.filter(t => !inputChain.has(t));
-                                                              if (diff.length !== sizeDiff) {
-                                                                  return Promise.reject('proxy_transaction_input_chain_invalid');
-                                                              }
-                                                              return propagateTransaction ? peer.transactionProxy(transactionList, proxyWS) : transactionList;
-                                                          });
+                              const chainFromProxy = proxyResponse.transaction_input_chain;
+                              if (chainFromProxy.length === 0) {
+                                  return Promise.reject('proxy_transaction_input_chain_incomplete');
+                              }
+                              return propagateTransaction ? peer.transactionProxy(transactionList, proxyWS) : transactionList;
                           })
                           .then(transactionList => {
-                              let pipeline = Promise.resolve(true);
-                              transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction) : false));
+                              let pipeline = new Promise(resolve => resolve(true));
+                              transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
                               return pipeline.then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transactionList);
                           });
     };
