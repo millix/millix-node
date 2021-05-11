@@ -34,10 +34,10 @@ export class WalletSync {
                     return callback();
                 }
 
-                delete this.pendingTransactions[job.transaction_id];
+                this.pendingTransactions[job.transaction_id] = true;
 
                 if (job.attempt >= config.TRANSACTION_RETRY_SYNC_MAX) {
-                    this.unresolvedTransactionQueue.push({
+                    this.removeTransactionSync(job.transaction_id, {
                         id  : 'transaction_' + job.transaction_id,
                         data: job
                     });
@@ -58,6 +58,14 @@ export class WalletSync {
                     if (hasTransaction || wallet.isProcessingTransaction(job.transaction_id)) {
                         return callback();
                     }
+
+                    this.addSchedule(job.transaction_id, {
+                        ...job,
+                        dispatch_request: true,
+                        queued          : true,
+                        attempt         : job.attempt + 1
+                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
+
                     peer.transactionSyncRequest(job.transaction_id, job)
                         .then(() => callback())
                         .catch(() => callback());
@@ -268,9 +276,7 @@ export class WalletSync {
             }
 
             if (attempt >= config.TRANSACTION_RETRY_SYNC_MAX || database.getRepository('transaction').isExpired(Math.floor(timestamp / 1000))) {
-                this.removeSchedule(transactionID);
-                delete this.pendingTransactions[transactionID];
-                this.unresolvedTransactionQueue.push({
+                this.removeTransactionSync(transactionID, {
                     id  : 'transaction_' + transactionID,
                     data: {
                         transaction_id  : transactionID,
@@ -282,20 +288,12 @@ export class WalletSync {
                 });
             }
             else if (delay && delay > 0) {
-                this.scheduledQueueAdd[transactionID] = setTimeout(() => {
-                    if (!this.queue || this.pendingTransactions[transactionID]) {
-                        return;
-                    }
-
-                    this.pendingTransactions[transactionID] = true;
-                    delete this.scheduledQueueAdd[transactionID];
-                    this.queue.push({
-                        transaction_id  : transactionID,
-                        dispatch_request: true,
-                        timestamp,
-                        attempt,
-                        priority
-                    });
+                this.addSchedule(transactionID, {
+                    transaction_id  : transactionID,
+                    dispatch_request: true,
+                    timestamp,
+                    attempt,
+                    priority
                 }, delay);
             }
             else {
@@ -312,22 +310,47 @@ export class WalletSync {
         });
     }
 
+    addSchedule(transactionID, data = {}, delay) {
+        this.scheduledQueueAdd[transactionID] = setTimeout(() => {
+            if (!this.queue || !data.dispatch_request && this.pendingTransactions[transactionID]) {
+                return;
+            }
+
+            this.pendingTransactions[transactionID] = true;
+            delete this.scheduledQueueAdd[transactionID];
+            this.queue.push(data);
+        }, delay);
+    }
+
     removeSchedule(transactionID) {
         this.scheduledQueueAdd[transactionID] && clearTimeout(this.scheduledQueueAdd[transactionID]);
         delete this.scheduledQueueAdd[transactionID];
     }
 
-    removeTransactionSync(transactionID) {
+    hasPendingTransaction(transactionID) {
+        return this.pendingTransactions[transactionID];
+    }
+
+    clearTransactionSync(transactionID) {
         this.queue.cancel(transactionID);
-        this.removeSchedule(transactionID);
         delete this.pendingTransactions[transactionID];
-        this.unresolvedTransactionQueue.push({
-            id  : 'transaction_' + transactionID,
-            data: {
-                transaction_id           : transactionID,
-                transaction_sync_rejected: true
-            }
-        });
+    }
+
+    removeTransactionSync(transactionID, data) {
+        this.removeSchedule(transactionID);
+        this.clearTransactionSync(transactionID);
+
+        if (!data) {
+            data = {
+                id  : 'transaction_' + transactionID,
+                data: {
+                    transaction_id           : transactionID,
+                    transaction_sync_rejected: true
+                }
+            };
+        }
+
+        this.unresolvedTransactionQueue.push(data);
     }
 
     close() {
