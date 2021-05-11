@@ -874,8 +874,9 @@ export class WalletTransactionConsensus {
                                }
                                else if (err.cause === 'transaction_not_found') {
                                    wallet.requestTransactionFromNetwork(err.transaction_id_fail, {
-                                       priority        : isTransactionFundingWallet ? 1 : 0,
-                                       dispatch_request: true
+                                       priority          : isTransactionFundingWallet ? 1 : 0,
+                                       dispatch_request  : true,
+                                       force_request_sync: isTransactionFundingWallet
                                    }, isTransactionFundingWallet);
                                    // check if we should keep trying
                                    const validationState = this._validationPrepareState[transactionID];
