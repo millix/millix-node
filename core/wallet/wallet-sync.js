@@ -258,6 +258,7 @@ export class WalletSync {
         this.unresolvedTransactionQueue._store.getTask('transaction_' + transactionID, (err, unresolvedTransaction) => {
             const {delay, priority} = options || {};
             const attempt           = options && options.attempt ? options.attempt + 1 : 1;
+            const timestamp         = options && options.timestamp ? options.timestamp : Date.now();
 
             if (unresolvedTransaction && (!unresolvedTransaction.data.transaction_sync_rejected || !(priority > 0 && attempt < config.TRANSACTION_RETRY_SYNC_MAX))) {
                 return;
@@ -266,7 +267,7 @@ export class WalletSync {
                 return;
             }
 
-            if (attempt >= config.TRANSACTION_RETRY_SYNC_MAX) {
+            if (attempt >= config.TRANSACTION_RETRY_SYNC_MAX || database.getRepository('transaction').isExpired(Math.floor(timestamp / 1000))) {
                 this.removeSchedule(transactionID);
                 delete this.pendingTransactions[transactionID];
                 this.unresolvedTransactionQueue.push({
@@ -275,6 +276,7 @@ export class WalletSync {
                         transaction_id  : transactionID,
                         dispatch_request: true,
                         priority        : priority === undefined ? -1 : priority,
+                        timestamp,
                         attempt
                     }
                 });
@@ -290,6 +292,7 @@ export class WalletSync {
                     this.queue.push({
                         transaction_id  : transactionID,
                         dispatch_request: true,
+                        timestamp,
                         attempt,
                         priority
                     });
@@ -301,6 +304,7 @@ export class WalletSync {
                 this.queue.push({
                     transaction_id  : transactionID,
                     dispatch_request: true,
+                    timestamp,
                     attempt,
                     priority
                 });

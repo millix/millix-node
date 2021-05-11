@@ -838,91 +838,104 @@ class Peer {
     }
 
     transactionSyncRequest(transactionID, options = {}) {
-        const {depth: currentDepth, request_node_id: requestNodeID, routing, priority, dispatch_request: dispatchRequest, attempt} = options;
-        return new Promise((resolve, reject) => {
+        const {
+                  depth           : currentDepth, request_node_id: requestNodeID, routing, priority,
+                  dispatch_request: dispatchRequest,
+                  timestamp,
+                  attempt
+              } = options;
+        return walletSync.getTransactionUnresolvedData(transactionID)
+                         .then(unresolvedTransaction => {
+                             if (unresolvedTransaction) {
+                                 return;
+                             }
+                             return new Promise((resolve, reject) => {
 
-            walletSync.add(transactionID, {
-                delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
-                attempt,
-                priority
-            });
+                                 walletSync.add(transactionID, {
+                                     delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
+                                     timestamp,
+                                     attempt,
+                                     priority
+                                 });
 
-            if (network.registeredClients.length === 0 || this.pendingTransactionSync[transactionID]) {
-                return reject();
-            }
-            else if (!dispatchRequest) {
-                return resolve();
-            }
+                                 if (network.registeredClients.length === 0 || this.pendingTransactionSync[transactionID]) {
+                                     return reject();
+                                 }
+                                 else if (!dispatchRequest) {
+                                     return resolve();
+                                 }
 
-            console.log('[peer] requesting transaction sync for :', transactionID);
-            let payload = {
-                type   : 'transaction_sync',
-                content: {
-                    transaction_id         : transactionID,
-                    depth                  : currentDepth || 0,
-                    routing                : routing,
-                    routing_request_node_id: requestNodeID
-                }
-            };
+                                 console.log('[peer] requesting transaction sync for :', transactionID);
+                                 let payload = {
+                                     type   : 'transaction_sync',
+                                     content: {
+                                         transaction_id         : transactionID,
+                                         depth                  : currentDepth || 0,
+                                         routing                : routing,
+                                         routing_request_node_id: requestNodeID
+                                     }
+                                 };
 
-            eventBus.emit('node_event_log', payload);
+                                 eventBus.emit('node_event_log', payload);
 
-            let data = JSON.stringify(payload);
+                                 let data = JSON.stringify(payload);
 
-            this.pendingTransactionSync[transactionID] = true;
+                                 this.pendingTransactionSync[transactionID] = true;
 
 
-            let nodesWS = _.shuffle(network.registeredClients);
+                                 let nodesWS = _.shuffle(network.registeredClients);
 
-            async.eachSeries(nodesWS, (ws, callback) => {
-                let timeoutID      = undefined;
-                let nodeID         = ws.nodeID;
-                let startTimestamp = Date.now();
-                try {
-                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
-                        eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
-                        eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData) {
-                            clearTimeout(timeoutID);
-                            if (eventData.transaction_not_found) {
-                                console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
-                                callback();
-                            }
-                            else {
-                                console.log(`[peer] received transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
-                                callback(true);
-                            }
-                        });
-                        ws.send(data);
-                        timeoutID = setTimeout(function() {
-                            console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
-                            eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
-                            callback();
-                        }, Math.round(config.NETWORK_SHORT_TIME_WAIT_MAX / 3));
-                    }
-                    else {
-                        callback();
-                    }
-                }
-                catch (e) {
-                    console.log('[WARN]: try to send data over a closed connection.');
-                    clearTimeout(timeoutID);
-                    eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
-                    callback();
-                }
-            }, (done) => {
-                eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
-                delete this.pendingTransactionSync[transactionID];
+                                 async.eachSeries(nodesWS, (ws, callback) => {
+                                     let timeoutID      = undefined;
+                                     let nodeID         = ws.nodeID;
+                                     let startTimestamp = Date.now();
+                                     try {
+                                         if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                                             eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
+                                             eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData) {
+                                                 clearTimeout(timeoutID);
+                                                 if (eventData.transaction_not_found) {
+                                                     console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                                                     callback();
+                                                 }
+                                                 else {
+                                                     console.log(`[peer] received transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                                                     callback(true);
+                                                 }
+                                             });
+                                             ws.send(data);
+                                             timeoutID = setTimeout(function() {
+                                                 console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                                                 eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
+                                                 callback();
+                                             }, Math.round(config.NETWORK_SHORT_TIME_WAIT_MAX / 3));
+                                         }
+                                         else {
+                                             callback();
+                                         }
+                                     }
+                                     catch (e) {
+                                         console.log('[WARN]: try to send data over a closed connection.');
+                                         clearTimeout(timeoutID);
+                                         eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
+                                         callback();
+                                     }
+                                 }, (done) => {
+                                     eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
+                                     delete this.pendingTransactionSync[transactionID];
 
-                if (!done) {
-                    console.log('[peer] transaction_sync_response:' + transactionID + ' not received. skip...');
-                    walletSync.add(transactionID, {
-                        attempt,
-                        priority
-                    });
-                }
-                resolve();
-            });
-        });
+                                     if (!done) {
+                                         console.log('[peer] transaction_sync_response:' + transactionID + ' not received. skip...');
+                                         walletSync.add(transactionID, {
+                                             timestamp,
+                                             attempt,
+                                             priority
+                                         });
+                                     }
+                                     resolve();
+                                 });
+                             });
+                         });
     }
 
     transactionSyncByDateResponse(transactionList, ws) {
@@ -930,20 +943,26 @@ class Peer {
             return;
         }
 
-        let payload = {
-            type   : 'transaction_sync_by_date_response:' + network.nodeID,
-            content: {transaction_id_list: transactionList}
-        };
+        return walletSync.getTransactionUnresolvedData(transactionID)
+                         .then(unresolvedTransaction => {
+                             if (unresolvedTransaction) {
+                                 return;
+                             }
+                             let payload = {
+                                 type   : 'transaction_sync_by_date_response:' + network.nodeID,
+                                 content: {transaction_id_list: transactionList}
+                             };
 
-        eventBus.emit('node_event_log', payload);
+                             eventBus.emit('node_event_log', payload);
 
-        let data = JSON.stringify(payload);
-        try {
-            ws.nodeConnectionReady && ws.send(data);
-        }
-        catch (e) {
-            console.log('[WARN]: try to send data over a closed connection.');
-        }
+                             let data = JSON.stringify(payload);
+                             try {
+                                 ws.nodeConnectionReady && ws.send(data);
+                             }
+                             catch (e) {
+                                 console.log('[WARN]: try to send data over a closed connection.');
+                             }
+                         });
     }
 
     transactionSyncByDate(beginTimestamp, endTimestamp, excludeTransactionList, ws) {
@@ -993,54 +1012,61 @@ class Peer {
     }
 
     transactionSyncByWebSocket(transactionID, ws, currentDepth) {
-        return new Promise((resolve) => {
+        return walletSync.getTransactionUnresolvedData(transactionID)
+                         .then(unresolvedTransaction => {
+                             if (unresolvedTransaction) {
+                                 return;
+                             }
 
-            let startTimestamp = Date.now();
-            let nodeID         = ws.nodeID;
+                             return new Promise((resolve) => {
 
-            if (this.pendingTransactionSync[transactionID]) {
-                return resolve();
-            }
+                                 let startTimestamp = Date.now();
+                                 let nodeID         = ws.nodeID;
 
-            console.log('[peer] requesting transaction sync for :', transactionID);
-            let payload = {
-                type   : 'transaction_sync',
-                content: {
-                    transaction_id: transactionID,
-                    depth         : currentDepth || 0
-                }
-            };
+                                 if (this.pendingTransactionSync[transactionID]) {
+                                     return resolve();
+                                 }
 
-            eventBus.emit('node_event_log', payload);
+                                 console.log('[peer] requesting transaction sync for :', transactionID);
+                                 let payload = {
+                                     type   : 'transaction_sync',
+                                     content: {
+                                         transaction_id: transactionID,
+                                         depth         : currentDepth || 0
+                                     }
+                                 };
 
-            let data = JSON.stringify(payload);
+                                 eventBus.emit('node_event_log', payload);
 
-            try {
-                if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
-                    eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
+                                 let data = JSON.stringify(payload);
 
-                    eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
-                        if (!data.transaction_not_found) {
-                            console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
-                        }
-                    });
+                                 try {
+                                     if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
+                                         eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
-                    ws.send(data);
-                    ws = null;
-                    setTimeout(() => {
-                        console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
-                        if (!this.pendingTransactionSync[transactionID]) {
-                            eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
-                        }
-                    }, Math.round(config.NETWORK_SHORT_TIME_WAIT_MAX / 3));
-                }
-            }
-            catch (e) {
-                console.log('[WARN]: try to send data over a closed connection.');
-            }
+                                         eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
+                                             if (!data.transaction_not_found) {
+                                                 console.log(`[peer] transaction id  ${transactionID} not found at node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                                             }
+                                         });
 
-            resolve();
-        });
+                                         ws.send(data);
+                                         ws = null;
+                                         setTimeout(() => {
+                                             console.log(`[peer] timeout transaction id  ${transactionID} sync from node ${nodeID} (${Date.now() - startTimestamp}ms)`);
+                                             if (!this.pendingTransactionSync[transactionID]) {
+                                                 eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
+                                             }
+                                         }, Math.round(config.NETWORK_SHORT_TIME_WAIT_MAX / 3));
+                                     }
+                                 }
+                                 catch (e) {
+                                     console.log('[WARN]: try to send data over a closed connection.');
+                                 }
+
+                                 resolve();
+                             });
+                         });
     }
 
     _onNodeList(nodes, ws) {

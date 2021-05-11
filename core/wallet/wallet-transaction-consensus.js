@@ -200,7 +200,7 @@ export class WalletTransactionConsensus {
                     return resolve();
                 }
 
-                if (transaction.is_stable !== undefined) { // transaction object needs to be normalized
+                if (transaction && transaction.is_stable !== undefined) { // transaction object needs to be normalized
                     transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
                 }
 
