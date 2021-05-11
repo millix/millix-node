@@ -652,6 +652,7 @@ class Wallet {
         }
 
         if (!this.isProcessingNewTransactionFromNetwork) {
+            walletSync.clearTransactionSync(transaction.transaction_id);
             walletSync.add(transaction.transaction_id, {
                 delay   : 5000,
                 priority: this.getTransactionSyncPriority(transaction)
@@ -706,6 +707,7 @@ class Wallet {
                                                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                           delete this._transactionRequested[transaction.transaction_id];
                                                                                           delete this._transactionFundingActiveWallet[transaction.transaction_id];
+                                                                                          walletSync.removeTransactionSync(transaction.transaction_id);
                                                                                           return false;
                                                                                       }
 
@@ -753,6 +755,8 @@ class Wallet {
                                                                                                                           content: data,
                                                                                                                           from   : node
                                                                                                                       });
+
+                                                                                                                      walletSync.clearTransactionSync(transaction.transaction_id);
 
                                                                                                                       this.transactionSpendRequest(transaction.transaction_id, hasKeyIdentifier, syncPriority).then(_ => _).catch(_ => _);
                                                                                                                       walletSync.syncTransactionSpendingOutputs(transaction);
@@ -819,6 +823,7 @@ class Wallet {
                        console.log('[Wallet] cleanup dangling transaction ', transaction.transaction_id, '. [message]: ', err);
                        delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                        delete this._transactionRequested[transaction.transaction_id];
+                       walletSync.clearTransactionSync(transaction.transaction_id);
                        walletSync.add(transaction.transaction_id, {
                            delay   : 5000,
                            priority: this.getTransactionSyncPriority(transaction)
@@ -1108,8 +1113,7 @@ class Wallet {
                                       peer.transactionSyncRequest(transactionID, {
                                           depth           : data.depth,
                                           routing         : true,
-                                          request_node_id : requestNodeID,
-                                          dispatch_request: true
+                                          request_node_id : requestNodeID
                                       })
                                           .then(_ => _)
                                           .catch(_ => _);

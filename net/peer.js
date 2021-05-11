@@ -841,9 +841,15 @@ class Peer {
         const {
                   depth           : currentDepth, request_node_id: requestNodeID, routing, priority,
                   dispatch_request: dispatchRequest,
+                  queued          : alreadyQueued,
                   timestamp,
                   attempt
               } = options;
+
+        if (!dispatchRequest && walletSync.hasPendingTransaction(transactionID)) {
+            return Promise.resolve();
+        }
+
         return walletSync.getTransactionUnresolvedData(transactionID)
                          .then(unresolvedTransaction => {
                              if (unresolvedTransaction) {
@@ -851,12 +857,14 @@ class Peer {
                              }
                              return new Promise((resolve, reject) => {
 
-                                 walletSync.add(transactionID, {
-                                     delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
-                                     timestamp,
-                                     attempt,
-                                     priority
-                                 });
+                                 if (!alreadyQueued) {
+                                     walletSync.add(transactionID, {
+                                         delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
+                                         timestamp,
+                                         attempt,
+                                         priority
+                                     });
+                                 }
 
                                  if (network.registeredClients.length === 0 || this.pendingTransactionSync[transactionID]) {
                                      return reject();
@@ -926,11 +934,13 @@ class Peer {
 
                                      if (!done) {
                                          console.log('[peer] transaction_sync_response:' + transactionID + ' not received. skip...');
-                                         walletSync.add(transactionID, {
-                                             timestamp,
-                                             attempt,
-                                             priority
-                                         });
+                                         if (!alreadyQueued) {
+                                             walletSync.add(transactionID, {
+                                                 timestamp,
+                                                 attempt,
+                                                 priority
+                                             });
+                                         }
                                      }
                                      resolve();
                                  });
