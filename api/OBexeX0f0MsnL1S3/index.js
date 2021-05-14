@@ -13,8 +13,7 @@ class _OBexeX0f0MsnL1S3 extends Endpoint {
     }
 
     /**
-     * get the active wallet in the node
-     * in the node
+     * gets the active wallet in the node
      * @param app
      * @param req
      * @param res
