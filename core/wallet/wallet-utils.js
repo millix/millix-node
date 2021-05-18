@@ -780,7 +780,7 @@ class WalletUtils {
                     allocatedFunds += output.amount;
                     callback();
                 }).catch(() => {
-                    callback(`output_not_found: ${JSON.stringify(input)}`);
+                    callback(`transaction_output_not_found: ${JSON.stringify(input)}`);
                 });
             }, (err) => {
                 if (err) {
