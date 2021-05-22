@@ -544,6 +544,7 @@ class WalletUtils {
             if ([
                 '0b0',
                 '0b10',
+                '0b20',
                 'lb0l',
                 'lb1l',
                 'lb2l'
