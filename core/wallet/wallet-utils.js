@@ -529,11 +529,11 @@ class WalletUtils {
             console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
 
             let transactionDate;
-            if ([
-                '0a10',
-                '0b10',
-                'la1l',
-                'lb1l'
+            if (![
+                '0a0',
+                '0b0',
+                'la0l',
+                'lb0l'
             ].includes(transaction.version)) {
                 transactionDate = new Date(transaction.transaction_date * 1000);
             }
@@ -545,7 +545,8 @@ class WalletUtils {
                 '0b0',
                 '0b10',
                 'lb0l',
-                'lb1l'
+                'lb1l',
+                'lb2l'
             ].includes(transaction.version)) {
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 if (!(isValidRefresh)) {

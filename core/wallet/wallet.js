@@ -1962,7 +1962,7 @@ class Wallet {
                           .then(([transactionList, proxyResponse, proxyWS]) => {
                               const chainFromProxy = proxyResponse.transaction_input_chain;
                               if (chainFromProxy.length === 0) {
-                                  return Promise.reject('proxy does not have the transaction input chain');
+                                  return Promise.reject('invalid_proxy_transaction_chain');
                               }
                               return propagateTransaction ? peer.transactionProxy(transactionList, proxyWS) : transactionList;
                           })
@@ -1980,10 +1980,10 @@ class Wallet {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
                                                 this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction)
-                                                    .then(transaction => callback(true, transaction))
-                                                    .catch(err => typeof err === "string" && err.startsWith('transaction_output_not_found') ? callback(err) : callback());
-                                            }, (err, transactionList) => typeof err === "string" && err.startsWith('transaction_output_not_found') ? reject(err) :
-                                                                         transactionList ? resolve(transactionList) : reject('proxy_not_found'));
+                                                    .then(transaction => callback({error: false, transaction}))
+                                                    .catch(e => typeof e === "string" && !e.startsWith('invalid_proxy_transaction_chain') ? callback({error: true, message: e}) : callback());
+                                            }, data => data.error && typeof data.message === "string" && !data.message.startsWith('invalid_proxy_transaction_chain') ? reject(data.message) :
+                                                                         data ? resolve(data.transaction) : reject('proxy_not_found'));
                                         });
                                     });
     }
