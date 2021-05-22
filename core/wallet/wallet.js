@@ -1975,15 +1975,16 @@ class Wallet {
 
     proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
         const transactionRepository = database.getRepository('transaction');
+        const proxyErrorList = ['proxy_network_error', 'proxy_timeout', 'invalid_proxy_transaction_chain', 'proxy_connection_state_invalid'];
         return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
                                                 this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction)
                                                     .then(transaction => callback({error: false, transaction}))
-                                                    .catch(e => typeof e === "string" && !e.startsWith('invalid_proxy_transaction_chain') ? callback({error: true, message: e}) : callback());
-                                            }, data => data.error && typeof data.message === "string" && !data.message.startsWith('invalid_proxy_transaction_chain') ? reject(data.message) :
-                                                                         data ? resolve(data.transaction) : reject('proxy_not_found'));
+                                                    .catch(e => typeof e === "string" && !proxyErrorList.includes(e) ? callback({error: true, message: e}) : callback());
+                                            }, data => data.error && typeof data.message === "string" && !proxyErrorList.includes(data.message) ? reject(data.message) :
+                                                                         data && data.transaction ? resolve(data.transaction) : reject('proxy_not_found'));
                                         });
                                     });
     }
