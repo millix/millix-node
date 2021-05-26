@@ -25,25 +25,26 @@ class _rKclyiLtHx0dx55M extends Endpoint {
         database.applyShards((shardID) => {
             const transactionRepository = database.getRepository('transaction', shardID);
             return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, true);
-        }).then(balances => _.sum(balances)).then(stable => {
-            return database.applyShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
-            }).then(balances => _.sum(balances)).then(unstable => res.send({
-                balance: {
-                    stable,
-                    unstable
-                },
-                network: {
-                    online    : network.initialized,
-                    peer_count: network.registeredClients.length
-                },
-                log    : {
-                    log_count    : logManager.lastIdx,
-                    backlog_count: logManager.backLogSize
-                }
-            }));
-        }).catch(e => res.send({
+        }).then(balances => _.sum(balances)).then(stable => database.applyShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
+        }).then(balances => _.sum(balances)).then(unstable => wallet.getAllTransactions().then(transactions => res.send({
+            balance    : {
+                stable,
+                unstable
+            },
+            network    : {
+                online    : network.initialized,
+                peer_count: network.registeredClients.length
+            },
+            log        : {
+                log_count    : logManager.lastIdx,
+                backlog_count: logManager.backLogSize
+            },
+            transaction: {
+                transaction_count: transactions.length
+            }
+        })))).catch(e => res.send({
             api_status : 'fail',
             api_message: `unexpected generic api error: (${e})`
         }));
