@@ -457,6 +457,15 @@ class Wallet {
         });
     }
 
+    getTransactionCount() {
+        return database.applyShards((shardID) => {
+            return database.getRepository('transaction', shardID)
+                           .getTransactionCountByAddressKeyIdentifier(this.defaultKeyIdentifier);
+        }).then(transactionCountList => {
+            return _.sum(transactionCountList);
+        });
+    }
+
     isProcessingTransaction(transactionID) {
         return this._transactionReceivedFromNetwork[transactionID] === true;
     }

@@ -268,6 +268,31 @@ export default class Transaction {
         });
     }
 
+    getTransactionCountByAddressKeyIdentifier(keyIdentifier) {
+        return new Promise((resolve, reject) => {
+            this.database.get(
+                'SELECT COUNT(distinct transaction_id) as transaction_count FROM (SELECT `transaction`.transaction_id FROM `transaction` \
+                LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
+                LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id \
+                WHERE transaction_output.address_key_identifier = ? \
+                UNION SELECT `transaction`.transaction_id FROM `transaction` \
+                LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id  \
+                LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
+                WHERE transaction_input.address_key_identifier = ?)',
+                [
+                    keyIdentifier,
+                    keyIdentifier
+                ],
+                (err, row) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(row.transaction_count);
+                }
+            );
+        });
+    }
+
     addTransactionOutputAttribute(transactionID, shardID, attributeTypeID, attributeValue) {
         return new Promise((resolve, reject) => {
             this.database.run('INSERT INTO transaction_output_attribute (transaction_id, shard_id, attribute_type_id, value) VALUES (?,?,?,?)',

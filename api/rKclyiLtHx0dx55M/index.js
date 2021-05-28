@@ -28,7 +28,7 @@ class _rKclyiLtHx0dx55M extends Endpoint {
         }).then(balances => _.sum(balances)).then(stable => database.applyShards((shardID) => {
             const transactionRepository = database.getRepository('transaction', shardID);
             return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
-        }).then(balances => _.sum(balances)).then(unstable => wallet.getAllTransactions().then(transactions => res.send({
+        }).then(balances => _.sum(balances)).then(unstable => wallet.getTransactionCount().then(transactionCount => res.send({
             balance    : {
                 stable,
                 unstable
@@ -42,7 +42,7 @@ class _rKclyiLtHx0dx55M extends Endpoint {
                 backlog_count: logManager.backLogSize
             },
             transaction: {
-                transaction_count: transactions.length
+                transaction_count: transactionCount
             }
         })))).catch(e => res.send({
             api_status : 'fail',
