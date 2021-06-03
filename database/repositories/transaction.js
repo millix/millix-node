@@ -193,6 +193,25 @@ export default class Transaction {
         });
     }
 
+    getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier) {
+        return new Promise((resolve, reject) => {
+            const {sql, parameters} = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM `transaction` \
+                INNER JOIN transaction_output on `transaction`.transaction_id = transaction_output.transaction_id', {
+                address_key_identifier: addressKeyIdentifier
+            });
+
+            this.database.all(sql, parameters,
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
     getProxyCandidates(n, excludeNodeID) {
         return new Promise((resolve, reject) => {
             this.database.all(
