@@ -769,11 +769,17 @@ class Wallet {
                                                                                                                                   }).then(data => data || []).then(([hasTransaction, isAuditPoint, hasTransactionData]) => {
                                                                                                                                       if (!hasTransaction || isAuditPoint && hasKeyIdentifier) {
                                                                                                                                           console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
+                                                                                                                                          let options = {};
                                                                                                                                           // only flag transactions that don't have the key identifier and are from a wallet funding lineage, or transactions that are not from a funding lineage and have the key identifier
                                                                                                                                           if (isFundingWallet || hasKeyIdentifier) {
                                                                                                                                               this._transactionFundingActiveWallet[inputTransaction.output_transaction_id] = Date.now();
+
+                                                                                                                                              options = {
+                                                                                                                                                  dispatch_request  : true,
+                                                                                                                                                  force_request_sync: true
+                                                                                                                                              };
                                                                                                                                           }
-                                                                                                                                          peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority})
+                                                                                                                                          peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority, ...options})
                                                                                                                                               .then(() => this._transactionRequested[inputTransaction.output_transaction_id] = Date.now())
                                                                                                                                               .catch(_ => _);
                                                                                                                                       }
@@ -847,7 +853,8 @@ class Wallet {
     // Finds all spenders of a single transaction
     // This is a recursive function
     // The spenders are added to an array that is passed in
-    findAllSpenders(transaction) {
+    findAllSpenders(transaction, processedTransaction = new Set()) {
+        processedTransaction.add(transaction.transaction_id);
         console.log(`[Wallet] Querying all shards for potential spenders of transaction ${transaction.transaction_id}`);
 
         return new Promise((resolve) => {
@@ -867,8 +874,11 @@ class Wallet {
                 } // stops recursion
 
                 async.mapSeries(transactionSpenders, (spender, callback) => {
+                    if (processedTransaction.has(spender.transaction_id)) {
+                        return callback(false, []);
+                    }
                     // continues recursion
-                    this.findAllSpenders(spender)
+                    this.findAllSpenders(spender, processedTransaction)
                         .then((spenders) => callback(false, spenders));
                 }, (err, mapOfSpenders) => {
                     let spenders = Array.prototype.concat.apply([], mapOfSpenders);
@@ -883,33 +893,34 @@ class Wallet {
         let spendersByShard = {};
 
         for (let spender of spenders) {
-            if (!(spender.shard_id in spendersByShard)) {
-                spendersByShard[spender.shard_id] = [];
+            const shardID = spender.shard_id || genesisConfig.genesis_shard_id;
+            if (!(shardID in spendersByShard)) {
+                spendersByShard[shardID] = [];
             }
 
-            spendersByShard[spender.shard_id].push(spender.transaction_id);
+            spendersByShard[shardID].push(spender.transaction_id);
         }
 
         return new Promise((resolve) => {
             async.eachSeries(Object.entries(spendersByShard), ([shardID, transactionIDs], callback) => {
                 console.log(`[wallet] marking transactions ${transactionIDs.join(', ')} on shard ${shardID} as invalid.`);
 
-                const transactionRepository = database.getRepository('transaction', shardID);
-
-                if (!transactionRepository) {
-                    console.log(`[wallet] cannot set transactions ${transactionIDs} as invalid: shard not found`);
-                    return callback();
+                let chunkTransactionIDs = [];
+                while (transactionIDs.length) {
+                    chunkTransactionIDs.push(transactionIDs.splice(0, 1000));
                 }
 
-                transactionRepository.markTransactionsAsInvalid(transactionIDs)
-                                     .then(() => {
-                                         console.log(`[wallet] set transactions ${transactionIDs} as invalid`);
-                                         callback();
-                                     })
-                                     .catch((err) => {
-                                         console.log(`[wallet] error while marking transactions as invalid: ${err}`);
-                                         callback();
-                                     });
+                async.eachSeries(chunkTransactionIDs, (transactionIDList, chunkCallback) => {
+                    database.applyShardZeroAndShardRepository('transaction', shardID, transactionRepository => {
+                        return transactionRepository.markTransactionsAsInvalid(transactionIDList);
+                    }).then(() => {
+                        console.log(`[wallet] set transactions ${transactionIDList} as invalid`);
+                        chunkCallback();
+                    }).catch((err) => {
+                        console.log(`[wallet] error while marking transactions as invalid: ${err}`);
+                        chunkCallback();
+                    });
+                }, () => callback());
             }, () => {
                 console.log('[wallet] finished setting all spenders as invalid');
                 resolve();
@@ -1964,16 +1975,27 @@ class Wallet {
 
     proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
         const transactionRepository = database.getRepository('transaction');
-        const proxyErrorList = ['proxy_network_error', 'proxy_timeout', 'invalid_proxy_transaction_chain', 'proxy_connection_state_invalid'];
+        const proxyErrorList        = [
+            'proxy_network_error',
+            'proxy_timeout',
+            'invalid_proxy_transaction_chain',
+            'proxy_connection_state_invalid'
+        ];
         return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
                                                 this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction)
-                                                    .then(transaction => callback({error: false, transaction}))
-                                                    .catch(e => typeof e === "string" && !proxyErrorList.includes(e) ? callback({error: true, message: e}) : callback());
-                                            }, data => data.error && typeof data.message === "string" && !proxyErrorList.includes(data.message) ? reject(data.message) :
-                                                                         data && data.transaction ? resolve(data.transaction) : reject('proxy_not_found'));
+                                                    .then(transaction => callback({
+                                                        error: false,
+                                                        transaction
+                                                    }))
+                                                    .catch(e => typeof e === 'string' && !proxyErrorList.includes(e) ? callback({
+                                                        error  : true,
+                                                        message: e
+                                                    }) : callback());
+                                            }, data => data.error && typeof data.message === 'string' && !proxyErrorList.includes(data.message) ? reject(data.message) :
+                                                       data && data.transaction ? resolve(data.transaction) : reject('proxy_not_found'));
                                         });
                                     });
     }
