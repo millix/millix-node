@@ -110,6 +110,9 @@ export class WalletTransactionConsensus {
                         responseData = {transaction_id: input.transaction_id};
                         return callback(true);
                     }
+                    else if (transaction.status === 3) { // invalid transaction
+                        return callback();
+                    }
                     else if (!doubleSpendSet.has(transaction.transaction_id) && (!responseData || transaction.transaction_date < responseData.transaction_date
                                                                                  || ((transaction.transaction_date.getTime() === responseData.transaction_date.getTime()) && (transaction.transaction_id < responseData.transaction_id)))) {
 
@@ -294,13 +297,12 @@ export class WalletTransactionConsensus {
                                                        }
 
                                                        if ((responseType === 'transaction_double_spend' && !data) ||
-                                                           (responseType === 'transaction_valid' && data.transaction_id !== transaction.transaction_id) ||
-                                                           (responseType === 'transaction_invalid' && data.transaction_id === transaction.transaction_id)) {
+                                                           (responseType === 'transaction_valid' && data.transaction_id !== transaction.transaction_id)) {
                                                            return reject({
-                                                               cause              : responseType === 'transaction_invalid' ? 'transaction_invalid' : 'transaction_double_spend',
-                                                               transaction_id_fail: transaction.transaction_id,
-                                                               message            : (responseType === 'transaction_invalid' ? 'invalid transaction found: ' : 'double spend found in ') + transaction.transaction_id,
-                                                               ...(responseType === 'transaction_double_spend' ? {transaction_input_double_spend: input} : {})
+                                                               cause                         : 'transaction_double_spend',
+                                                               transaction_id_fail           : transaction.transaction_id,
+                                                               message                       : 'double spend found in ' + transaction.transaction_id,
+                                                               transaction_input_double_spend: input
                                                            });
                                                        }
                                                        else if (responseType === 'transaction_not_found') {
@@ -949,7 +951,7 @@ export class WalletTransactionConsensus {
             delete this._validationPrepareState[transactionID];
             //check if there is another transaction to
             // validate
-            setTimeout(() => this.doValidateTransaction(), 0);
+            setTimeout(() => this.doValidateTransaction(), transactionID ? 0 : 10000);
         }).catch(restartValidation => {
             if (restartValidation) {
                 setTimeout(() => this.doValidateTransaction(), 1000);
