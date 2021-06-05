@@ -7,6 +7,7 @@ import config from '../config/config';
 import async from 'async';
 import _ from 'lodash';
 import wallet from './wallet';
+import walletUtils from './wallet-utils';
 import ntp from '../ntp';
 
 
@@ -67,7 +68,7 @@ export class WalletTransactionConsensus {
     }
 
     removeFromRejectedTransactions(transactionID) {
-        delete this._transactionValidationRejected.delete(transactionID);
+        this._transactionValidationRejected.delete(transactionID);
     }
 
     resetTransactionValidationRejected() {
@@ -109,6 +110,9 @@ export class WalletTransactionConsensus {
                         responseData = {transaction_id: input.transaction_id};
                         return callback(true);
                     }
+                    else if (transaction.status === 3) { // invalid transaction
+                        return callback();
+                    }
                     else if (!doubleSpendSet.has(transaction.transaction_id) && (!responseData || transaction.transaction_date < responseData.transaction_date
                                                                                  || ((transaction.transaction_date.getTime() === responseData.transaction_date.getTime()) && (transaction.transaction_id < responseData.transaction_id)))) {
 
@@ -125,8 +129,8 @@ export class WalletTransactionConsensus {
                                     doubleSpendSet.add(transaction.transaction_id);
                                     return callback();
                                 }
-                                else if (err.cause === 'transaction_not_found') {
-                                    responseType = 'transaction_not_found';
+                                else if (err.cause === 'transaction_not_found' || err.cause === 'transaction_invalid') {
+                                    responseType = err.cause;
                                     responseData = {transaction_id: err.transaction_id_fail};
                                 }
                                 else {
@@ -147,16 +151,13 @@ export class WalletTransactionConsensus {
         });
     }
 
-    _setAsDoubleSpend(transactions, doubleSpendTransaction) {
+    _updateDoubleSpendTransaction(transactions, doubleSpendTransactionInput) {
         console.log('[consensus][oracle] setting ', transactions.length, ' transaction as double spend');
-        async.eachSeries(transactions, (transaction, callback) => database.firstShards((shardID) => {
-            return new Promise((resolve, reject) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                transactionRepository.getTransactionObject(transaction.transaction_id)
-                                     .then(transaction => transaction ? transactionRepository.setTransactionAsDoubleSpend(transaction, doubleSpendTransaction).then(() => resolve())
-                                                                      : reject());
-            });
-        }).then(() => callback()));
+        async.eachSeries(transactions, (transactionID, callback) => {
+            database.getRepository('transaction')
+                    .setTransactionAsDoubleSpend(transactionID, doubleSpendTransactionInput)
+                    .then(() => callback());
+        });
     }
 
     _validateTransaction(transaction, nodeID, depth = 0, transactionVisitedSet = new Set(), doubleSpendSet = new Set()) {
@@ -177,38 +178,27 @@ export class WalletTransactionConsensus {
                 return new Promise((resolve, reject) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     transactionRepository.getTransactionObject(transactionID)
-                                         .then(transaction => transaction ? resolve([
-                                             transaction,
-                                             shardID
-                                         ]) : reject());
+                                         .then(transaction => transaction ? resolve(transaction) : reject());
                 });
-            }))().then(data => {
-                const [transaction, shardID] = data || [];
-                if (!transaction) {
-                    return [];
-                }
-                return database.getRepository('audit_point', shardID)
-                               .getAuditPoint(transactionID)
-                               .then(auditPoint => [
-                                   transaction,
-                                   auditPoint ? auditPoint.audit_point_id : undefined
-                               ]);
-            }).then(([transaction, auditPointID]) => {
+            }))().then((transaction) => {
 
                 if (transaction && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
                     console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
                     return resolve();
+                }
+                else if (transaction && transaction.status === 3) {
+                    return reject({
+                        cause              : 'transaction_invalid',
+                        transaction_id_fail: transactionID,
+                        message            : 'invalid transaction found: ' + transactionID
+                    });
                 }
 
                 if (transaction && transaction.is_stable !== undefined) { // transaction object needs to be normalized
                     transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
                 }
 
-                if (auditPointID) {
-                    console.log('[consensus][oracle] validated in consensus round after found in Local audit point ', auditPointID, ' at depth ', depth);
-                    return resolve();
-                }
-                else if (!transaction) {
+                if (!transaction) {
                     return reject({
                         cause              : 'transaction_not_found',
                         transaction_id_fail: transactionID,
@@ -236,165 +226,180 @@ export class WalletTransactionConsensus {
                     return resolve();
                 }
 
-                transactionVisitedSet.add(transactionID);
+                walletUtils.verifyTransaction(transaction)
+                           .then(valid => {
+                               if (!valid) {
+                                   return reject({
+                                       cause              : 'transaction_invalid',
+                                       transaction_id_fail: transaction.transaction_id,
+                                       message            : `invalid transaction found: ${transaction.transaction_id}`
+                                   });
+                               }
 
-                let sourceTransactions        = new Set();
-                let inputTotalAmount          = 0;
-                const outputUsedInTransaction = new Set();
-                // get inputs and check double
-                // spend
-                async.everySeries(transaction.transaction_input_list, (input, callback) => {
-                    if (doubleSpendSet.has(input.output_transaction_id)) {
-                        return callback({
-                            cause              : 'transaction_double_spend',
-                            transaction_id_fail: input.output_transaction_id,
-                            message            : 'double spend found in ' + input.output_transaction_id
-                        }, false);
-                    }
+                               transactionVisitedSet.add(transactionID);
 
-                    (() => {
-                        if (!transactionVisitedSet.has(input.output_transaction_id)) {
-                            sourceTransactions.add(input.output_transaction_id);
-                            return database.applyShards((shardID) => database.getRepository('transaction', shardID).getInputDoubleSpend(input, transaction.transaction_id)).then(data => data || []);
-                        }
-                        else {
-                            return Promise.resolve([]);
-                        }
-                    })().then(doubleSpendTransactions => {
-                        return new Promise((resolve, reject) => {
-                            if (doubleSpendTransactions.length > 0) {
-                                doubleSpendTransactions.push({
-                                    transaction_id: transaction.transaction_id,
-                                    shard_id      : transaction.shard_id,
-                                    ...input
-                                });
-                                this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet)
-                                    .then(({response_type: responseType, data}) => {
+                               let sourceTransactions        = new Set();
+                               let inputTotalAmount          = 0;
+                               const outputUsedInTransaction = new Set();
+                               // get inputs and check double
+                               // spend
+                               async.everySeries(transaction.transaction_input_list, (input, callback) => {
+                                   if (doubleSpendSet.has(input.output_transaction_id)) {
+                                       return callback({
+                                           cause                         : 'transaction_double_spend',
+                                           transaction_id_fail           : transaction.transaction_id,
+                                           transaction_input_double_spend: input,
+                                           message                       : 'double spend found in ' + transaction.transaction_id
+                                       }, false);
+                                   }
 
-                                        if ((responseType === 'transaction_double_spend' && !data) ||
-                                            (responseType === 'transaction_valid' && data.transaction_id !== transaction.transaction_id)) {
-                                            return reject({
-                                                cause              : 'transaction_double_spend',
-                                                transaction_id_fail: input.output_transaction_id,
-                                                message            : 'double spend found in ' + input.output_transaction_id
-                                            });
-                                        }
-                                        else if (responseType === 'transaction_not_found') {
-                                            return reject({
-                                                cause              : 'transaction_not_found',
-                                                transaction_id_fail: data.transaction_id,
-                                                message            : 'no information found for ' + data.transaction_id
-                                            });
-                                        }
-                                        else if (responseType === 'transaction_double_spend_unresolved') {
-                                            return reject({
-                                                cause              : 'transaction_double_spend_unresolved',
-                                                transaction_id_fail: data.transaction_id,
-                                                message            : 'unresolved double spend. unknown state of transaction id ' + data.transaction_id
-                                            });
-                                        }
+                                   (() => {
+                                       if (!transactionVisitedSet.has(input.output_transaction_id)) {
+                                           sourceTransactions.add(input.output_transaction_id);
+                                           return database.applyShards((shardID) => database.getRepository('transaction', shardID).getInputDoubleSpend(input, transaction.transaction_id)).then(data => data || []);
+                                       }
+                                       else {
+                                           return Promise.resolve([]);
+                                       }
+                                   })().then(doubleSpendTransactions => {
+                                       return new Promise((resolve, reject) => {
+                                           if (doubleSpendTransactions.length > 0) {
+                                               doubleSpendTransactions.push({
+                                                   transaction_id: transaction.transaction_id,
+                                                   shard_id      : transaction.shard_id,
+                                                   ...input
+                                               });
+                                               this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet)
+                                                   .then(({response_type: responseType, data}) => {
+
+                                                       if (data && (responseType === 'transaction_double_spend' || responseType === 'transaction_valid')) {
+                                                           let doubleSpendInputs = _.filter(doubleSpendTransactions, i => i.transaction_id !== data.transaction_id);
+                                                           doubleSpendInputs.forEach(doubleSpendInput => doubleSpendSet.add(doubleSpendInput.transaction_id));
+                                                           this._updateDoubleSpendTransaction(doubleSpendInputs, input);
+                                                       }
+
+                                                       if ((responseType === 'transaction_double_spend' && !data) ||
+                                                           (responseType === 'transaction_valid' && data.transaction_id !== transaction.transaction_id)) {
+                                                           return reject({
+                                                               cause                         : 'transaction_double_spend',
+                                                               transaction_id_fail           : transaction.transaction_id,
+                                                               message                       : 'double spend found in ' + transaction.transaction_id,
+                                                               transaction_input_double_spend: input
+                                                           });
+                                                       }
+                                                       else if (responseType === 'transaction_not_found') {
+                                                           return reject({
+                                                               cause              : responseType,
+                                                               transaction_id_fail: data.transaction_id,
+                                                               message            : 'no information found for ' + data.transaction_id
+                                                           });
+                                                       }
+                                                       else if (responseType === 'transaction_double_spend_unresolved') {
+                                                           return reject({
+                                                               cause              : 'transaction_double_spend_unresolved',
+                                                               transaction_id_fail: data.transaction_id,
+                                                               message            : 'unresolved double spend. unknown state of transaction id ' + data.transaction_id
+                                                           });
+                                                       }
+
+                                                       resolve();
+                                                   });
+                                           }
+                                           else {
+                                               resolve();
+                                           }
+                                       });
+                                   }).then(() => {
+                                       // get
+                                       // the
+                                       // total
+                                       // millix
+                                       // amount
+                                       // of
+                                       // this
+                                       // input
+                                       database.firstShards((shardID) => {
+                                           return new Promise((resolve, reject) => {
+                                               if (this._transactionObjectCache[input.output_transaction_id]) {
+                                                   return resolve(this._transactionObjectCache[input.output_transaction_id].transaction_output_list[input.output_position]);
+                                               }
+                                               const transactionRepository = database.getRepository('transaction', shardID);
+                                               transactionRepository.getOutput(input.output_transaction_id, input.output_position)
+                                                                    .then(output => output ? resolve(output) : reject());
+                                           });
+                                       }).then(output => {
+                                           if (!output) {
+                                               return callback({
+                                                   cause              : 'transaction_not_found',
+                                                   transaction_id_fail: input.output_transaction_id,
+                                                   message            : 'no information found for ' + input.output_transaction_id
+                                               }, false);
+                                           }
+
+                                           let outputID = output.transaction_id + ':' + output.output_position;
+
+                                           if (outputUsedInTransaction.has(outputID)) {
+                                               return callback({
+                                                   cause              : 'transaction_invalid',
+                                                   transaction_id_fail: input.output_transaction_id,
+                                                   message            : 'output already used ' + outputID
+                                               }, false);
+                                           }
+                                           outputUsedInTransaction.add(outputID);
+                                           inputTotalAmount += output.amount;
+                                           return callback(null, true);
+                                       }).catch(() => {
+                                           return callback({
+                                               cause              : 'peer_error',
+                                               transaction_id_fail: transactionID,
+                                               message            : 'generic database error when getting data for transaction id ' + input.output_transaction_id
+                                           }, false);
+                                       });
+                                   }).catch(err => {
+                                       callback(err, false);
+                                   });
+                               }, (err, valid) => {
+                                   if (err && !valid) { //not valid
+                                       return reject(err);
+                                   }
+
+                                   if (nodeID && (!this._transactionValidationState[nodeID] || (Date.now() - this._transactionValidationState[nodeID].timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX)) { //timeout has been triggered
+                                       return reject({
+                                           cause: 'consensus_timeout',
+                                           depth
+                                       });
+                                   }
+
+                                   // compare input and output
+                                   // amount
+                                   let outputTotalAmount = 0;
+                                   _.each(transaction.transaction_output_list, output => {
+                                       outputTotalAmount += output.amount;
+                                   });
+
+                                   if (outputTotalAmount > inputTotalAmount) {
+                                       return reject({
+                                           cause              : 'transaction_invalid_amount',
+                                           transaction_id_fail: transactionID,
+                                           message            : 'output amount is greater than input amount in transaction id ' + transactionID
+                                       });
+                                   }
 
 
-                                        let doubleSpendInputs = _.filter(doubleSpendTransactions, i => i.transaction_id !== data.transaction_id);
-                                        doubleSpendInputs.forEach(doubleSpendInput => doubleSpendSet.add(doubleSpendInput.transaction_id));
-                                        this._setAsDoubleSpend(doubleSpendInputs, input.output_transaction_id);
-                                        resolve();
-                                    });
-                            }
-                            else {
-                                resolve();
-                            }
-                        });
-                    }).then(() => {
-                        // get
-                        // the
-                        // total
-                        // millix
-                        // amount
-                        // of
-                        // this
-                        // input
-                        database.firstShards((shardID) => {
-                            return new Promise((resolve, reject) => {
-                                if (this._transactionObjectCache[input.output_transaction_id]) {
-                                    return resolve(this._transactionObjectCache[input.output_transaction_id].transaction_output_list[input.output_position]);
-                                }
-                                const transactionRepository = database.getRepository('transaction', shardID);
-                                transactionRepository.getOutput(input.output_transaction_id, input.output_position)
-                                                     .then(output => output ? resolve(output) : reject());
-                            });
-                        }).then(output => {
-                            if (!output) {
-                                return callback({
-                                    cause              : 'transaction_not_found',
-                                    transaction_id_fail: input.output_transaction_id,
-                                    message            : 'no information found for ' + input.output_transaction_id
-                                }, false);
-                            }
+                                   // check inputs transactions
+                                   async.everySeries(sourceTransactions, (srcTransaction, callback) => {
+                                       this._validateTransaction(this._transactionObjectCache[srcTransaction] || srcTransaction, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
+                                           .then(() => callback(null, true))
+                                           .catch((err) => callback(err, false));
+                                   }, (err, valid) => {
+                                       if (err && !valid) {
+                                           return reject(err);
+                                       }
+                                       resolve();
+                                   });
 
-                            let outputID = output.transaction_id + ':' + output.output_position;
-
-                            if (outputUsedInTransaction.has(outputID)) {
-                                return callback({
-                                    cause              : 'transaction_invalid',
-                                    transaction_id_fail: input.output_transaction_id,
-                                    message            : 'output already used ' + outputID
-                                }, false);
-                            }
-                            outputUsedInTransaction.add(outputID);
-                            inputTotalAmount += output.amount;
-                            return callback(null, true);
-                        }).catch(() => {
-                            return callback({
-                                cause              : 'peer_error',
-                                transaction_id_fail: transactionID,
-                                message            : 'generic database error when getting data for transaction id ' + input.output_transaction_id
-                            }, false);
-                        });
-                    }).catch(err => {
-                        callback(err, false);
-                    });
-                }, (err, valid) => {
-                    if (err && !valid) { //not valid
-                        return reject(err);
-                    }
-
-                    if (nodeID && (!this._transactionValidationState[nodeID] || (Date.now() - this._transactionValidationState[nodeID].timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX)) { //timeout has been triggered
-                        return reject({
-                            cause: 'consensus_timeout',
-                            depth
-                        });
-                    }
-
-                    // compare input and output
-                    // amount
-                    let outputTotalAmount = 0;
-                    _.each(transaction.transaction_output_list, output => {
-                        outputTotalAmount += output.amount;
-                    });
-
-                    if (outputTotalAmount > inputTotalAmount) {
-                        return reject({
-                            cause              : 'transaction_invalid_amount',
-                            transaction_id_fail: transactionID,
-                            message            : 'output amount is greater than input amount in transaction id ' + transactionID
-                        });
-                    }
-
-
-                    // check inputs transactions
-                    async.everySeries(sourceTransactions, (srcTransaction, callback) => {
-                        this._validateTransaction(this._transactionObjectCache[srcTransaction] || srcTransaction, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
-                            .then(() => callback(null, true))
-                            .catch((err) => callback(err, false));
-                    }, (err, valid) => {
-                        if (err && !valid) {
-                            return reject(err);
-                        }
-                        resolve();
-                    });
-
-                });
+                               });
+                           });
             });
         });
     }
@@ -763,184 +768,177 @@ export class WalletTransactionConsensus {
         const lockerID                      = `locker-${consensusCount}`;
         this._consensusRoundState[lockerID] = true;
         console.log('[consensus][request] get unstable transactions');
-        return new Promise(resolve => {
-            database.applyShards((shardID) => {
-                return database.getRepository('transaction', shardID)
-                               .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, excludeTransactionList)
-                               .then(pendingTransactions => {
-                                   // filter out tx that were synced in the
-                                   // last 30s and not being validated yet
-                                   return _.filter(pendingTransactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && Date.now() - transaction.create_date < 30 && !this._consensusRoundState[transaction.transaction_id]));
-                               });
-            }).then(pendingTransactions => {
-                if (pendingTransactions.length === 0) {
-                    return database.applyShards((shardID) => {
-                        return database.getRepository('transaction', shardID)
-                                       .findUnstableTransaction(excludeTransactionList);
-                    }).then(transactions => [
-                        _.filter(transactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && Date.now() - transaction.create_date < 30 && !this._consensusRoundState[transaction.transaction_id])),
-                        false
-                    ]);
-                }
-                else {
-                    return [
-                        pendingTransactions,
-                        true
-                    ];
-                }
-            }).then(([pendingTransactions, isTransactionFundingWallet]) => {
-                console.log('[consensus][request] get unstable transactions done');
-                let rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id) || this._consensusRoundState[t.transaction_id]);
-                let pendingTransaction   = pendingTransactions[0];
+        return database.applyShards((shardID) => {
+            return database.getRepository('transaction', shardID)
+                           .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, excludeTransactionList)
+                           .then(pendingTransactions => {
+                               // filter out tx that were synced in the
+                               // last 30s and not being validated yet
+                               return _.filter(pendingTransactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && Date.now() - transaction.create_date < 30 && !this._consensusRoundState[transaction.transaction_id]));
+                           });
+        }).then(pendingTransactions => {
+            if (pendingTransactions.length === 0) {
+                return database.applyShards((shardID) => {
+                    return database.getRepository('transaction', shardID)
+                                   .findUnstableTransaction(excludeTransactionList);
+                }).then(transactions => [
+                    _.filter(transactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && Date.now() - transaction.create_date < 30 && !this._consensusRoundState[transaction.transaction_id])),
+                    false
+                ]);
+            }
+            else {
+                return [
+                    pendingTransactions,
+                    true
+                ];
+            }
+        }).then(([pendingTransactions, isTransactionFundingWallet]) => {
+            console.log('[consensus][request] get unstable transactions done');
+            let rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id) || this._consensusRoundState[t.transaction_id]);
+            let pendingTransaction   = pendingTransactions[0];
 
-                if (!pendingTransaction) {
-                    pendingTransaction = rejectedTransactions[0];
-                }
+            if (!pendingTransaction) {
+                pendingTransaction = rejectedTransactions[0];
+            }
 
-                if (!pendingTransaction) {
-                    console.log('[consensus][request] no pending funds available for validation.');
-                    delete this._consensusRoundState[lockerID];
-                    return resolve();
-                }
-
-                const transactionID = pendingTransaction.transaction_id;
-                console.log('[consensus][request] starting consensus round for ', transactionID);
-
-                if (isTransactionFundingWallet) {
-                    this._transactionRetryValidation[transactionID] = Date.now();
-                }
-
-                if (this._consensusRoundState[transactionID]) {
-                    // remove locker
-                    delete this._consensusRoundState[lockerID];
-                    return resolve();
-                }
-
+            if (!pendingTransaction) {
+                console.log('[consensus][request] no pending funds available for validation.');
                 delete this._consensusRoundState[lockerID];
-                this._consensusRoundState[transactionID] = {};
+                return;
+            }
 
-                let unstableDateStart = ntp.now();
-                unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-                return this._validateTransaction(transactionID, null, 0)
-                           .then(() => {
-                               if (![
-                                   '0a0',
-                                   '0b0',
-                                   'la0l',
-                                   'lb0l'
-                               ].includes(pendingTransaction.version)) {
-                                   pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date * 1000);
-                               }
-                               else {
-                                   pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date);
-                               }
+            const transactionID = pendingTransaction.transaction_id;
+            console.log('[consensus][request] starting consensus round for ', transactionID);
 
-                               if (unstableDateStart.getTime() >= pendingTransaction.transaction_date.getTime()) {
-                                   console.log('[consensus] transaction validated internally: the transaction is expired, consensus round dismissed');
-                                   return database.applyShardZeroAndShardRepository('transaction', pendingTransaction.shard_id, transactionRepository => {
-                                       return transactionRepository.setPathAsStableFrom(transactionID);
-                                   }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(pendingTransaction.transaction_output_list, o => o.address_key_identifier))));
-                               }
-                               else {
-                                   console.log('[consensus] transaction validated internally, starting consensus using oracles');
-                                   // replace lock id with transaction id
-                                   this._consensusRoundState[transactionID] = {
-                                       consensus_round_validation_count  : 0,
-                                       consensus_round_double_spend_count: 0,
-                                       consensus_round_not_found_count   : 0,
-                                       consensus_round_count             : 0,
-                                       consensus_round_response          : [{}],
-                                       timestamp                         : Date.now(),
-                                       active                            : true
-                                   };
-                                   return this._startConsensusRound(transactionID);
-                               }
-                           })
-                           .then(() => {
-                               delete this._transactionRetryValidation[transactionID];
-                               delete this._consensusRoundState[transactionID];
+            if (isTransactionFundingWallet) {
+                this._transactionRetryValidation[transactionID] = Date.now();
+            }
+
+            if (this._consensusRoundState[transactionID]) {
+                // remove locker
+                delete this._consensusRoundState[lockerID];
+                return;
+            }
+
+            delete this._consensusRoundState[lockerID];
+            this._consensusRoundState[transactionID] = {};
+
+            let unstableDateStart = ntp.now();
+            unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+            return this._validateTransaction(transactionID, null, 0)
+                       .then(() => {
+                           if (![
+                               '0a0',
+                               '0b0',
+                               'la0l',
+                               'lb0l'
+                           ].includes(pendingTransaction.version)) {
+                               pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date * 1000);
+                           }
+                           else {
+                               pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date);
+                           }
+
+                           if (unstableDateStart.getTime() >= pendingTransaction.transaction_date.getTime()) {
+                               console.log('[consensus] transaction validated internally: the transaction is expired, consensus round dismissed');
+                               return database.applyShardZeroAndShardRepository('transaction', pendingTransaction.shard_id, transactionRepository => {
+                                   return transactionRepository.setPathAsStableFrom(transactionID);
+                               }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(pendingTransaction.transaction_output_list, o => o.address_key_identifier))));
+                           }
+                           else {
+                               console.log('[consensus] transaction validated internally, starting consensus using oracles');
+                               // replace lock id with transaction id
+                               this._consensusRoundState[transactionID] = {
+                                   consensus_round_validation_count  : 0,
+                                   consensus_round_double_spend_count: 0,
+                                   consensus_round_not_found_count   : 0,
+                                   consensus_round_count             : 0,
+                                   consensus_round_response          : [{}],
+                                   timestamp                         : Date.now(),
+                                   active                            : true
+                               };
+                               return this._startConsensusRound(transactionID);
+                           }
+                       })
+                       .then(() => transactionID)
+                       .catch((err) => {
+                           console.log('[consensus] transaction not validated internally: ', err);
+                           if (err.cause === 'transaction_double_spend') {
+                               this._transactionValidationRejected.add(transactionID);
                                delete this._validationPrepareState[transactionID];
-                               resolve();
-                               //check if there is another transaction to
-                               // validate
-                               setTimeout(() => this.doValidateTransaction(), 0);
-                           })
-                           .catch((err) => {
-                               console.log('[consensus] transaction not validated internally: ', err);
-                               if (err.cause === 'transaction_double_spend') {
-                                   this._setAsDoubleSpend([pendingTransaction], err.transaction_id_fail);
-                                   this._transactionValidationRejected.add(transactionID);
-                                   delete this._validationPrepareState[transactionID];
-                               }
-                               else if (err.cause === 'transaction_not_found') {
-                                   wallet.requestTransactionFromNetwork(err.transaction_id_fail, {
-                                       priority          : isTransactionFundingWallet ? 1 : 0,
-                                       dispatch_request  : true,
-                                       force_request_sync: isTransactionFundingWallet
-                                   }, isTransactionFundingWallet);
-                                   // check if we should keep trying
-                                   const validationState = this._validationPrepareState[transactionID];
-                                   if (!!validationState) {
-                                       if (validationState.transaction_id_fail === err.transaction_id_fail) {
-                                           validationState.transaction_not_found_count++;
-                                           if (validationState.transaction_not_found_count >= config.CONSENSUS_ROUND_NOT_FOUND_MAX) {
-                                               if (!isTransactionFundingWallet) {
-                                                   console.log('[consensus] transaction not validated internally, starting consensus using oracles');
-                                                   // replace lock id with
-                                                   // transaction id
-                                                   delete this._consensusRoundState[lockerID];
-                                                   this._consensusRoundState[transactionID] = {
-                                                       consensus_round_validation_count  : 0,
-                                                       consensus_round_double_spend_count: 0,
-                                                       consensus_round_not_found_count   : 0,
-                                                       consensus_round_count             : 0,
-                                                       consensus_round_response          : [{}],
-                                                       timestamp                         : Date.now(),
-                                                       active                            : true
-                                                   };
-                                                   return this._startConsensusRound(transactionID)
-                                                              .then(() => {
-                                                                  delete this._transactionRetryValidation[transactionID];
-                                                                  delete this._consensusRoundState[transactionID];
-                                                                  delete this._validationPrepareState[transactionID];
-                                                                  resolve();
-                                                              }).catch(resolve);
-                                               }
-                                               else {
-                                                   // set timeout
-                                                   this._transactionValidationRejected.add(transactionID);
-                                                   return database.applyShardZeroAndShardRepository('transaction', pendingTransaction.shard_id, transactionRepository => {
-                                                       return transactionRepository.timeoutTransaction(transactionID);
-                                                   }).then(() => {
-                                                       delete this._transactionRetryValidation[transactionID];
-                                                       delete this._consensusRoundState[transactionID];
-                                                       delete this._validationPrepareState[transactionID];
-                                                       resolve();
-                                                   });
-                                               }
+                           }
+                           else if (err.cause === 'transaction_invalid') {
+                               wallet.findAndSetAllSpendersAsInvalid({transaction_id: err.transaction_id_fail})
+                                     .then(_ => _);
+                               this._transactionValidationRejected.add(transactionID);
+                               delete this._validationPrepareState[transactionID];
+                           }
+                           else if (err.cause === 'transaction_not_found') {
+                               wallet.requestTransactionFromNetwork(err.transaction_id_fail, {
+                                   priority          : isTransactionFundingWallet ? 1 : 0,
+                                   dispatch_request  : true,
+                                   force_request_sync: isTransactionFundingWallet
+                               }, isTransactionFundingWallet);
+                               // check if we should keep trying
+                               const validationState = this._validationPrepareState[transactionID];
+                               if (!!validationState) {
+                                   if (validationState.transaction_id_fail === err.transaction_id_fail) {
+                                       validationState.transaction_not_found_count++;
+                                       if (validationState.transaction_not_found_count >= config.CONSENSUS_ROUND_NOT_FOUND_MAX) {
+                                           if (!isTransactionFundingWallet) {
+                                               console.log('[consensus] transaction not validated internally, starting consensus using oracles');
+                                               // replace lock id with
+                                               // transaction id
+                                               delete this._consensusRoundState[lockerID];
+                                               this._consensusRoundState[transactionID] = {
+                                                   consensus_round_validation_count  : 0,
+                                                   consensus_round_double_spend_count: 0,
+                                                   consensus_round_not_found_count   : 0,
+                                                   consensus_round_count             : 0,
+                                                   consensus_round_response          : [{}],
+                                                   timestamp                         : Date.now(),
+                                                   active                            : true
+                                               };
+                                               return this._startConsensusRound(transactionID)
+                                                          .then(() => transactionID)
+                                                          .catch(() => Promise.reject(true));
                                            }
-                                       }
-                                       else {
-                                           validationState.transaction_not_found_count = 1;
-                                           validationState.transaction_id_fail         = err.transaction_id_fail;
+                                           else {
+                                               // set timeout
+                                               this._transactionValidationRejected.add(transactionID);
+                                               return database.applyShardZeroAndShardRepository('transaction', pendingTransaction.shard_id, transactionRepository => {
+                                                   return transactionRepository.timeoutTransaction(transactionID);
+                                               }).then(() => transactionID);
+                                           }
                                        }
                                    }
                                    else {
-                                       this._validationPrepareState[transactionID] = {
-                                           transaction_not_found_count: 1,
-                                           transaction_id_fail        : err.transaction_id_fail
-                                       };
+                                       validationState.transaction_not_found_count = 1;
+                                       validationState.transaction_id_fail         = err.transaction_id_fail;
                                    }
                                }
-                               setTimeout(() => {
-                                   delete this._transactionRetryValidation[transactionID];
-                                   delete this._consensusRoundState[transactionID];
-                                   resolve();
-                               }, 5000);
-                           });
-            }).catch(() => {
-                resolve();
-            });
+                               else {
+                                   this._validationPrepareState[transactionID] = {
+                                       transaction_not_found_count: 1,
+                                       transaction_id_fail        : err.transaction_id_fail
+                                   };
+                               }
+                           }
+
+                           delete this._consensusRoundState[transactionID];
+                           return Promise.reject(true);
+                       });
+        }).then(transactionID => {
+            delete this._consensusRoundState[transactionID];
+            delete this._validationPrepareState[transactionID];
+            //check if there is another transaction to
+            // validate
+            setTimeout(() => this.doValidateTransaction(), transactionID ? 0 : 10000);
+        }).catch(restartValidation => {
+            if (restartValidation) {
+                setTimeout(() => this.doValidateTransaction(), 1000);
+            }
+            return Promise.resolve();
         });
     }
 

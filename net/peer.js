@@ -774,18 +774,18 @@ class Peer {
         });
     }
 
-    addressTransactionSync(address, updated, ws) {
+    walletTransactionSync(addressKeyIdentifier, excludeTransactionList, ws) {
 
         if (network.registeredClients.length === 0) {
-            return address;
+            return;
         }
 
-        console.log('[peer] requesting transaction sync for address:', address, ' from ', updated);
+        console.log('[peer] requesting transaction sync for wallet: ', addressKeyIdentifier);
         let payload = {
-            type   : 'address_transaction_sync',
+            type   : 'wallet_transaction_sync',
             content: {
-                address,
-                updated
+                address_key_identifier: addressKeyIdentifier,
+                exclude_transaction_id_list: excludeTransactionList
             }
         };
 
@@ -800,18 +800,6 @@ class Peer {
                 console.log('[WARN]: try to send data over a closed connection.');
             }
         }
-        else {
-            network.registeredClients.forEach(ws => {
-                try {
-                    ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional) && ws.send(data);
-                }
-                catch (e) {
-                    console.log('[WARN]: try to send data over a closed connection.');
-                }
-            });
-        }
-
-        return address;
     }
 
     transactionSyncResponse(content, ws) {
@@ -954,26 +942,20 @@ class Peer {
             return;
         }
 
-        return walletSync.getTransactionUnresolvedData(transactionID)
-                         .then(unresolvedTransaction => {
-                             if (unresolvedTransaction) {
-                                 return;
-                             }
-                             let payload = {
-                                 type   : 'transaction_sync_by_date_response:' + network.nodeID,
-                                 content: {transaction_id_list: transactionList}
-                             };
+        let payload = {
+            type   : 'transaction_sync_by_date_response:' + network.nodeID,
+            content: {transaction_id_list: transactionList}
+        };
 
-                             eventBus.emit('node_event_log', payload);
+        eventBus.emit('node_event_log', payload);
 
-                             let data = JSON.stringify(payload);
-                             try {
-                                 ws.nodeConnectionReady && ws.send(data);
-                             }
-                             catch (e) {
-                                 console.log('[WARN]: try to send data over a closed connection.');
-                             }
-                         });
+        let data = JSON.stringify(payload);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+        }
     }
 
     transactionSyncByDate(beginTimestamp, endTimestamp, excludeTransactionList, ws) {
@@ -982,7 +964,7 @@ class Peer {
             let start  = Date.now();
             let nodeID = ws.nodeID;
 
-            console.log(`[peer] requesting transaction sync by date from ${new Date(beginTimestamp)} to ${new Date(endTimestamp)} : node ${nodeID}`);
+            console.log(`[peer] requesting transaction sync by date from ${new Date(beginTimestamp * 1000)} to ${new Date(endTimestamp * 1000)} : node ${nodeID}`);
             let payload = {
                 type   : 'transaction_sync_by_date',
                 content: {

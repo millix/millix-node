@@ -186,21 +186,6 @@
         "enable": true
       }
     },
-    "wallet_balance_sync": {
-      "type": "function",
-      "group": "wallet",
-      "processor": "localhost_wallet",
-      "payload": {
-        "module": "wallet",
-        "function_name": "_doSyncBalanceForAddresses"
-      },
-      "priority": 1,
-      "option_list": {
-        "run_always": 1,
-        "run_delay": 10000,
-        "enable": true
-      }
-    },
     "wallet_retry_validation_update": {
       "type": "function",
       "group": "wallet",

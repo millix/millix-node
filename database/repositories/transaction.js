@@ -136,7 +136,7 @@ export default class Transaction {
             this.database.get('SELECT SUM(amount) as amount FROM transaction_output ' +
                               'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE transaction_output.address_key_identifier=? AND `transaction`.is_stable = ' + (stable ? 1 : 0) +
-                              ' AND is_spent = 0 AND is_double_spend = 0', [keyIdentifier],
+                              ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3', [keyIdentifier],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });
@@ -146,7 +146,7 @@ export default class Transaction {
     getAddressBalance(address, stable) {
         return new Promise((resolve) => {
             this.database.get('SELECT SUM(amount) as amount FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
-                              'WHERE address=? AND `transaction`.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0 AND is_double_spend = 0', [address],
+                              'WHERE address=? AND `transaction`.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3', [address],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });
@@ -157,7 +157,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND transaction_output.is_double_spend=0 ORDER BY transaction_date DESC LIMIT 100',
+                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND transaction_output.is_double_spend=0 AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT 100',
                 [
                     addressKeyIdentifier
                 ].concat(excludeTransactionIDList),
@@ -182,6 +182,25 @@ export default class Transaction {
                     address,
                     dateTime
                 ],
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
+    getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier) {
+        return new Promise((resolve, reject) => {
+            const {sql, parameters} = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM `transaction` \
+                INNER JOIN transaction_output on `transaction`.transaction_id = transaction_output.transaction_id', {
+                address_key_identifier: addressKeyIdentifier
+            });
+
+            this.database.all(sql, parameters,
                 (err, rows) => {
                     if (err) {
                         console.log(err);
@@ -248,11 +267,11 @@ export default class Transaction {
                 'SELECT `transaction`.*, transaction_input.address as input_address, transaction_output.address as output_address, transaction_output.amount, transaction_output.address_key_identifier, transaction_output.output_position FROM `transaction` \
                 LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
                 LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id \
-                WHERE transaction_output.address_key_identifier = ? \
+                WHERE transaction_output.address_key_identifier = ? AND `transaction`.status != 3 \
                 UNION SELECT `transaction`.*, transaction_input.address as input_address, transaction_output.address as output_address, transaction_output.amount, transaction_output.address_key_identifier, transaction_output.output_position FROM `transaction` \
                 LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id  \
                 LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
-                WHERE transaction_input.address_key_identifier = ? \
+                WHERE transaction_input.address_key_identifier = ? AND `transaction`.status != 3 \
                 ORDER BY `transaction`.transaction_date DESC',
                 [
                     keyIdentifier,
@@ -983,9 +1002,13 @@ export default class Transaction {
         });
     }
 
-    getTransactionSpenders(transactionID) {
+    getTransactionSpenders(transactionID, outputPosition) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT transaction_id, shard_id FROM transaction_input WHERE output_transaction_id = ?', [transactionID], (err, rows) => {
+            let {sql, parameters} = Database.buildQuery('SELECT DISTINCT transaction_id, shard_id FROM transaction_input', {
+                output_transaction_id: transactionID,
+                output_position      : outputPosition
+            });
+            this.database.all(sql, parameters, (err, rows) => {
                 if (err) {
                     return reject(err);
                 }
@@ -1286,7 +1309,7 @@ export default class Transaction {
             let unstableDateStart = ntp.now();
             unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
             unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
-            this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND +`transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'ORDER BY transaction_date ASC LIMIT 1',
+            this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND +`transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT 1',
                 [
                     unstableDateStart,
                     insertDate
@@ -1394,31 +1417,37 @@ export default class Transaction {
         });
     }
 
-    setTransactionAsDoubleSpend(rootTransaction, doubleSpendTransaction) {
+    setTransactionAsDoubleSpend(rootTransactionList, rootDoubleSpendTransactionInput) {
         let now = ntp.now();
         return new Promise(resolve => {
             let depth = 0;
             const dfs = (transactions, doubleSpendTransactions) => {
-                let allNewTransactions       = [];
-                let allNewDoubleTransactions = [];
+                let allNewTransactions         = [];
+                let allNewDoubleTransactions   = [];
+                let processedDoubleSpendInputs = new Set();
                 async.eachOfSeries(transactions, (transaction, idx, callback) => {
-                    const doubleSpendTransaction = doubleSpendTransactions[idx];
+                    const doubleSpendTransactionInput = doubleSpendTransactions[idx];
+                    // mark tx as stable
                     database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.setTransactionAsStable(transaction.transaction_id))
+                        // reset double spend on inputs
                             .then(() => database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateAllTransactionInput(transaction.transaction_id, null)))
-                            .then(() => {
+                            .then(() => database.firstShardORShardZeroRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.getTransactionObject(transaction.transaction_id)))
+                            .then((transaction) => {
                                 return new Promise(resolve => {
+                                    // mark all outputs as double spend.
                                     async.eachSeries(transaction.transaction_output_list, (output, callbackOutputs) => {
                                         database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, now, now, now))
                                                 .then(() => callbackOutputs());
                                     }, () => {
-                                        async.eachSeries(transaction.transaction_input_list, (input, callbackInputs) => {
+                                        async.eachSeries(transaction.transaction_input_list, (input, callbackInputs) => { // get all transactions spending  this input
                                             database.applyShards((shardID) => database.getRepository('transaction', shardID).listOutputSpendTransaction(input.output_transaction_id, input.output_position))
-                                                    .then(transactions => {
+                                                    .then(transactions => { // update the spend date using the oldest date
                                                         let spendDate = _.min(_.map(_.filter(transactions, t => t.transaction_id !== transaction.transaction_id), t => t.transaction_date));
                                                         return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, !spendDate ? null : spendDate));
                                                     })
-                                                    .then(() => {
-                                                        if (input.output_transaction_id === doubleSpendTransaction) {
+                                                    .then(() => { // mark the input as  double spend if it caused the double spend issue.
+                                                        if (input.output_transaction_id === doubleSpendTransactionInput.output_transaction_id &&
+                                                            (!doubleSpendTransactionInput.output_position || input.output_position === doubleSpendTransactionInput.output_position)) {
                                                             return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateTransactionInput(transaction.transaction_id, input.input_position, now));
                                                         }
                                                     })
@@ -1427,14 +1456,67 @@ export default class Transaction {
                                     });
                                 });
                             })
+                            .then(() => { // check if this double spend input was processed and every input used in
+                                // transactions spending were settled
+                                const transactionInputID = `${doubleSpendTransactionInput.output_transaction_id}:${doubleSpendTransactionInput.output_position}`;
+                                if (processedDoubleSpendInputs.has(transactionInputID)) {
+                                    return;
+                                }
+                                processedDoubleSpendInputs.add(transactionInputID); // fix inputs used in the double spend transactions. reset state of inputs used just once to unspent.
+                                return database.applyShards(shardID => database.getRepository('transaction', shardID)
+                                                                               .getTransactionSpenders(doubleSpendTransactionInput.output_transaction_id, doubleSpendTransactionInput.output_position))
+                                               .then(spenders => { // update the state of all inputs
+                                                   return new Promise(resolve => {
+                                                       async.eachSeries(spenders, (spenderTransaction, callbackSpenders) => {
+                                                           database.getRepository('transaction', spenderTransaction.shard_id)
+                                                                   .getTransactionInputs(spenderTransaction.transaction_id)
+                                                                   .then(transactionInputList => {
+                                                                       async.eachSeries(transactionInputList, (transactionInput, callbackInput) => {
+                                                                           if (transactionInput.output_transaction_id === doubleSpendTransactionInput.output_transaction_id) { // skip the double spend transaction
+                                                                               return callbackInput();
+                                                                           }
+                                                                           else { /* check the input spenders. if there is only this transaction, we should reset the state to unspent */
+                                                                               database.applyShards(shardID => database.getRepository('transaction', shardID)
+                                                                                                                       .getTransactionSpenders(transactionInput.output_transaction_id, transactionInput.output_position))
+                                                                                       .then(inputSpenders => {
+                                                                                           return new Promise(resolve => {
+                                                                                               const uniqueTransactionIDs = new Set(_.map(inputSpenders, i => i.transaction_id));
+                                                                                               if (uniqueTransactionIDs.size === 1) {
+                                                                                                   database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
+                                                                                                       return transactionRepository.listTransactionInput({transaction_id: transactionInput.output_transaction_id})
+                                                                                                                                   .then(transactionInputList => {
+                                                                                                                                       // if any input is marked as double spend we should not toggle the state of the outputs
+                                                                                                                                       if (_.some(transactionInputList, input => input.is_double_spend === 1)) {
+                                                                                                                                           return Promise.resolve();
+                                                                                                                                       }
+                                                                                                                                       return database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null, undefined, null));
+                                                                                                                                   });
+                                                                                                   }).then(() => resolve());
+                                                                                               }
+                                                                                               else {
+                                                                                                   resolve();
+                                                                                               }
+                                                                                           });
+                                                                                       })
+                                                                                       .then(() => callbackInput());
+                                                                           }
+                                                                       }, () => callbackSpenders());
+                                                                   });
+                                                       }, () => resolve());
+                                                   });
+                                               });
+                            })
                             .then(() => database.applyShards((shardID) => {
+                                // get all transactions spending from this
+                                // double spend transaction.
                                 return database.getRepository('transaction', shardID)
                                                .getTransactionObjectBySpentOutputTransaction(transaction.transaction_id);
                             }))
                             .then(newTransactions => {
+                                // new list of double spend transactions
                                 if (newTransactions && newTransactions.length) {
                                     allNewTransactions.push(newTransactions);
-                                    allNewDoubleTransactions.push(Array(newTransactions.length).fill(transaction.transaction_id));
+                                    allNewDoubleTransactions.push(Array(newTransactions.length).fill({output_transaction_id: transaction.transaction_id}));
                                 }
                                 callback();
                             });
@@ -1443,11 +1525,11 @@ export default class Transaction {
                         return resolve();
                     }
                     depth++;
-                    dfs(allNewTransactions, allNewDoubleTransactions);
+                    dfs(_.flatten(allNewTransactions), _.flatten(allNewDoubleTransactions));
                 });
 
             };
-            dfs([rootTransaction], [doubleSpendTransaction]);
+            dfs([rootTransactionList], [rootDoubleSpendTransactionInput]);
         });
     }
 
@@ -1803,7 +1885,8 @@ export default class Transaction {
     getOutputSpendDate(outputTransactionID, outputPosition) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT `transaction`.transaction_date FROM transaction_input INNER JOIN `transaction` on transaction_input.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE output_transaction_id = ? and output_position = ?', [
+                              'WHERE output_transaction_id = ? AND output_position = ? ' +
+                              'AND NOT EXISTS(SELECT transaction_output.transaction_id FROM transaction_output WHERE transaction_output.transaction_id = `transaction`.transaction_id AND transaction_output.is_double_spend = 1)', [
                     outputTransactionID,
                     outputPosition
                 ],
