@@ -107,5 +107,4 @@ db.initialize()
                   console.log('registered new genesis: ', genesisConfig.genesis_transaction);
               });
       }
-  })
-  .then(() => setTimeout(() => wallet.syncAddresses(), 2000));
+  });

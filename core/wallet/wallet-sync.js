@@ -119,15 +119,28 @@ export class WalletSync {
                 }
 
                 database.firstShardZeroORShardRepository('transaction', shardID, (transactionRepository) => {
-                    return new Promise((resolve, reject) => {
-                        transactionRepository.getTransactionInput({
-                            output_transaction_id: transactionID,
-                            output_shard_id      : shardID,
-                            output_position      : outputPosition
-                        })
-                                             .then(input => input ? transactionRepository.getTransaction(input.transaction_id) : reject())
-                                             .then(transaction => resolve(transaction))
-                                             .catch(() => reject());
+                    return transactionRepository.getTransactionInput({
+                        output_transaction_id: transactionID,
+                        output_shard_id      : shardID,
+                        output_position      : outputPosition
+                    }).then(input => {
+                        if (input) {
+                            /* check if there is any input that is double spend.
+                             if so, we should force updating this transaction output as spent.
+                             */
+                            return transactionRepository.listTransactionInput({
+                                'transaction_input.transaction_id' : input.transaction_id,
+                                is_double_spend: 1
+                            }).then(doubleSpendInputList => {
+                                if (doubleSpendInputList.length > 0) {
+                                    return Promise.reject();
+                                }
+                                return transactionRepository.getTransaction(input.transaction_id);
+                            });
+                        }
+                        else {
+                            return Promise.reject();
+                        }
                     });
                 }).then(spendingTransaction => {
                     // skip if we already know that the tx is spent

@@ -96,7 +96,7 @@ CREATE TABLE `transaction`
     is_parent        TINYINT     NOT NULL DEFAULT 0 CHECK (is_parent = 0 OR is_parent = 1),
     timeout_date     INT         NULL CHECK(length(timeout_date) <= 10 AND TYPEOF(timeout_date) IN ('integer', 'null')),
     is_timeout       TINYINT     NOT NULL DEFAULT 0 CHECK (is_timeout = 0 OR is_timeout = 1),
-    status           TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    status           TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'), /*1: default, 2: prune, 3: invalid*/
     create_date      INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
 CREATE INDEX idx_transaction_status_is_stable_transaction_date ON `transaction` (status, is_stable, transaction_date);
@@ -174,7 +174,7 @@ CREATE TABLE transaction_output
     is_spent               TINYINT  NOT NULL DEFAULT 0 CHECK (is_spent = 0 OR is_spent = 1),
     double_spend_date      INT      NULL CHECK(length(double_spend_date) <= 10 AND TYPEOF(double_spend_date) IN ('integer', 'null')), -- NOT NULL if double spend
     is_double_spend        TINYINT  NOT NULL DEFAULT 0 CHECK (is_double_spend = 0 OR is_double_spend = 1),
-    status                 TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    status                 TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'), /*1: default, 2: expired*/
     create_date            INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
     PRIMARY KEY (transaction_id, output_position),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id),
