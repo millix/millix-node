@@ -178,23 +178,9 @@ export class WalletTransactionConsensus {
                 return new Promise((resolve, reject) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     transactionRepository.getTransactionObject(transactionID)
-                                         .then(transaction => transaction ? resolve([
-                                             transaction,
-                                             shardID
-                                         ]) : reject());
+                                         .then(transaction => transaction ? resolve(transaction) : reject());
                 });
-            }))().then(data => {
-                const [transaction, shardID] = data || [];
-                if (!transaction) {
-                    return [];
-                }
-                return database.getRepository('audit_point', shardID)
-                               .getAuditPoint(transactionID)
-                               .then(auditPoint => [
-                                   transaction,
-                                   auditPoint ? auditPoint.audit_point_id : undefined
-                               ]);
-            }).then(([transaction, auditPointID]) => {
+            }))().then((transaction) => {
 
                 if (transaction && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
                     console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
@@ -212,11 +198,7 @@ export class WalletTransactionConsensus {
                     transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
                 }
 
-                if (auditPointID) {
-                    console.log('[consensus][oracle] validated in consensus round after found in Local audit point ', auditPointID, ' at depth ', depth);
-                    return resolve();
-                }
-                else if (!transaction) {
+                if (!transaction) {
                     return reject({
                         cause              : 'transaction_not_found',
                         transaction_id_fail: transactionID,
