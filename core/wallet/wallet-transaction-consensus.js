@@ -171,10 +171,7 @@ export class WalletTransactionConsensus {
         }
 
         return new Promise((resolve, reject) => {
-            (() => transaction ? Promise.resolve([
-                transaction,
-                transaction.shard_id
-            ]) : database.firstShards((shardID) => {
+            (() => transaction ? Promise.resolve(transaction) : database.firstShards((shardID) => {
                 return new Promise((resolve, reject) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     transactionRepository.getTransactionObject(transactionID)
