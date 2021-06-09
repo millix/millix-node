@@ -74,18 +74,13 @@ export default class Transaction {
                         });
 
                         if (transactionInput.transaction_input_list) {
-                            if (!database.getRepository('transaction').isExpired(Math.round(transactionInput.transaction_date.getTime() / 1000))) {
-                                for (const input of transactionInput.transaction_input_list) {
-                                    if (!processedInputTransactionSet.has(input.output_transaction_id)) {
-                                        pendingInputsSet[input.output_transaction_id] = {
-                                            transaction_id: input.output_transaction_id,
-                                            shard_id      : input.output_shard_id
-                                        };
-                                    }
+                            for (const input of transactionInput.transaction_input_list) {
+                                if (!processedInputTransactionSet.has(input.output_transaction_id)) {
+                                    pendingInputsSet[input.output_transaction_id] = {
+                                        transaction_id: input.output_transaction_id,
+                                        shard_id      : input.output_shard_id
+                                    };
                                 }
-                            }
-                            else {
-                                callback(true);
                             }
                         }
                         callback();

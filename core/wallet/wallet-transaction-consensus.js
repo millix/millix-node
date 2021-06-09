@@ -864,7 +864,7 @@ export class WalletTransactionConsensus {
                                this._transactionValidationRejected.add(transactionID);
                                delete this._validationPrepareState[transactionID];
                            }
-                           else if (err.cause === 'transaction_invalid') {
+                           else if (err.cause === 'transaction_invalid' || err.cause === 'transaction_invalid_amount') {
                                wallet.findAndSetAllSpendersAsInvalid({transaction_id: err.transaction_id_fail})
                                      .then(_ => _);
                                this._transactionValidationRejected.add(transactionID);
