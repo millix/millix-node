@@ -1484,7 +1484,9 @@ export default class Transaction {
                                                                                                                                        if (_.some(transactionInputList, input => input.is_double_spend === 1)) {
                                                                                                                                            return Promise.resolve();
                                                                                                                                        }
-                                                                                                                                       return database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null, undefined, null));
+                                                                                                                                       return database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
+                                                                                                                                           return transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null, undefined, null)
+                                                                                                                                       });
                                                                                                                                    });
                                                                                                    }).then(() => resolve());
                                                                                                }
@@ -1688,23 +1690,23 @@ export default class Transaction {
         });
     }
 
-    getFreeStableOutput(addressKeyIndentifier) {
+    getFreeStableOutput(addressKeyIdentifier) {
         return new Promise((resolve) => {
             this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
                               INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
                               WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and transaction_output.status != 2 and is_double_spend = 0',
-                [addressKeyIndentifier], (err, rows) => {
+                [addressKeyIdentifier], (err, rows) => {
                     resolve(rows);
                 });
         });
     }
 
-    getFreeOutput(addressKeyIndentifier) {
+    getFreeOutput(addressKeyIdentifier) {
         return new Promise((resolve) => {
             this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
                               INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
                               WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0',
-                [addressKeyIndentifier], (err, rows) => {
+                [addressKeyIdentifier], (err, rows) => {
                     resolve(rows);
                 });
         });
@@ -1880,7 +1882,7 @@ export default class Transaction {
     getOutputSpendDate(outputTransactionID, outputPosition) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT `transaction`.transaction_date FROM transaction_input INNER JOIN `transaction` on transaction_input.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE output_transaction_id = ? AND output_position = ? ' +
+                              'WHERE output_transaction_id = ? AND output_position = ? AND `transaction`.status != 3 ' +
                               'AND NOT EXISTS(SELECT transaction_output.transaction_id FROM transaction_output WHERE transaction_output.transaction_id = `transaction`.transaction_id AND transaction_output.is_double_spend = 1)', [
                     outputTransactionID,
                     outputPosition

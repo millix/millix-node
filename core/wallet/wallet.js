@@ -923,9 +923,10 @@ class Wallet {
                         async.eachSeries(transactionIDList, (transactionID, callbackTransaction) => {
                             // get all inputs
                             database.firstShardORShardZeroRepository('transaction', shardID, transactionRepository => {
-                                return transactionRepository.getTransactionInputs(transactionID);
+                                return transactionRepository.getTransactionInputs(transactionID)
+                                                            .then(inputs => !inputs || inputs.length === 0 ? Promise.reject() : inputs);
                             }).then(transactionInputList => {
-                                /* check if this the ouput spent in this input should be reset */
+                                /* check if this the output spent in this input should be reset */
                                 async.eachSeries(transactionInputList, (transactionInput, callbackInput) => {
                                     /* if this output is invalid too we dont reset it */
                                     if (spendersSet.has(transactionInput.output_transaction_id)) {
@@ -933,7 +934,8 @@ class Wallet {
                                     }
                                     /* get information about the transaction that generated this input */
                                     database.firstShardORShardZeroRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
-                                        return transactionRepository.getTransaction(transactionInput.output_transaction_id, transactionInput.output_shard_id);
+                                        return transactionRepository.getTransaction(transactionInput.output_transaction_id, transactionInput.output_shard_id)
+                                                                    .then(transaction => transaction || Promise.reject());
                                     }).then(transaction => {
                                         if (!transaction || transaction.status === 3) {
                                             /* the transaction was not found or it's invalid*/
@@ -944,7 +946,7 @@ class Wallet {
                                             return transactionRepository.getTransactionOutput({
                                                 transaction_id : transaction.transaction_id,
                                                 is_double_spend: 1
-                                            });
+                                            }).then(output => output || Promise.reject());
                                         }).then(doubleSpentTransactionOutput => {
                                             if (doubleSpentTransactionOutput) {
                                                 /* there is a double spend output. skip this transaction*/
@@ -953,7 +955,7 @@ class Wallet {
 
                                             /* we should reset the spend status of the output if there is no other tx spending it */
                                             database.applyShards(shardID => {
-                                                return database.getRepository('transaction', shardID).getTransactionSpenders(transactionInput.output_shard_id, transactionInput.output_position);
+                                                return database.getRepository('transaction', shardID).getTransactionSpenders(transactionInput.output_transaction_id, transactionInput.output_position);
                                             }).then(transactionSpenders => {
                                                 if (transactionSpenders.length > 1) {
                                                     /* skip this output. there is another transaction spending it */

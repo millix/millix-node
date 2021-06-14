@@ -118,35 +118,42 @@ export class WalletSync {
                     return callback(); //something was wrong skip this output.
                 }
 
-                database.firstShardZeroORShardRepository('transaction', shardID, (transactionRepository) => {
-                    return transactionRepository.getTransactionInput({
+                database.applyShards(shardID => {
+                    const transactionRepository = database.getRepository('transaction');
+                    return transactionRepository.listTransactionInput({
                         output_transaction_id: transactionID,
                         output_shard_id      : shardID,
                         output_position      : outputPosition
-                    }).then(input => {
-                        if (input) {
-                            /* check if there is any input that is double spend.
-                             if so, we should force updating this transaction output as spent.
-                             */
-                            return transactionRepository.listTransactionInput({
-                                'transaction_input.transaction_id' : input.transaction_id,
-                                is_double_spend: 1
-                            }).then(doubleSpendInputList => {
-                                if (doubleSpendInputList.length > 0) {
-                                    return Promise.reject();
-                                }
-                                return transactionRepository.getTransaction(input.transaction_id);
-                            });
-                        }
-                        else {
-                            return Promise.reject();
-                        }
+                    }).then(inputList => {
+                        const spendingInputs = [];
+                        return new Promise((resolve) => {
+                            async.eachSeries(inputList, (input, callbackInput) => {
+                                /* check if there is any input that is double spend.
+                                 if so, we should force updating this transaction output as spent.
+                                 */
+                                transactionRepository.listTransactionInput({
+                                    'transaction_input.transaction_id': input.transaction_id,
+                                    is_double_spend                   : 1
+                                }).then(doubleSpendInputList => {
+                                    if (doubleSpendInputList.length > 0) {
+                                        return callbackInput();
+                                    }
+                                    return transactionRepository.getTransaction(input.transaction_id)
+                                                                .then(transaction => {
+                                                                    if (transaction && transaction.status !== 3) {
+                                                                        spendingInputs.push(transaction);
+                                                                    }
+                                                                    callbackInput();
+                                                                });
+                                });
+                            }, () => resolve(spendingInputs));
+                        });
                     });
-                }).then(spendingTransaction => {
+                }).then(spendingTransactionList => {
                     // skip if we already know that the tx is spent
-                    if (spendingTransaction) {
+                    if (spendingTransactionList.length > 0) {
                         return database.applyShardZeroAndShardRepository('transaction', shardID, transactionRepository => {
-                            return transactionRepository.updateTransactionOutput(transactionID, outputPosition, spendingTransaction.transaction_date);
+                            return transactionRepository.updateTransactionOutput(transactionID, outputPosition, _.min(_.map(spendingTransactionList, spendingInput => spendingInput.transaction_date)));
                         }).then(() => {
                             callback();
                         });
