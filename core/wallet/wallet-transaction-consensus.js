@@ -171,13 +171,15 @@ export class WalletTransactionConsensus {
         }
 
         return new Promise((resolve, reject) => {
-            (() => transaction ? Promise.resolve(transaction) : database.firstShards((shardID) => {
-                return new Promise((resolve, reject) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    transactionRepository.getTransactionObject(transactionID)
-                                         .then(transaction => transaction ? resolve(transaction) : reject());
-                });
-            }))().then((transaction) => {
+            (() => transaction ? Promise.resolve(transaction) :
+                   this._transactionObjectCache[transactionID] ? Promise.resolve(this._transactionObjectCache[transactionID]) :
+                   database.firstShards((shardID) => {
+                       return new Promise((resolve, reject) => {
+                           const transactionRepository = database.getRepository('transaction', shardID);
+                           transactionRepository.getTransactionObject(transactionID)
+                                                .then(transaction => transaction ? resolve(transaction) : reject());
+                       });
+                   }))().then((transaction) => {
 
                 if (transaction && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
                     console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
