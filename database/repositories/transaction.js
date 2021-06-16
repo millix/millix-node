@@ -1485,7 +1485,7 @@ export default class Transaction {
                                                                                                                                            return Promise.resolve();
                                                                                                                                        }
                                                                                                                                        return database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
-                                                                                                                                           return transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null, undefined, null)
+                                                                                                                                           return transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null, undefined, null);
                                                                                                                                        });
                                                                                                                                    });
                                                                                                    }).then(() => resolve());
@@ -1558,7 +1558,8 @@ export default class Transaction {
     getInputDoubleSpend(input, transactionID) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT transaction_input.* FROM transaction_input INNER JOIN `transaction` on `transaction`.transaction_id = transaction_input.transaction_id \
-                               WHERE transaction_input.output_transaction_id = ? AND transaction_input.output_position = ? AND transaction_input.transaction_id != ? AND `transaction`.status != 3',
+                               INNER JOIN transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
+                               WHERE transaction_input.output_transaction_id = ? AND transaction_input.output_position = ? AND transaction_input.transaction_id != ? AND transaction_output.is_double_spend != 1 AND `transaction`.status != 3',
                 [
                     input.output_transaction_id,
                     input.output_position,
