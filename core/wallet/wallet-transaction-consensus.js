@@ -192,6 +192,27 @@ export class WalletTransactionConsensus {
                         message            : 'invalid transaction found: ' + transactionID
                     });
                 }
+                else if (transaction && transaction.is_stable && _.some(transaction.transaction_output_list, output => output.is_double_spend === 1) ||
+                         doubleSpendSet.has(transactionID)) {
+                    return reject({
+                        cause              : 'transaction_double_spend',
+                        transaction_id_fail: transactionID,
+                        message            : 'double spend found in ' + transactionID
+                    });
+                }
+                else if (depth === config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
+                    return reject({
+                        cause              : 'transaction_validation_max_depth',
+                        transaction_id_fail: transactionID,
+                        message            : `not validated in a depth of ${depth}`
+                    });
+                }
+                else if (transaction && transaction.transaction_id === genesisConfig.genesis_transaction) {
+                    return resolve();
+                }
+                else if (transactionVisitedSet.has(transactionID)) {
+                    return resolve();
+                }
 
                 if (transaction && transaction.is_stable !== undefined) { // transaction object needs to be normalized
                     transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
@@ -203,26 +224,6 @@ export class WalletTransactionConsensus {
                         transaction_id_fail: transactionID,
                         message            : 'no information found for ' + transactionID
                     });
-                }
-                else if (transaction.transaction_id === genesisConfig.genesis_transaction) {
-                    return resolve();
-                }
-                else if (depth === config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
-                    return reject({
-                        cause              : 'transaction_validation_max_depth',
-                        transaction_id_fail: transactionID,
-                        message            : `not validated in a depth of ${depth}`
-                    });
-                }
-                else if (doubleSpendSet.has(transactionID)) {
-                    return reject({
-                        cause              : 'transaction_double_spend',
-                        transaction_id_fail: transactionID,
-                        message            : 'double spend found in ' + transactionID
-                    });
-                }
-                else if (transactionVisitedSet.has(transactionID)) {
-                    return resolve();
                 }
 
                 walletUtils.verifyTransaction(transaction)

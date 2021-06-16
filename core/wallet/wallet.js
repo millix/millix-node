@@ -2172,7 +2172,7 @@ class Wallet {
         eventBus.removeAllListeners('transaction_sync_response');
         eventBus.removeAllListeners('transaction_sync_by_date_response');
         eventBus.removeAllListeners('shard_sync_request');
-        eventBus.removeAllListeners('address_transaction_sync');
+        eventBus.removeAllListeners('wallet_transaction_sync');
         eventBus.removeAllListeners('transaction_validation_request');
         eventBus.removeAllListeners('transaction_validation_response');
         eventBus.removeAllListeners('transaction_spend_request');
