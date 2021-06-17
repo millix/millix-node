@@ -702,7 +702,7 @@ class Wallet {
                                                                                           delete this._transactionRequested[transaction.transaction_id];
                                                                                           delete this._transactionFundingActiveWallet[transaction.transaction_id];
                                                                                           walletSync.removeTransactionSync(transaction.transaction_id);
-                                                                                          return false;
+                                                                                          // return false;
                                                                                       }
 
                                                                                       const isFundingWallet  = !!this._transactionFundingActiveWallet[transaction.transaction_id];

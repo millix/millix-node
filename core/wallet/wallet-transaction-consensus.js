@@ -153,9 +153,9 @@ export class WalletTransactionConsensus {
 
     _updateDoubleSpendTransaction(transactions, doubleSpendTransactionInput) {
         console.log('[consensus][oracle] setting ', transactions.length, ' transaction as double spend');
-        async.eachSeries(transactions, (transactionID, callback) => {
+        async.eachSeries(transactions, (transaction, callback) => {
             database.getRepository('transaction')
-                    .setTransactionAsDoubleSpend(transactionID, doubleSpendTransactionInput)
+                    .setTransactionAsDoubleSpend(transaction, doubleSpendTransactionInput)
                     .then(() => callback());
         });
     }
@@ -255,7 +255,7 @@ export class WalletTransactionConsensus {
 
                                    (() => {
                                        if (!transactionVisitedSet.has(input.output_transaction_id)) {
-                                           sourceTransactions.add(input.output_transaction_id);
+                                           sourceTransactions.add(input);
                                            return database.applyShards((shardID) => database.getRepository('transaction', shardID).getInputDoubleSpend(input, transaction.transaction_id)).then(data => data || []);
                                        }
                                        else {
@@ -310,14 +310,7 @@ export class WalletTransactionConsensus {
                                            }
                                        });
                                    }).then(() => {
-                                       // get
-                                       // the
-                                       // total
-                                       // millix
-                                       // amount
-                                       // of
-                                       // this
-                                       // input
+                                       /* get the total millix amount of this input */
                                        database.firstShards((shardID) => {
                                            return new Promise((resolve, reject) => {
                                                if (this._transactionObjectCache[input.output_transaction_id]) {
@@ -370,8 +363,7 @@ export class WalletTransactionConsensus {
                                        });
                                    }
 
-                                   // compare input and output
-                                   // amount
+                                   /* compare input and output amount */
                                    let outputTotalAmount = 0;
                                    _.each(transaction.transaction_output_list, output => {
                                        outputTotalAmount += output.amount;
@@ -388,9 +380,14 @@ export class WalletTransactionConsensus {
 
                                    // check inputs transactions
                                    async.everySeries(sourceTransactions, (srcTransaction, callback) => {
-                                       this._validateTransaction(this._transactionObjectCache[srcTransaction] || srcTransaction, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
+                                       this._validateTransaction(this._transactionObjectCache[srcTransaction.output_transaction_id] || srcTransaction.output_transaction_id, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
                                            .then(() => callback(null, true))
-                                           .catch((err) => callback(err, false));
+                                           .catch((err) => {
+                                               if (err && err.cause === 'transaction_double_spend' && !err.transaction_input_double_spend) {
+                                                   this._updateDoubleSpendTransaction([transaction], [srcTransaction]);
+                                               }
+                                               callback(err, false);
+                                           });
                                    }, (err, valid) => {
                                        if (err && !valid) {
                                            return reject(err);
