@@ -152,7 +152,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND transaction_output.is_double_spend=0 AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT 100',
+                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND transaction_output.is_double_spend=0 AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT 100',
                 [
                     addressKeyIdentifier
                 ].concat(excludeTransactionIDList),
