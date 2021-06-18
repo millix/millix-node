@@ -196,7 +196,7 @@ export default class Transaction {
             });
 
             if (returnValidTransactions) {
-                sql += ' AND `transaction`.status != 3 AND `transactions`.is_stable = 1 AND transaction_output.is_double_spend = 0'
+                sql += ' AND `transaction`.status != 3 AND `transaction`.is_stable = 1 AND transaction_output.is_double_spend = 0'
             }
 
             this.database.all(sql, parameters,
