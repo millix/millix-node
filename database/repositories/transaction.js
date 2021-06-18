@@ -74,18 +74,13 @@ export default class Transaction {
                         });
 
                         if (transactionInput.transaction_input_list) {
-                            if (!database.getRepository('transaction').isExpired(Math.round(transactionInput.transaction_date.getTime() / 1000))) {
-                                for (const input of transactionInput.transaction_input_list) {
-                                    if (!processedInputTransactionSet.has(input.output_transaction_id)) {
-                                        pendingInputsSet[input.output_transaction_id] = {
-                                            transaction_id: input.output_transaction_id,
-                                            shard_id      : input.output_shard_id
-                                        };
-                                    }
+                            for (const input of transactionInput.transaction_input_list) {
+                                if (!processedInputTransactionSet.has(input.output_transaction_id)) {
+                                    pendingInputsSet[input.output_transaction_id] = {
+                                        transaction_id: input.output_transaction_id,
+                                        shard_id      : input.output_shard_id
+                                    };
                                 }
-                            }
-                            else {
-                                callback(true);
                             }
                         }
                         callback();
@@ -157,7 +152,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND transaction_output.is_double_spend=0 AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT 100',
+                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 AND transaction_output.is_spent=0 AND transaction_output.is_double_spend=0 AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT 100',
                 [
                     addressKeyIdentifier
                 ].concat(excludeTransactionIDList),
@@ -193,12 +188,16 @@ export default class Transaction {
         });
     }
 
-    getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier) {
+    getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier, returnValidTransactions = false) {
         return new Promise((resolve, reject) => {
-            const {sql, parameters} = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM `transaction` \
+            let {sql, parameters} = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM `transaction` \
                 INNER JOIN transaction_output on `transaction`.transaction_id = transaction_output.transaction_id', {
                 address_key_identifier: addressKeyIdentifier
             });
+
+            if (returnValidTransactions) {
+                sql += ' AND `transaction`.status != 3 AND `transaction`.is_stable = 1 AND transaction_output.is_double_spend = 0'
+            }
 
             this.database.all(sql, parameters,
                 (err, rows) => {
@@ -1489,7 +1488,9 @@ export default class Transaction {
                                                                                                                                        if (_.some(transactionInputList, input => input.is_double_spend === 1)) {
                                                                                                                                            return Promise.resolve();
                                                                                                                                        }
-                                                                                                                                       return database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null, undefined, null));
+                                                                                                                                       return database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
+                                                                                                                                           return transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null, undefined, null);
+                                                                                                                                       });
                                                                                                                                    });
                                                                                                    }).then(() => resolve());
                                                                                                }
@@ -1560,7 +1561,9 @@ export default class Transaction {
 
     getInputDoubleSpend(input, transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT * FROM transaction_input WHERE output_transaction_id = ? AND output_position = ? AND transaction_id != ?',
+            this.database.all('SELECT transaction_input.* FROM transaction_input INNER JOIN `transaction` on `transaction`.transaction_id = transaction_input.transaction_id \
+                               INNER JOIN transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
+                               WHERE transaction_input.output_transaction_id = ? AND transaction_input.output_position = ? AND transaction_input.transaction_id != ? AND transaction_output.is_double_spend = 0 AND `transaction`.status != 3',
                 [
                     input.output_transaction_id,
                     input.output_position,
@@ -1693,23 +1696,23 @@ export default class Transaction {
         });
     }
 
-    getFreeStableOutput(addressKeyIndentifier) {
+    getFreeStableOutput(addressKeyIdentifier) {
         return new Promise((resolve) => {
             this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
                               INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
                               WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and transaction_output.status != 2 and is_double_spend = 0',
-                [addressKeyIndentifier], (err, rows) => {
+                [addressKeyIdentifier], (err, rows) => {
                     resolve(rows);
                 });
         });
     }
 
-    getFreeOutput(addressKeyIndentifier) {
+    getFreeOutput(addressKeyIdentifier) {
         return new Promise((resolve) => {
             this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
                               INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
                               WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0',
-                [addressKeyIndentifier], (err, rows) => {
+                [addressKeyIdentifier], (err, rows) => {
                     resolve(rows);
                 });
         });
@@ -1885,7 +1888,7 @@ export default class Transaction {
     getOutputSpendDate(outputTransactionID, outputPosition) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT `transaction`.transaction_date FROM transaction_input INNER JOIN `transaction` on transaction_input.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE output_transaction_id = ? AND output_position = ? ' +
+                              'WHERE output_transaction_id = ? AND output_position = ? AND `transaction`.status != 3 ' +
                               'AND NOT EXISTS(SELECT transaction_output.transaction_id FROM transaction_output WHERE transaction_output.transaction_id = `transaction`.transaction_id AND transaction_output.is_double_spend = 1)', [
                     outputTransactionID,
                     outputPosition
