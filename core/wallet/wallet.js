@@ -1197,7 +1197,7 @@ class Wallet {
             });
             database.applyShards((shardID) => {
                 const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier, true);
+                return transactionRepository.getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier);
             }).then(transactions => {
                 transactions = _.filter(transactions, transaction => !excludeTransactionIDSet.has(transaction.transaction_id));
                 console.log('[wallet] >>', transactions.length, ' transaction will be synced to wallet ', addressKeyIdentifier);
