@@ -702,7 +702,7 @@ class Wallet {
                                                                                           delete this._transactionRequested[transaction.transaction_id];
                                                                                           delete this._transactionFundingActiveWallet[transaction.transaction_id];
                                                                                           walletSync.removeTransactionSync(transaction.transaction_id);
-                                                                                          return false;
+                                                                                          // return false;
                                                                                       }
 
                                                                                       const isFundingWallet  = !!this._transactionFundingActiveWallet[transaction.transaction_id];
@@ -891,6 +891,7 @@ class Wallet {
 
     markAllSpendersAsInvalid(spenders) {
         let spendersByShard = {};
+        let spendersSet     = new Set();
 
         for (let spender of spenders) {
             const shardID = spender.shard_id || genesisConfig.genesis_shard_id;
@@ -899,6 +900,7 @@ class Wallet {
             }
 
             spendersByShard[shardID].push(spender.transaction_id);
+            spendersSet.add(spender.transaction_id);
         }
 
         return new Promise((resolve) => {
@@ -915,10 +917,63 @@ class Wallet {
                         return transactionRepository.markTransactionsAsInvalid(transactionIDList);
                     }).then(() => {
                         console.log(`[wallet] set transactions ${transactionIDList} as invalid`);
-                        chunkCallback();
                     }).catch((err) => {
                         console.log(`[wallet] error while marking transactions as invalid: ${err}`);
-                        chunkCallback();
+                    }).then(() => {
+                        async.eachSeries(transactionIDList, (transactionID, callbackTransaction) => {
+                            // get all inputs
+                            database.firstShardORShardZeroRepository('transaction', shardID, transactionRepository => {
+                                return transactionRepository.getTransactionInputs(transactionID)
+                                                            .then(inputs => !inputs || inputs.length === 0 ? Promise.reject() : inputs);
+                            }).then(transactionInputList => {
+                                /* check if this the output spent in this input should be reset */
+                                async.eachSeries(transactionInputList, (transactionInput, callbackInput) => {
+                                    /* if this output is invalid too we dont reset it */
+                                    if (spendersSet.has(transactionInput.output_transaction_id)) {
+                                        return callbackInput();
+                                    }
+                                    /* get information about the transaction that generated this input */
+                                    database.firstShardORShardZeroRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
+                                        return transactionRepository.getTransaction(transactionInput.output_transaction_id, transactionInput.output_shard_id)
+                                                                    .then(transaction => transaction || Promise.reject());
+                                    }).then(transaction => {
+                                        if (!transaction || transaction.status === 3) {
+                                            /* the transaction was not found or it's invalid*/
+                                            return callbackInput();
+                                        }
+                                        /* if the transaction is a double spend we dont reset the output state */
+                                        database.firstShardORShardZeroRepository('transaction', transaction.shard_id, transactionRepository => {
+                                            return transactionRepository.getTransactionOutput({
+                                                transaction_id : transaction.transaction_id,
+                                                is_double_spend: 1
+                                            }).then(output => output || Promise.reject());
+                                        }).then(doubleSpentTransactionOutput => {
+                                            if (doubleSpentTransactionOutput) {
+                                                /* there is a double spend output. skip this transaction*/
+                                                return callbackInput();
+                                            }
+
+                                            /* we should reset the spend status of the output if there is no other tx spending it */
+                                            database.applyShards(shardID => {
+                                                return database.getRepository('transaction', shardID).getTransactionSpenders(transactionInput.output_transaction_id, transactionInput.output_position);
+                                            }).then(transactionSpenders => {
+                                                if (transactionSpenders.length > 1) {
+                                                    /* skip this output. there is another transaction spending it */
+                                                    return callbackInput();
+                                                }
+
+                                                /* set the transaction output as unspent because the spender was an invalid transaction */
+                                                database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
+                                                    return transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null);
+                                                }).then(() => {
+                                                    callbackInput();
+                                                });
+                                            });
+                                        });
+                                    });
+                                }, () => callbackTransaction());
+                            });
+                        }, () => chunkCallback());
                     });
                 }, () => callback());
             }, () => {
@@ -1142,7 +1197,7 @@ class Wallet {
             });
             database.applyShards((shardID) => {
                 const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier);
+                return transactionRepository.getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier, true);
             }).then(transactions => {
                 transactions = _.filter(transactions, transaction => !excludeTransactionIDSet.has(transaction.transaction_id));
                 console.log('[wallet] >>', transactions.length, ' transaction will be synced to wallet ', addressKeyIdentifier);
@@ -1979,7 +2034,8 @@ class Wallet {
             'proxy_network_error',
             'proxy_timeout',
             'invalid_proxy_transaction_chain',
-            'proxy_connection_state_invalid'
+            'proxy_connection_state_invalid',
+            'transaction_proxy_rejected'
         ];
         return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
                                     .then(proxyCandidates => {
@@ -1994,7 +2050,7 @@ class Wallet {
                                                         error  : true,
                                                         message: e
                                                     }) : callback());
-                                            }, data => data.error && typeof data.message === 'string' && !proxyErrorList.includes(data.message) ? reject(data.message) :
+                                            }, data => data && data.error && typeof data.message === 'string' && !proxyErrorList.includes(data.message) ? reject(data.message) :
                                                        data && data.transaction ? resolve(data.transaction) : reject('proxy_not_found'));
                                         });
                                     });
@@ -2116,7 +2172,7 @@ class Wallet {
         eventBus.removeAllListeners('transaction_sync_response');
         eventBus.removeAllListeners('transaction_sync_by_date_response');
         eventBus.removeAllListeners('shard_sync_request');
-        eventBus.removeAllListeners('address_transaction_sync');
+        eventBus.removeAllListeners('wallet_transaction_sync');
         eventBus.removeAllListeners('transaction_validation_request');
         eventBus.removeAllListeners('transaction_validation_response');
         eventBus.removeAllListeners('transaction_spend_request');

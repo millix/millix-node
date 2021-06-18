@@ -153,9 +153,9 @@ export class WalletTransactionConsensus {
 
     _updateDoubleSpendTransaction(transactions, doubleSpendTransactionInput) {
         console.log('[consensus][oracle] setting ', transactions.length, ' transaction as double spend');
-        async.eachSeries(transactions, (transactionID, callback) => {
+        async.eachSeries(transactions, (transaction, callback) => {
             database.getRepository('transaction')
-                    .setTransactionAsDoubleSpend(transactionID, doubleSpendTransactionInput)
+                    .setTransactionAsDoubleSpend(transaction, doubleSpendTransactionInput)
                     .then(() => callback());
         });
     }
@@ -171,16 +171,15 @@ export class WalletTransactionConsensus {
         }
 
         return new Promise((resolve, reject) => {
-            (() => transaction ? Promise.resolve([
-                transaction,
-                transaction.shard_id
-            ]) : database.firstShards((shardID) => {
-                return new Promise((resolve, reject) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    transactionRepository.getTransactionObject(transactionID)
-                                         .then(transaction => transaction ? resolve(transaction) : reject());
-                });
-            }))().then((transaction) => {
+            (() => transaction ? Promise.resolve(transaction) :
+                   this._transactionObjectCache[transactionID] ? Promise.resolve(this._transactionObjectCache[transactionID]) :
+                   database.firstShards((shardID) => {
+                       return new Promise((resolve, reject) => {
+                           const transactionRepository = database.getRepository('transaction', shardID);
+                           transactionRepository.getTransactionObject(transactionID)
+                                                .then(transaction => transaction ? resolve(transaction) : reject());
+                       });
+                   }))().then((transaction) => {
 
                 if (transaction && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
                     console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
@@ -193,6 +192,27 @@ export class WalletTransactionConsensus {
                         message            : 'invalid transaction found: ' + transactionID
                     });
                 }
+                else if (transaction && transaction.is_stable && _.some(transaction.transaction_output_list, output => output.is_double_spend === 1) ||
+                         doubleSpendSet.has(transactionID)) {
+                    return reject({
+                        cause              : 'transaction_double_spend',
+                        transaction_id_fail: transactionID,
+                        message            : 'double spend found in ' + transactionID
+                    });
+                }
+                else if (depth === config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
+                    return reject({
+                        cause              : 'transaction_validation_max_depth',
+                        transaction_id_fail: transactionID,
+                        message            : `not validated in a depth of ${depth}`
+                    });
+                }
+                else if (transaction && transaction.transaction_id === genesisConfig.genesis_transaction) {
+                    return resolve();
+                }
+                else if (transactionVisitedSet.has(transactionID)) {
+                    return resolve();
+                }
 
                 if (transaction && transaction.is_stable !== undefined) { // transaction object needs to be normalized
                     transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
@@ -204,26 +224,6 @@ export class WalletTransactionConsensus {
                         transaction_id_fail: transactionID,
                         message            : 'no information found for ' + transactionID
                     });
-                }
-                else if (transaction.transaction_id === genesisConfig.genesis_transaction) {
-                    return resolve();
-                }
-                else if (depth === config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
-                    return reject({
-                        cause              : 'transaction_validation_max_depth',
-                        transaction_id_fail: transactionID,
-                        message            : `not validated in a depth of ${depth}`
-                    });
-                }
-                else if (doubleSpendSet.has(transactionID)) {
-                    return reject({
-                        cause              : 'transaction_double_spend',
-                        transaction_id_fail: transactionID,
-                        message            : 'double spend found in ' + transactionID
-                    });
-                }
-                else if (transactionVisitedSet.has(transactionID)) {
-                    return resolve();
                 }
 
                 walletUtils.verifyTransaction(transaction)
@@ -255,7 +255,7 @@ export class WalletTransactionConsensus {
 
                                    (() => {
                                        if (!transactionVisitedSet.has(input.output_transaction_id)) {
-                                           sourceTransactions.add(input.output_transaction_id);
+                                           sourceTransactions.add(input);
                                            return database.applyShards((shardID) => database.getRepository('transaction', shardID).getInputDoubleSpend(input, transaction.transaction_id)).then(data => data || []);
                                        }
                                        else {
@@ -310,14 +310,7 @@ export class WalletTransactionConsensus {
                                            }
                                        });
                                    }).then(() => {
-                                       // get
-                                       // the
-                                       // total
-                                       // millix
-                                       // amount
-                                       // of
-                                       // this
-                                       // input
+                                       /* get the total millix amount of this input */
                                        database.firstShards((shardID) => {
                                            return new Promise((resolve, reject) => {
                                                if (this._transactionObjectCache[input.output_transaction_id]) {
@@ -370,8 +363,7 @@ export class WalletTransactionConsensus {
                                        });
                                    }
 
-                                   // compare input and output
-                                   // amount
+                                   /* compare input and output amount */
                                    let outputTotalAmount = 0;
                                    _.each(transaction.transaction_output_list, output => {
                                        outputTotalAmount += output.amount;
@@ -388,9 +380,14 @@ export class WalletTransactionConsensus {
 
                                    // check inputs transactions
                                    async.everySeries(sourceTransactions, (srcTransaction, callback) => {
-                                       this._validateTransaction(this._transactionObjectCache[srcTransaction] || srcTransaction, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
+                                       this._validateTransaction(this._transactionObjectCache[srcTransaction.output_transaction_id] || srcTransaction.output_transaction_id, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet)
                                            .then(() => callback(null, true))
-                                           .catch((err) => callback(err, false));
+                                           .catch((err) => {
+                                               if (err && err.cause === 'transaction_double_spend' && !err.transaction_input_double_spend) {
+                                                   this._updateDoubleSpendTransaction([transaction], [srcTransaction]);
+                                               }
+                                               callback(err, false);
+                                           });
                                    }, (err, valid) => {
                                        if (err && !valid) {
                                            return reject(err);
@@ -867,7 +864,7 @@ export class WalletTransactionConsensus {
                                this._transactionValidationRejected.add(transactionID);
                                delete this._validationPrepareState[transactionID];
                            }
-                           else if (err.cause === 'transaction_invalid') {
+                           else if (err.cause === 'transaction_invalid' || err.cause === 'transaction_invalid_amount') {
                                wallet.findAndSetAllSpendersAsInvalid({transaction_id: err.transaction_id_fail})
                                      .then(_ => _);
                                this._transactionValidationRejected.add(transactionID);
