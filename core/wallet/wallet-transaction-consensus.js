@@ -181,11 +181,11 @@ export class WalletTransactionConsensus {
                        });
                    }))().then((transaction) => {
 
-                if (transaction && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
+                /*if (transaction && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
                     console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
                     return resolve();
                 }
-                else if (transaction && transaction.status === 3) {
+                else*/ if (transaction && transaction.status === 3) {
                     return reject({
                         cause              : 'transaction_invalid',
                         transaction_id_fail: transactionID,
@@ -200,13 +200,13 @@ export class WalletTransactionConsensus {
                         message            : 'double spend found in ' + transactionID
                     });
                 }
-                else if (depth === config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
+                /*else if (depth === config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
                     return reject({
                         cause              : 'transaction_validation_max_depth',
                         transaction_id_fail: transactionID,
                         message            : `not validated in a depth of ${depth}`
                     });
-                }
+                }*/
                 else if (transaction && transaction.transaction_id === genesisConfig.genesis_transaction) {
                     return resolve();
                 }
