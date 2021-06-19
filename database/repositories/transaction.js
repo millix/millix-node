@@ -196,7 +196,7 @@ export default class Transaction {
             });
 
             if (returnValidTransactions) {
-                sql += ' AND `transaction`.status != 3 AND `transaction`.is_stable = 1 AND transaction_output.is_double_spend = 0'
+                sql += ' AND `transaction`.status != 3 AND `transaction`.is_stable = 1 AND transaction_output.is_double_spend = 0';
             }
 
             this.database.all(sql, parameters,
@@ -1467,8 +1467,9 @@ export default class Transaction {
                                                .then(spenders => { // update the state of all inputs
                                                    return new Promise(resolve => {
                                                        async.eachSeries(spenders, (spenderTransaction, callbackSpenders) => {
-                                                           database.getRepository('transaction', spenderTransaction.shard_id)
-                                                                   .getTransactionInputs(spenderTransaction.transaction_id)
+                                                           database.applyShardZeroAndShardRepository('transaction', spenderTransaction.shard_id, transactionRepository => {
+                                                               return transactionRepository.getTransactionInputs(spenderTransaction.transaction_id);
+                                                           })
                                                                    .then(transactionInputList => {
                                                                        async.eachSeries(transactionInputList, (transactionInput, callbackInput) => {
                                                                            if (transactionInput.output_transaction_id === doubleSpendTransactionInput.output_transaction_id) { // skip the double spend transaction
@@ -1503,9 +1504,34 @@ export default class Transaction {
                                                                            }
                                                                        }, () => callbackSpenders());
                                                                    });
-                                                       }, () => resolve());
+                                                       }, () => resolve(spenders));
                                                    });
                                                });
+                            })
+                            .then((spenders) => { /* if some tx was marked as double spend because of the tx we invalidated, it should be revalidated */
+                                const filteredSpenders = _.filter(spenders, spenderTransaction => spenderTransaction.transaction_id !== transaction.transaction_id);
+                                return new Promise(resolve => {
+                                    async.mapSeries(filteredSpenders, (spenderTransaction, callback) => {
+                                        database.firstShardORShardZeroRepository('transaction', spenderTransaction.shard_id,
+                                            transactionRepository => transactionRepository.listTransactionOutput({
+                                                is_double_spend: 1,
+                                                transaction_id : spenderTransaction.transaction_id
+                                            }).then(result => result.length > 0 ? result : Promise.reject()))
+                                                .then(doubleSpendOutputs => callback(null, doubleSpendOutputs !== null && doubleSpendOutputs.length > 0));
+                                    }, (err, result) => {
+                                        const shouldResetTransactions = _.every(result);
+                                        if (result.length > 0 && shouldResetTransactions) {
+                                            async.eachSeries(filteredSpenders, (spenderTransaction, callback) => {
+                                                database.applyShardZeroAndShardRepository('transaction', spenderTransaction.shard_id,
+                                                    transactionRepository => transactionRepository.resetTransaction(spenderTransaction.transaction_id, spenderTransaction.shard_id))
+                                                        .then(() => callback());
+                                            }, () => resolve());
+                                        }
+                                        else {
+                                            resolve();
+                                        }
+                                    });
+                                });
                             })
                             .then(() => database.applyShards((shardID) => {
                                 // get all transactions spending from this
@@ -1531,6 +1557,29 @@ export default class Transaction {
 
             };
             dfs([rootTransactionList], [rootDoubleSpendTransactionInput]);
+        });
+    }
+
+    resetTransaction(transactionID) {
+        return new Promise((resolve) => {
+            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], unlock => {
+                this.database.serialize(() => {
+                    this.database.run('BEGIN TRANSACTION');
+                    this.database.run('UPDATE transaction_input SET double_spend_date = NULL, is_double_spend = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] reset transaction inputs. [message] ', err);
+                    });
+                    this.database.run('UPDATE transaction_output SET stable_date = NULL, is_stable = 0, spent_date = NULL, is_spent = 0, double_spend_date = NULL, is_double_spend = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] reset transaction outputs. [message] ', err);
+                    });
+                    this.database.run('UPDATE `transaction` SET stable_date = NULL, is_stable = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
+                    });
+                    this.database.run('COMMIT', () => {
+                        resolve();
+                        unlock();
+                    });
+                }, true);
+            });
         });
     }
 

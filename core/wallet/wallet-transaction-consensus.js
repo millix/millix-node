@@ -384,7 +384,7 @@ export class WalletTransactionConsensus {
                                            .then(() => callback(null, true))
                                            .catch((err) => {
                                                if (err && err.cause === 'transaction_double_spend' && !err.transaction_input_double_spend) {
-                                                   this._updateDoubleSpendTransaction([transaction], [srcTransaction]);
+                                                   this._updateDoubleSpendTransaction([transaction], srcTransaction);
                                                }
                                                callback(err, false);
                                            });
