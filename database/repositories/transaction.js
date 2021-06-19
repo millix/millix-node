@@ -1562,23 +1562,17 @@ export default class Transaction {
 
     resetTransaction(transactionID) {
         return new Promise((resolve) => {
-            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], unlock => {
-                this.database.serialize(() => {
-                    this.database.run('BEGIN TRANSACTION');
-                    this.database.run('UPDATE transaction_input SET double_spend_date = NULL, is_double_spend = 0 WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] reset transaction inputs. [message] ', err);
-                    });
-                    this.database.run('UPDATE transaction_output SET stable_date = NULL, is_stable = 0, spent_date = NULL, is_spent = 0, double_spend_date = NULL, is_double_spend = 0 WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] reset transaction outputs. [message] ', err);
-                    });
-                    this.database.run('UPDATE `transaction` SET stable_date = NULL, is_stable = 0 WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
-                    });
-                    this.database.run('COMMIT', () => {
-                        resolve();
-                        unlock();
-                    });
-                }, true);
+            this.database.serialize(() => {
+                this.database.run('UPDATE transaction_input SET double_spend_date = NULL, is_double_spend = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                    err && console.log('[Database] reset transaction inputs. [message] ', err);
+                });
+                this.database.run('UPDATE transaction_output SET stable_date = NULL, is_stable = 0, spent_date = NULL, is_spent = 0, double_spend_date = NULL, is_double_spend = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                    err && console.log('[Database] reset transaction outputs. [message] ', err);
+                });
+                this.database.run('UPDATE `transaction` SET stable_date = NULL, is_stable = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                    err && console.log('[Database] Failed pruning transactions. [message] ', err);
+                    resolve();
+                });
             });
         });
     }
