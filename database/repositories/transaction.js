@@ -1483,10 +1483,10 @@ export default class Transaction {
                                                                                                const uniqueTransactionIDs = new Set(_.map(inputSpenders, i => i.transaction_id));
                                                                                                if (uniqueTransactionIDs.size === 1) {
                                                                                                    database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
-                                                                                                       return transactionRepository.listTransactionInput({transaction_id: transactionInput.output_transaction_id})
+                                                                                                       return transactionRepository.listTransactionInput({'transaction_input.transaction_id': transactionInput.output_transaction_id})
                                                                                                                                    .then(transactionInputList => {
                                                                                                                                        // if any input is marked as double spend we should not toggle the state of the outputs
-                                                                                                                                       if (_.some(transactionInputList, input => input.is_double_spend === 1)) {
+                                                                                                                                       if (transactionInputList.length === 0 || _.some(transactionInputList, input => input.is_double_spend === 1)) {
                                                                                                                                            return Promise.resolve();
                                                                                                                                        }
                                                                                                                                        return database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
@@ -1515,7 +1515,7 @@ export default class Transaction {
                                         database.firstShardORShardZeroRepository('transaction', spenderTransaction.shard_id,
                                             transactionRepository => transactionRepository.listTransactionOutput({
                                                 is_double_spend: 1,
-                                                transaction_id : spenderTransaction.transaction_id
+                                                'transaction_output.transaction_id' : spenderTransaction.transaction_id
                                             }).then(result => result.length > 0 ? result : Promise.reject()))
                                                 .then(doubleSpendOutputs => callback(null, doubleSpendOutputs !== null && doubleSpendOutputs.length > 0));
                                     }, (err, result) => {
