@@ -771,15 +771,15 @@ export class WalletTransactionConsensus {
                            .then(pendingTransactions => {
                                // filter out tx that were synced in the
                                // last 30s and not being validated yet
-                               return _.filter(pendingTransactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && Date.now() - transaction.create_date < 30 && !this._consensusRoundState[transaction.transaction_id]));
+                               return _.filter(pendingTransactions, transaction => !(Date.now() - transaction.create_date < 30 || this._consensusRoundState[transaction.transaction_id]));
                            });
-        }).then(pendingTransactions => {
+        }, 'transaction_date').then(pendingTransactions => {
             if (pendingTransactions.length === 0) {
                 return database.applyShards((shardID) => {
                     return database.getRepository('transaction', shardID)
                                    .findUnstableTransaction(excludeTransactionList);
-                }).then(transactions => [
-                    _.filter(transactions, transaction => !(transaction.create_date - transaction.transaction_date > 30 && Date.now() - transaction.create_date < 30 && !this._consensusRoundState[transaction.transaction_id])),
+                }, 'transaction_date').then(transactions => [
+                    _.filter(transactions, transaction => !(Date.now() - transaction.create_date < 30 || this._consensusRoundState[transaction.transaction_id])),
                     false
                 ]);
             }
