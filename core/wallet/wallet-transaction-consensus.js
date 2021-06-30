@@ -270,7 +270,10 @@ export class WalletTransactionConsensus {
                                                    ...input
                                                });
                                                this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet)
-                                                   .then(({response_type: responseType, data}) => {
+                                                   .then(({
+                                                              response_type: responseType,
+                                                              data
+                                                          }) => {
 
                                                        if (data && (responseType === 'transaction_double_spend' || responseType === 'transaction_valid')) {
                                                            let doubleSpendInputs = _.filter(doubleSpendTransactions, i => i.transaction_id !== data.transaction_id);
@@ -385,6 +388,7 @@ export class WalletTransactionConsensus {
                                            .catch((err) => {
                                                if (err && err.cause === 'transaction_double_spend' && !err.transaction_input_double_spend) {
                                                    this._updateDoubleSpendTransaction([transaction], srcTransaction);
+                                                   err.transaction_input_double_spend = srcTransaction;
                                                }
                                                callback(err, false);
                                            });
@@ -402,18 +406,22 @@ export class WalletTransactionConsensus {
     }
 
     _validateTransactionInConsensusRound(data, ws) {
-        const {node, nodeID, connectionID} = ws;
-        const transactionID                = data.transaction_id;
+        const {
+                  node,
+                  nodeID,
+                  connectionID
+              }             = ws;
+        const transactionID = data.transaction_id;
 
         if (!this._transactionValidationState[ws.nodeID] ||
             this._transactionValidationState[ws.nodeID].transaction_id !== data.transaction_id ||
             !!this._transactionValidationState[ws.nodeID].timestamp) {
             return peer.transactionValidationResponse({
-                cause                : 'transaction_validation_unexpected',
-                transaction_id_failed: transactionID,
-                transaction_id       : transactionID,
-                valid                : false,
-                type                 : 'validation_response'
+                cause              : 'transaction_validation_unexpected',
+                transaction_id_fail: transactionID,
+                transaction_id     : transactionID,
+                valid              : false,
+                type               : 'validation_response'
             }, ws, true);
         }
 
@@ -675,7 +683,7 @@ export class WalletTransactionConsensus {
                     this._transactionValidationRejected.add(transactionID);
                     console.log('[consensus][request] the transaction ', transactionID, ' was not validated (due to double spend) during consensus round number ', consensusData.consensus_round_count);
                     return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
-                        return transactionRepository.setTransactionAsDoubleSpend(transaction, data.transaction_id_fail /*double spend input*/);
+                        return transactionRepository.setTransactionAsDoubleSpend(transaction, data.transaction_input_double_spend /*double spend input*/);
                     }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
                                    .then(() => {
                                        consensusData.resolve();
@@ -809,12 +817,6 @@ export class WalletTransactionConsensus {
 
             if (isTransactionFundingWallet) {
                 this._transactionRetryValidation[transactionID] = Date.now();
-            }
-
-            if (this._consensusRoundState[transactionID]) {
-                // remove locker
-                delete this._consensusRoundState[lockerID];
-                return;
             }
 
             delete this._consensusRoundState[lockerID];

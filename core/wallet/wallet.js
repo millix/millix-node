@@ -157,8 +157,11 @@ class Wallet {
     }
 
     deriveAndSaveAddress(walletID, isChange, addressPosition) {
-        const keychain                                                  = database.getRepository('keychain');
-        let {address: addressBase, address_attribute: addressAttribute} = this.deriveAddress(walletID, isChange, addressPosition);
+        const keychain = database.getRepository('keychain');
+        let {
+                address          : addressBase,
+                address_attribute: addressAttribute
+            }          = this.deriveAddress(walletID, isChange, addressPosition);
         return keychain.getWalletDefaultKeyIdentifier(walletID)
                        .then(addressKeyIdentifier => [
                            addressBase,
@@ -281,7 +284,10 @@ class Wallet {
                                     const {address: missingAddress} = addressRepository.getAddressComponent(output.address);
                                     //TODO: find a better way to get the address
                                     for (let addressPosition = 0; addressPosition < 2 ** 32; addressPosition++) {
-                                        let {address: addressBase, address_attribute: addressAttribute} = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
+                                        let {
+                                                address          : addressBase,
+                                                address_attribute: addressAttribute
+                                            } = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
                                         if (addressBase === missingAddress) {
                                             output['address_version']        = addressRepository.getDefaultAddressVersion().version;
                                             output['address_key_identifier'] = this.defaultKeyIdentifier;
@@ -857,33 +863,24 @@ class Wallet {
         processedTransaction.add(transaction.transaction_id);
         console.log(`[Wallet] Querying all shards for potential spenders of transaction ${transaction.transaction_id}`);
 
-        return new Promise((resolve) => {
-            return database.applyShards((shardID) => {
-                return new Promise(resolve => {
-                    database.getRepository('transaction', shardID)
-                            .getTransactionSpenders(transaction.transaction_id)
-                            .then(result => resolve(result))
-                            .catch(err => {
-                                console.log(`[wallet] Error occurred: ${err}`);
-                                resolve([]);
-                            });
-                });
-            }).then(transactionSpenders => {
-                if (transactionSpenders.length === 0) {
-                    return resolve([transaction]);
-                } // stops recursion
-
-                async.mapSeries(transactionSpenders, (spender, callback) => {
-                    if (processedTransaction.has(spender.transaction_id)) {
-                        return callback(false, []);
-                    }
-                    // continues recursion
-                    this.findAllSpenders(spender, processedTransaction)
-                        .then((spenders) => callback(false, spenders));
-                }, (err, mapOfSpenders) => {
-                    let spenders = Array.prototype.concat.apply([], mapOfSpenders);
-                    spenders.push(transaction);
-                    resolve(spenders);
+        return database.firstShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.listTransactionOutput({
+                'transaction_output.transaction_id': transaction.transaction_id
+            }).then(outputs => outputs.length > 0 ? Promise.resolve(outputs) : Promise.reject());
+        }).then(outputs => {
+            return new Promise(resolve => {
+                const spenderMap = {};
+                async.eachSeries(outputs, (output, callback) => {
+                    database.applyShards(shardID => {
+                        return database.getRepository('transaction', shardID)
+                                       .getTransactionSpenders(output.transaction_id, output.shard_id, output.output_position);
+                    }).then(allOutputSpenders => {
+                        allOutputSpenders.forEach(spender => spenderMap[spender.transaction_id] = spender);
+                        callback();
+                    });
+                }, () => {
+                    resolve(Object.values(spenderMap));
                 });
             });
         });
@@ -909,7 +906,7 @@ class Wallet {
 
                 let chunkTransactionIDs = [];
                 while (transactionIDs.length) {
-                    chunkTransactionIDs.push(transactionIDs.splice(0, 1000));
+                    chunkTransactionIDs.push(transactionIDs.splice(0, 512));
                 }
 
                 async.eachSeries(chunkTransactionIDs, (transactionIDList, chunkCallback) => {
@@ -955,7 +952,7 @@ class Wallet {
 
                                             /* we should reset the spend status of the output if there is no other tx spending it */
                                             database.applyShards(shardID => {
-                                                return database.getRepository('transaction', shardID).getTransactionSpenders(transactionInput.output_transaction_id, transactionInput.output_position);
+                                                return database.getRepository('transaction', shardID).getTransactionSpenders(transactionInput.output_transaction_id, transactionInput.output_shard_id, transactionInput.output_position);
                                             }).then(transactionSpenders => {
                                                 if (transactionSpenders.length > 1) {
                                                     /* skip this output. there is another transaction spending it */
@@ -1945,10 +1942,13 @@ class Wallet {
                         })
                         .then(([outputs, addressKeyIdentifier]) => {
                             // Creating output - using the first address
-                            const fee                                             = config.TRANSACTION_FEE_DEFAULT;
-                            const addressRepository                               = database.getRepository('address');
-                            const {address: addressBase, version: addressVersion} = addressRepository.getAddressComponent(outputs[0].address);
-                            const newOutput                                       = {
+                            const fee               = config.TRANSACTION_FEE_DEFAULT;
+                            const addressRepository = database.getRepository('address');
+                            const {
+                                      address: addressBase,
+                                      version: addressVersion
+                                  }                 = addressRepository.getAddressComponent(outputs[0].address);
+                            const newOutput         = {
                                 address_base          : addressBase,
                                 address_version       : addressVersion,
                                 address_key_identifier: addressKeyIdentifier,
@@ -1997,9 +1997,13 @@ class Wallet {
         const addressRepository     = database.getRepository('address');
         const time                  = ntp.now();
 
-        const transactionDate                                                   = new Date(Math.floor(time.getTime() / 1000) * 1000);
-        const {address: addressBase, version, identifier: addressKeyIdentifier} = addressRepository.getAddressComponent(proxyCandidateData.node_address_default);
-        let feeOutputs                                                          = [
+        const transactionDate = new Date(Math.floor(time.getTime() / 1000) * 1000);
+        const {
+                  address: addressBase,
+                  version,
+                  identifier: addressKeyIdentifier
+              }               = addressRepository.getAddressComponent(proxyCandidateData.node_address_default);
+        let feeOutputs        = [
             {
                 ...outputFee,
                 node_id_proxy         : proxyCandidateData.node_id,
