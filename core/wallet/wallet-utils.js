@@ -561,8 +561,9 @@ class WalletUtils {
             }
             else {
                 // before 1620603935 the refresh time was 3 days
-                // now the refresh time is 10 min (TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN)
-                const expireMinutes = transactionDate.getTime() <= 1620603935000 ? 4320 : config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN;
+                // now the refresh time is 10 min
+                // (TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN)
+                const expireMinutes   = transactionDate.getTime() <= 1620603935000 ? 4320 : config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN;
                 let maximumOldestDate = new Date(transactionDate.getTime());
                 maximumOldestDate.setMinutes(maximumOldestDate.getMinutes() - expireMinutes);
                 this.isConsumingExpiredOutputs(transaction.transaction_input_list, maximumOldestDate)
@@ -631,8 +632,8 @@ class WalletUtils {
         if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
             const outputUsedInTransaction = new Set();
             for (let i = 0; i < transaction.transaction_input_list.length; i++) {
-                const input = transaction.transaction_input_list[i];
-                const outputID = input.output_transaction_id + ":" + input.output_position;
+                const input    = transaction.transaction_input_list[i];
+                const outputID = input.output_transaction_id + ':' + input.output_position;
                 if (!this.isValidAddress(input.address_base)
                     || !this.isValidAddress(input.address_key_identifier)
                     || !addressRepository.supportedVersionSet.has(input.address_version)
@@ -805,13 +806,10 @@ class WalletUtils {
                 address_attribute: addressAttributeMap[addressBase]
             }));
             return resolve(signatureList);
-        }))
-          .then((signatureList) => peer.getNodeAddress()
-                                       .then(() => signatureList))
-          .then(signatureList => this.isConsumingExpiredOutputs(inputList, maximumOldestDate).then(isConsumingExpiredOutputs => [
-              signatureList,
-              isConsumingExpiredOutputs
-          ]))
+        })).then(signatureList => this.isConsumingExpiredOutputs(inputList, maximumOldestDate).then(isConsumingExpiredOutputs => [
+            signatureList,
+            isConsumingExpiredOutputs
+        ]))
           .then(([signatureList, isConsumingExpiredOutputs]) => {
               let transactionList = [];
               let transaction;
@@ -867,7 +865,7 @@ class WalletUtils {
 
                   let signature;
                   for (let transactionSignature of signatureList) {
-                      if(transactionSignature.address_base === refreshOutput.address_base){
+                      if (transactionSignature.address_base === refreshOutput.address_base) {
                           signature = _.cloneDeep(transactionSignature);
                           break;
                       }
