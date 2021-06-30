@@ -424,20 +424,28 @@ export class Database {
 
     applyShardZeroAndShardRepository(repositoryName, shardID, func) {
         return new Promise(resolve => {
-            async.eachSeries([
+            async.mapSeries([
                 SHARD_ZERO_NAME,
                 shardID
             ], (shardID, callback) => {
                 const repository = this.getRepository(repositoryName, shardID);
                 if (repository) {
                     func(repository)
-                        .then(() => callback())
-                        .catch(() => callback());
+                        .then(result => callback(null, result))
+                        .catch(() => callback(null, []));
                 }
                 else {
-                    callback();
+                    callback(null, []);
                 }
-            }, () => resolve());
+            }, (err, data) => {
+                if (data) {
+                    data = Array.prototype.concat.apply([], data);
+                }
+                else {
+                    data = [];
+                }
+                resolve(data);
+            });
         });
     }
 
