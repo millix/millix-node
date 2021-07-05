@@ -1700,6 +1700,16 @@ class Wallet {
             transactionList = [transactionList];
         }
         const {connectionID} = ws;
+        // check proxy fee
+        const feeTransaction = transactionList[transactionList.length - 1];
+        const feeOutput       = _.find(feeTransaction.transaction_output_list, {output_position: -1});
+        if (!feeOutput || feeOutput.amount < config.TRANSACTION_FEE_PROXY || feeOutput.address_key_identifier !== this.defaultKeyIdentifier) {
+            return peer.transactionProxyResult({
+                transaction_proxy_fail   : 'invalid_fee_output',
+                transaction_id           : transactionList[0].transaction_id,
+                transaction_proxy_success: false
+            }, network.getWebSocketByID(connectionID));
+        }
         let pipeline         = Promise.resolve();
         transactionList.forEach(transaction => {
             walletTransactionConsensus.addTransactionToCache(transaction);
@@ -1993,7 +2003,6 @@ class Wallet {
     }
 
     _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
-        const transactionRepository = database.getRepository('transaction');
         const addressRepository     = database.getRepository('address');
         const time                  = ntp.now();
 

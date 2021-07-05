@@ -317,7 +317,7 @@ export class WalletTransactionConsensus {
                                        database.firstShards((shardID) => {
                                            return new Promise((resolve, reject) => {
                                                if (this._transactionObjectCache[input.output_transaction_id]) {
-                                                   return resolve(this._transactionObjectCache[input.output_transaction_id].transaction_output_list[input.output_position]);
+                                                   return resolve(_.find(this._transactionObjectCache[input.output_transaction_id].transaction_output_list, {output_position: input.output_position}));
                                                }
                                                const transactionRepository = database.getRepository('transaction', shardID);
                                                transactionRepository.getOutput(input.output_transaction_id, input.output_position)
@@ -332,7 +332,7 @@ export class WalletTransactionConsensus {
                                                }, false);
                                            }
 
-                                           let outputID = output.transaction_id + ':' + output.output_position;
+                                           let outputID = input.output_transaction_id + ':' + input.output_position;
 
                                            if (outputUsedInTransaction.has(outputID)) {
                                                return callback({
@@ -808,7 +808,6 @@ export class WalletTransactionConsensus {
 
             if (!pendingTransaction) {
                 console.log('[consensus][request] no pending funds available for validation.');
-                delete this._consensusRoundState[lockerID];
                 return;
             }
 
@@ -900,7 +899,10 @@ export class WalletTransactionConsensus {
                                                };
                                                return this._startConsensusRound(transactionID)
                                                           .then(() => transactionID)
-                                                          .catch(() => Promise.reject(true));
+                                                          .catch(() => Promise.reject({
+                                                              transaction_id    : transactionID,
+                                                              restart_validation: true
+                                                          }));
                                            }
                                            else {
                                                // set timeout
@@ -924,19 +926,25 @@ export class WalletTransactionConsensus {
                                }
                            }
 
-                           delete this._consensusRoundState[transactionID];
-                           return Promise.reject(true);
+                           return Promise.reject({
+                               transaction_id    : transactionID,
+                               restart_validation: true
+                           });
                        });
         }).then(transactionID => {
+            delete this._consensusRoundState[lockerID];
             delete this._consensusRoundState[transactionID];
             delete this._validationPrepareState[transactionID];
             //check if there is another transaction to
             // validate
-            setTimeout(() => this.doValidateTransaction(), transactionID ? 0 : 10000);
-        }).catch(restartValidation => {
-            if (restartValidation) {
-                setTimeout(() => this.doValidateTransaction(), 1000);
+            if (transactionID) {
+                setTimeout(() => {
+                    this.doValidateTransaction();
+                }, 0);
             }
+        }).catch(({transaction_id: transactionID}) => {
+            delete this._consensusRoundState[lockerID];
+            delete this._consensusRoundState[transactionID];
             return Promise.resolve();
         });
     }

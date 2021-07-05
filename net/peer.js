@@ -61,6 +61,7 @@ class Peer {
                 }
                 catch (e) {
                     console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
                 }
             });
         });
@@ -104,6 +105,7 @@ class Peer {
                                }
                                catch (e) {
                                    console.log('[WARN]: try to send data over a closed connection.');
+                                   ws && ws.close();
                                }
                            }
                            else {
@@ -113,6 +115,7 @@ class Peer {
                                    }
                                    catch (e) {
                                        console.log('[WARN]: try to send data over a closed connection.');
+                                       ws && ws.close();
                                    }
                                });
                            }
@@ -136,6 +139,7 @@ class Peer {
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
             }
         });
 
@@ -156,6 +160,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
         return transaction;
@@ -175,6 +180,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
     }
 
@@ -192,6 +198,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
     }
 
@@ -226,6 +233,7 @@ class Peer {
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
                 reject('proxy_network_error');
             }
         });
@@ -290,6 +298,7 @@ class Peer {
                               }
                               catch (e) {
                                   console.log('[WARN]: try to send data over a closed connection.');
+                                  ws && ws.close();
                                   return reject('proxy_network_error');
                               }
                           });
@@ -314,6 +323,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
         return transactions;
@@ -380,6 +390,7 @@ class Peer {
                 }
                 catch (e) {
                     console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
                     if (!callbackCalled) {
                         callbackCalled = true;
                         callback();
@@ -416,6 +427,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
     }
@@ -442,6 +454,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
     }
@@ -510,6 +523,7 @@ class Peer {
                 }
                 catch (e) {
                     console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
                     if (!callbackCalled) {
                         callbackCalled = true;
                         callback();
@@ -588,6 +602,7 @@ class Peer {
                 }
                 catch (e) {
                     console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
                     if (!callbackCalled) {
                         callbackCalled = true;
                         callback();
@@ -624,6 +639,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
         return message;
@@ -670,6 +686,7 @@ class Peer {
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
                 reject();
             }
 
@@ -694,6 +711,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
         return content;
@@ -717,6 +735,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
         return message;
@@ -736,6 +755,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
     }
@@ -769,7 +789,9 @@ class Peer {
                 }
             }
             catch (e) {
-                reject('[WARN]: try to send data over a closed connection.');
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+                reject();
             }
         });
     }
@@ -784,7 +806,7 @@ class Peer {
         let payload = {
             type   : 'wallet_transaction_sync',
             content: {
-                address_key_identifier: addressKeyIdentifier,
+                address_key_identifier     : addressKeyIdentifier,
                 exclude_transaction_id_list: excludeTransactionList
             }
         };
@@ -798,6 +820,7 @@ class Peer {
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
             }
         }
     }
@@ -820,6 +843,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
 
         return content;
@@ -827,7 +851,10 @@ class Peer {
 
     transactionSyncRequest(transactionID, options = {}) {
         const {
-                  depth             : currentDepth, request_node_id: requestNodeID, routing, priority,
+                  depth             : currentDepth,
+                  request_node_id   : requestNodeID,
+                  routing,
+                  priority,
                   dispatch_request  : dispatchRequest,
                   queued            : alreadyQueued,
                   force_request_sync: forceRequestSync,
@@ -913,6 +940,7 @@ class Peer {
                         }
                         catch (e) {
                             console.log('[WARN]: try to send data over a closed connection.');
+                            ws && ws.close();
                             clearTimeout(timeoutID);
                             eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
                             callback();
@@ -955,6 +983,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
     }
 
@@ -999,6 +1028,7 @@ class Peer {
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
                 reject('sync_error:' + e.message);
             }
         });
@@ -1055,6 +1085,7 @@ class Peer {
                                  }
                                  catch (e) {
                                      console.log('[WARN]: try to send data over a closed connection.');
+                                     ws && ws.close();
                                  }
 
                                  resolve();
@@ -1098,6 +1129,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
     }
 
@@ -1117,6 +1149,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
     }
 
@@ -1134,6 +1167,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
     }
 
@@ -1151,6 +1185,7 @@ class Peer {
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
         }
     }
 
