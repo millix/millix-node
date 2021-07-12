@@ -821,42 +821,21 @@ export class WalletTransactionConsensus {
             delete this._consensusRoundState[lockerID];
             this._consensusRoundState[transactionID] = {};
 
-            let unstableDateStart = ntp.now();
-            unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
             return this._validateTransaction(transactionID, null, 0)
                        .then(() => {
-                           if (![
-                               '0a0',
-                               '0b0',
-                               'la0l',
-                               'lb0l'
-                           ].includes(pendingTransaction.version)) {
-                               pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date * 1000);
-                           }
-                           else {
-                               pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date);
-                           }
-
-                           if (unstableDateStart.getTime() >= pendingTransaction.transaction_date.getTime()) {
-                               console.log('[consensus] transaction validated internally: the transaction is expired, consensus round dismissed');
-                               return database.applyShardZeroAndShardRepository('transaction', pendingTransaction.shard_id, transactionRepository => {
-                                   return transactionRepository.setPathAsStableFrom(transactionID);
-                               }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(pendingTransaction.transaction_output_list, o => o.address_key_identifier))));
-                           }
-                           else {
-                               console.log('[consensus] transaction validated internally, starting consensus using oracles');
-                               // replace lock id with transaction id
-                               this._consensusRoundState[transactionID] = {
-                                   consensus_round_validation_count  : 0,
-                                   consensus_round_double_spend_count: 0,
-                                   consensus_round_not_found_count   : 0,
-                                   consensus_round_count             : 0,
-                                   consensus_round_response          : [{}],
-                                   timestamp                         : Date.now(),
-                                   active                            : true
-                               };
-                               return this._startConsensusRound(transactionID);
-                           }
+                           console.log('[consensus] transaction validated internally, starting consensus using oracles');
+                           // replace lock id with transaction id
+                           this._consensusRoundState[transactionID] = {
+                               consensus_round_validation_count  : 0,
+                               consensus_round_double_spend_count: 0,
+                               consensus_round_not_found_count   : 0,
+                               consensus_round_count             : 0,
+                               consensus_round_response          : [{}],
+                               timestamp                         : Date.now(),
+                               active                            : true
+                           };
+                           return this._startConsensusRound(transactionID)
+                                      .then(() => wallet._checkIfWalletUpdate(new Set(_.map(pendingTransaction.transaction_output_list, o => o.address_key_identifier))));
                        })
                        .then(() => transactionID)
                        .catch((err) => {
