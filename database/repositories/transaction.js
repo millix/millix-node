@@ -68,7 +68,7 @@ export default class Transaction {
                     }).then(transactionInput => {
 
                         if (!transactionInput) {
-                            callback(true);
+                            return callback(true);
                         }
 
                         inputChain.push({
