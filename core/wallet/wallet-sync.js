@@ -105,8 +105,8 @@ export class WalletSync {
                 if (!job.transaction_output_id) {
                     return callback();
                 }
-                let [transactionID, shardID, outputPosition] = job.transaction_output_id.split('_');
-                if (transactionID === undefined || shardID === undefined || outputPosition === undefined) {
+                let [transactionID, outputShardID, outputPosition] = job.transaction_output_id.split('_');
+                if (transactionID === undefined || outputShardID === undefined || outputPosition === undefined) {
                     return callback(); //something was wrong skip this output.
                 }
 
@@ -119,10 +119,10 @@ export class WalletSync {
                 }
 
                 database.applyShards(shardID => {
-                    const transactionRepository = database.getRepository('transaction');
+                    const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.listTransactionInput({
                         output_transaction_id: transactionID,
-                        output_shard_id      : shardID,
+                        output_shard_id      : outputShardID,
                         output_position      : outputPosition
                     }).then(inputList => {
                         const spendingInputs = [];
@@ -152,7 +152,7 @@ export class WalletSync {
                 }).then(spendingTransactionList => {
                     // skip if we already know that the tx is spent
                     if (spendingTransactionList.length > 0) {
-                        return database.applyShardZeroAndShardRepository('transaction', shardID, transactionRepository => {
+                        return database.applyShardZeroAndShardRepository('transaction', outputShardID, transactionRepository => {
                             return transactionRepository.updateTransactionOutput(transactionID, outputPosition, _.min(_.map(spendingTransactionList, spendingInput => spendingInput.transaction_date)));
                         }).then(() => {
                             callback();
@@ -238,7 +238,10 @@ export class WalletSync {
             return;
         }
 
-        const {ws, timestamp} = peerSyncInfo;
+        const {
+                  ws,
+                  timestamp
+              } = peerSyncInfo;
         if (ws.readyState !== ws.OPEN) {
             return;
         }
@@ -284,9 +287,12 @@ export class WalletSync {
 
     add(transactionID, options) {
         this.unresolvedTransactionQueue._store.getTask('transaction_' + transactionID, (err, unresolvedTransaction) => {
-            const {delay, priority} = options || {};
-            const attempt           = options && options.attempt ? options.attempt + 1 : 1;
-            const timestamp         = options && options.timestamp ? options.timestamp : Date.now();
+            const {
+                      delay,
+                      priority
+                  }         = options || {};
+            const attempt   = options && options.attempt ? options.attempt + 1 : 1;
+            const timestamp = options && options.timestamp ? options.timestamp : Date.now();
 
             if (unresolvedTransaction && (!unresolvedTransaction.data.transaction_sync_rejected || !(priority > 0 && attempt < config.TRANSACTION_RETRY_SYNC_MAX))) {
                 return;
@@ -452,15 +458,18 @@ export class WalletSync {
                     // spend sync
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.listTransactionOutput({
-                        is_spent              : 0,
-                        address_key_identifier: wallet.getKeyIdentifier()
+                        is_spent               : 0,
+                        is_double_spend        : 0,
+                        address_key_identifier : wallet.getKeyIdentifier(),
+                        '`transaction`.status!': 3
                     }, 'transaction_date')
                                                 .then(transactionOutputList => {
                                                     transactionOutputList.forEach(transactionOutput => {
                                                         const transactionOutputID = `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`;
                                                         if (!queuedTransactionOutputs.has(transactionOutputID)) {
                                                             this.transactionSpendQueue.push({
-                                                                transaction_output_id: transactionOutputID
+                                                                transaction_output_id: transactionOutputID,
+                                                                priority             : 1
                                                             });
                                                         }
                                                     });

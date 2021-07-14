@@ -66,7 +66,7 @@ export class Database {
                     sql += `${key.substring(0, key.lastIndexOf('_'))} <= ?`;
                 }
                 else {
-                    sql += `${key} = ?`;
+                    sql += `${key}= ?`;
                 }
 
                 parameters.push(where[key]);
