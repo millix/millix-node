@@ -6,6 +6,7 @@ import peerRotation from '../../net/peer-rotation';
 import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
+import database from '../../database/database';
 
 
 class Service {
@@ -15,7 +16,10 @@ class Service {
     }
 
     initialize(options = {}) {
-        const {mode, initialize_wallet_event: initializeWalletEvent} = options;
+        const {
+                  mode,
+                  initialize_wallet_event: initializeWalletEvent
+              } = options;
         if (this.initialized) {
             return Promise.resolve();
         }
@@ -35,6 +39,7 @@ class Service {
                          .then(() => peerRotation.initialize())
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
+                         .then(() => database.checkup())
                          .catch(e => {
                              console.log(`[services] ${e.message}`);
                              this.initialized = false;
