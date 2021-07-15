@@ -197,9 +197,10 @@ export class WalletTransactionConsensus {
                 else if (transaction && transaction.is_stable && _.some(transaction.transaction_output_list, output => output.is_double_spend === 1) ||
                          doubleSpendSet.has(transactionID)) {
                     return reject({
-                        cause              : 'transaction_double_spend',
-                        transaction_id_fail: transactionID,
-                        message            : 'double spend found in ' + transactionID
+                        cause                         : 'transaction_double_spend',
+                        transaction_id_fail           : transactionID,
+                        transaction_input_double_spend: _.find(transaction.transaction_input_list, {is_double_spend: 1}),
+                        message                       : 'double spend found in ' + transactionID
                     });
                 }
                 else if (depth === config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
