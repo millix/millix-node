@@ -199,7 +199,11 @@ export class WalletTransactionConsensus {
                     return reject({
                         cause                         : 'transaction_double_spend',
                         transaction_id_fail           : transactionID,
-                        transaction_input_double_spend: _.find(transaction.transaction_input_list, {is_double_spend: 1}),
+                        transaction_input_double_spend: _.pick(_.find(transaction.transaction_input_list, {is_double_spend: 1}) || transaction.transaction_input_list[0], [
+                            'output_transaction_id',
+                            'output_position',
+                            'output_shard_id'
+                        ]),
                         message                       : 'double spend found in ' + transactionID
                     });
                 }
@@ -251,7 +255,11 @@ export class WalletTransactionConsensus {
                                        return callback({
                                            cause                         : 'transaction_double_spend',
                                            transaction_id_fail           : transaction.transaction_id,
-                                           transaction_input_double_spend: input,
+                                           transaction_input_double_spend: _.pick(input, [
+                                               'output_transaction_id',
+                                               'output_position',
+                                               'output_shard_id'
+                                           ]),
                                            message                       : 'double spend found in ' + transaction.transaction_id
                                        }, false);
                                    }
@@ -290,7 +298,11 @@ export class WalletTransactionConsensus {
                                                                cause                         : 'transaction_double_spend',
                                                                transaction_id_fail           : transaction.transaction_id,
                                                                message                       : 'double spend found in ' + transaction.transaction_id,
-                                                               transaction_input_double_spend: input
+                                                               transaction_input_double_spend: _.pick(input, [
+                                                                   'output_transaction_id',
+                                                                   'output_position',
+                                                                   'output_shard_id'
+                                                               ])
                                                            });
                                                        }
                                                        else if (responseType === 'transaction_not_found') {
@@ -391,7 +403,11 @@ export class WalletTransactionConsensus {
                                            .catch((err) => {
                                                if (err && err.cause === 'transaction_double_spend' && !err.transaction_input_double_spend) {
                                                    this._updateDoubleSpendTransaction([transaction], srcTransaction);
-                                                   err.transaction_input_double_spend = srcTransaction;
+                                                   err.transaction_input_double_spend = _.pick(srcTransaction, [
+                                                       'output_transaction_id',
+                                                       'output_position',
+                                                       'output_shard_id'
+                                                   ]);
                                                }
                                                callback(err, false);
                                            });
