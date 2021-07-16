@@ -377,7 +377,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "12");
+INSERT INTO schema_information (key, value) VALUES ("version", "14");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),

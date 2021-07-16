@@ -66,7 +66,7 @@ export class Database {
                     sql += `${key.substring(0, key.lastIndexOf('_'))} <= ?`;
                 }
                 else {
-                    sql += `${key} = ?`;
+                    sql += `${key}= ?`;
                 }
 
                 parameters.push(where[key]);
@@ -646,6 +646,19 @@ export class Database {
                     }
                 }
             ], () => resolve());
+        });
+    }
+
+    checkup() {
+        return new Promise(resolve => {
+            async.eachSeries(_.keys(this.repositories), (repositoryName, callback) => {
+                if (this.repositories[repositoryName].checkup) {
+                    this.repositories[repositoryName].checkup().then(() => callback());
+                }
+                else {
+                    callback();
+                }
+            }, () => resolve());
         });
     }
 }

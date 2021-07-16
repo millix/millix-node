@@ -107,7 +107,10 @@ export default class Node {
 
     listNodeAttribute(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
-            let {sql, parameters} = Database.buildQuery('SELECT nat.attribute_type, node_attribute.* FROM node_attribute INNER JOIN node_attribute_type AS nat ON node_attribute.attribute_type_id = nat.attribute_type_id', where, orderBy, limit);
+            let {
+                    sql,
+                    parameters
+                } = Database.buildQuery('SELECT nat.attribute_type, node_attribute.* FROM node_attribute INNER JOIN node_attribute_type AS nat ON node_attribute.attribute_type_id = nat.attribute_type_id', where, orderBy, limit);
             this.database.all(sql, parameters, (err, rows) => {
                 if (err) {
                     return reject(err);
@@ -126,7 +129,10 @@ export default class Node {
 
     listNodes(where, orderBy, limit) {
         return new Promise(resolve => {
-            let {sql, parameters} = Database.buildQuery('SELECT * FROM node', where, orderBy, limit);
+            let {
+                    sql,
+                    parameters
+                } = Database.buildQuery('SELECT * FROM node', where, orderBy, limit);
             this.database.all(sql, parameters, (err, rows) => {
                 resolve(rows);
             });
@@ -135,7 +141,10 @@ export default class Node {
 
     getNode(where) {
         return new Promise(resolve => {
-            let {sql, parameters} = Database.buildQuery('SELECT * FROM node', where);
+            let {
+                    sql,
+                    parameters
+                } = Database.buildQuery('SELECT * FROM node', where);
             this.database.get(sql, parameters, (err, row) => {
                 resolve(row);
             });
@@ -172,15 +181,18 @@ export default class Node {
                         return reject(err.message);
                     }
                     else {
-                        const set               = _.pick(node, [
+                        const set          = _.pick(node, [
                             'status',
                             'node_prefix',
                             'node_address',
                             'node_port',
                             'node_api_port'
                         ]);
-                        set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
-                        const {sql, parameters} = Database.buildUpdate('UPDATE node', set, {node_id: node.node_id});
+                        set['update_date'] = Math.floor(ntp.now().getTime() / 1000);
+                        const {
+                                  sql,
+                                  parameters
+                              }            = Database.buildUpdate('UPDATE node', set, {node_id: node.node_id});
                         this.database.run(sql, parameters, err => {
                             console.log(`[database] update node ${url} with id ${node.node_id}`);
                             return err ? reject() : resolve();
@@ -195,15 +207,18 @@ export default class Node {
 
     updateNode(node) {
         return new Promise(resolve => {
-            const set               = _.pick(node, [
+            const set          = _.pick(node, [
                 'status',
                 'node_prefix',
                 'node_address',
                 'node_port',
                 'node_api_port'
             ]);
-            set['update_date']      = Math.floor(ntp.now().getTime() / 1000);
-            const {sql, parameters} = Database.buildUpdate('UPDATE node', set, {node_id: node.node_id});
+            set['update_date'] = Math.floor(ntp.now().getTime() / 1000);
+            const {
+                      sql,
+                      parameters
+                  }            = Database.buildUpdate('UPDATE node', set, {node_id: node.node_id});
             this.database.run(sql, parameters, () => {
                 return resolve();
             });
@@ -230,4 +245,14 @@ export default class Node {
         });
     }
 
+    checkup() {
+        return new Promise(resolve => {
+            this.database.run('DELETE FROM node_attribute WHERE attribute_type_id NOT IN (SELECT attribute_type_id FROM node_attribute_type)', (err) => {
+                if (err) {
+                    console.log(err);
+                }
+                resolve();
+            });
+        });
+    }
 }
