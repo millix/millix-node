@@ -18,7 +18,7 @@ export class Database {
     static ID_CHARACTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
     constructor() {
-        this.debug              = true;
+        this.debug              = false;
         this.databaseMillix     = null;
         this.databaseJobEngine  = null;
         this.databaseRootFolder = null;

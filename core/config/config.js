@@ -1,5 +1,5 @@
-export const MODE_DEBUG                                        = true;
-export const MODE_TEST_NETWORK                                 = true;
+export const MODE_DEBUG                                        = false;
+export const MODE_TEST_NETWORK                                 = false;
 export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
@@ -12,8 +12,8 @@ export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
-export const NODE_PUBLIC                                       = false;
-export const MODE_NODE_FULL                                    = false;
+export const NODE_PUBLIC                                       = true;
+export const MODE_NODE_FULL                                    = true;
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
         host          : '18.136.162.158',
@@ -706,7 +706,7 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT                        = 1;
+export const CONSENSUS_ROUND_NODE_COUNT                        = 3;
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 2;
 export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
 export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
@@ -776,7 +776,7 @@ export const DATABASE_CONNECTION                               = {};
 export const MILLIX_CIRCULATION                                = 9e15;
 export const NODE_MILLIX_BUILD_DATE                            = 1626431731;
 export const NODE_MILLIX_VERSION                               = '1.11.1';
-export const DATA_BASE_DIR_MAIN_NETWORK                        = null;
+export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
 export const NODE_KEY_PATH                                     = DATA_BASE_DIR + '/node.json';
@@ -895,8 +895,3 @@ export default {
     JOB_CONFIG_PATH,
     JOB_CONFIG_VERSION
 };
-
-// dev branch should be running in the test-network
-if (!MODE_TEST_NETWORK) {
-    throw Error('develop branch should be running in the test-network');
-}
