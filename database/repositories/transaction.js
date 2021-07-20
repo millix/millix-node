@@ -1855,17 +1855,6 @@ export default class Transaction {
         });
     }
 
-    getFreeStableOutput(addressKeyIdentifier) {
-        return new Promise((resolve) => {
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
-                              INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
-                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and transaction_output.status != 2 and is_double_spend = 0',
-                [addressKeyIdentifier], (err, rows) => {
-                    resolve(rows);
-                });
-        });
-    }
-
     getFreeOutput(addressKeyIdentifier) {
         return new Promise((resolve) => {
             this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
@@ -2274,7 +2263,7 @@ export default class Transaction {
                                 else {
                                     if (_.some(_.map(transaction.transaction_input_list, input => keyIdentifierSet.has(input.address_key_identifier)))
                                         || _.some(_.map(transaction.transaction_output_list, output => keyIdentifierSet.has(output.address_key_identifier)))) {
-                                        return this.setTransactionAsPrunable(transaction.transaction_id);
+                                        return this.setTransactionAsExpired(transaction.transaction_id);
                                     }
                                     else {
                                         return this.deleteTransaction(transaction.transaction_id);
@@ -2291,7 +2280,7 @@ export default class Transaction {
         });
     }
 
-    setTransactionAsPrunable(transactionID) {
+    setTransactionAsExpired(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.run('UPDATE `transaction` SET status = 2 WHERE transaction_id = ?', [transactionID],
                 (err) => {
@@ -2429,35 +2418,22 @@ export default class Transaction {
         let seconds = Math.floor(olderThan.valueOf() / 1000);
 
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE transaction_output set status = 2 WHERE is_spent = 0 AND EXISTS (SELECT T.transaction_id FROM `transaction` AS T WHERE T.transaction_date <= ? AND T.transaction_id = transaction_output.transaction_id)', seconds, (err) => {
+            this.database.run('UPDATE transaction_output set status = 2 WHERE is_spent = 0 AND EXISTS (SELECT T.transaction_id FROM `transaction` AS T WHERE T.transaction_date <= ? AND T.transaction_id = transaction_output.transaction_id AND T.status = 1)', seconds, (err) => {
                 if (err) {
                     console.log('[Database] Failed updating transactions to expired. [message] ', err);
                     reject(err);
                 }
                 else {
-                    resolve();
+                    this.database.run('UPDATE `transaction` set status = 2 WHERE transaction_date <= ? AND status = 1', seconds, (err) => {
+                        if (err) {
+                            console.log('[Database] Failed updating transactions to expired. [message] ', err);
+                            reject(err);
+                        }
+                        else {
+                            resolve();
+                        }
+                    });
                 }
-            });
-        });
-    }
-
-    getUnspentTransactionOutputsOlderThanOrExpired(addressKeyIdentifier, time) {
-        const createDate = Math.floor(time.valueOf() / 1000);
-        // only refresh outputs stable since 30s ago
-        const stableDate = Math.floor(Date.now() / 1000) - 60;
-
-        return new Promise((resolve, reject) => {
-            // TODO - return only necessary
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date <= ? OR transaction_output.status = 2) AND transaction_output.address_key_identifier = ? AND transaction_output.is_spent = 0 AND transaction_output.is_double_spend = 0 AND `transaction`.is_stable = 1 AND `transaction`.stable_date < ?', [
-                createDate,
-                addressKeyIdentifier,
-                stableDate
-            ], (err, rows) => {
-                if (err) {
-                    return reject(err);
-                }
-
-                resolve(rows);
             });
         });
     }
