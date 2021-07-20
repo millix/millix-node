@@ -530,6 +530,11 @@ export default class Transaction {
                         runPipeline = r;
                     });
                     const transactionDate = Math.floor(transaction.transaction_date.getTime() / 1000);
+                    /* verify if expire time is greater than transaction date */
+                    const expireDate = ntp.now();
+                    expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                    const transactionStatus = transaction.status === 3 ? 3 :
+                                              Math.round(expireDate.getTime() / 1000) >= transactionDate ? 2 : 1;
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => {
@@ -570,13 +575,13 @@ export default class Transaction {
                             this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
                                 transaction.node_id_origin, transaction.node_id_proxy, transaction.version, transaction.parent_date,
                                 transaction.stable_date, transaction.timeout_date,
-                                transaction.status, transaction.create_date)
+                                transactionStatus, transaction.create_date)
                                 .then(() => resolve())
                                 .catch(() => {
                                     this.updateTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
                                         transaction.node_id_origin, transaction.node_id_proxy, transaction.version, transaction.parent_date,
                                         transaction.stable_date, transaction.timeout_date,
-                                        transaction.status, transaction.create_date)
+                                        transactionStatus, transaction.create_date)
                                         .then(() => resolve())
                                         .catch(err => reject(err));
                                 });
@@ -616,19 +621,13 @@ export default class Transaction {
                     transaction.transaction_output_list.forEach(output => {
                         promise = promise.then(() => {
                             return new Promise((resolve, reject) => {
-                                // verify if expire time is greater than
-                                // transaction data
-                                let expireDate = ntp.now();
-                                expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-                                const status = Math.round(expireDate.getTime() / 1000) < transactionDate ? 1 : 2;
-
                                 this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier,
                                     output.amount, output.spent_date, output.stable_date, output.double_spend_date,
-                                    status, output.create_date)
+                                    transactionStatus, output.create_date)
                                     .then(resolve)
                                     .catch(() => {
                                         this.updateTransactionOutput(transaction.transaction_id, output.output_position, output.spent_date ? new Date(output.spent_date * 1000) : null,
-                                            output.stable_date ? new Date(output.stable_date * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null, status)
+                                            output.stable_date ? new Date(output.stable_date * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null, transactionStatus)
                                             .then(resolve)
                                             .catch(reject);
                                     });
@@ -1044,7 +1043,14 @@ export default class Transaction {
                     reject(err);
                 }
                 else {
-                    resolve();
+                    this.database.run('UPDATE transaction_output set status = 3 WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ' )', transactionIDs, err => {
+                        if (err) {
+                            reject(err);
+                        }
+                        else {
+                            resolve();
+                        }
+                    });
                 }
             });
         });
@@ -2282,13 +2288,23 @@ export default class Transaction {
 
     setTransactionAsExpired(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE `transaction` SET status = 2 WHERE transaction_id = ?', [transactionID],
-                (err) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    return resolve();
-                });
+            this.database.run('UPDATE transaction_output set status = 2 WHERE transaction_id = ? AND status != 3', transactionID, (err) => {
+                if (err) {
+                    console.log('[Database] Failed updating transactions to expired. [message] ', err);
+                    reject(err);
+                }
+                else {
+                    this.database.run('UPDATE `transaction` set status = 2 WHERE transaction_id = ? AND status != 3', transactionID, (err) => {
+                        if (err) {
+                            console.log('[Database] Failed updating transactions to expired. [message] ', err);
+                            reject(err);
+                        }
+                        else {
+                            resolve();
+                        }
+                    });
+                }
+            });
         });
     }
 
