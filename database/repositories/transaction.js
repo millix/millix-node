@@ -384,6 +384,11 @@ export default class Transaction {
                     });
                     const addressList     = {};
                     const transactionDate = Math.floor(new Date(transaction.transaction_date).getTime() / 1000);
+                    // verify if expire time is greater than
+                    // transaction data
+                    const expireDate = ntp.now();
+                    expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                    const status = Math.round(expireDate.getTime() / 1000) < transactionDate ? 1 : 2;
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => {
@@ -433,7 +438,7 @@ export default class Transaction {
                                 return transactionRepository.getTransactionParentDate(transaction.transaction_id);
                             }).then(dates => resolve(_.min(dates)));
                         });
-                    }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.node_id_proxy, transaction.version, parentDate));
+                    }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.node_id_proxy, transaction.version, parentDate, undefined, undefined, status));
 
                     if (transaction.transaction_output_attribute) {
                         _.keys(transaction.transaction_output_attribute).forEach(attributeType => {
@@ -471,11 +476,6 @@ export default class Transaction {
                                 }).then(dates => resolve(_.min(dates)));
                             });
                         }).then(spendDate => {
-                            // verify if expire time is greater than
-                            // transaction data
-                            let expireDate = ntp.now();
-                            expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-                            const status = Math.round(expireDate.getTime() / 1000) < transactionDate ? 1 : 2;
                             return this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate, undefined, undefined, status)
                                        .then(() => {
                                            delete output['address'];
@@ -2288,13 +2288,13 @@ export default class Transaction {
 
     setTransactionAsExpired(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE transaction_output set status = 2 WHERE transaction_id = ? AND status != 3', transactionID, (err) => {
+            this.database.run('UPDATE transaction_output set status = 2 WHERE transaction_id = ? AND status = 1', transactionID, (err) => {
                 if (err) {
                     console.log('[Database] Failed updating transactions to expired. [message] ', err);
                     reject(err);
                 }
                 else {
-                    this.database.run('UPDATE `transaction` set status = 2 WHERE transaction_id = ? AND status != 3', transactionID, (err) => {
+                    this.database.run('UPDATE `transaction` set status = 2 WHERE transaction_id = ? AND status = 1', transactionID, (err) => {
                         if (err) {
                             console.log('[Database] Failed updating transactions to expired. [message] ', err);
                             reject(err);
@@ -2434,7 +2434,7 @@ export default class Transaction {
         let seconds = Math.floor(olderThan.valueOf() / 1000);
 
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE transaction_output set status = 2 WHERE is_spent = 0 AND EXISTS (SELECT T.transaction_id FROM `transaction` AS T WHERE T.transaction_date <= ? AND T.transaction_id = transaction_output.transaction_id AND T.status = 1)', seconds, (err) => {
+            this.database.run('UPDATE transaction_output set status = 2 WHERE transaction_id IN (SELECT T.transaction_id FROM `transaction` AS T WHERE T.transaction_date <= ? AND T.status = 1)', seconds, (err) => {
                 if (err) {
                     console.log('[Database] Failed updating transactions to expired. [message] ', err);
                     reject(err);
