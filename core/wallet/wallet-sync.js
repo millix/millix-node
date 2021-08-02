@@ -55,21 +55,20 @@ export class WalletSync {
                                                                                  ]) : reject())
                                                                                  .catch(() => reject()));
                 }).then(data => data || []).then(([hasTransaction]) => {
-                    if (hasTransaction || wallet.isProcessingTransaction(job.transaction_id)) {
-                        return callback();
+                    if (!(hasTransaction && wallet.isProcessingTransaction(job.transaction_id))) {
+                        return peer.transactionSyncRequest(job.transaction_id, job);
                     }
-
-                    this.addSchedule(job.transaction_id, {
-                        ...job,
-                        dispatch_request: true,
-                        queued          : true,
-                        attempt         : job.attempt + 1
-                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
-
-                    peer.transactionSyncRequest(job.transaction_id, job)
+                })
                         .then(() => callback())
-                        .catch(() => callback());
-                }).catch(() => callback());
+                        .catch(() => {
+                            this.addSchedule(job.transaction_id, {
+                                ...job,
+                                dispatch_request: true,
+                                queued          : true,
+                                attempt         : job.attempt + 1
+                            }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
+                            callback();
+                        });
 
             }, () => done());
         }, {
@@ -162,9 +161,11 @@ export class WalletSync {
                     peer.transactionOutputSpendRequest(transactionID, outputPosition)
                         .then(_ => callback())
                         .catch(() => {
-                            this.transactionSpendQueue.push({
-                                transaction_output_id: job.transaction_output_id
-                            });
+                            if (!job.skip_on_fail) {
+                                this.transactionSpendQueue.push({
+                                    transaction_output_id: job.transaction_output_id
+                                });
+                            }
                             callback();
                         });
                 });
@@ -206,17 +207,20 @@ export class WalletSync {
             setImmediate: global.setImmediate
         });
 
-        return Promise.resolve();
+        return database.applyShards(shardID => {
+            return database.getRepository('transaction', shardID)
+                           .getMissingInputTransactions();
+        }).then(transactions => { /*add the missing inputs to the sync queue*/
+            transactions.forEach(transaction => this.add(transaction.transaction_id));
+        });
     }
 
     syncTransactionSpendingOutputs(transaction) {
         const walletKeyIdentifier = wallet.getKeyIdentifier();
         for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
-            if (transaction.transaction_output_list[outputPosition].address_key_identifier !== walletKeyIdentifier) {
-                continue;
-            }
             this.transactionSpendQueue.push({
-                transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${outputPosition}`
+                transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${outputPosition}`,
+                skip_on_fail         : transaction.transaction_output_list[outputPosition].address_key_identifier !== walletKeyIdentifier
             });
         }
     }
@@ -301,7 +305,7 @@ export class WalletSync {
                 return;
             }
 
-            if (attempt >= config.TRANSACTION_RETRY_SYNC_MAX || database.getRepository('transaction').isExpired(Math.floor(timestamp / 1000))) {
+            if (attempt >= config.TRANSACTION_RETRY_SYNC_MAX) {
                 this.removeTransactionSync(transactionID, {
                     id  : 'transaction_' + transactionID,
                     data: {

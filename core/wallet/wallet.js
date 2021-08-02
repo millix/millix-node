@@ -626,10 +626,13 @@ class Wallet {
             transactionDate = new Date(transaction.transaction_date * 1000);
         }
 
-        let maximumOldest = ntp.now();
-        maximumOldest.setMinutes(maximumOldest.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-
-        return maximumOldest.getTime() < transactionDate.getTime();
+        const isExpired = database.getRepository('transaction').isExpired(transactionDate.getTime() / 1000);
+        if (isExpired && !database.getShard(transaction.shard_id)) { // not a supported shard
+            return false;
+        }
+        else {
+            return true;
+        }
     }
 
     _onNewTransaction(data, ws, isRequestedBySync) {
@@ -1702,7 +1705,7 @@ class Wallet {
         const {connectionID} = ws;
         // check proxy fee
         const feeTransaction = transactionList[transactionList.length - 1];
-        const feeOutput       = _.find(feeTransaction.transaction_output_list, {output_position: -1});
+        const feeOutput      = _.find(feeTransaction.transaction_output_list, {output_position: -1});
         if (!feeOutput || feeOutput.amount < config.TRANSACTION_FEE_PROXY || feeOutput.address_key_identifier !== this.defaultKeyIdentifier) {
             return peer.transactionProxyResult({
                 transaction_proxy_fail   : 'invalid_fee_output',
@@ -1710,7 +1713,7 @@ class Wallet {
                 transaction_proxy_success: false
             }, network.getWebSocketByID(connectionID));
         }
-        let pipeline         = Promise.resolve();
+        let pipeline = Promise.resolve();
         transactionList.forEach(transaction => {
             walletTransactionConsensus.addTransactionToCache(transaction);
             pipeline = pipeline.then(() => walletTransactionConsensus._validateTransaction(transaction));
@@ -1915,10 +1918,10 @@ class Wallet {
             });
         });
     }
-    
+
     _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
-        const addressRepository     = database.getRepository('address');
-        const time                  = ntp.now();
+        const addressRepository = database.getRepository('address');
+        const time              = ntp.now();
 
         const transactionDate = new Date(Math.floor(time.getTime() / 1000) * 1000);
         const {

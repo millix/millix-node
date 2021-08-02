@@ -2423,6 +2423,18 @@ export default class Transaction {
         });
     }
 
+    getMissingInputTransactions() {
+        return new Promise((resolve, reject) => {
+            this.database.all('select output_transaction_id as transaction_id from transaction_input where output_transaction_id not in (select transaction_id from `transaction`)',
+                (err, transactions) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    resolve(transactions);
+                });
+        });
+    }
 
     expireTransactions(olderThan) {
         return database.applyShards((shardID) => {

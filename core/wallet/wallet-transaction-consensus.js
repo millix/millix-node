@@ -207,6 +207,12 @@ export class WalletTransactionConsensus {
                         message                       : 'double spend found in ' + transactionID
                     });
                 }
+                else if (transaction && transaction.transaction_id === genesisConfig.genesis_transaction) {
+                    return resolve();
+                }
+                else if (transactionVisitedSet.has(transactionID)) {
+                    return resolve();
+                }
                 else if (depth === config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
                     return reject({
                         cause              : 'transaction_validation_max_depth',
@@ -214,11 +220,12 @@ export class WalletTransactionConsensus {
                         message            : `not validated in a depth of ${depth}`
                     });
                 }
-                else if (transaction && transaction.transaction_id === genesisConfig.genesis_transaction) {
-                    return resolve();
-                }
-                else if (transactionVisitedSet.has(transactionID)) {
-                    return resolve();
+                else if (transaction.status === 2 || database.getRepository('transaction').isExpired(transaction.transaction_date)) {
+                    return reject({
+                        cause              : 'transaction_validation_max_depth',
+                        transaction_id_fail: transactionID,
+                        message            : `transaction expired and not validated`
+                    });
                 }
 
                 if (transaction && transaction.is_stable !== undefined) { // transaction object needs to be normalized
