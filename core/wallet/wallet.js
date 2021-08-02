@@ -311,7 +311,7 @@ class Wallet {
                     })
                     .then((outputs) => {
                         if (!outputs || outputs.length === 0) {
-                            return Promise.reject('Do not have enough funds on wallet');
+                            return Promise.reject('insufficient_balance');
                         }
                         outputs = _.orderBy(outputs, ['amount'], ['asc']);
 
@@ -331,7 +331,7 @@ class Wallet {
                         }
 
                         if (remainingAmount > 0) {
-                            return Promise.reject('Do not have enough funds on wallet');
+                            return Promise.reject('insufficient_balance');
                         }
                         let keyMap      = {
                             'transaction_id'  : 'output_transaction_id',
