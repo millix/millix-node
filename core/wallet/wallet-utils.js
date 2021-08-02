@@ -782,7 +782,8 @@ class WalletUtils {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.getTransactionOutput({
                         transaction_id : input.output_transaction_id,
-                        output_position: input.output_position
+                        output_position: input.output_position,
+                        address_key_identifier: input.address_key_identifier
                     });
                 }).then(output => {
                     allocatedFunds += output.amount;
