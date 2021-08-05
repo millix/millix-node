@@ -623,6 +623,19 @@ class WalletUtils {
             return false;
         }
 
+        let transactionDate;
+        if (![
+            '0a0',
+            '0b0',
+            'la0l',
+            'lb0l'
+        ].includes(transaction.version)) {
+            transactionDate = transaction.transaction_date;
+        }
+        else {
+            transactionDate = new Date(transaction.transaction_date).getTime() / 1000;
+        }
+
         const addressRepository                   = database.getRepository('address');
         //sort arrays
         transaction['transaction_output_list']    = _.sortBy(transaction.transaction_output_list, 'output_position');
@@ -637,7 +650,8 @@ class WalletUtils {
                 if (!this.isValidAddress(input.address_base)
                     || !this.isValidAddress(input.address_key_identifier)
                     || !addressRepository.supportedVersionSet.has(input.address_version)
-                    || outputUsedInTransaction.has(outputID)) {
+                    || outputUsedInTransaction.has(outputID)
+                    || transactionDate < input.output_transaction_date) {
                     return false;
                 }
                 outputUsedInTransaction.add(outputID);
@@ -781,8 +795,8 @@ class WalletUtils {
                 database.firstShards((shardID) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.getTransactionOutput({
-                        transaction_id : input.output_transaction_id,
-                        output_position: input.output_position,
+                        transaction_id        : input.output_transaction_id,
+                        output_position       : input.output_position,
                         address_key_identifier: input.address_key_identifier
                     });
                 }).then(output => {
