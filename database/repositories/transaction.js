@@ -1038,12 +1038,13 @@ export default class Transaction {
 
     markTransactionsAsInvalid(transactionIDs) {
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE `transaction` set status = 3 WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ' )', transactionIDs, err => {
+            const transactionDate = Math.floor(Date.now() / 1000);
+            this.database.run('UPDATE `transaction` set status = 3, is_stable = 1, stable_date = ? WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ')', [transactionDate].concat(transactionIDs), err => {
                 if (err) {
                     reject(err);
                 }
                 else {
-                    this.database.run('UPDATE transaction_output set status = 3 WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ' )', transactionIDs, err => {
+                    this.database.run('UPDATE transaction_output set status = 3, is_stable = 1, stable_date = ? WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ')', [transactionDate].concat(transactionIDs), err => {
                         if (err) {
                             reject(err);
                         }
