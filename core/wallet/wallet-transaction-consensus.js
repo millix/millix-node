@@ -363,6 +363,13 @@ export class WalletTransactionConsensus {
                                                    message            : 'output already used ' + outputID
                                                }, false);
                                            }
+                                           else if (output.address !== `${input.address_base}${input.address_version}${input.address_key_identifier}`) {
+                                               return callback({
+                                                   cause              : 'transaction_invalid',
+                                                   transaction_id_fail: transactionID,
+                                                   message            : `invalid input address ${input.address_base}${input.address_version}${input.address_key_identifier}`
+                                               }, false);
+                                           }
                                            outputUsedInTransaction.add(outputID);
                                            inputTotalAmount += output.amount;
                                            return callback(null, true);
