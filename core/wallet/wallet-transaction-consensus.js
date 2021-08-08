@@ -183,7 +183,7 @@ export class WalletTransactionConsensus {
                        });
                    }))().then((transaction) => {
 
-                if (transaction && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
+                if (transaction && transaction.status !== 3 && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
                     console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
                     return resolve();
                 }
