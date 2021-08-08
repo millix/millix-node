@@ -356,6 +356,8 @@ export class WalletTransactionConsensus {
 
                                            let outputID = input.output_transaction_id + ':' + input.output_position;
 
+                                           const outputAddress = output.address || `${output.address_base}${output.address_version}${output.address_key_identifier}`;
+
                                            if (outputUsedInTransaction.has(outputID)) {
                                                return callback({
                                                    cause              : 'transaction_invalid',
@@ -363,7 +365,7 @@ export class WalletTransactionConsensus {
                                                    message            : 'output already used ' + outputID
                                                }, false);
                                            }
-                                           else if (output.address !== `${input.address_base}${input.address_version}${input.address_key_identifier}`) {
+                                           else if (outputAddress !== `${input.address_base}${input.address_version}${input.address_key_identifier}`) {
                                                return callback({
                                                    cause              : 'transaction_invalid',
                                                    transaction_id_fail: transactionID,
