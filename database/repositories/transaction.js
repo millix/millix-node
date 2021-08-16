@@ -155,7 +155,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 AND transaction_output.is_spent=0 AND transaction_output.is_double_spend=0 AND `transaction`.status != 3 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
+                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 AND `transaction`.status != 3 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
                 [
                     addressKeyIdentifier
                 ].concat(excludeTransactionIDList),
@@ -1738,13 +1738,15 @@ export default class Transaction {
         });
     }
 
-    getTransactionOutputSpendDate(transactionID, outputShardID, outputPosition) {
+    getOutputSpendDate(transactionID, outputPosition) {
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT min(transaction_date) as transaction_date from `transaction` AS t INNER JOIN transaction_input AS i on t.transaction_id = i.transaction_id \
-                               WHERE i.output_transaction_id = ? AND i.output_shard_id = ? and i.output_position = ?',
+            this.database.get('SELECT min(transaction_date) as transaction_date from `transaction` t \
+                                inner join transaction_input i on i.transaction_id = t.transaction_id \
+                                inner join transaction_output o on i.transaction_id = o.transaction_id \
+                                where i.output_transaction_id = ? and i.output_position = ? \
+                                and o.status != 3 and o.is_double_spend = 0',
                 [
                     transactionID,
-                    outputShardID,
                     outputPosition
                 ],
                 (err, data) => {
@@ -1778,7 +1780,7 @@ export default class Transaction {
                                                          async.eachSeries(outputs, (output, callback) => {
                                                              database.applyShards((shardID) => {
                                                                  const transactionRepositorySpendDate = database.getRepository('transaction', shardID);
-                                                                 return transactionRepositorySpendDate.getTransactionOutputSpendDate(output.transaction_id, output.shard_id, output.output_position)
+                                                                 return transactionRepositorySpendDate.getOutputSpendDate(output.transaction_id, output.output_position)
                                                                                                       .then(spendDate => !!spendDate ? Promise.resolve(spendDate) : Promise.reject());
                                                              }).then(spendDate => {
                                                                  spendDate = spendDate.length > 0 ? new Date(_.min(spendDate) * 1000) : undefined;
@@ -2035,25 +2037,6 @@ export default class Transaction {
                         return reject(err);
                     }
                     resolve(row.count);
-                }
-            );
-        });
-    }
-
-    getOutputSpendDate(outputTransactionID, outputPosition) {
-        return new Promise((resolve, reject) => {
-            this.database.get('SELECT `transaction`.transaction_date FROM transaction_input INNER JOIN `transaction` on transaction_input.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE output_transaction_id = ? AND output_position = ? AND `transaction`.status != 3 ' +
-                              'AND NOT EXISTS(SELECT transaction_output.transaction_id FROM transaction_output WHERE transaction_output.transaction_id = `transaction`.transaction_id AND transaction_output.is_double_spend = 1)', [
-                    outputTransactionID,
-                    outputPosition
-                ],
-                (err, row) => {
-                    if (err) {
-                        console.log(err);
-                        return reject(err);
-                    }
-                    resolve(row ? row.transaction_date : null);
                 }
             );
         });
