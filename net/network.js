@@ -655,6 +655,11 @@ class Network {
             _.pull(this._nodeRegistry[ws.nodeID], ws);
             if (this._nodeRegistry[ws.nodeID] && this._nodeRegistry[ws.nodeID].length === 0) {
                 delete this._nodeRegistry[ws.nodeID];
+                database.getRepository('node')
+                        .updateNode({
+                            ...this._nodeList[ws.node],
+                            status: 1
+                        }).then(_ => _);
             }
 
             // remove from inbound or outbound registry
@@ -663,12 +668,6 @@ class Network {
             if (registry[ws.nodeID] && registry[ws.nodeID].length === 0) {
                 delete registry[ws.nodeID];
             }
-
-            database.getRepository('node')
-                    .updateNode({
-                        ...this._nodeList[ws.node],
-                        status: !this._nodeRegistry[ws.nodeID] ? 1 : 2
-                    }).then(_ => _);
         }
 
         // update bidirectional stream slots

@@ -73,6 +73,7 @@ CREATE TABLE transaction_input
     PRIMARY KEY (transaction_id, input_position),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
+CREATE INDEX idx_transaction_input_status_output_transaction_id ON transaction_input (status, output_transaction_id);
 CREATE INDEX idx_transaction_input_address_key_identifier ON transaction_input (address_key_identifier);
 CREATE INDEX idx_transaction_input_address_is_double_spend ON transaction_input (address, is_double_spend);
 CREATE INDEX idx_transaction_input_transaction_id ON transaction_input (transaction_id);
@@ -98,7 +99,8 @@ CREATE TABLE transaction_output
     PRIMARY KEY (transaction_id, output_position),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
 );
-CREATE INDEX idx_transaction_output_address_key_identifier ON transaction_output (address_key_identifier);
+CREATE INDEX idx_transaction_output_address_key_identifier_is_stable_is_spent_status ON transaction_output (address_key_identifier, is_stable, is_spent, status);
+CREATE INDEX idx_transaction_output_address_key_identifier_spent_double_spend_status ON transaction_output (address_key_identifier, is_spent, is_double_spend, status);
 CREATE INDEX idx_transaction_output_address_is_spent ON transaction_output (address, is_spent);
 CREATE INDEX idx_transaction_output_address_create_date ON transaction_output (address, create_date);
 CREATE INDEX idx_transaction_output_address_is_stable_is_spent_is_double_spend ON transaction_output (address, is_stable, is_spent, is_double_spend);

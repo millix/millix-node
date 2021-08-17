@@ -727,7 +727,7 @@ export const AUDIT_POINT_PRUNE_COUNT                           = 250;
 export const TRANSACTION_FEE_PROXY                             = 1000;
 export const TRANSACTION_FEE_DEFAULT                           = 1000;
 export const TRANSACTION_FEE_NETWORK                           = 0.0;
-export const TRANSACTION_PRUNE_AGE_MIN                         = 1440;
+export const TRANSACTION_PRUNE_AGE_MIN                         = 10;
 export const TRANSACTION_PRUNE_COUNT                           = 1000;
 export const TRANSACTION_RETRY_SYNC_MAX                        = 100;
 export const TRANSACTION_INPUT_MAX                             = 128;
@@ -784,7 +784,7 @@ export const NODE_CERTIFICATE_KEY_PATH                         = DATA_BASE_DIR +
 export const NODE_CERTIFICATE_PATH                             = DATA_BASE_DIR + '/node_certificate.pem';
 export const WALLET_KEY_PATH                                   = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR + '/job.json';
-export const JOB_CONFIG_VERSION                                = 3;
+export const JOB_CONFIG_VERSION                                = 4;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
@@ -818,7 +818,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE         = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                  = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR            = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                        = '14';
+    DATABASE_CONNECTION.SCHEMA_VERSION                        = '15';
 }
 
 export default {

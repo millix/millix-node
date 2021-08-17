@@ -866,14 +866,14 @@ class Peer {
             return Promise.resolve();
         }
 
-        return (forceRequestSync ? Promise.resolve() : walletSync.getTransactionUnresolvedData(transactionID))
+        return (forceRequestSync || options.routing ? Promise.resolve() : walletSync.getTransactionUnresolvedData(transactionID))
             .then(unresolvedTransaction => {
                 if (unresolvedTransaction) {
                     return;
                 }
                 return new Promise((resolve, reject) => {
 
-                    if (!alreadyQueued) {
+                    if (!alreadyQueued && !options.routing) {
                         walletSync.add(transactionID, {
                             delay: !dispatchRequest ? 0 : config.NETWORK_LONG_TIME_WAIT_MAX * 10,
                             timestamp,
@@ -951,7 +951,7 @@ class Peer {
 
                         if (!done) {
                             console.log('[peer] transaction_sync_response:' + transactionID + ' not received. skip...');
-                            if (!alreadyQueued) {
+                            if (!alreadyQueued && !options.routing) {
                                 walletSync.add(transactionID, {
                                     timestamp,
                                     attempt,

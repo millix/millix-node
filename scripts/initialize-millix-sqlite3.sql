@@ -96,7 +96,7 @@ CREATE TABLE `transaction`
     is_parent        TINYINT     NOT NULL DEFAULT 0 CHECK (is_parent = 0 OR is_parent = 1),
     timeout_date     INT         NULL CHECK(length(timeout_date) <= 10 AND TYPEOF(timeout_date) IN ('integer', 'null')),
     is_timeout       TINYINT     NOT NULL DEFAULT 0 CHECK (is_timeout = 0 OR is_timeout = 1),
-    status           TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'), /*1: default, 2: prune, 3: invalid*/
+    status           TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'), /*1: default, 2: expired, 3: invalid*/
     create_date      INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
 CREATE INDEX idx_transaction_status_is_stable_transaction_date ON `transaction` (status, is_stable, transaction_date);
@@ -154,6 +154,7 @@ CREATE TABLE transaction_input
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id),
     FOREIGN KEY (address, address_key_identifier) REFERENCES address (address, address_key_identifier)
 );
+CREATE INDEX idx_transaction_input_status_output_transaction_id ON transaction_input (status, output_transaction_id);
 CREATE INDEX idx_transaction_input_address_key_identifier ON transaction_input (address_key_identifier);
 CREATE INDEX idx_transaction_input_address_is_double_spend ON transaction_input (address, is_double_spend);
 CREATE INDEX idx_transaction_input_transaction_id ON transaction_input (transaction_id);
@@ -180,7 +181,8 @@ CREATE TABLE transaction_output
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id),
     FOREIGN KEY (address, address_key_identifier) REFERENCES address (address, address_key_identifier)
 );
-CREATE INDEX idx_transaction_output_address_key_identifier ON transaction_output (address_key_identifier);
+CREATE INDEX idx_transaction_output_address_key_identifier_is_stable_is_spent_status ON transaction_output (address_key_identifier, is_stable, is_spent, status);
+CREATE INDEX idx_transaction_output_address_key_identifier_spent_double_spend_status ON transaction_output (address_key_identifier, is_spent, is_double_spend, status);
 CREATE INDEX idx_transaction_output_address_is_spent ON transaction_output (address, is_spent);
 CREATE INDEX idx_transaction_output_address_create_date ON transaction_output (address, create_date);
 CREATE INDEX idx_transaction_output_address_is_stable_is_spent_is_double_spend ON transaction_output (address, is_stable, is_spent, is_double_spend);

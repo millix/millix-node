@@ -5,7 +5,7 @@ import Endpoint from '../endpoint';
 /**
  * api list_config_public
  */
-class _CZOTAF5LfusB1Ht5 extends Endpoint {
+class _hXwPQrVhLEALFsIJ extends Endpoint {
     constructor() {
         super('hXwPQrVhLEALFsIJ');
         this.publicConfigNameList = new Set([
@@ -51,4 +51,4 @@ class _CZOTAF5LfusB1Ht5 extends Endpoint {
 }
 
 
-export default new _CZOTAF5LfusB1Ht5();
+export default new _hXwPQrVhLEALFsIJ();
