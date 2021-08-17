@@ -654,7 +654,7 @@ class Wallet {
             return;
         }
 
-        if (!this.isProcessingNewTransactionFromNetwork) {
+        if ((!this.isProcessingNewTransactionFromNetwork || walletTransactionConsensus.isRunningValidationForWalletTransaction()) && !this.isRequestedTransaction(transaction.transaction_id)) {
             walletSync.clearTransactionSync(transaction.transaction_id);
             walletSync.add(transaction.transaction_id, {
                 delay   : 5000,
@@ -702,9 +702,10 @@ class Wallet {
                                                                                       if (!validTransaction) {
                                                                                           console.log('Invalid transaction received from network. Setting all of the childs to invalid');
 
-                                                                                          this.findAndSetAllSpendersAsInvalid(transaction)
-                                                                                              .then(_ => _)
-                                                                                              .catch(err => console.log(`Failed to find and set spenders as invalid. Error: ${err}`));
+                                                                                          database.applyShards((shardID) => {
+                                                                                              return database.getRepository('transaction', shardID)
+                                                                                                             .invalidateAllTransactions(transaction.transaction_id);
+                                                                                          }).then(_ => _).catch(err => console.log(`Failed to find and set spenders as invalid. Error: ${err}`));
 
                                                                                           eventBus.emit('badTransaction:' + transaction.transaction_id);
                                                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
@@ -838,149 +839,6 @@ class Wallet {
                            priority: this.getTransactionSyncPriority(transaction)
                        });
                    });
-    }
-
-    // Once a transaction is determined as invalid, we want to set all its
-    // spenders (if there are any) as invalid.
-    findAndSetAllSpendersAsInvalid(transaction) {
-        return new Promise((resolve, reject) => {
-            this.findAllSpenders(transaction)
-                .then((allSpenders) => {
-                    console.log(`Found ${allSpenders.length} spenders of invalid transaction ${transaction.transaction_id}`);
-
-                    this.markAllSpendersAsInvalid(allSpenders)
-                        .then(() => {
-                            console.log(`Marked all spenders of ${transaction.transaction_id} as invalid`);
-                            resolve();
-                        })
-                        .catch((err) => reject(err));
-                })
-                .catch((err) => reject(err));
-        });
-    }
-
-    // Finds all spenders of a single transaction
-    // This is a recursive function
-    // The spenders are added to an array that is passed in
-    findAllSpenders(transaction, processedTransaction = new Set()) {
-        processedTransaction.add(transaction.transaction_id);
-        console.log(`[Wallet] Querying all shards for potential spenders of transaction ${transaction.transaction_id}`);
-
-        return database.firstShards((shardID) => {
-            const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.listTransactionOutput({
-                'transaction_output.transaction_id': transaction.transaction_id
-            }).then(outputs => outputs.length > 0 ? Promise.resolve(outputs) : Promise.reject());
-        }).then(outputs => {
-            return new Promise(resolve => {
-                const spenderMap = {};
-                async.eachSeries(outputs, (output, callback) => {
-                    database.applyShards(shardID => {
-                        return database.getRepository('transaction', shardID)
-                                       .getTransactionSpenders(output.transaction_id, output.shard_id, output.output_position);
-                    }).then(allOutputSpenders => {
-                        allOutputSpenders.forEach(spender => spenderMap[spender.transaction_id] = spender);
-                        callback();
-                    });
-                }, () => {
-                    resolve(Object.values(spenderMap));
-                });
-            });
-        });
-    }
-
-    markAllSpendersAsInvalid(spenders) {
-        let spendersByShard = {};
-        let spendersSet     = new Set();
-
-        for (let spender of spenders) {
-            const shardID = spender.shard_id || genesisConfig.genesis_shard_id;
-            if (!(shardID in spendersByShard)) {
-                spendersByShard[shardID] = [];
-            }
-
-            spendersByShard[shardID].push(spender.transaction_id);
-            spendersSet.add(spender.transaction_id);
-        }
-
-        return new Promise((resolve) => {
-            async.eachSeries(Object.entries(spendersByShard), ([shardID, transactionIDs], callback) => {
-                console.log(`[wallet] marking transactions ${transactionIDs.join(', ')} on shard ${shardID} as invalid.`);
-
-                let chunkTransactionIDs = [];
-                while (transactionIDs.length) {
-                    chunkTransactionIDs.push(transactionIDs.splice(0, 512));
-                }
-
-                async.eachSeries(chunkTransactionIDs, (transactionIDList, chunkCallback) => {
-                    database.applyShardZeroAndShardRepository('transaction', shardID, transactionRepository => {
-                        return transactionRepository.markTransactionsAsInvalid(transactionIDList);
-                    }).then(() => {
-                        console.log(`[wallet] set transactions ${transactionIDList} as invalid`);
-                    }).catch((err) => {
-                        console.log(`[wallet] error while marking transactions as invalid: ${err}`);
-                    }).then(() => {
-                        async.eachSeries(transactionIDList, (transactionID, callbackTransaction) => {
-                            // get all inputs
-                            database.firstShardORShardZeroRepository('transaction', shardID, transactionRepository => {
-                                return transactionRepository.getTransactionInputs(transactionID)
-                                                            .then(inputs => !inputs || inputs.length === 0 ? Promise.reject() : inputs);
-                            }).then(transactionInputList => {
-                                /* check if this the output spent in this input should be reset */
-                                async.eachSeries(transactionInputList, (transactionInput, callbackInput) => {
-                                    /* if this output is invalid too we dont reset it */
-                                    if (spendersSet.has(transactionInput.output_transaction_id)) {
-                                        return callbackInput();
-                                    }
-                                    /* get information about the transaction that generated this input */
-                                    database.firstShardORShardZeroRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
-                                        return transactionRepository.getTransaction(transactionInput.output_transaction_id, transactionInput.output_shard_id)
-                                                                    .then(transaction => transaction || Promise.reject());
-                                    }).then(transaction => {
-                                        if (!transaction || transaction.status === 3) {
-                                            /* the transaction was not found or it's invalid*/
-                                            return callbackInput();
-                                        }
-                                        /* if the transaction is a double spend we dont reset the output state */
-                                        database.firstShardORShardZeroRepository('transaction', transaction.shard_id, transactionRepository => {
-                                            return transactionRepository.getTransactionOutput({
-                                                transaction_id : transaction.transaction_id,
-                                                is_double_spend: 1
-                                            }).then(output => output || Promise.reject());
-                                        }).then(doubleSpentTransactionOutput => {
-                                            if (doubleSpentTransactionOutput) {
-                                                /* there is a double spend output. skip this transaction*/
-                                                return callbackInput();
-                                            }
-
-                                            /* we should reset the spend status of the output if there is no other tx spending it */
-                                            database.applyShards(shardID => {
-                                                return database.getRepository('transaction', shardID).getTransactionSpenders(transactionInput.output_transaction_id, transactionInput.output_shard_id, transactionInput.output_position);
-                                            }).then(transactionSpenders => {
-                                                if (transactionSpenders.length > 1) {
-                                                    /* skip this output. there is another transaction spending it */
-                                                    return callbackInput();
-                                                }
-
-                                                /* set the transaction output as unspent because the spender was an invalid transaction */
-                                                database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
-                                                    return transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null);
-                                                }).then(() => {
-                                                    callbackInput();
-                                                });
-                                            });
-                                        });
-                                    });
-                                }, () => callbackTransaction());
-                            });
-                        }, () => chunkCallback());
-                    });
-                }, () => callback());
-            }, () => {
-                console.log('[wallet] finished setting all spenders as invalid');
-                resolve();
-            });
-        });
     }
 
     _onSyncTransactionByDate(data, ws) {

@@ -153,9 +153,17 @@ export default class Transaction {
 
     getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` ' +
+            this.database.all('SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
+                              'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
+                              'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
+                              'WHERE transaction_input.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ')' +
+                              'UNION SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ? ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 AND `transaction`.status != 3 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
+                              'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ')' +
+                              'UNION SELECT * FROM (SELECT t.* FROM transaction_input i ' +
+                              'INNER JOIN `transaction` t ON t.transaction_id = i.transaction_id ' +
+                              'WHERE output_transaction_id IN (SELECT transaction_id FROM transaction_output WHERE address_key_identifier = ?1 ' +
+                              'AND is_stable = 1 AND is_spent = 1 AND status = 2) ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND t.is_stable = 0 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ')',
                 [
                     addressKeyIdentifier
                 ].concat(excludeTransactionIDList),
@@ -453,7 +461,7 @@ export default class Transaction {
 
                     transaction.transaction_input_list.forEach(input => {
                         promise = promise.then(() => {
-                            return this.addTransactionInput(transaction.transaction_id, transaction.shard_id, input.input_position, input.address, input.address_key_identifier, input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id)
+                            return this.addTransactionInput(transaction.transaction_id, transaction.shard_id, input.input_position, input.address, input.address_key_identifier, input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id, undefined, status)
                                        .then(() => {
                                            delete input['address'];
                                        });
@@ -605,10 +613,10 @@ export default class Transaction {
                             return new Promise((resolve, reject) => {
                                 this.addTransactionInput(transaction.transaction_id, transaction.shard_id, input.input_position, input.address, input.address_key_identifier,
                                     input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id,
-                                    input.double_spend_date, input.status, input.create_date)
+                                    input.double_spend_date, transactionStatus, input.create_date)
                                     .then(resolve)
                                     .catch(() => {
-                                        this.updateTransactionInput(transaction.transaction_id, input.input_position, input.double_spend_date ? new Date(input.double_spend_date * 1000) : null)
+                                        this.updateTransactionInput(transaction.transaction_id, input.input_position, input.double_spend_date ? new Date(input.double_spend_date * 1000) : null, transactionStatus)
                                             .then(resolve)
                                             .catch(reject);
                                     });
@@ -920,7 +928,7 @@ export default class Transaction {
         });
     }
 
-    updateTransactionInput(transactionID, inputPosition, doubleSpendDate) {
+    updateTransactionInput(transactionID, inputPosition, doubleSpendDate, status) {
         return new Promise((resolve, reject) => {
             let sql        = 'UPDATE transaction_input SET';
             let parameters = [];
@@ -932,6 +940,11 @@ export default class Transaction {
             else if (doubleSpendDate) {
                 sql += ' double_spend_date = ?, is_double_spend = ?';
                 parameters.push(Math.floor(doubleSpendDate.getTime() / 1000), 1);
+            }
+
+            if (status !== undefined) {
+                sql += ', status = ?';
+                parameters.push(status);
             }
 
             parameters.push(transactionID, inputPosition);
@@ -1006,53 +1019,65 @@ export default class Transaction {
         });
     }
 
-    getTransactionSpenders(transactionID, shardID, outputPosition) {
+    invalidateAllTransactions(transactionID) {
         return new Promise((resolve, reject) => {
-            let sql          = 'WITH RECURSIVE transaction_spender (transaction_id, shard_id, output_position) as (\
-                                SELECT ?, ?, ? \
-                                UNION ALL \
-                                SELECT o.transaction_id, o.shard_id, o.output_position FROM transaction_output o INNER JOIN transaction_input i ON o.transaction_id = i.transaction_id INNER JOIN transaction_spender s ON i.output_transaction_id = s.transaction_id AND i.output_position = s.output_position \
-                                LIMIT 100000 ) \
-                                SELECT DISTINCT transaction_id, shard_id FROM transaction_spender';
-            const parameters = [
-                transactionID,
-                shardID,
-                outputPosition
-            ];
-            this.database.all(sql, parameters, (err, rows) => {
-                if (err) {
-                    return reject(err);
-                }
-
-                let result = rows.map(r => {
-                    return {
-                        'transaction_id': r.transaction_id,
-                        'shard_id'      : r.shard_id
-                    };
+            this.database.serialize(() => {
+                let sql = `DROP TABLE IF EXISTS transaction_invalid_all;
+                CREATE TEMPORARY TABLE transaction_invalid_all AS
+                with recursive transaction_invalid_spenders (transaction_id, status)
+                                   as (
+                        select "${transactionID}", 2
+                        union
+                        select i.transaction_id, i.status
+                        from transaction_input i
+                                 inner join transaction_invalid_spenders s
+                                            on i.output_transaction_id = s.transaction_id
+                    )
+                select transaction_id
+                from transaction_invalid_spenders where status != 3;
+                update 'transaction'
+                set status      = 3,
+                    is_stable   = 1,
+                    stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                where transaction_id in
+                      (select transaction_id from transaction_invalid_all);
+                update transaction_output
+                set status            = 3,
+                    is_stable         = 1,
+                    stable_date       = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_double_spend   = 0,
+                    double_spend_date = NULL,
+                    is_spent          = 0,
+                    spent_date        = NULL
+                where transaction_id in
+                      (select transaction_id from transaction_invalid_all);
+                update transaction_input
+                set status            = 3,
+                    is_double_spend   = 0,
+                    double_spend_date = NULL
+                where transaction_id in
+                      (select transaction_id from transaction_invalid_all);
+                update transaction_output as o
+                set stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = exists (
+                    select o2.transaction_id from transaction_input i
+                    inner join transaction_output o2 on i.transaction_id = o2.transaction_id
+                    where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
+                    o2.status != 3 and o2.is_double_spend = 0
+                    ), spent_date = (
+                    select t.transaction_date from 'transaction' t
+                    inner join transaction_input i on i.transaction_id = t.transaction_id
+                    inner join transaction_output o2 on i.transaction_id = o2.transaction_id
+                    where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
+                    o2.status != 3 and o2.is_double_spend = 0
+                    )
+                where transaction_id in (select output_transaction_id from transaction_input where transaction_id in (select transaction_id from transaction_invalid_all));
+                DROP TABLE transaction_invalid_all;`;
+                this.database.exec(sql, (err) => {
+                    if (err) {
+                        return reject();
+                    }
+                    return resolve();
                 });
-
-                resolve(result);
-            });
-        });
-    }
-
-    markTransactionsAsInvalid(transactionIDs) {
-        return new Promise((resolve, reject) => {
-            const transactionDate = Math.floor(Date.now() / 1000);
-            this.database.run('UPDATE `transaction` set status = 3, is_stable = 1, stable_date = ? WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ')', [transactionDate].concat(transactionIDs), err => {
-                if (err) {
-                    reject(err);
-                }
-                else {
-                    this.database.run('UPDATE transaction_output set status = 3, is_stable = 1, stable_date = ? WHERE transaction_id IN (' + transactionIDs.map(() => '?').join(',') + ')', [transactionDate].concat(transactionIDs), err => {
-                        if (err) {
-                            reject(err);
-                        }
-                        else {
-                            resolve();
-                        }
-                    });
-                }
             });
         });
     }
@@ -1486,19 +1511,16 @@ export default class Transaction {
                                         database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, now, now, now))
                                                 .then(() => callbackOutputs());
                                     }, () => {
-                                        async.eachSeries(transaction.transaction_input_list, (input, callbackInputs) => { // get all transactions spending  this input
+                                        async.eachSeries(transaction.transaction_input_list, (input, callbackInputs) => { // reset spent date of the output spent by this transaction
                                             (() => {
-                                                if (input.output_transaction_id === doubleSpendTransactionInput.output_transaction_id &&
-                                                    input.output_position === doubleSpendTransactionInput.output_position) {
-                                                    return Promise.resolve();
-                                                }
-                                                else {
-                                                    return database.applyShards((shardID) => database.getRepository('transaction', shardID).listOutputSpendTransaction(input.output_transaction_id, input.output_position))
-                                                                   .then(transactions => { // update the spend date using the oldest date
-                                                                       let spendDate = _.min(_.map(_.filter(transactions, t => t.transaction_id !== transaction.transaction_id), t => t.transaction_date));
-                                                                       return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, !spendDate ? null : spendDate));
-                                                                   });
-                                                }
+                                                return database.applyShards((shardID) => {
+                                                    const transactionRepository = database.getRepository('transaction', shardID);
+                                                    return transactionRepository.getOutputSpendDate(input.output_transaction_id, input.output_position)
+                                                                                .then(spendDate => !!spendDate ? Promise.resolve(spendDate) : Promise.reject());
+                                                }).then(spendDate => {
+                                                    spendDate = spendDate.length > 0 ? new Date(_.min(spendDate) * 1000) : undefined;
+                                                    return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, !spendDate ? null : spendDate));
+                                                });
                                             })().then(() => { // mark the input as  double spend if it caused the double spend issue.
                                                 if (input.output_transaction_id === doubleSpendTransactionInput.output_transaction_id &&
                                                     input.output_position === doubleSpendTransactionInput.output_position) {
@@ -1709,7 +1731,7 @@ export default class Transaction {
         });
     }
 
-    listOutputSpendTransaction(transactionID, outputPosition) {
+    listTransactionSpendingOutput(transactionID, outputPosition) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT * FROM `transaction` INNER JOIN transaction_input ON `transaction`.transaction_id = transaction_input.transaction_id WHERE output_transaction_id = ? AND output_position = ?',
                 [
@@ -2271,23 +2293,11 @@ export default class Transaction {
     }
 
     setTransactionAsExpired(transactionID) {
-        return new Promise((resolve, reject) => {
-            this.database.run('UPDATE transaction_output set status = 2 WHERE transaction_id = ? AND status = 1', transactionID, (err) => {
-                if (err) {
-                    console.log('[Database] Failed updating transactions to expired. [message] ', err);
-                    reject(err);
-                }
-                else {
-                    this.database.run('UPDATE `transaction` set status = 2 WHERE transaction_id = ? AND status = 1', transactionID, (err) => {
-                        if (err) {
-                            console.log('[Database] Failed updating transactions to expired. [message] ', err);
-                            reject(err);
-                        }
-                        else {
-                            resolve();
-                        }
-                    });
-                }
+        return new Promise((resolve) => {
+            this.database.serialize(() => {
+                this.database.run('UPDATE transaction_output set status = 2 WHERE transaction_id = ? AND status = 1', [transactionID], _ => _);
+                this.database.run('UPDATE transaction_input set status = 2 WHERE transaction_id = ? AND status = 1', [transactionID], _ => _);
+                this.database.run('UPDATE `transaction` set status = 2 WHERE transaction_id = ? AND status = 1', [transactionID], _ => resolve());
             });
         });
     }
@@ -2430,21 +2440,33 @@ export default class Transaction {
         let seconds = Math.floor(olderThan.valueOf() / 1000);
 
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE transaction_output set status = 2 WHERE transaction_id IN (SELECT T.transaction_id FROM `transaction` AS T WHERE T.transaction_date <= ? AND T.status = 1)', seconds, (err) => {
+            this.database.exec(`DROP TABLE IF EXISTS transaction_expired;
+            CREATE TEMPORARY TABLE transaction_expired AS
+            WITH expired AS (SELECT transaction_id
+                             FROM 'transaction'
+                             WHERE transaction_date <= ${seconds}
+                               AND status = 1)
+            SELECT *
+            FROM expired;
+            UPDATE transaction_output
+            set status = 2
+            WHERE transaction_id IN
+                  (SELECT transaction_id FROM transaction_expired);
+            UPDATE transaction_input
+            set status = 2
+            WHERE transaction_id IN
+                  (SELECT transaction_id FROM transaction_expired);
+            UPDATE 'transaction'
+            set status = 2
+            WHERE transaction_id IN
+                  (SELECT transaction_id FROM transaction_expired);
+            DROP TABLE IF EXISTS transaction_expired;`, err => {
                 if (err) {
                     console.log('[Database] Failed updating transactions to expired. [message] ', err);
                     reject(err);
                 }
                 else {
-                    this.database.run('UPDATE `transaction` set status = 2 WHERE transaction_date <= ? AND status = 1', seconds, (err) => {
-                        if (err) {
-                            console.log('[Database] Failed updating transactions to expired. [message] ', err);
-                            reject(err);
-                        }
-                        else {
-                            resolve();
-                        }
-                    });
+                    resolve();
                 }
             });
         });

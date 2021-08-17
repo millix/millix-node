@@ -15,13 +15,13 @@ import console from '../console';
 export class WalletTransactionConsensus {
 
     constructor() {
-        this._transactionValidationState    = {
+        this._transactionValidationState            = {
             /*[ws.nodeID]: {
              transaction_id: id,
              timestamp: int
              }*/
         };
-        this._consensusRoundState           = {
+        this._consensusRoundState                   = {
             /*[transaction.transaction_id]: {
              consensus_round_validation_count  : int,
              consensus_round_invalid_count     : int,
@@ -34,19 +34,24 @@ export class WalletTransactionConsensus {
              active  : bool
              }*/
         };
-        this._transactionValidationRejected = new Set();
-        this._validationPrepareState        = {
+        this._transactionValidationRejected         = new Set();
+        this._validationPrepareState                = {
             /*[transaction.transaction_id] : {
              transaction_not_found_count: int
              }*/
         };
-        this._transactionRetryValidation    = new Set();
-        this._transactionValidationNotFound = new Set();
-        this._transactionObjectCache        = {};
+        this._transactionRetryValidation            = new Set();
+        this._transactionValidationNotFound         = new Set();
+        this._transactionObjectCache                = {};
+        this._runningValidationForWalletTransaction = false;
     }
 
     initialize() {
         return Promise.resolve();
+    }
+
+    isRunningValidationForWalletTransaction() {
+        return this._runningValidationForWalletTransaction;
     }
 
     addTransactionToCache(transaction) {
@@ -752,14 +757,16 @@ export class WalletTransactionConsensus {
                     consensusData.active = false;
                     console.log('[consensus][request] the transaction ', transactionID, ' was not validated (due to not invalid tx) during consensus round number ', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
-                    wallet.findAndSetAllSpendersAsInvalid(transaction)
-                          .then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
-                          .then(() => {
-                              consensusData.resolve();
-                          })
-                          .catch(() => {
-                              consensusData.resolve();
-                          });
+                    database.applyShards((shardID) => {
+                        return database.getRepository('transaction', shardID)
+                                       .invalidateAllTransactions(transactionID);
+                    }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
+                            .then(() => {
+                                consensusData.resolve();
+                            })
+                            .catch(() => {
+                                consensusData.resolve();
+                            });
                 }
             }
         }
@@ -872,6 +879,7 @@ export class WalletTransactionConsensus {
 
             if (isTransactionFundingWallet) {
                 this._transactionRetryValidation[transactionID] = Date.now();
+                this._runningValidationForWalletTransaction     = true;
             }
 
             delete this._consensusRoundState[lockerID];
@@ -918,6 +926,7 @@ export class WalletTransactionConsensus {
                        .then(() => pendingTransaction.transaction_id)
                        .catch(() => Promise.reject({transaction_id: pendingTransaction.transaction_id}));
         }).then(transactionID => {
+            this._runningValidationForWalletTransaction = false;
             delete this._consensusRoundState[lockerID];
             delete this._consensusRoundState[transactionID];
             delete this._validationPrepareState[transactionID];
@@ -929,6 +938,7 @@ export class WalletTransactionConsensus {
                 }, 0);
             }
         }).catch(({transaction_id: transactionID}) => {
+            this._runningValidationForWalletTransaction = false;
             delete this._consensusRoundState[lockerID];
             delete this._consensusRoundState[transactionID];
             return Promise.resolve();
