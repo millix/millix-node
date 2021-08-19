@@ -19,4 +19,6 @@ console.log       = function() {
     enabled && showLog && config.MODE_DEBUG && _consoleLog.apply(console, arguments);
 };
 
+config.DEBUG_LOG_FILTER.forEach(filter => console.addFilter(filter));
+
 export default console;
