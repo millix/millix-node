@@ -786,6 +786,7 @@ export const WALLET_KEY_PATH                                   = DATA_BASE_DIR +
 export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR + '/job.json';
 export const JOB_CONFIG_VERSION                                = 4;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
+export const DEBUG_LOG_FILTER                                  = [];
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
 export const PEER_ROTATION_MORE_THAN_ALL                       = 0.01;
@@ -893,7 +894,8 @@ export default {
     PEER_ROTATION_MORE_THAN_ALL,
     PEER_ROTATION_CONFIG,
     JOB_CONFIG_PATH,
-    JOB_CONFIG_VERSION
+    JOB_CONFIG_VERSION,
+    DEBUG_LOG_FILTER
 };
 
 // dev branch should be running in the test-network

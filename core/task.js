@@ -29,7 +29,13 @@ class Task {
                 });
             }
             else {
-                task();
+                try {
+                    task();
+                }
+                catch (e) {
+                    this.debug && console.log(`[task] error running task ${taskName}: ${e}`);
+                }
+
                 if (!once) {
                     self.runningTask[taskName] = setTimeout(run, waitTime);
                 }
