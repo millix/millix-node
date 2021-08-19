@@ -156,14 +156,14 @@ export default class Transaction {
             this.database.all('SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE transaction_input.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ')' +
+                              'WHERE transaction_input.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ') ' +
                               'UNION SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
                               'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ')' +
-                              'UNION SELECT * FROM (SELECT t.* FROM transaction_input i ' +
-                              'INNER JOIN `transaction` t ON t.transaction_id = i.transaction_id ' +
+                              'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ') ' +
+                              'UNION SELECT * FROM (SELECT `transaction`.* FROM transaction_input ' +
+                              'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
                               'WHERE output_transaction_id IN (SELECT transaction_id FROM transaction_output WHERE address_key_identifier = ?1 ' +
-                              'AND is_stable = 1 AND is_spent = 1 AND status = 2) ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND t.is_stable = 0 ORDER BY transaction_date LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ')',
+                              'AND is_stable = 1 AND is_spent = 1 AND status = 2) ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND `transaction`.is_stable = 0 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX + ') ',
                 [
                     addressKeyIdentifier
                 ].concat(excludeTransactionIDList),
@@ -1034,7 +1034,8 @@ export default class Transaction {
                                             on i.output_transaction_id = s.transaction_id
                     )
                 select transaction_id
-                from transaction_invalid_spenders where status != 3;
+                from transaction_invalid_spenders
+                where status != 3;
                 update 'transaction'
                 set status      = 3,
                     is_stable   = 1,
@@ -1783,68 +1784,52 @@ export default class Transaction {
 
 
     setPathAsStableFrom(transactionID) {
-        return new Promise(resolve => {
-            const dfs = (transactions, depth) => {
-                let newTransactions = [];
-                async.eachSeries(transactions, (transaction, callback) => {
-                    mutex.lock(['path-as-stable' + (this.database.shardID ? '_' + this.database.shardID : '')], pathAsStableUnlock => {
-                        mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], transactionUnlock => {
-                            const transactionRepository = transaction.repository;
-                            if (!transactionRepository) {
-                                transactionUnlock();
-                                pathAsStableUnlock();
-                                return callback();
-                            }
-                            transactionRepository.setTransactionAsStable(transaction.transaction_id)
-                                                 .then(() => transactionRepository.listTransactionOutput({'`transaction`.transaction_id': transaction.transaction_id}))
-                                                 .then(outputs => {
-                                                     return new Promise(resolve => {
-                                                         async.eachSeries(outputs, (output, callback) => {
-                                                             database.applyShards((shardID) => {
-                                                                 const transactionRepositorySpendDate = database.getRepository('transaction', shardID);
-                                                                 return transactionRepositorySpendDate.getOutputSpendDate(output.transaction_id, output.output_position)
-                                                                                                      .then(spendDate => !!spendDate ? Promise.resolve(spendDate) : Promise.reject());
-                                                             }).then(spendDate => {
-                                                                 spendDate = spendDate.length > 0 ? new Date(_.min(spendDate) * 1000) : undefined;
-                                                                 transactionRepository.updateTransactionOutput(output.transaction_id, output.output_position, spendDate, ntp.now())
-                                                                                      .then(() => callback());
-                                                             });
-                                                         }, () => resolve());
-                                                     });
-                                                 })
-                                                 .then(() => transactionRepository.setInputsAsSpend(transaction.transaction_id))
-                                                 .then(() => transactionRepository.getTransactionUnstableInputs(transaction.transaction_id))
-                                                 .then(inputs => {
-                                                     _.each(inputs, input => {
-                                                         newTransactions.push({
-                                                             transaction_id: input.output_transaction_id,
-                                                             repository    : database.getRepository('transaction') // shard zero
-                                                         });
-                                                         newTransactions.push({
-                                                             transaction_id: input.output_transaction_id,
-                                                             repository    : database.getRepository('transaction', input.output_shard_id)
-                                                         });
-                                                     });
-                                                     transactionUnlock();
-                                                     pathAsStableUnlock();
-                                                     callback();
-                                                 });
-                        }, true);
-                    });
-                }, () => {
-                    if (newTransactions.length === 0 || depth >= config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
-                        console.log('[setPathAsStableFrom] max depth was', depth);
-                        return resolve();
-                    }
-                    dfs(newTransactions, depth + 1);
-                });
-            };
-            dfs([
-                {
-                    transaction_id: transactionID,
-                    repository    : this
+        return new Promise((resolve, reject) => {
+            this.database.exec(`
+                DROP TABLE IF EXISTS transaction_input_chain;
+                CREATE TEMPORARY TABLE transaction_input_chain AS
+                WITH RECURSIVE transaction_input_chain (transaction_id, status)
+                                   AS (
+                        SELECT "${transactionID}", 1
+                        UNION
+                        SELECT i.output_transaction_id, i.status
+                        FROM transaction_input i
+                                 INNER JOIN transaction_input_chain c
+                                            ON i.transaction_id = c.transaction_id)
+                SELECT transaction_id
+                FROM transaction_input_chain
+                WHERE status = 1;
+                UPDATE 'transaction' AS t
+                SET is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), status = 2
+                WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
+                UPDATE transaction_input
+                SET status            = 2,
+                    is_double_spend   = 0,
+                    double_spend_date = NULL
+                WHERE transaction_id IN
+                      (SELECT transaction_id FROM transaction_input_chain);
+                UPDATE transaction_output AS o
+                SET status = 2, is_double_spend = 0, double_spend_date = NULL, is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = EXISTS (
+                    SELECT i.output_transaction_id FROM transaction_input i
+                    INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
+                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
+                    o2.status != 3 AND o2.is_double_spend = 0
+                    ), spent_date = (
+                    SELECT t.transaction_date FROM 'transaction' t
+                    INNER JOIN transaction_input i ON i.transaction_id = t.transaction_id
+                    INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
+                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
+                    o2.status != 3 and o2.is_double_spend = 0
+                    )
+                WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
+            `, (err) => {
+                if (err) {
+                    return reject(err);
                 }
-            ], 0);
+                else {
+                    return resolve();
+                }
+            });
         });
     }
 
