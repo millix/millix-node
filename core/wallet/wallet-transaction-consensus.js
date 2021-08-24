@@ -883,7 +883,9 @@ export class WalletTransactionConsensus {
             }
 
             delete this._consensusRoundState[lockerID];
-            this._consensusRoundState[transactionID] = {};
+            this._consensusRoundState[transactionID] = {
+                timestamp: Date.now()
+            };
 
             let unstableDateStart = ntp.now();
             unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
@@ -901,7 +903,8 @@ export class WalletTransactionConsensus {
 
             return (() => {
                 if (unstableDateStart.getTime() < pendingTransaction.transaction_date.getTime()) { // if not hibernated yet, we try to do a local validation first
-                    return this._validateTransaction(transactionID, null, 0);
+                    return this._validateTransaction(transactionID, null, 0)
+                               .catch(() => Promise.resolve());
                 }
                 else {
                     return Promise.resolve();
