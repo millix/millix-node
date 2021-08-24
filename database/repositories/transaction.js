@@ -1800,16 +1800,15 @@ export default class Transaction {
                 FROM transaction_input_chain
                 WHERE status = 1;
                 UPDATE 'transaction' AS t
-                SET is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), status = 2
+                SET is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER)
                 WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
                 UPDATE transaction_input
-                SET status            = 2,
-                    is_double_spend   = 0,
+                SET is_double_spend   = 0,
                     double_spend_date = NULL
                 WHERE transaction_id IN
                       (SELECT transaction_id FROM transaction_input_chain);
                 UPDATE transaction_output AS o
-                SET status = 2, is_double_spend = 0, double_spend_date = NULL, is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = EXISTS (
+                SET is_double_spend = 0, double_spend_date = NULL, is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = EXISTS (
                     SELECT i.output_transaction_id FROM transaction_input i
                     INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
                     WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND

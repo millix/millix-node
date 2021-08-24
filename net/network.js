@@ -287,11 +287,11 @@ class Network {
         database.getRepository('node')
                 .listNodes()
                 .then((nodes) => {
-                    async.eachSeries(nodes, (node, callback) => {
+                    async.eachSeries(_.shuffle(nodes), (node, callback) => {
                         this.addNode(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id);
                         callback();
                     }, () => {
-                        _.each(config.NODE_INITIAL_LIST, ({host, port_protocol: port, port_api: portApi}) => {
+                        _.each(_.shuffle(config.NODE_INITIAL_LIST), ({host, port_protocol: port, port_api: portApi}) => {
                             let prefix = config.WEBSOCKET_PROTOCOL;
                             let url    = `${prefix}://${host}:${port}`;
                             if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && host && port && portApi)) {
