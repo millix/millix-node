@@ -1924,6 +1924,7 @@ class Wallet {
                        .then(walletID => {
                            this._initializeEvents();
                            return database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
+                                          .then(defaultKeyIdentifier => this._doTransactionOutputExpiration().then(() => defaultKeyIdentifier))
                                           .then(defaultKeyIdentifier => {
                                               if (network.nodeID) {
                                                   this.updateDefaultAddressAttribute().then(_ => _);
