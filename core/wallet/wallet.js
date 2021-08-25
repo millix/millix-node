@@ -1593,16 +1593,18 @@ class Wallet {
                        .then(walletID => {
                            this._initializeEvents();
                            return database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
-                                          .then(defaultKeyIdentifier => this._doTransactionOutputExpiration().then(() => defaultKeyIdentifier))
                                           .then(defaultKeyIdentifier => {
+                                              this.defaultKeyIdentifier = defaultKeyIdentifier;
+                                              return this._doTransactionOutputExpiration();
+                                          })
+                                          .then(() => {
                                               if (network.nodeID) {
                                                   this.updateDefaultAddressAttribute().then(_ => _);
                                               }
                                               else {
                                                   eventBus.once('network_ready', () => this.updateDefaultAddressAttribute().then(_ => _));
                                               }
-                                              this.defaultKeyIdentifier = defaultKeyIdentifier;
-                                              this.initialized          = true;
+                                              this.initialized = true;
                                               return walletID;
                                           });
                        })
