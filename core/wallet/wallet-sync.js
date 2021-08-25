@@ -47,14 +47,8 @@ export class WalletSync {
                 database.firstShards((shardID) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return new Promise((resolve, reject) => transactionRepository.hasTransaction(job.transaction_id)
-                                                                                 .then(([hasTransaction, isAuditPoint, hasTransactionData]) => hasTransaction || isAuditPoint ? resolve([
-                                                                                     hasTransaction,
-                                                                                     isAuditPoint,
-                                                                                     hasTransactionData,
-                                                                                     shardID
-                                                                                 ]) : reject())
-                                                                                 .catch(() => reject()));
-                }).then(data => data || []).then(([hasTransaction]) => {
+                                                                                 .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
+                }).then(hasTransaction => {
                     if (!(hasTransaction && wallet.isProcessingTransaction(job.transaction_id))) {
                         return peer.transactionSyncRequest(job.transaction_id, job);
                     }

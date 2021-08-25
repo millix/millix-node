@@ -1392,100 +1392,6 @@ export default class Transaction {
         });
     }
 
-    getTransactionMinDistance(transactionID, targetTransactionID) {
-        return new Promise((resolve) => {
-            if (targetTransactionID === transactionID) {
-                return resolve(0);
-            }
-
-            let visited = {};
-
-            const dfs = (branches, depth) => {
-                let hasTransactions = false;
-                let targetFound     = false;
-                let newBranches     = [];
-
-                async.eachSeries(branches, (branch, branchCallback) => {
-                    if (branch.transactions.length === 0) {
-                        // newBranches.push(branch);
-                        return branchCallback();
-                    }
-
-                    async.eachSeries(branch.transactions, (transaction, callback) => {
-                        let newBranch          = _.cloneDeep(branch);
-                        newBranch.transactions = [];
-                        if (visited[transaction]) {
-                            newBranches.push(newBranch);
-                            return callback();
-                        }
-
-                        visited[transaction] = true;
-                        newBranch.path.push(transaction);
-                        newBranches.push(newBranch);
-                        database.firstShards((shardID) => {
-                            return new Promise((resolve, reject) => {
-                                const transactionRepository = database.getRepository('transaction', shardID);
-                                transactionRepository.getTransaction(transaction)
-                                                     .then(dbTransaction => dbTransaction ? resolve([
-                                                         transactionRepository,
-                                                         shardID
-                                                     ]) : reject());
-                            });
-                        }).then(data => data || []).then(([transactionRepository, shardID]) => {
-                            if (!transactionRepository) {
-                                hasTransactions = false;
-                                return callback(true);
-                            }
-                            transactionRepository.getTransactionParents(transaction)
-                                                 .then(parents => {
-                                                     if (parents.length === 0) {
-                                                         return transactionRepository.getTransactionInputs(transaction)
-                                                                                     .then(inputs => {
-                                                                                         _.each(inputs, input => {
-                                                                                             if (input.output_transaction_id === genesisConfig.genesis_transaction) {
-                                                                                                 targetFound = true;
-                                                                                             }
-                                                                                         });
-                                                                                     }).then(() => callback(targetFound));
-                                                     }
-                                                     newBranch.transactions = parents;
-                                                     hasTransactions        = true;
-                                                     targetFound            = _.includes(newBranch.transactions, targetTransactionID);
-                                                     if (!targetFound) {
-                                                         database.getRepository('audit_point', shardID).isAuditPoint(transaction)
-                                                                 .then(isAuditPoint => {
-                                                                     targetFound = isAuditPoint;
-                                                                     callback(targetFound);
-                                                                 });
-                                                     }
-                                                     else {
-                                                         callback(true);
-                                                     }
-                                                 });
-                        });
-                    }, () => branchCallback());
-                }, () => {
-                    if (targetFound === true) {
-                        return resolve(depth + 1);
-                    }
-                    else if (hasTransactions === false) {
-                        return resolve(Infinity);
-                    }
-                    else {
-                        dfs(newBranches, depth + 1);
-                    }
-                });
-            };
-
-            dfs([
-                {
-                    transactions: [transactionID],
-                    path        : []
-                }
-            ], 0);
-        });
-    }
-
     isDoubleSpendTransaction(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT EXISTS(SELECT transaction_id FROM transaction_output AS o WHERE o.transaction_id = ? and o.is_double_spend = 1) as is_double_spend',
@@ -2127,13 +2033,11 @@ export default class Transaction {
                                           'TOUT.output_position, TOUT.address AS output_address, TOUT.address_key_identifier AS output_address_key_identifier, TOUT.amount, TOUT.stable_date AS output_stable_date, TOUT.is_stable AS output_is_stable, TOUT.spent_date, TOUT.is_spent, TOUT.double_spend_date AS output_double_spend_date, TOUT.is_double_spend AS output_is_double_spend, TOUT.status AS output_status, TOUT.create_date AS output_create_date, ' +
                                           'TOUTA.attribute_type_id AS output_attribute_type_id, TOUTA.value AS output_attribute_value, TOUTA.status AS output_attribute_status, TOUTA.create_date AS output_attribute_create_date, ' +
                                           'TPP.transaction_id_parent, TPP.transaction_id_child, TPP.status AS transaction_parent_status, TPP.create_date AS transaction_parent_create_date, ' +
-                                          'TA.audit_point_id, TA.status AS audit_point_status, TA.create_date AS audit_point_create_date ' +
                                           'FROM `transaction` INNER JOIN transaction_signature AS TS ON `transaction`.transaction_id = TS.transaction_id ' +
                                           'INNER JOIN transaction_input AS TIN ON `transaction`.transaction_id = TIN.transaction_id ' +
                                           'INNER JOIN transaction_output AS TOUT ON `transaction`.transaction_id = TOUT.transaction_id ' +
                                           'LEFT JOIN transaction_output_attribute AS TOUTA ON `transaction`.transaction_id = TOUTA.transaction_id ' +
-                                          'LEFT JOIN transaction_parent AS TPP ON `transaction`.transaction_id = TPP.transaction_id_child ' +
-                                          'LEFT JOIN audit_point AS TA ON `transaction`.transaction_id = TA.transaction_id', where);
+                                          'LEFT JOIN transaction_parent AS TPP ON `transaction`.transaction_id = TPP.transaction_id_child', where);
             this.database.all(sql, parameters, (err, rows) => {
                     if (err) {
                         console.log(err);
@@ -2173,35 +2077,19 @@ export default class Transaction {
 
     hasTransaction(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT EXISTS(select transaction_id from audit_point where transaction_id = ?) as transaction_exists',
+            this.database.get('SELECT EXISTS(select transaction_id from `transaction` where transaction_id = ?) as transaction_exists',
                 [transactionID], (err, row) => {
                     if (err) {
                         console.log(err);
                         return reject();
                     }
-                    let isAuditPoint = row.transaction_exists === 1;
-                    this.database.get('SELECT EXISTS(select transaction_id from `transaction` where transaction_id = ?) as transaction_exists',
-                        [transactionID], (err, row) => {
-                            if (err) {
-                                console.log(err);
-                                return reject();
-                            }
-                            let hasTransactionData = row.transaction_exists === 1;
-                            let transactionExists  = isAuditPoint || hasTransactionData;
-                            resolve([
-                                transactionExists,
-                                isAuditPoint,
-                                hasTransactionData
-                            ]);
-                        });
+                    resolve(row.transaction_exists === 1);
                 });
         });
     }
 
     pruneShardZero(keyIdentifierSet) {
         // shard zero
-        const auditPointRepository        = database.getRepository('audit_point');
-        const auditVerificationRepository = database.getRepository('audit_verification');
         return new Promise((resolve, reject) => {
             let date = moment().subtract(config.TRANSACTION_PRUNE_AGE_MIN, 'minute').toDate();
             this.database.all('SELECT * FROM `transaction` WHERE `transaction`.transaction_date < ? LIMIT ' + config.TRANSACTION_PRUNE_COUNT, [Math.floor(date.getTime() / 1000)],
@@ -2209,9 +2097,7 @@ export default class Transaction {
                     if (err) {
                         return reject();
                     }
-                    const supportedShardIDList            = _.keys(database.shards);
-                    const supportedShardAuditTransactions = {};
-                    _.each(supportedShardIDList, shardID => supportedShardAuditTransactions[shardID] = []);
+                    const supportedShard = database.shards;
                     async.eachSeries(transactionList, (transaction, callback) => {
                         if (transaction.is_stable === 0) {
                             return this.deleteTransaction(transaction.transaction_id)
@@ -2225,48 +2111,12 @@ export default class Transaction {
                                     _.find(transaction.transaction_output_list, _.matchesProperty('is_double_spend', 1))) {
                                     return this.deleteTransaction(transaction.transaction_id);
                                 }
-                                else if (supportedShardAuditTransactions[transaction.shard_id]) {
+                                else if (database.getShard(transaction.shard_id)) {
                                     // is supported shard? move transaction to
                                     // shard
-                                    return auditPointRepository.getAuditPoint(transaction.transaction_id)
-                                                               .then(auditPoint => auditVerificationRepository.getAuditVerification(transaction.transaction_id).then(auditVerification => [
-                                                                   auditPoint,
-                                                                   auditVerification
-                                                               ]))
-                                                               .then(([auditPoint, auditVerification]) => {
-                                                                   const transactionRepository = database.getRepository('transaction', transaction.shard_id);
-                                                                   return transactionRepository.addTransactionFromShardObject(transaction)
-                                                                                               .then(() => {
-                                                                                                   if (auditVerification) {
-                                                                                                       const auditVerificationRepository = database.getRepository('audit_verification', transaction.shard_id);
-                                                                                                       return new Promise((resolve, reject) => {
-                                                                                                           auditVerificationRepository.addAuditVerification(auditVerification)
-                                                                                                                                      .then(resolve)
-                                                                                                                                      .catch(() => {
-                                                                                                                                          auditVerificationRepository.updateAuditVerification([
-                                                                                                                                              [
-                                                                                                                                                  auditVerification.verification_count,
-                                                                                                                                                  auditVerification.attempt_count,
-                                                                                                                                                  auditVerification.verified_date ? new Date(auditVerification.verified_date * 1000) : null,
-                                                                                                                                                  auditVerification.is_verified,
-                                                                                                                                                  auditVerification.transaction_id
-                                                                                                                                              ]
-                                                                                                                                          ]).then(resolve).catch(reject);
-                                                                                                                                      });
-                                                                                                       });
-
-                                                                                                   }
-                                                                                               })
-                                                                                               .then(() => {
-                                                                                                   if (auditPoint) {
-                                                                                                       const auditPointRepository = database.getRepository('audit_point', transaction.shard_id);
-                                                                                                       return new Promise(resolve => auditPointRepository.addTransactionToAuditPoint(auditPoint).then(resolve).catch(resolve));
-                                                                                                   }
-                                                                                               })
-                                                                                               .then(() => {
-                                                                                                   return this.deleteTransaction(transaction.transaction_id);
-                                                                                               });
-                                                               });
+                                    const transactionRepository = database.getRepository('transaction', transaction.shard_id);
+                                    return transactionRepository.addTransactionFromShardObject(transaction)
+                                                                .then(() => this.deleteTransaction(transaction.transaction_id));
                                 }
                                 else {
                                     if (!(_.some(_.map(transaction.transaction_input_list, input => keyIdentifierSet.has(input.address_key_identifier)))
@@ -2301,19 +2151,13 @@ export default class Transaction {
                     err && console.log('[Database] Failed pruning outputs. [message] ', err);
                 });
                 this.database.run('DELETE FROM transaction_output_attribute WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                    err && console.log('[Database] Failed pruning audit point. [message] ', err);
+                    err && console.log('[Database] Failed output attribute. [message] ', err);
                 });
                 this.database.run('DELETE FROM transaction_signature WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
                     err && console.log('[Database] Failed pruning signatures. [message] ', err);
                 });
                 this.database.run('DELETE FROM transaction_parent WHERE transaction_id_child IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
                     err && console.log('[Database] Failed pruning parents. [message] ', err);
-                });
-                this.database.run('DELETE FROM audit_verification WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                    err && console.log('[Database] Failed pruning audit verifications. [message] ', err);
-                });
-                this.database.run('DELETE FROM audit_point WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
-                    err && console.log('[Database] Failed pruning audit point. [message] ', err);
                 });
                 this.database.run('DELETE FROM `transaction` WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
                     err && console.log('[Database] Failed pruning transactions. [message] ', err);
@@ -2334,22 +2178,16 @@ export default class Transaction {
                     this.database.run('DELETE FROM transaction_output WHERE transaction_id = ?', [transactionID], (err) => {
                         err && console.log('[Database] Failed pruning outputs. [message] ', err);
                     });
+                    this.database.run('DELETE FROM `transaction_output_attribute` WHERE transaction_id = ?', [transactionID], (err) => {
+                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
+                    });
                     this.database.run('DELETE FROM transaction_signature WHERE transaction_id = ?', [transactionID], (err) => {
                         err && console.log('[Database] Failed pruning signatures. [message] ', err);
                     });
                     this.database.run('DELETE FROM transaction_parent WHERE transaction_id_child = ?', [transactionID], (err) => {
                         err && console.log('[Database] Failed pruning parents. [message] ', err);
                     });
-                    this.database.run('DELETE FROM audit_verification WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning audit verifications. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM audit_point WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning audit point. [message] ', err);
-                    });
                     this.database.run('DELETE FROM `transaction` WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM `transaction_output_attribute` WHERE transaction_id = ?', [transactionID], (err) => {
                         err && console.log('[Database] Failed pruning transactions. [message] ', err);
                     });
                     this.database.run('COMMIT', () => {
@@ -2381,15 +2219,12 @@ export default class Transaction {
                             err && console.log('[Database] Failed timeout output. [message] ', err);
                             this.database.run('DELETE FROM transaction_signature WHERE transaction_id = ?', transactionID, (err) => {
                                 err && console.log('[Database] Failed timeout signature. [message] ', err);
-                                this.database.run('DELETE FROM audit_verification WHERE transaction_id = ?', transactionID, (err) => {
-                                    err && console.log('[Database] Failed timeout audit verification. [message] ', err);
-                                    this.database.run('UPDATE `transaction` SET timeout_date=CAST(strftime(\'%s\',\'now\') AS INTEGER), is_timeout = 1, stable_date=CAST(strftime(\'%s\',\'now\') AS INTEGER), is_stable = 1 WHERE transaction_id = ?', transactionID, (err) => {
-                                        err && console.log('[Database] Failed timeout transaction. [message] ', err);
-                                        this.database.run('COMMIT', (err) => {
-                                            err && console.log('[Database] Failed commiting transaction. [message] ', err);
-                                            resolve();
-                                            unlock();
-                                        });
+                                this.database.run('UPDATE `transaction` SET timeout_date=CAST(strftime(\'%s\',\'now\') AS INTEGER), is_timeout = 1, stable_date=CAST(strftime(\'%s\',\'now\') AS INTEGER), is_stable = 1 WHERE transaction_id = ?', transactionID, (err) => {
+                                    err && console.log('[Database] Failed timeout transaction. [message] ', err);
+                                    this.database.run('COMMIT', (err) => {
+                                        err && console.log('[Database] Failed commiting transaction. [message] ', err);
+                                        resolve();
+                                        unlock();
                                     });
                                 });
                             });
@@ -2414,6 +2249,10 @@ export default class Transaction {
     }
 
     expireTransactions(olderThan, addressKeyIdentifier) {
+        if (!addressKeyIdentifier) {
+            return Promise.reject();
+        }
+        
         return database.applyShards((shardID) => {
             return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan, addressKeyIdentifier);
         });
@@ -2433,12 +2272,16 @@ export default class Transaction {
                                    (SELECT o.transaction_id
                                     FROM transaction_output o
                                     WHERE is_stable = 0
-                                      AND o.address_key_identifier = "${addressKeyIdentifier}"
-                                    UNION SELECT o.transaction_id
+                                      AND o.address_key_identifier =
+                                          "${addressKeyIdentifier}"
+                                    UNION
+                                    SELECT o.transaction_id
                                     FROM transaction_output o
-                                             INNER JOIN transaction_input i ON i.transaction_id = o.transaction_id
+                                             INNER JOIN transaction_input i
+                                                        ON i.transaction_id = o.transaction_id
                                     WHERE is_stable = 0
-                                      AND i.address_key_identifier = "${addressKeyIdentifier}"))
+                                      AND i.address_key_identifier =
+                                          "${addressKeyIdentifier}"))
             SELECT *
             FROM expired;
             UPDATE transaction_output

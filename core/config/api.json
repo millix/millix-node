@@ -307,24 +307,6 @@
       "enable": true
     },
     {
-      "id": "DBkGHZX6rugdLon9",
-      "name": "get_audit_verification",
-      "description": "returns a single record from table audit_verification for the indicated transaction_id located in the database schema indicated by shard_id",
-      "method": "GET",
-      "version_released": "1.2.0",
-      "permission": "{\"require_identity\": true, \"private\": false}",
-      "enable": true
-    },
-    {
-      "id": "VrLU9f2XYiMWfop4",
-      "name": "list_audit_verification",
-      "description": "returns records from table audit_verification. it returns the newest records by default",
-      "method": "GET",
-      "version_released": "1.2.0",
-      "permission": "{\"require_identity\": true, \"private\": false}",
-      "enable": true
-    },
-    {
       "id": "GktuwZlVP39gty6v",
       "name": "new_session_with_phrase",
       "description": "uses the passphrase and 24 word mnemonic phrase to set the active wallet used in the session by the node",

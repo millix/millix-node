@@ -56,12 +56,11 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
             const outputs                             = new Set();
             const outputAttributes                    = new Set();
             const parents                             = new Set();
-            const auditPoints                         = new Set();
+
             transaction['transaction_signature_list'] = [];
             transaction['transaction_input_list']     = [];
             transaction['transaction_output_list']    = [];
             transaction['transaction_parent_list']    = [];
-            transaction['transaction_audit_list']     = [];
 
             let keyMap = {
                 'signature_status'              : 'status',
@@ -87,9 +86,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 'output_attribute_status'       : 'status',
                 'output_attribute_create_date'  : 'create_date',
                 'transaction_parent_status'     : 'status',
-                'transaction_parent_create_date': 'create_date',
-                'audit_point_status'            : 'status',
-                'audit_point_create_date'       : 'create_date'
+                'transaction_parent_create_date': 'create_date'
             };
 
             const keyMapFunction = (v, k) => keyMap[k] ? keyMap[k] : k;
@@ -123,11 +120,6 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 if (row.transaction_id_parent && !parents.has(row.transaction_id_parent)) {
                     parents.add(row.transaction_id_parent);
                     transaction['transaction_parent_list'].push(_.mapKeys(_.pick(row, 'transaction_id_parent', 'transaction_id_child', 'transaction_parent_status', 'transaction_parent_create_date'), keyMapFunction));
-                }
-
-                if (row.audit_point_id && !auditPoints.has(row.audit_point_id)) {
-                    auditPoints.add(row.audit_point_id);
-                    transaction['transaction_audit_list'].push(_.mapKeys(_.pick(row, 'audit_point_id', 'audit_point_status', 'audit_point_create_date'), keyMapFunction));
                 }
 
             });

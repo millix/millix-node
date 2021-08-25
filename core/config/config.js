@@ -715,15 +715,8 @@ export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
 export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 10000;
 export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
-export const AUDIT_POINT_NODE_COUNT                            = 3;
-export const AUDIT_POINT_VALIDATION_REQUIRED                   = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
-export const AUDIT_POINT_ATTEMPT_MAX                           = 100;
-export const AUDIT_POINT_CANDIDATE_MAX                         = 512;
-export const AUDIT_POINT_VALIDATION_WAIT_TIME_MAX              = 60 * 1000;
-export const AUDIT_POINT_PRUNE_AGE_MIN                         = 1440;
-export const AUDIT_POINT_PRUNE_COUNT                           = 250;
 export const TRANSACTION_FEE_PROXY                             = 1000;
 export const TRANSACTION_FEE_DEFAULT                           = 1000;
 export const TRANSACTION_FEE_NETWORK                           = 0.0;
@@ -766,7 +759,6 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'lb2l'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
-export const WALLET_SPENT_TRANSACTION_PRUNE                    = false;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX                 = 1000;
 export const WALLET_TRANSACTION_QUEUE_SIZE_NORMAL              = 250;
 export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
@@ -784,7 +776,7 @@ export const NODE_CERTIFICATE_KEY_PATH                         = DATA_BASE_DIR +
 export const NODE_CERTIFICATE_PATH                             = DATA_BASE_DIR + '/node_certificate.pem';
 export const WALLET_KEY_PATH                                   = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR + '/job.json';
-export const JOB_CONFIG_VERSION                                = 4;
+export const JOB_CONFIG_VERSION                                = 5;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
 export const DEBUG_LOG_FILTER                                  = [];
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
@@ -819,7 +811,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE         = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                  = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR            = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                        = '15';
+    DATABASE_CONNECTION.SCHEMA_VERSION                        = '16';
 }
 
 export default {
@@ -859,11 +851,6 @@ export default {
     CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
     CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX,
     CONSENSUS_ROUND_NODE_COUNT,
-    AUDIT_POINT_NODE_COUNT,
-    AUDIT_POINT_VALIDATION_REQUIRED,
-    AUDIT_POINT_ATTEMPT_MAX,
-    AUDIT_POINT_CANDIDATE_MAX,
-    AUDIT_POINT_VALIDATION_WAIT_TIME_MAX,
     TRANSACTION_FEE_PROXY,
     TRANSACTION_FEE_NETWORK,
     TRANSACTION_FEE_DEFAULT,
@@ -877,8 +864,6 @@ export default {
     TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN,
     TRANSACTION_OUTPUT_REFRESH_OLDER_THAN,
     TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN,
-    AUDIT_POINT_PRUNE_AGE_MIN,
-    AUDIT_POINT_PRUNE_COUNT,
     NETWORK_LONG_TIME_WAIT_MAX,
     NETWORK_SHORT_TIME_WAIT_MAX,
     WALLET_TRANSACTION_QUEUE_SIZE_MAX,
@@ -887,7 +872,6 @@ export default {
     WALLET_TRANSACTION_SUPPORTED_VERSION,
     WALLET_TRANSACTION_DEFAULT_VERSION,
     WALLET_TRANSACTION_REFRESH_VERSION,
-    WALLET_SPENT_TRANSACTION_PRUNE,
     WALLET_LOG_SIZE_MAX,
     PEER_ROTATION_MORE_THAN_AVERAGE,
     PEER_ROTATION_MORE_THAN_MOST,

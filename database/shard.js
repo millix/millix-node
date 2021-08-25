@@ -1,9 +1,8 @@
 import fs from 'fs';
-import config, {SHARD_ZERO_NAME} from '../core/config/config';
+import config from '../core/config/config';
 import console from '../core/console';
-import {AuditPoint, AuditVerification, Schema, Transaction} from './repositories/repositories';
+import {Schema, Transaction} from './repositories/repositories';
 import path from 'path';
-import os from 'os';
 import {Database} from './database';
 import eventBus from '../core/event-bus';
 
@@ -25,9 +24,7 @@ export default class Shard {
     }
 
     _initializeTables() {
-        this.repositories['audit_point']        = new AuditPoint(this.database);
         this.repositories['transaction']        = new Transaction(this.database);
-        this.repositories['audit_verification'] = new AuditVerification(this.database);
         return Promise.resolve();
     }
 

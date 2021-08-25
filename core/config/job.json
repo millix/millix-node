@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "processor_list": {
     "localhost": {
       "instances": 2
@@ -28,12 +28,6 @@
       "object_type": "table"
     },
     "transaction_signature": {
-      "object_type": "table"
-    },
-    "audit_point": {
-      "object_type": "table"
-    },
-    "audit_verification": {
       "object_type": "table"
     }
   },
@@ -65,25 +59,6 @@
       "option_list": {
         "run_always": 1,
         "run_delay": 6000,
-        "enable": true
-      }
-    },
-    "transaction_prune_update": {
-      "type": "function",
-      "group": "wallet",
-      "processor": "localhost",
-      "payload": {
-        "module": "wallet",
-        "function_name": "_doTransactionSetForPruning"
-      },
-      "object_list": [
-        "transaction",
-        "audit_point"
-      ],
-      "priority": 0,
-      "option_list": {
-        "run_always": 1,
-        "run_delay": 10000,
         "enable": true
       }
     },
@@ -122,25 +97,6 @@
         "enable": true
       }
     },
-    "audit_point_update": {
-      "type": "function",
-      "group": "wallet",
-      "processor": "localhost_wallet",
-      "payload": {
-        "module": "wallet",
-        "function_name": "_doAuditPointUpdate"
-      },
-      "object_list": [
-        "audit_verification",
-        "audit_point"
-      ],
-      "priority": 0,
-      "option_list": {
-        "run_always": 1,
-        "run_delay": 10000,
-        "enable": true
-      }
-    },
     "consensus_watchdog_validation": {
       "type": "function",
       "group": "wallet",
@@ -148,21 +104,6 @@
       "payload": {
         "module": "wallet-transaction-consensus",
         "function_name": "doConsensusTransactionValidationWatchDog"
-      },
-      "priority": 0,
-      "option_list": {
-        "run_always": 1,
-        "run_delay": 10000,
-        "enable": true
-      }
-    },
-    "consensus_watchdog_audit_point": {
-      "type": "function",
-      "group": "wallet",
-      "processor": "localhost_watchdog",
-      "payload": {
-        "module": "wallet",
-        "function_name": "_doAuditPointWatchDog"
       },
       "priority": 0,
       "option_list": {
@@ -214,32 +155,12 @@
         "transaction_input",
         "transaction_output",
         "transaction_signature",
-        "transaction_parent",
-        "audit_verification",
-        "audit_point"
+        "transaction_parent"
       ],
       "priority": 0,
       "option_list": {
         "run_always": 1,
         "run_delay": 5000,
-        "enable": true
-      }
-    },
-    "audit_point_prune": {
-      "type": "function",
-      "group": "wallet",
-      "processor": "localhost_wallet",
-      "payload": {
-        "module": "wallet",
-        "function_name": "_doAuditPointPruning"
-      },
-      "object_list": [
-        "audit_point"
-      ],
-      "priority": 0,
-      "option_list": {
-        "run_always": 1,
-        "run_delay": 10000,
         "enable": true
       }
     },

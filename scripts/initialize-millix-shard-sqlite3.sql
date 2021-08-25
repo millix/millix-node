@@ -122,37 +122,6 @@ CREATE TABLE transaction_output_attribute
 );
 CREATE INDEX idx_transaction_output_attribute_create_date ON transaction_output_attribute (create_date);
 
-CREATE TABLE audit_verification
-(
-    transaction_id     CHAR(50) NOT NULL PRIMARY KEY CHECK (length(transaction_id) <= 50),
-    shard_id           CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
-    attempt_count      INT      NOT NULL DEFAULT 0 CHECK (length(attempt_count) <= 10 AND TYPEOF(attempt_count) = 'integer'),
-    verification_count INT      NOT NULL DEFAULT 0 CHECK (length(verification_count) <= 10 AND TYPEOF(verification_count) = 'integer'),
-    verified_date      INT      NULL CHECK(length(verified_date) <= 10 AND TYPEOF(verified_date) IN ('integer', 'null')),
-    is_verified        TINYINT  NOT NULL DEFAULT 0 CHECK (is_verified = 0 OR is_verified = 1),
-    status             TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date        INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
-    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
-);
-CREATE INDEX idx_audit_verification_transaction_id_is_verified ON audit_verification (transaction_id, is_verified);
-CREATE INDEX idx_audit_verification_verified_date ON audit_verification (verified_date);
-CREATE INDEX idx_audit_verification_create_date ON audit_verification (create_date);
-
-CREATE TABLE audit_point
-(
-    audit_point_id CHAR(20) NOT NULL CHECK (length(audit_point_id) <= 20),
-    transaction_id CHAR(50) NOT NULL CHECK (length(transaction_id) <= 50),
-    shard_id       CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
-    status         TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date    INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
-    PRIMARY KEY (audit_point_id, transaction_id),
-    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
-);
-CREATE INDEX idx_audit_point_transaction_id ON audit_point (transaction_id);
-CREATE INDEX idx_audit_point_status_transaction_id ON audit_point (status, transaction_id);
-CREATE INDEX idx_audit_point_id ON audit_point (audit_point_id);
-CREATE INDEX idx_audit_point_create_date ON audit_point (create_date);
-
 CREATE TABLE schema_information
 (
     key         TEXT         NOT NULL UNIQUE,
@@ -162,4 +131,4 @@ CREATE TABLE schema_information
 );
 CREATE INDEX idx_schema_information_create_date ON schema_information (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "11");
+INSERT INTO schema_information (key, value) VALUES ("version", "16");
