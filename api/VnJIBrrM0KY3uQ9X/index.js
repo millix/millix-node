@@ -79,7 +79,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                                        console.log(`[api ${this.endpoint}] Storing transaction submitted on API. Hash: ${transaction.transaction_id}`);
                                        const dbTransaction            = _.cloneDeep(transaction);
                                        dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                                       pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction));
+                                       pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, wallet.transactionHasKeyIdentifier(dbTransaction)));
                                    });
                                    return pipeline.then(() => transactionList);
                                })

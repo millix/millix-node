@@ -377,7 +377,7 @@ export default class Transaction {
         });
     }
 
-    addTransactionFromObject(transaction) {
+    addTransactionFromObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
                 this.database.run('BEGIN TRANSACTION', (err) => {
@@ -394,9 +394,15 @@ export default class Transaction {
                     const transactionDate = Math.floor(new Date(transaction.transaction_date).getTime() / 1000);
                     // verify if expire time is greater than
                     // transaction data
-                    const expireDate = ntp.now();
-                    expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-                    const status = Math.round(expireDate.getTime() / 1000) < transactionDate ? 1 : 2;
+                    let status;
+                    if (!isWalletTransaction) {
+                        const expireDate = ntp.now();
+                        expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                        status = Math.round(expireDate.getTime() / 1000) < transactionDate ? 1 : 2;
+                    }
+                    else {
+                        status = 1;
+                    }
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => {
@@ -524,7 +530,7 @@ export default class Transaction {
         });
     }
 
-    addTransactionFromShardObject(transaction) {
+    addTransactionFromShardObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
                 this.database.run('BEGIN TRANSACTION', (err) => {
@@ -539,10 +545,16 @@ export default class Transaction {
                     });
                     const transactionDate = Math.floor(transaction.transaction_date.getTime() / 1000);
                     /* verify if expire time is greater than transaction date */
-                    const expireDate = ntp.now();
-                    expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-                    const transactionStatus = transaction.status === 3 ? 3 :
-                                              Math.round(expireDate.getTime() / 1000) >= transactionDate ? 2 : 1;
+                    let transactionStatus;
+                    if (!isWalletTransaction) {
+                        const expireDate = ntp.now();
+                        expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                        transactionStatus = transaction.status === 3 ? 3 :
+                                            Math.round(expireDate.getTime() / 1000) >= transactionDate ? 2 : 1;
+                    }
+                    else {
+                        transactionStatus = transaction.status;
+                    }
 
                     transaction.transaction_parent_list.forEach(parentTransaction => {
                         promise = promise.then(() => {
@@ -2257,11 +2269,8 @@ export default class Transaction {
                                                                });
                                 }
                                 else {
-                                    if (_.some(_.map(transaction.transaction_input_list, input => keyIdentifierSet.has(input.address_key_identifier)))
-                                        || _.some(_.map(transaction.transaction_output_list, output => keyIdentifierSet.has(output.address_key_identifier)))) {
-                                        return this.setTransactionAsExpired(transaction.transaction_id);
-                                    }
-                                    else {
+                                    if (!(_.some(_.map(transaction.transaction_input_list, input => keyIdentifierSet.has(input.address_key_identifier)))
+                                          || _.some(_.map(transaction.transaction_output_list, output => keyIdentifierSet.has(output.address_key_identifier))))) {
                                         return this.deleteTransaction(transaction.transaction_id);
                                     }
                                 }
@@ -2273,16 +2282,6 @@ export default class Transaction {
                             });
                     }, () => resolve());
                 });
-        });
-    }
-
-    setTransactionAsExpired(transactionID) {
-        return new Promise((resolve) => {
-            this.database.serialize(() => {
-                this.database.run('UPDATE transaction_output set status = 2 WHERE transaction_id = ? AND status = 1', [transactionID], _ => _);
-                this.database.run('UPDATE transaction_input set status = 2 WHERE transaction_id = ? AND status = 1', [transactionID], _ => _);
-                this.database.run('UPDATE `transaction` set status = 2 WHERE transaction_id = ? AND status = 1', [transactionID], _ => resolve());
-            });
         });
     }
 
@@ -2414,22 +2413,32 @@ export default class Transaction {
         });
     }
 
-    expireTransactions(olderThan) {
+    expireTransactions(olderThan, addressKeyIdentifier) {
         return database.applyShards((shardID) => {
-            return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan);
+            return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan, addressKeyIdentifier);
         });
     }
 
-    expireTransactionsOnShard(olderThan) {
+    expireTransactionsOnShard(olderThan, addressKeyIdentifier) {
         let seconds = Math.floor(olderThan.valueOf() / 1000);
 
         return new Promise((resolve, reject) => {
             this.database.exec(`DROP TABLE IF EXISTS transaction_expired;
             CREATE TEMPORARY TABLE transaction_expired AS
-            WITH expired AS (SELECT transaction_id
-                             FROM 'transaction'
-                             WHERE transaction_date <= ${seconds}
-                               AND status = 1)
+            WITH expired AS (SELECT t.transaction_id
+                             FROM 'transaction' t
+                             WHERE t.transaction_date <= ${seconds}
+                               AND t.status = 1
+                               AND t.transaction_id NOT IN
+                                   (SELECT o.transaction_id
+                                    FROM transaction_output o
+                                    WHERE is_stable = 0
+                                      AND o.address_key_identifier = "${addressKeyIdentifier}"
+                                    UNION SELECT o.transaction_id
+                                    FROM transaction_output o
+                                             INNER JOIN transaction_input i ON i.transaction_id = o.transaction_id
+                                    WHERE is_stable = 0
+                                      AND i.address_key_identifier = "${addressKeyIdentifier}"))
             SELECT *
             FROM expired;
             UPDATE transaction_output

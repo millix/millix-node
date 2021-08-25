@@ -748,7 +748,7 @@ class Wallet {
                                                                                       }
 
                                                                                       console.log('New Transaction from network ', transaction.transaction_id);
-                                                                                      return transactionRepository.addTransactionFromObject(transaction)
+                                                                                      return transactionRepository.addTransactionFromObject(transaction, hasKeyIdentifier)
                                                                                                                   .then(() => {
                                                                                                                       console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
                                                                                                                       eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
@@ -1767,7 +1767,7 @@ class Wallet {
                 let time = ntp.now();
                 time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
-                return database.getRepository('transaction').expireTransactions(time)
+                return database.getRepository('transaction').expireTransactions(time, this.defaultKeyIdentifier)
                                .then(() => {
                                    eventBus.emit('wallet_update');
                                    unlock();
@@ -1853,7 +1853,7 @@ class Wallet {
                        transactionList.forEach(transaction => {
                            const dbTransaction            = _.cloneDeep(transaction);
                            dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                           pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction));
+                           pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)));
                        });
                        return pipeline.then(() => transactionList);
                    })
