@@ -56,7 +56,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
 
 
         try {
-            mutex.lock(['submit_transaction'], (unlock) => {
+            mutex.lock(['write'], (unlock) => {
                 const transactionRepository = database.getRepository('transaction');
                 let pipeline                = Promise.resolve(true);
                 transactionList.forEach(transaction => pipeline = pipeline.then(valid => valid ? walletUtils.verifyTransaction(transaction) : false));

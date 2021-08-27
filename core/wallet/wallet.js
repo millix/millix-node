@@ -39,6 +39,7 @@ class Wallet {
         this._lockProcessNewTransaction      = 0;
         this._maxBacklogThresholdReached     = false;
         this.initialized                     = false;
+        this._transactionSendInterrupt       = false;
     }
 
     get isProcessingNewTransactionFromNetwork() {
@@ -257,7 +258,8 @@ class Wallet {
         const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
-                return new Promise((resolve, reject) => {
+                this._transactionSendInterrupt = false;
+                return new Promise(resolve => {
                     if (!srcOutputs) {
                         return database.applyShards((shardID) => {
                             const transactionRepository = database.getRepository('transaction', shardID);
@@ -366,17 +368,23 @@ class Wallet {
                         return transactionList;
                     })
                     .then((transactionList) => {
+                        this._transactionSendInterrupt = false;
                         resolve(transactionList);
                         //wait 1 second then start the validation process
                         setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
                         unlock();
                     })
                     .catch((e) => {
+                        this._transactionSendInterrupt = false;
                         reject(e);
                         unlock();
                     });
             });
         });
+    }
+
+    interruptTransactionSendInProgress() {
+        this._transactionSendInterrupt = true;
     }
 
     sign(address, message) {
@@ -804,7 +812,11 @@ class Wallet {
                                                                                                                           let ws = network.getWebSocketByID(connectionID);
                                                                                                                           peer.transactionSend(data.transaction, ws);
                                                                                                                       }
-                                                                                                                      setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 0);
+
+                                                                                                                      if (hasTransaction) {
+                                                                                                                          setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 0);
+                                                                                                                      }
+
                                                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                                                       delete this._transactionRequested[transaction.transaction_id];
                                                                                                                   });
@@ -1471,10 +1483,18 @@ class Wallet {
                               transactionList,
                               proxyCandidateData
                           ]))
-                          .then(([transactionList, proxyCandidateData]) => peer.transactionProxyRequest(transactionList, proxyCandidateData))
+                          .then(([transactionList, proxyCandidateData]) => {
+                              if (this._transactionSendInterrupt) {
+                                  return Promise.reject('transaction_send_interrupt');
+                              }
+                              return peer.transactionProxyRequest(transactionList, proxyCandidateData);
+                          })
                           .then(([transactionList, proxyResponse, proxyWS]) => {
                               const chainFromProxy = proxyResponse.transaction_input_chain;
-                              if (chainFromProxy.length === 0) {
+                              if (this._transactionSendInterrupt) {
+                                  return Promise.reject('transaction_send_interrupt');
+                              }
+                              else if (chainFromProxy.length === 0) {
                                   return Promise.reject('invalid_proxy_transaction_chain');
                               }
                               return propagateTransaction ? peer.transactionProxy(transactionList, proxyWS) : transactionList;
