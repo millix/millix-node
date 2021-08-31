@@ -305,30 +305,6 @@ class Peer {
                       });
     }
 
-    auditPointValidationResponse(transactions, auditPointID, ws) {
-        if (ws.outBound && !ws.bidirectional) {
-            return transactions;
-        }
-
-        let payload = {
-            type   : 'audit_point_validation_response:' + auditPointID,
-            content: {transaction_id_list: transactions}
-        };
-
-        eventBus.emit('node_event_log', payload);
-
-        let data = JSON.stringify(payload);
-        try {
-            ws.nodeConnectionReady && ws.send(data);
-        }
-        catch (e) {
-            console.log('[WARN]: try to send data over a closed connection.');
-            ws && ws.close();
-        }
-
-        return transactions;
-    }
-
     transactionIncludePathRequest(transactionID, excludeTransactions) {
         if (this.pendingTransactionIncludePathSync[transactionID]) {
             return Promise.reject();
@@ -691,30 +667,6 @@ class Peer {
             }
 
         });
-    }
-
-    auditPointValidationRequest(content, ws) {
-        if (ws.inBound && !ws.bidirectional) {
-            return content;
-        }
-
-        let payload = {
-            type: 'audit_point_validation_request',
-            content
-        };
-
-        eventBus.emit('node_event_log', payload);
-
-        let data = JSON.stringify(payload);
-        try {
-            ws.nodeConnectionReady && ws.send(data);
-        }
-        catch (e) {
-            console.log('[WARN]: try to send data over a closed connection.');
-            ws && ws.close();
-        }
-
-        return content;
     }
 
     transactionValidationResponse(message, ws, isValidationResult) {

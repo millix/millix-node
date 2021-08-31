@@ -82,24 +82,6 @@ export class WalletTransactionConsensus {
         this._transactionValidationRejected = new Set();
     }
 
-    _mapToAuditPointDistance(inputs) {
-        return new Promise(resolve => {
-            async.mapSeries(inputs, (input, callback) => {
-                database.getRepository('transaction')
-                        .getTransactionMinDistance(input.transaction_id, genesisConfig.genesis_transaction)
-                        .then(distance => {
-                            callback(null, {
-                                input,
-                                distance
-                            });
-                        });
-            }, (err, results) => {
-                console.log('[consensus][oracle] double spent check distance is ', results);
-                resolve(results);
-            });
-        });
-    }
-
     _getValidInputOnDoubleSpend(doubleSpendTransactionID, inputs, nodeID, transactionVisitedSet, doubleSpendSet) {
         return new Promise(resolve => {
             let responseType = 'transaction_double_spend';

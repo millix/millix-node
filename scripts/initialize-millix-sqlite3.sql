@@ -215,37 +215,6 @@ CREATE TABLE transaction_output_attribute_type
 );
 CREATE INDEX idx_transaction_output_attribute_type_create_date ON transaction_output_attribute_type (create_date);
 
-CREATE TABLE audit_verification
-(
-    transaction_id     CHAR(50) NOT NULL PRIMARY KEY CHECK (length(transaction_id) <= 50),
-    shard_id           CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
-    attempt_count      INT      NOT NULL DEFAULT 0 CHECK (length(attempt_count) <= 10 AND TYPEOF(attempt_count) = 'integer'),
-    verification_count INT      NOT NULL DEFAULT 0 CHECK (length(verification_count) <= 10 AND TYPEOF(verification_count) = 'integer'),
-    verified_date      INT      NULL CHECK(length(verified_date) <= 10 AND TYPEOF(verified_date) IN ('integer', 'null')),
-    is_verified        TINYINT  NOT NULL DEFAULT 0 CHECK (is_verified = 0 OR is_verified = 1),
-    status             TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date        INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
-    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
-);
-CREATE INDEX idx_audit_verification_transaction_id_is_verified ON audit_verification (transaction_id, is_verified);
-CREATE INDEX idx_audit_verification_verified_date ON audit_verification (verified_date);
-CREATE INDEX idx_audit_verification_create_date ON audit_verification (create_date);
-
-CREATE TABLE audit_point
-(
-    audit_point_id CHAR(20) NOT NULL CHECK (length(audit_point_id) <= 20),
-    transaction_id CHAR(50) NOT NULL CHECK (length(transaction_id) <= 50),
-    shard_id       CHAR(50) NOT NULL CHECK (length(shard_id) <= 50),
-    status         TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
-    create_date    INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
-    PRIMARY KEY (audit_point_id, transaction_id),
-    FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id)
-);
-CREATE INDEX idx_audit_point_transaction_id ON audit_point (transaction_id);
-CREATE INDEX idx_audit_point_status_transaction_id ON audit_point (status, transaction_id);
-CREATE INDEX idx_audit_point_id ON audit_point (audit_point_id);
-CREATE INDEX idx_audit_point_create_date ON audit_point (create_date);
-
 CREATE TABLE node
 (
     node_id         CHAR(34)    NOT NULL PRIMARY KEY CHECK (length(node_id) <= 34),
@@ -379,7 +348,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "14");
+INSERT INTO schema_information (key, value) VALUES ("version", "16");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
@@ -409,15 +378,6 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('consensus_validation_request_depth_max', 'Zzh8JnPGTOsi9ZaJHFng'),
        ('consensus_validation_wait_time_max', 'DBvU4CSipttmG9SCn1Lo'),
        ('consensus_validation_retry_wait_time', 'JMDLznR9sfSyuwfK1R5G'),
-       ('audit_point_node_count', 'd0AdtgtixzR9kzkBQPcq'),
-       ('audit_point_validation_required', 'xFLwHUYVv0wXobL9PHQx'),
-       ('audit_point_attempt_max', 'lsGYeBDXlV0RtbQQsbQM'),
-       ('audit_point_candidate_max', 'choXy0Pw36SXe11zhLlb'),
-       ('audit_point_validation_wait_time_max', 'egtSGgi8rpTp2mPyygxB'),
-       ('audit_point_prune_age_min', 'Tc5XEz5adhQgxCty0owc'),
-       ('audit_point_prune_count', 'ppYWpWWWR4xasfJsGjIg'),
-       ('audit_point_transaction_prune_age_min', 'KICCmcRm8tVL5N1aElIG'),
-       ('audit_point_transaction_prune_count', 'xDWevh5eg8DWb4UGEIIX'),
        ('node_connection_inbound_max', 'of16lAY1fS7K9K7ufSDR'),
        ('node_connection_outbound_max', 'b7qm0K1dHuu00nmIgwCR'),
        ('heartbeat_timeout', 'IvKT7CLUhiUvQ4W286TM'),
@@ -425,7 +385,6 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('wallet_startup_address_balance_scan_count', 'tlCRczQCuztpgMbAsWIA'),
        ('wallet_log_size_max', 'EdAFKivNnHLl9jIrVSHT'),
        ('wallet_transaction_default_version', 'O3bneunmkY2tbqa1FOVp'),
-       ('wallet_spent_transaction_prune', 'G9P5HLCgZWyl8hdT8bxy'),
        ('wallet_transaction_queue_size_max', 'dbdTZKYgnIJgpkq0r7K7'),
        ('wallet_transaction_queue_size_normal', 'FlzDh0b1QlEpOAERQatJ'),
        ('network_long_time_wait_max', 'qvSfStkxR5BKWbYlbQxA'),
