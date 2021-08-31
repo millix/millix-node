@@ -456,13 +456,7 @@ class Wallet {
         return database.applyShards((shardID) => {
             return database.getRepository('transaction', shardID)
                            .getTransactionsByAddressKeyIdentifier(this.defaultKeyIdentifier);
-        }, 'transaction_date desc').then(transactions => {
-            _.each(transactions, transaction => {
-                _.assign(transaction, {'income': transaction.address_key_identifier === this.defaultKeyIdentifier});
-                delete transaction['address_key_identifier'];
-            });
-            return transactions;
-        });
+        }, 'transaction_date desc');
     }
 
     getTransactionCount() {

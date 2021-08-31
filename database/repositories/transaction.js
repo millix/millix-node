@@ -277,15 +277,22 @@ export default class Transaction {
     getTransactionsByAddressKeyIdentifier(keyIdentifier) {
         return new Promise((resolve, reject) => {
             this.database.all(
-                'SELECT `transaction`.*, transaction_input.address as input_address, transaction_output.address as output_address, transaction_output.amount, transaction_output.address_key_identifier, transaction_output.output_position FROM `transaction` \
-                LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
-                LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id \
-                WHERE transaction_output.address_key_identifier = ? AND `transaction`.status != 3 \
-                UNION SELECT `transaction`.*, transaction_input.address as input_address, transaction_output.address as output_address, transaction_output.amount, transaction_output.address_key_identifier, transaction_output.output_position FROM `transaction` \
-                LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id  \
-                LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
-                WHERE transaction_input.address_key_identifier = ? AND `transaction`.status != 3 \
-                ORDER BY `transaction`.transaction_date DESC',
+                'WITH transaction_wallet AS ( \
+                SELECT transaction_input.transaction_id, 1 as withdrawal FROM transaction_input \
+                WHERE transaction_input.address_key_identifier = ? AND transaction_input.status != 3 \
+                UNION SELECT transaction_output.transaction_id, 0 as withdrawal FROM transaction_output \
+                WHERE transaction_output.address_key_identifier = ? AND transaction_output.status != 3 \
+                ), \
+                transaction_amount AS ( \
+                SELECT transaction_id, SUM(amount) as amount FROM transaction_output \
+                WHERE transaction_id IN (SELECT transaction_id FROM transaction_wallet) \
+                GROUP BY transaction_id \
+                ) \
+                SELECT t.transaction_id, t.transaction_date, a.amount, SUM(w.withdrawal) as withdrawal, t.stable_date, t.parent_date FROM `transaction` t \
+                JOIN transaction_wallet w ON w.transaction_id = t.transaction_id \
+                JOIN transaction_amount a ON a.transaction_id = t.transaction_id \
+                GROUP BY t.transaction_id \
+                ORDER BY t.transaction_date DESC',
                 [
                     keyIdentifier,
                     keyIdentifier
