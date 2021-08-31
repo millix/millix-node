@@ -310,14 +310,13 @@ export default class Transaction {
     getTransactionCountByAddressKeyIdentifier(keyIdentifier) {
         return new Promise((resolve, reject) => {
             this.database.get(
-                'SELECT COUNT(distinct transaction_id) as transaction_count FROM (SELECT `transaction`.transaction_id FROM `transaction` \
-                LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
-                LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id \
-                WHERE transaction_output.address_key_identifier = ? \
-                UNION SELECT `transaction`.transaction_id FROM `transaction` \
-                LEFT JOIN  transaction_input on transaction_input.transaction_id = `transaction`.transaction_id  \
-                LEFT JOIN  transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
-                WHERE transaction_input.address_key_identifier = ?)',
+                'WITH transaction_wallet AS ( \
+                SELECT transaction_input.transaction_id FROM transaction_input \
+                WHERE transaction_input.address_key_identifier = ? AND transaction_input.status != 3 \
+                UNION SELECT transaction_output.transaction_id FROM transaction_output \
+                WHERE transaction_output.address_key_identifier = ? AND transaction_output.status != 3 \
+                ) \
+                SELECT COUNT(DISTINCT transaction_id) FROM transaction_wallet',
                 [
                     keyIdentifier,
                     keyIdentifier
