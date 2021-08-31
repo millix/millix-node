@@ -26,9 +26,7 @@ export class Database {
         this.knownShards        = new Set();
         this.shards             = {};
         this.shardRepositories  = new Set([
-            'audit_point',
-            'transaction',
-            'audit_verification'
+            'transaction'
         ]);
     }
 
