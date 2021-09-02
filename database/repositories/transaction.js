@@ -316,7 +316,7 @@ export default class Transaction {
                 UNION SELECT transaction_output.transaction_id FROM transaction_output \
                 WHERE transaction_output.address_key_identifier = ? AND transaction_output.status != 3 \
                 ) \
-                SELECT COUNT(DISTINCT transaction_id) FROM transaction_wallet',
+                SELECT COUNT(DISTINCT transaction_id) as transaction_count FROM transaction_wallet',
                 [
                     keyIdentifier,
                     keyIdentifier
