@@ -16,6 +16,7 @@ import util from 'util';
 import dns from 'dns';
 import DHT from 'bittorrent-dht';
 import signature from '../core/crypto/signature';
+import NatAPI from 'nat-api';
 
 const WebSocketServer = Server;
 
@@ -291,7 +292,11 @@ class Network {
                         this.addNode(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id);
                         callback();
                     }, () => {
-                        _.each(_.shuffle(config.NODE_INITIAL_LIST), ({host, port_protocol: port, port_api: portApi}) => {
+                        _.each(_.shuffle(config.NODE_INITIAL_LIST), ({
+                                                                         host,
+                                                                         port_protocol: port,
+                                                                         port_api     : portApi
+                                                                     }) => {
                             let prefix = config.WEBSOCKET_PROTOCOL;
                             let url    = `${prefix}://${host}:${port}`;
                             if ((!this._nodeList[url] || !this._nodeList[url].node_id) && (prefix && host && port && portApi)) {
@@ -793,9 +798,35 @@ class Network {
         }
     }
 
+    doPortMapping() {
+        const portMapper = util.promisify(this.natAPI.map);
+        return portMapper({
+            publicPort : config.NODE_PORT,
+            privatePort: config.NODE_PORT,
+            protocol   : 'TCP',
+            description: 'millix network'
+        })
+            .then(() => portMapper({
+                publicPort : config.NODE_PORT_API,
+                privatePort: config.NODE_PORT_API,
+                protocol   : 'TCP',
+                description: 'millix api'
+            }))
+            .then(() => portMapper({
+                publicPort : config.NODE_PORT_DISCOVERY,
+                privatePort: config.NODE_PORT_DISCOVERY,
+                protocol   : 'UDP',
+                description: 'millix discovery'
+            }));
+    }
+
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
         console.log('node id : ', this.nodeID);
-        this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem);
+        this.natAPI = new NatAPI();
+        this.doPortMapping()
+            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem))
+            .catch(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem));
+
         this.connectToNodes();
         this.initialized = true;
         eventBus.on('node_handshake', this._onNodeHandshake.bind(this));
@@ -835,13 +866,21 @@ class Network {
                         console.log('[network] node public-ip', ip);
                         this.nodePublicIp = ip;
                         walletUtils.loadNodeKeyAndCertificate()
-                                   .then(({certificate_private_key_pem: certificatePrivateKeyPem, certificate_pem: certificatePem, node_private_key: privateKey, node_public_key: publicKey}) => {
+                                   .then(({
+                                              certificate_private_key_pem: certificatePrivateKeyPem,
+                                              certificate_pem            : certificatePem,
+                                              node_private_key           : privateKey,
+                                              node_public_key            : publicKey
+                                          }) => {
                                        this.nodePrivateKey = privateKey;
                                        this.nodePublicKey  = base58.encode(publicKey.toBuffer());
                                        this.nodeID         = walletUtils.getNodeIdFromPublicKey(this.nodePublicKey);
                                        const nodeIDHash160 = objectHash.getSHA1Buffer(this.nodeID);
                                        this._initializeServer(certificatePem, certificatePrivateKeyPem);
-                                       const bootstrap = _.map(config.NODE_INITIAL_LIST, ({host, port_discovery: port}) => `${host}:${port}`);
+                                       const bootstrap = _.map(config.NODE_INITIAL_LIST, ({
+                                                                                              host,
+                                                                                              port_discovery: port
+                                                                                          }) => `${host}:${port}`);
                                        this.dht        = new DHT({
                                            nodeId: nodeIDHash160,
                                            verify: (sign, value, publicKeyRaw) => {
@@ -863,7 +902,7 @@ class Network {
                                        this.dht.on('node', node => {
                                            console.log(`[network] new node discovered ${node.host}:${node.port}`);
                                        });
-                                       console.log(config.NODE_PORT_DISCOVERY);
+
                                        this.dht.listen(config.NODE_PORT_DISCOVERY);
                                        this.dht.on('listening', () => {
                                            const address = this.dht.address();
@@ -914,10 +953,11 @@ class Network {
                 newSeqNumber      = 0;
             }
 
-            const proxyData          = previousProxyData[this.nodeID];
+            let newProxyData;
             const nodeAddressDefault = address.address_key_identifier + address.address_version + address.address_key_identifier;
-            if (this._shouldUpdateProxyData(proxyData, this.nodePublicIp, config.NODE_PORT, config.TRANSACTION_FEE_PROXY, nodeAddressDefault)) {
-                previousProxyData[this.nodeID] = {
+            if (this._shouldUpdateProxyData(previousProxyData, this.nodePublicIp, config.NODE_PORT, config.TRANSACTION_FEE_PROXY, nodeAddressDefault)) {
+                newProxyData = {
+                    node_id             : this.nodeID,
                     node_host           : this.nodePublicIp,
                     node_prefix         : config.WEBSOCKET_PROTOCOL,
                     node_port           : config.NODE_PORT,
@@ -926,14 +966,20 @@ class Network {
                     node_address_default: nodeAddressDefault
                 };
             }
+            else {
+                return;
+            }
+
             const data = {
                 k   : publicKey,
                 seq : newSeqNumber,
-                v   : JSON.stringify(previousProxyData),
+                v   : JSON.stringify(newProxyData),
                 sign: function(buf) {
                     return signature.sign(objectHash.getHashBuffer(buf, true), privateKey, 'buffer');
                 }
             };
+
+            console.log(`[network] dht v=${data.v}, len=${data.v.length}`);
             this.dht.put(data, (err, hash) => {
                 console.log('[network] dht key identifier registered hash=', hash.toString('hex'), ', err=', err);
             });
