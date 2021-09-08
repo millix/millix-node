@@ -954,25 +954,22 @@ class Network {
             }
 
             let newProxyData;
-            const proxyData          = previousProxyData[this.nodeID];
             const nodeAddressDefault = address.address_key_identifier + address.address_version + address.address_key_identifier;
-            if (this._shouldUpdateProxyData(proxyData, this.nodePublicIp, config.NODE_PORT, config.TRANSACTION_FEE_PROXY, nodeAddressDefault)) {
+            if (this._shouldUpdateProxyData(previousProxyData, this.nodePublicIp, config.NODE_PORT, config.TRANSACTION_FEE_PROXY, nodeAddressDefault)) {
                 newProxyData = {
-                    [this.nodeID]: {
-                        node_host           : this.nodePublicIp,
-                        node_prefix         : config.WEBSOCKET_PROTOCOL,
-                        node_port           : config.NODE_PORT,
-                        node_port_api       : config.NODE_PORT_API,
-                        node_proxy_fee      : config.TRANSACTION_FEE_PROXY,
-                        node_address_default: nodeAddressDefault
-                    }
+                    node_id             : this.nodeID,
+                    node_host           : this.nodePublicIp,
+                    node_prefix         : config.WEBSOCKET_PROTOCOL,
+                    node_port           : config.NODE_PORT,
+                    node_port_api       : config.NODE_PORT_API,
+                    node_proxy_fee      : config.TRANSACTION_FEE_PROXY,
+                    node_address_default: nodeAddressDefault
                 };
             }
             else {
-                newProxyData = {
-                    [this.nodeID]: {...proxyData}
-                };
+                return;
             }
+
             const data = {
                 k   : publicKey,
                 seq : newSeqNumber,
@@ -981,6 +978,7 @@ class Network {
                     return signature.sign(objectHash.getHashBuffer(buf, true), privateKey, 'buffer');
                 }
             };
+
             console.log(`[network] dht v=${data.v}, len=${data.v.length}`);
             this.dht.put(data, (err, hash) => {
                 console.log('[network] dht key identifier registered hash=', hash.toString('hex'), ', err=', err);
