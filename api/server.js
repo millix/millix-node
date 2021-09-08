@@ -79,6 +79,7 @@ class Server {
                     }
                     else {
                         console.log('api source code not found');
+                        database.getRepository('api').removeAPI(api.api_id);
                     }
                 });
 

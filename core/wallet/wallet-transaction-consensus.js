@@ -207,13 +207,6 @@ export class WalletTransactionConsensus {
                         message            : `not validated in a depth of ${depth}`
                     });
                 }
-                else if (transaction && (transaction.status === 2 || database.getRepository('transaction').isExpired(transaction.transaction_date))) {
-                    return reject({
-                        cause              : 'transaction_validation_max_depth',
-                        transaction_id_fail: transactionID,
-                        message            : `transaction expired and not validated`
-                    });
-                }
 
                 if (transaction && transaction.is_stable !== undefined) { // transaction object needs to be normalized
                     transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
