@@ -2,7 +2,7 @@
   <br>
   <a href="#"><img src="https://github.com/millix/millix-wallet/blob/master/app/icon.png?raw=true" alt="millix node" width="200"></a>
   <br>
-  millix node <small>v1.11.1</small>
+  millix node <small>v1.11.6</small>
   <br>
 </h1>
 
@@ -56,17 +56,16 @@ git clone https://github.com/millix/millix-node.git -b develop
 ## Run millix-node
 ```
 cd millix-node
-vi run_node.sh
+vi run-millix-node.sh.sh
 #replace “127.0.0.1” with your ip  (find by whatismyip)
-#replace “mysuperpass_change_me” with your wallet passphrase
 ```
 
 ### Run:
 ```
 sudo npm install -g @babel/cli @babel/core @babel/node
 npm install
-sudo chmod +x run_node.sh
-sh run_node.sh
+sudo chmod +x run-millix-node.sh.sh
+sh run-millix-node.sh.sh
 ```
 
 ## How to Contribute
