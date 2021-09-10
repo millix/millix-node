@@ -799,7 +799,7 @@ class Network {
     }
 
     doPortMapping() {
-        const portMapper = util.promisify(this.natAPI.map);
+        const portMapper = util.promisify(this.natAPI.map.bind(this.natAPI));
         return portMapper({
             publicPort : config.NODE_PORT,
             privatePort: config.NODE_PORT,
@@ -825,7 +825,10 @@ class Network {
         this.natAPI = new NatAPI();
         this.doPortMapping()
             .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem))
-            .catch(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem));
+            .catch((e) => {
+                console.log(`[network] error in nat-pmp ${e}`);
+                return this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem)
+            });
 
         this.connectToNodes();
         this.initialized = true;
