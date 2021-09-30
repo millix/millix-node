@@ -1085,6 +1085,42 @@ class Peer {
         }
     }
 
+    sendNATCheckResponse(content, ws) {
+        let payload = {
+            type   : 'nat_check_response',
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
+        }
+    }
+
+    sendNATCheck(content, ws) {
+        let payload = {
+            type   : 'nat_check',
+            content
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        try {
+            ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
+        }
+    }
+
     replyInboundStreamRequest(enabled, ws) {
         let payload = {
             type   : 'inbound_stream_response',

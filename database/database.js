@@ -594,7 +594,7 @@ export class Database {
                               is_sticky: true,
                               timestamp: Date.now()
                           });
-                          throw Error('[shard] migration ' + err.message);
+                          throw Error('[database] migration ' + err.message);
                       }
                   });
         });

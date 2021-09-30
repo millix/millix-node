@@ -30,8 +30,10 @@ class Network {
         this._outboundRegistry                    = {};
         this._bidirectionaOutboundConnectionCount = 0;
         this._bidirectionaInboundConnectionCount  = 0;
-        this._ws                                  = null;
+        this._wss                                 = null;
         this.nodeID                               = null;
+        this.certificatePem                       = null;
+        this.certificatePrivateKeyPem             = null;
         this.nodeConnectionID                     = this.generateNewID();
         this._selfConnectionNode                  = new Set();
         this.initialized                          = false;
@@ -64,12 +66,12 @@ class Network {
         return crypto.randomBytes(20).toString('hex');
     }
 
-    setWebSocket(ws) {
-        this._ws = ws;
+    setWebSocket(wss) {
+        this._wss = wss;
     }
 
     getWebSocket() {
-        return this._ws;
+        return this._wss;
     }
 
     addNode(prefix, ip, port, portApi, id) {
@@ -97,7 +99,7 @@ class Network {
         if (this._nodeRegistry[id] && this._nodeRegistry[id][0]) {
             return Promise.resolve(this._nodeRegistry[id][0]);
         }
-        else if (!prefix || !ipAddress || !port || portApi === undefined) {
+        else if (!prefix || !ipAddress || !port || portApi === undefined || id === this.nodeID) {
             return Promise.reject();
         }
         else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && id && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id)) {
@@ -216,7 +218,7 @@ class Network {
         return matches ? matches[1] : node;
     }
 
-    startAcceptingConnections(certificatePem, certificatePrivateKeyPem) {
+    startAcceptingConnections(certificatePem, certificatePrivateKeyPem, port = config.NODE_PORT, address = config.NODE_BIND_IP) {
         // starting the server
         const server = https.createServer({
             key      : certificatePrivateKeyPem,
@@ -224,7 +226,7 @@ class Network {
             ecdhCurve: 'prime256v1'
         });
 
-        server.listen(config.NODE_PORT, config.NODE_BIND_IP);
+        server.listen(port, address);
 
         let wss = new WebSocketServer({server});
 
@@ -281,7 +283,9 @@ class Network {
             this._doHandshake(ws, true);
         });
 
-        console.log('[network] wss running at port ' + config.NODE_PORT);
+        wss.on('listening', () => console.log(`[network] wss running at port ${address}:${port}`));
+        wss.on('error', (e) => console.log(`[network] wss error ${e}`));
+        wss.on('close', (e) => console.log(`[network] wss close ${e}`));
     }
 
     connectToNodes() {
@@ -489,6 +493,10 @@ class Network {
                                 .then(() => eventBus.emit('node_list_update'))
                                 .catch(() => eventBus.emit('node_list_update'));
 
+                        peer.sendNATCheck({
+                            url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
+                        }, ws);
+
                         eventBus.emit('peer_connection_new', ws);
                         eventBus.emit('node_status_update');
                         resolve();
@@ -497,7 +505,7 @@ class Network {
 
                 ws.readyState === ws.OPEN && ws.send(JSON.stringify(payload));
 
-                setTimeout(function() {
+                setTimeout(() => {
                     if (!callbackCalled) {
                         callbackCalled = true;
                         eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
@@ -747,6 +755,7 @@ class Network {
     }
 
     _onConnectionReady(content, ws) {
+        console.log('[network] on connection ready ', content);
         if (ws.readyState === WebSocket.OPEN) {
             ws.nodeConnectionState = !ws.nodeConnectionState ? 'waiting' : 'open';
             if (ws.nodeConnectionState === 'open') {
@@ -766,6 +775,10 @@ class Network {
                         })
                         .then(() => eventBus.emit('node_list_update'))
                         .catch(() => eventBus.emit('node_list_update'));
+
+                peer.sendNATCheck({
+                    url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
+                }, ws);
 
                 eventBus.emit('peer_connection_new', ws);
                 eventBus.emit('node_status_update');
@@ -798,7 +811,63 @@ class Network {
         }
     }
 
+    _onNATCheckResponse(content, ws) {
+        console.log('[network] on natcheck response', content);
+    }
+
+    _natCheckTryConnect(url) {
+        return new Promise((resolve, reject) => {
+            const client      = new WebSocket(url, {
+                rejectUnauthorized: false,
+                handshakeTimeout  : 10000
+            });
+            client.createTime = Date.now();
+            client.once('open', () => {
+                console.log('[network outgoing] natcheck ok for url ' + url);
+                client.close(1000, 'close connection');
+                resolve();
+            });
+
+            client.on('error', (e) => {
+                console.log('[network outgoing] natcheck error in connection to ' + url + '. disconnected after ' + (Date.now() - client.createTime) + 'ms.', e.code);
+                client.close(1000, 'close connection');
+                reject();
+            });
+        });
+    }
+
+    _onNATCheck(content, ws) {
+        const {url} = content;
+        console.log('[network] on natcheck', url, 'from', ws.nodeID);
+        async.retry({
+            times   : 10,
+            interval: 500
+        }, (callback) => {
+            this._natCheckTryConnect(url)
+                .then(() => callback())
+                .catch(() => callback(true));
+        }, (err) => {
+            if (err) {
+                peer.sendNATCheckResponse({
+                    is_valid_nat: false,
+                    ip          : ws._socket.remoteAddress,
+                    port        : ws._socket.remotePort
+                }, ws);
+            }
+            else {
+                peer.sendNATCheckResponse({
+                    is_valid_nat: true
+                }, ws);
+            }
+        });
+        console.log('[network outgoing] natcheck connecting to node ' + url);
+    }
+
     doPortMapping() {
+        if (!config.NODE_NAT_PMP) {
+            return Promise.resolve();
+        }
+
         const portMapper = util.promisify(this.natAPI.map.bind(this.natAPI));
         return portMapper({
             publicPort : config.NODE_PORT,
@@ -821,13 +890,15 @@ class Network {
     }
 
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
+        this.certificatePem           = certificatePem;
+        this.certificatePrivateKeyPem = certificatePrivateKeyPem;
         console.log('node id : ', this.nodeID);
         this.natAPI = new NatAPI();
         this.doPortMapping()
             .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem))
             .catch((e) => {
                 console.log(`[network] error in nat-pmp ${e}`);
-                return this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem)
+                return this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem);
             });
 
         this.connectToNodes();
@@ -836,6 +907,8 @@ class Network {
         eventBus.on('node_address_request', this._onGetNodeAddress.bind(this));
         eventBus.on('connection_ready', this._onConnectionReady.bind(this));
         eventBus.on('inbound_stream_response', this._onInboundStreamResponse.bind(this));
+        eventBus.on('nat_check', this._onNATCheck.bind(this));
+        eventBus.on('nat_check_response', this._onNATCheckResponse.bind(this));
     }
 
     initialize() {
@@ -903,7 +976,7 @@ class Network {
                                            bootstrap
                                        });
                                        this.dht.on('node', node => {
-                                           console.log(`[network] new node discovered ${node.host}:${node.port}`);
+                                           console.log(`[network] dht new node discovered ${node.host}:${node.port}`);
                                        });
 
                                        this.dht.listen(config.NODE_PORT_DISCOVERY);
@@ -1014,17 +1087,23 @@ class Network {
         });
     }
 
+    stopWebSocket() {
+        const wss = this.getWebSocket();
+        if (wss) {
+            wss._server && wss._server.close();
+            wss.close();
+        }
+    }
+
     stop() {
         this.initialized = false;
         eventBus.removeAllListeners('node_handshake');
         eventBus.removeAllListeners('node_address_request');
         eventBus.removeAllListeners('connection_ready');
         eventBus.removeAllListeners('inbound_stream_response');
-        const wss = this.getWebSocket();
-        if (wss) {
-            wss._server && wss._server.close();
-            wss.close();
-        }
+        eventBus.removeAllListeners('nat_check');
+        eventBus.removeAllListeners('nat_check_response');
+        this.stopWebSocket();
 
         // clean inbound and outbound registries
         this._inboundRegistry  = {};

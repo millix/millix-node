@@ -10,6 +10,7 @@ export const NODE_PORT_API                                     = 5500;
 export const NODE_HOST                                         = 'localhost';
 export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
+export const NODE_NAT_PMP                                      = true;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = false;
@@ -822,6 +823,7 @@ export default {
     NODE_HOST,
     NODE_HOST_FORCE,
     NODE_BIND_IP,
+    NODE_NAT_PMP,
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
     NODE_INITIAL_LIST,
