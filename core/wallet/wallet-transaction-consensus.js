@@ -703,7 +703,7 @@ export class WalletTransactionConsensus {
                     this._transactionValidationRejected.add(transactionID);
                     console.log('[consensus][request] the transaction ', transactionID, ' was not validated (due to double spend) during consensus round number ', consensusData.consensus_round_count);
                     return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
-                        return transactionRepository.setTransactionAsDoubleSpend(transaction, data.transaction_input_double_spend /*double spend input*/);
+                        return transactionRepository.updateTransactionAsDoubleSpend(transaction.transaction_id, data.transaction_input_double_spend /*double spend input*/);
                     }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
                                    .then(() => {
                                        consensusData.resolve();

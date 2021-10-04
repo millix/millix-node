@@ -1411,6 +1411,63 @@ export default class Transaction {
         });
     }
 
+    updateTransactionAsDoubleSpend(transactionID, doubleSpendInput) {
+        if (!transactionID || !doubleSpendInput || !doubleSpendInput.output_transaction_id || !doubleSpendInput.output_shard_id || doubleSpendInput.output_position === undefined) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve, reject) => {
+            this.database.exec(`
+                UPDATE 'transaction'
+                SET is_stable   = 1,
+                    stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                WHERE transaction_id = "${transactionID}";
+
+                UPDATE transaction_input
+                SET is_double_spend   = 0,
+                    double_spend_date = NULL
+                WHERE transaction_id = "${transactionID}";
+
+                UPDATE transaction_input
+                SET is_double_spend   = 1,
+                    double_spend_date = CAST(strftime('%s', 'now') AS INTEGER)
+                WHERE transaction_id = "${transactionID}"
+                  AND output_transaction_id = "${doubleSpendInput.output_transaction_id}"
+                  AND output_position = ${doubleSpendInput.output_position};
+
+                UPDATE transaction_output
+                SET is_spent          = 1,
+                    is_double_spend   = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_double_spend   = 1,
+                    double_spend_date = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_stable         = 1,
+                    stable_date       = CAST(strftime('%s', 'now') AS INTEGER)
+                WHERE transaction_id = "${transactionID}";
+
+                UPDATE transaction_output AS o
+                SET is_spent = EXISTS (
+                    SELECT i.output_transaction_id FROM transaction_input i
+                    INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
+                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
+                    o2.status != 3 AND o2.is_double_spend = 0
+                    ), spent_date = (
+                    SELECT t.transaction_date FROM \`transaction\` t
+                    INNER JOIN transaction_input i ON i.transaction_id = t.transaction_id
+                    INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
+                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
+                    o2.status != 3 and o2.is_double_spend = 0
+                    )
+                WHERE transaction_id IN (SELECT output_transaction_id FROM transaction_input WHERE transaction_id = "${transactionID}");
+            `, err => {
+                if (err) {
+                    console.log(err);
+                    return reject(err);
+                }
+                return resolve();
+            });
+        });
+    }
+
     setTransactionAsDoubleSpend(rootTransactionList, rootDoubleSpendTransactionInput) {
         if (!(rootDoubleSpendTransactionInput && rootDoubleSpendTransactionInput.output_transaction_id && rootDoubleSpendTransactionInput.output_shard_id && rootDoubleSpendTransactionInput.output_position !== undefined) || !rootTransactionList || rootTransactionList.length === 0) {
             return Promise.resolve();
@@ -2258,7 +2315,7 @@ export default class Transaction {
         if (!addressKeyIdentifier) {
             return Promise.reject();
         }
-        
+
         return database.applyShards((shardID) => {
             return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan, addressKeyIdentifier);
         });

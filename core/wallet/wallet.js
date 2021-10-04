@@ -651,7 +651,7 @@ class Wallet {
             return;
         }
 
-        if ((!this.isProcessingNewTransactionFromNetwork || walletTransactionConsensus.isRunningValidationForWalletTransaction()) && !this.isRequestedTransaction(transaction.transaction_id)) {
+        if (!this.isProcessingNewTransactionFromNetwork  && !this.isRequestedTransaction(transaction.transaction_id)) {
             walletSync.clearTransactionSync(transaction.transaction_id);
             walletSync.add(transaction.transaction_id, {
                 delay   : 5000,
@@ -1102,7 +1102,7 @@ class Wallet {
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
     }
 
-    _onSyncOutputSpendTransaction(data, ws) {
+    _onSyncOutputSpendTransaction(data, ws) { //TODO: check this
         let node             = ws.node;
         let connectionID     = ws.connectionID;
         const startTimestamp = Date.now();
