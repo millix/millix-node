@@ -8,6 +8,7 @@ import network from '../../net/network';
 import base58 from 'bs58';
 import wallet from '../../core/wallet/wallet';
 import walletTransactionConsensus from '../../core/wallet/wallet-transaction-consensus';
+import {SHARD_ZERO_NAME} from '../../core/config/config';
 
 
 /**
@@ -56,8 +57,8 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
 
 
         try {
-            mutex.lock(['write'], (unlock) => {
-                const transactionRepository = database.getRepository('transaction');
+            const transactionRepository = database.getRepository('transaction');
+            mutex.lock([`transaction_${SHARD_ZERO_NAME}`], (unlock) => {
                 let pipeline                = Promise.resolve(true);
                 transactionList.forEach(transaction => pipeline = pipeline.then(valid => valid ? walletUtils.verifyTransaction(transaction) : false));
                 pipeline.then(valid => {
