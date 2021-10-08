@@ -2178,12 +2178,11 @@ export default class Transaction {
                                     // is supported shard? move transaction to
                                     // shard
                                     const transactionRepository = database.getRepository('transaction', transaction.shard_id);
-                                    return transactionRepository.addTransactionFromShardObject(transaction)
+                                    return transactionRepository.addTransactionFromShardObject(transaction, wallet.transactionHasKeyIdentifier(transaction, keyIdentifierSet))
                                                                 .then(() => this.deleteTransaction(transaction.transaction_id));
                                 }
                                 else {
-                                    if (!(_.some(_.map(transaction.transaction_input_list, input => keyIdentifierSet.has(input.address_key_identifier)))
-                                          || _.some(_.map(transaction.transaction_output_list, output => keyIdentifierSet.has(output.address_key_identifier))))) {
+                                    if (!wallet.transactionHasKeyIdentifier(transaction, keyIdentifierSet)) {
                                         return this.deleteTransaction(transaction.transaction_id);
                                     }
                                 }
@@ -2311,17 +2310,17 @@ export default class Transaction {
         });
     }
 
-    expireTransactions(olderThan, addressKeyIdentifier) {
-        if (!addressKeyIdentifier) {
+    expireTransactions(olderThan, addressKeyIdentifierList) {
+        if (!addressKeyIdentifierList || addressKeyIdentifierList.length === 0) {
             return Promise.reject();
         }
 
         return database.applyShards((shardID) => {
-            return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan, addressKeyIdentifier);
+            return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan, addressKeyIdentifierList);
         });
     }
 
-    expireTransactionsOnShard(olderThan, addressKeyIdentifier) {
+    expireTransactionsOnShard(olderThan, addressKeyIdentifierList) {
         let seconds = Math.floor(olderThan.valueOf() / 1000);
 
         return new Promise((resolve, reject) => {
@@ -2335,16 +2334,16 @@ export default class Transaction {
                                    (SELECT o.transaction_id
                                     FROM transaction_output o
                                     WHERE is_stable = 0
-                                      AND o.address_key_identifier =
-                                          "${addressKeyIdentifier}"
+                                      AND o.address_key_identifier IN
+                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(",")})
                                     UNION
                                     SELECT o.transaction_id
                                     FROM transaction_output o
                                              INNER JOIN transaction_input i
                                                         ON i.transaction_id = o.transaction_id
                                     WHERE is_stable = 0
-                                      AND i.address_key_identifier =
-                                          "${addressKeyIdentifier}"))
+                                      AND i.address_key_identifier IN
+                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(",")})))
             SELECT *
             FROM expired;
             UPDATE transaction_output

@@ -812,13 +812,30 @@ export class WalletTransactionConsensus {
         this._consensusRoundState[lockerID] = true;
         console.log('[consensus][request] get unstable transactions');
         return database.applyShards((shardID) => {
-            return database.getRepository('transaction', shardID)
-                           .getWalletUnstableTransactions(wallet.defaultKeyIdentifier, excludeTransactionList)
-                           .then(pendingTransactions => {
-                               // filter out tx that were synced in the
-                               // last 30s and not being validated yet
-                               return _.filter(pendingTransactions, transaction => !(Date.now() - transaction.create_date < 30 || this._consensusRoundState[transaction.transaction_id]));
-                           });
+            return new Promise((resolve) => {
+                async.eachSeries([
+                    wallet.defaultKeyIdentifier,
+                    ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
+                ], (addressKeyIdentifier, callback) => {
+                    database.getRepository('transaction', shardID)
+                            .getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionList)
+                            .then(pendingTransactions => {
+                                // filter out tx that were synced in the
+                                // last 30s and not being validated yet
+                                return _.filter(pendingTransactions, transaction => !(Date.now() - transaction.create_date < 30 || this._consensusRoundState[transaction.transaction_id]));
+                            })
+                            .then(transactionList => {
+                                if (transactionList.length > 0) {
+                                    resolve(transactionList);
+                                    callback(true);
+                                }
+                                else {
+                                    callback();
+                                }
+                            })
+                            .catch(() => callback());
+                });
+            });
         }, 'transaction_date').then(pendingTransactions => {
             if (pendingTransactions.length === 0) {
                 return database.applyShards((shardID) => {

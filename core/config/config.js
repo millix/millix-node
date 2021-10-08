@@ -15,6 +15,7 @@ export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = false;
 export const MODE_NODE_FULL                                    = false;
+export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
         host          : '18.136.162.158',
@@ -848,6 +849,7 @@ export default {
     CONSENSUS_ROUND_VALIDATION_REQUIRED,
     CONSENSUS_ROUND_DOUBLE_SPEND_MAX,
     CONSENSUS_ROUND_NOT_FOUND_MAX,
+    EXTERNAL_WALLET_KEY_IDENTIFIER,
     CONSENSUS_VALIDATION_WAIT_TIME_MAX,
     CONSENSUS_VALIDATION_RETRY_WAIT_TIME,
     CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,

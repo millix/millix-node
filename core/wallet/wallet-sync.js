@@ -210,11 +210,11 @@ export class WalletSync {
     }
 
     syncTransactionSpendingOutputs(transaction) {
-        const walletKeyIdentifier = wallet.getKeyIdentifier();
+        const walletKeyIdentifierSet = new Set([wallet.getKeyIdentifier(), ...config.EXTERNAL_WALLET_KEY_IDENTIFIER]);
         for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
             this.transactionSpendQueue.push({
                 transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${outputPosition}`,
-                skip_on_fail         : transaction.transaction_output_list[outputPosition].address_key_identifier !== walletKeyIdentifier
+                skip_on_fail         : !walletKeyIdentifierSet.has(transaction.transaction_output_list[outputPosition].address_key_identifier)
             });
         }
     }

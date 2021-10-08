@@ -11,7 +11,7 @@ import peer from '../../net/peer';
 import async from 'async';
 import _ from 'lodash';
 import genesisConfig from '../genesis/genesis-config';
-import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
+import config, {EXTERNAL_WALLET_KEY_IDENTIFIER, NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
 import network from '../../net/network';
 import mutex from '../mutex';
 import ntp from '../ntp';
@@ -400,11 +400,18 @@ class Wallet {
 
         return new Promise(resolve => {
             mutex.lock(['sync-wallet-balance-request'], unlock => {
-                database.applyShards((shardID) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    return transactionRepository.getTransactionByOutputAddressKeyIdentifier(this.defaultKeyIdentifier);
-                }).then(transactions => {
-                    peer.walletTransactionSync(this.defaultKeyIdentifier, _.map(transactions, transaction => transaction.transaction_id), ws);
+                async.eachSeries([
+                    this.defaultKeyIdentifier,
+                    ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
+                ], (addressKeyIdentifier, callback) => {
+                    database.applyShards((shardID) => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier);
+                    }).then(transactions => {
+                        peer.walletTransactionSync(addressKeyIdentifier, _.map(transactions, transaction => transaction.transaction_id), ws);
+                        callback();
+                    }).catch(() => callback());
+                }, () => {
                     resolve();
                     unlock();
                 });
@@ -485,14 +492,20 @@ class Wallet {
             .catch(_ => _);
     }
 
-    transactionHasKeyIdentifier(transaction) {
+    transactionHasKeyIdentifier(transaction, keyIdentifierSet = new Set()) {
+
+        if (keyIdentifierSet.size === 0) {
+            keyIdentifierSet.add(this.defaultKeyIdentifier);
+            config.EXTERNAL_WALLET_KEY_IDENTIFIER.forEach(externalKeyIdentifier => keyIdentifierSet.add(externalKeyIdentifier));
+        }
+
         for (let input of transaction.transaction_input_list) {
-            if (input.address_key_identifier === this.defaultKeyIdentifier) {
+            if (keyIdentifierSet.has(input.address_key_identifier)) {
                 return true;
             }
         }
         for (let output of transaction.transaction_output_list) {
-            if (output.address_key_identifier === this.defaultKeyIdentifier) {
+            if (keyIdentifierSet.has(output.address_key_identifier)) {
                 return true;
             }
         }
@@ -594,20 +607,8 @@ class Wallet {
     }
 
     _shouldProcessTransaction(transaction) {
-        if (!!this._transactionFundingActiveWallet[transaction.transaction_id]) {
+        if (!!this._transactionFundingActiveWallet[transaction.transaction_id] || this.transactionHasKeyIdentifier(transaction)) {
             return true;
-        }
-
-        for (const output of transaction.transaction_output_list) {
-            if (output.address_key_identifier === this.defaultKeyIdentifier) {
-                return true;
-            }
-        }
-
-        for (const input of transaction.transaction_input_list) {
-            if (input.address_key_identifier === this.defaultKeyIdentifier) {
-                return true;
-            }
         }
 
         let transactionDate;
@@ -651,7 +652,7 @@ class Wallet {
             return;
         }
 
-        if (!this.isProcessingNewTransactionFromNetwork  && !this.isRequestedTransaction(transaction.transaction_id)) {
+        if (!this.isProcessingNewTransactionFromNetwork && !this.isRequestedTransaction(transaction.transaction_id)) {
             walletSync.clearTransactionSync(transaction.transaction_id);
             walletSync.add(transaction.transaction_id, {
                 delay   : 5000,
@@ -1384,8 +1385,9 @@ class Wallet {
                 return database.getRepository('keychain')
                                .getWalletKnownKeyIdentifier()
                                .then(knownKeyIdentifierSet => {
+                                   config.EXTERNAL_WALLET_KEY_IDENTIFIER.forEach(externalKeyIdentifier => knownKeyIdentifierSet.add(externalKeyIdentifier));
                                    return database.getRepository('transaction') // shard zero
-                                                  .pruneShardZero(knownKeyIdentifierSet);
+                                                  .pruneShardZero(externalKeyIdentifier);
                                })
                                .then(() => {
                                    unlock();
@@ -1443,7 +1445,10 @@ class Wallet {
                 let time = ntp.now();
                 time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
-                return database.getRepository('transaction').expireTransactions(time, this.defaultKeyIdentifier)
+                return database.getRepository('transaction').expireTransactions(time, [
+                    this.defaultKeyIdentifier,
+                    ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
+                ])
                                .then(() => {
                                    eventBus.emit('wallet_update');
                                    unlock();
