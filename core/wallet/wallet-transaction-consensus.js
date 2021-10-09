@@ -834,6 +834,10 @@ export class WalletTransactionConsensus {
                                 }
                             })
                             .catch(() => callback());
+                }, (found) => {
+                    if (!found) {
+                        resolve([]);
+                    }
                 });
             });
         }, 'transaction_date').then(pendingTransactions => {
