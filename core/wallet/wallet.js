@@ -757,7 +757,10 @@ class Wallet {
                                                                                                                       walletSync.clearTransactionSync(transaction.transaction_id);
 
                                                                                                                       this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
-                                                                                                                      walletSync.syncTransactionSpendingOutputs(transaction);
+
+                                                                                                                      if (isFundingWallet || hasKeyIdentifier) {
+                                                                                                                          walletSync.syncTransactionSpendingOutputs(transaction);
+                                                                                                                      }
 
                                                                                                                       if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
                                                                                                                           _.each(transaction.transaction_input_list, inputTransaction => {
