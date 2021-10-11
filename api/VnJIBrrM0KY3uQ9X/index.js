@@ -31,7 +31,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
      */
     handler(app, req, res) {
         let transactionList;
-
+        console.log(`[api ${this.endpoint}] request to send transaction`);
         if (req.method === 'GET') {
             if (!req.query.p0) {
                 return res.status(400).send({
@@ -57,6 +57,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
 
 
         try {
+            console.log(`[api ${this.endpoint}] request to send Tx: ${transactionList.map(t=>t.transaction_id).join(",")}`);
             const transactionRepository = database.getRepository('transaction');
             let pipeline                = Promise.resolve(true);
             transactionList.forEach(transaction => pipeline = pipeline.then(valid => valid ? walletUtils.verifyTransaction(transaction) : false));
@@ -69,6 +70,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                     return Promise.reject('proxy unavailable');
                 }
 
+                console.log(`[api ${this.endpoint}] transaction sent to proxy ${proxyWS.nodeID} Tx: ${transactionList.map(t=>t.transaction_id).join(",")}`);
                 return peer.transactionProxy(transactionList, proxyWS)
                            .then(transactionList => {
                                // store the transaction
