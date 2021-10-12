@@ -71,6 +71,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                 }
 
                 console.log(`[api ${this.endpoint}] transaction sent to proxy ${proxyWS.nodeID} Tx: ${transactionList.map(t=>t.transaction_id).join(",")}`);
+                res.send({api_status: 'success'});
                 return peer.transactionProxy(transactionList, proxyWS)
                            .then(transactionList => {
                                // store the transaction
@@ -122,7 +123,6 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                                    console.log(`[api ${this.endpoint}] successfully stored transaction submitted on API. Hash: ${transaction.transaction_id}. Submitting to peers`);
                                    peer.transactionSend(transaction);
                                });
-                               res.send({api_status: 'success'});
                                setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 5000);
                            });
             }).catch(e => {
