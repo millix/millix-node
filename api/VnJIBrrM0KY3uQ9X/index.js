@@ -2,13 +2,11 @@ import Endpoint from '../endpoint';
 import walletUtils from '../../core/wallet/wallet-utils';
 import peer from '../../net/peer';
 import database from '../../database/database';
-import mutex from '../../core/mutex';
 import _ from 'lodash';
 import network from '../../net/network';
 import base58 from 'bs58';
 import wallet from '../../core/wallet/wallet';
 import walletTransactionConsensus from '../../core/wallet/wallet-transaction-consensus';
-import {SHARD_ZERO_NAME} from '../../core/config/config';
 
 
 /**
