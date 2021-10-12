@@ -199,21 +199,27 @@ export default class Transaction {
         });
     }
 
-    getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier, returnValidTransactions = false) {
+    getTransactionByAddressKeyIdentifier(addressKeyIdentifier, returnValidTransactions = false) {
         return new Promise((resolve, reject) => {
-            let {
-                    sql,
-                    parameters
-                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM `transaction` \
-                INNER JOIN transaction_output on `transaction`.transaction_id = transaction_output.transaction_id', {
-                address_key_identifier: addressKeyIdentifier
-            });
-
-            if (returnValidTransactions) {
-                sql += ' AND `transaction`.status != 3 AND `transaction`.is_stable = 1 AND transaction_output.is_double_spend = 0';
-            }
-
-            this.database.all(sql, parameters,
+            this.database.all(`WITH transaction_wallet AS (
+                    SELECT transaction_input.transaction_id,
+                           transaction_input.shard_id
+                    FROM transaction_input
+                    WHERE transaction_input.address_key_identifier = ?
+                      AND transaction_input.status != 3
+                    UNION
+                    SELECT transaction_output.transaction_id,
+                           transaction_output.shard_id
+                    FROM transaction_output
+                    WHERE transaction_output.address_key_identifier = ?
+                      AND transaction_output.status != 3 ${returnValidTransactions ? 'AND transaction_output.is_stable = 1 AND transaction_output.is_double_spend = 0' : ''}
+                )
+                               SELECT DISTINCT transaction_id, shard_id
+                               FROM transaction_wallet`,
+                [
+                    addressKeyIdentifier,
+                    addressKeyIdentifier
+                ],
                 (err, rows) => {
                     if (err) {
                         console.log(err);
@@ -2335,7 +2341,7 @@ export default class Transaction {
                                     FROM transaction_output o
                                     WHERE is_stable = 0
                                       AND o.address_key_identifier IN
-                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(",")})
+                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})
                                     UNION
                                     SELECT o.transaction_id
                                     FROM transaction_output o
@@ -2343,7 +2349,7 @@ export default class Transaction {
                                                         ON i.transaction_id = o.transaction_id
                                     WHERE is_stable = 0
                                       AND i.address_key_identifier IN
-                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(",")})))
+                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})))
             SELECT *
             FROM expired;
             UPDATE transaction_output

@@ -406,7 +406,7 @@ class Wallet {
                 ], (addressKeyIdentifier, callback) => {
                     database.applyShards((shardID) => {
                         const transactionRepository = database.getRepository('transaction', shardID);
-                        return transactionRepository.getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier);
+                        return transactionRepository.getTransactionByAddressKeyIdentifier(addressKeyIdentifier);
                     }).then(transactions => {
                         peer.walletTransactionSync(addressKeyIdentifier, _.map(transactions, transaction => transaction.transaction_id), ws);
                         callback();
@@ -1048,7 +1048,7 @@ class Wallet {
             });
             database.applyShards((shardID) => {
                 const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getTransactionByOutputAddressKeyIdentifier(addressKeyIdentifier);
+                return transactionRepository.getTransactionByAddressKeyIdentifier(addressKeyIdentifier);
             }).then(transactions => {
                 transactions = _.filter(transactions, transaction => !excludeTransactionIDSet.has(transaction.transaction_id));
                 console.log('[wallet] >>', transactions.length, ' transaction will be synced to wallet ', addressKeyIdentifier);
