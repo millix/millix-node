@@ -18,7 +18,6 @@ export class Database {
     static ID_CHARACTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
     constructor() {
-        this.debug              = true;
         this.databaseMillix     = null;
         this.databaseJobEngine  = null;
         this.databaseRootFolder = null;
@@ -157,7 +156,10 @@ export class Database {
     }
 
     static enableDebugger(database) {
-        const dbAll  = database.all.bind(database);
+        database.on('profile', (sql, time) => {
+            console.log(`[database] trace performance => ${sql} : ${time}ms`);
+        });
+        /*const dbAll  = database.all.bind(database);
         database.all = (function(sql, parameters, callback) {
             console.log(`[database] query all start: ${sql}`);
             if (typeof (parameters) === 'function') {
@@ -183,7 +185,7 @@ export class Database {
                 console.log(`[database] query get (run time ${timeElapsed}ms): ${sql} : ${err}`);
                 callback(err, data);
             });
-        }).bind(database);
+        }).bind(database);*/
     }
 
     _initializeMillixSqlite3() {
@@ -219,7 +221,7 @@ export class Database {
 
                 console.log('Connected to the millix database.');
 
-                this.debug && Database.enableDebugger(this.databaseMillix);
+                config.MODE_DEBUG && Database.enableDebugger(this.databaseMillix);
 
                 if (doInitialize) {
                     console.log('Initializing database');

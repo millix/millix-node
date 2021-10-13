@@ -223,7 +223,7 @@ class Peer {
                 eventBus.removeAllListeners(`transaction_new_proxy:${nodeID}:${transactionID}`);
                 let timeLimitTriggered = false;
                 let responseProcessed  = false;
-                let timeoutHandler = undefined;
+                let timeoutHandler     = undefined;
                 eventBus.once(`transaction_new_proxy:${nodeID}:${transactionID}`, (response) => {
                     responseProcessed = true;
                     if (!timeLimitTriggered) {
@@ -245,7 +245,7 @@ class Peer {
 
                 timeoutHandler = setTimeout(() => {
                     timeLimitTriggered = true;
-                    if(!responseProcessed) {
+                    if (!responseProcessed) {
                         console.log('[peer] self-triggered transaction proxy timeout on for transaction', transactionID);
                         reject('proxy_time_limit_exceed');
                     }

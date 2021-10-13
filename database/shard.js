@@ -8,7 +8,6 @@ import eventBus from '../core/event-bus';
 
 export default class Shard {
     constructor(databaseFile, shardID) {
-        this.debug        = true;
         this.databaseFile = databaseFile;
         this.shardID      = shardID;
         this.repositories = {};
@@ -106,7 +105,7 @@ export default class Shard {
 
                 console.log('[shard] connected to the shard database: ', this.shardID);
 
-                this.debug && Database.enableDebugger(this.database);
+                config.MODE_DEBUG && Database.enableDebugger(this.database);
 
                 if (doInitialize) {
                     console.log('[shard] initializing database');

@@ -11,7 +11,7 @@ import peer from '../../net/peer';
 import async from 'async';
 import _ from 'lodash';
 import genesisConfig from '../genesis/genesis-config';
-import config, {EXTERNAL_WALLET_KEY_IDENTIFIER, NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
+import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
 import network from '../../net/network';
 import mutex from '../mutex';
 import ntp from '../ntp';
