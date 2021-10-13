@@ -694,7 +694,7 @@ class Wallet {
                                                                                   .then(validTransaction => {
 
                                                                                       if (!validTransaction) {
-                                                                                          console.log('Invalid transaction received from network. Setting all of the childs to invalid');
+                                                                                          console.log('Invalid transaction received from network. Set all children as invalid');
 
                                                                                           database.applyShards((shardID) => {
                                                                                               return database.getRepository('transaction', shardID)
@@ -1306,10 +1306,17 @@ class Wallet {
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX * 5);
     }
 
-    _onTransactionProxy(transactionList, ws) {
-        if (!(transactionList instanceof Array)) {
-            transactionList = [transactionList];
+    _onTransactionProxy(data, ws) {
+        let transactionList, proxyTimeLimit;
+        if (!(data instanceof Array)) {
+            transactionList = data.transaction_list;
+            proxyTimeLimit  = data.proxy_time_limit;
         }
+        else {
+            transactionList = data;
+            proxyTimeLimit  = 30000;
+        }
+        const proxyTimeStart = Date.now();
         const {connectionID} = ws;
         // check proxy fee
         const feeTransaction = transactionList[transactionList.length - 1];
@@ -1324,7 +1331,7 @@ class Wallet {
         let pipeline = Promise.resolve();
         transactionList.forEach(transaction => {
             walletTransactionConsensus.addTransactionToCache(transaction);
-            pipeline = pipeline.then(() => walletTransactionConsensus._validateTransaction(transaction));
+            pipeline = pipeline.then(() => walletTransactionConsensus._validateTransaction(transaction, undefined, 0, new Set(), new Set(), proxyTimeStart, proxyTimeLimit));
         });
 
         transactionList.forEach(transaction => {

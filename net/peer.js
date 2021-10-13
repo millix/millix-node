@@ -202,11 +202,14 @@ class Peer {
         }
     }
 
-    transactionProxy(transactionList, ws) {
+    transactionProxy(transactionList, proxyTimeLimit, ws) {
         return new Promise((resolve, reject) => {
             let payload = {
                 type   : 'transaction_new_proxy',
-                content: transactionList
+                content: {
+                    transaction_list: transactionList,
+                    proxy_time_limit: proxyTimeLimit
+                }
             };
 
             const transaction = transactionList[0];
@@ -218,17 +221,35 @@ class Peer {
                 const nodeID        = ws.nodeID;
                 const transactionID = transaction.transaction_id;
                 eventBus.removeAllListeners(`transaction_new_proxy:${nodeID}:${transactionID}`);
+                let timeLimitTriggered = false;
+                let responseProcessed  = false;
+                let timeoutHandler = undefined;
                 eventBus.once(`transaction_new_proxy:${nodeID}:${transactionID}`, (response) => {
-                    if (response.transaction_proxy_success) {
-                        console.log('[peer] transaction ', transactionID, ' proxied by node ', nodeID);
-                        resolve(transactionList);
-                    }
-                    else {
-                        console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID);
-                        reject('transaction_proxy_rejected');
+                    responseProcessed = true;
+                    if (!timeLimitTriggered) {
+                        if (response.transaction_proxy_success) {
+                            console.log('[peer] transaction ', transactionID, ' proxied by node ', nodeID);
+                            resolve(transactionList);
+                        }
+                        else if (response.cause === 'proxy_time_limit_exceed') {
+                            console.log('[peer] transaction proxy timeout on ', nodeID, 'for transaction', transactionID);
+                            reject('proxy_time_limit_exceed');
+                        }
+                        else {
+                            console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID, 'cause:', err.cause);
+                            reject('transaction_proxy_rejected');
+                        }
+                        clearTimeout(timeoutHandler);
                     }
                 });
 
+                timeoutHandler = setTimeout(() => {
+                    timeLimitTriggered = true;
+                    if(!responseProcessed) {
+                        console.log('[peer] self-triggered transaction proxy timeout on for transaction', transactionID);
+                        reject('proxy_time_limit_exceed');
+                    }
+                }, proxyTimeLimit + config.NETWORK_SHORT_TIME_WAIT_MAX);
                 ws.nodeConnectionReady && ws.send(data);
             }
             catch (e) {
@@ -803,8 +824,8 @@ class Peer {
 
     transactionSyncRequest(transactionID, options = {}) {
         const {
-                  depth             : currentDepth,
-                  request_node_id   : requestNodeID,
+                  depth          : currentDepth,
+                  request_node_id: requestNodeID,
                   routing,
                   priority,
                   dispatch_request  : dispatchRequest,
@@ -1087,7 +1108,7 @@ class Peer {
 
     sendNATCheckResponse(content, ws) {
         let payload = {
-            type   : 'nat_check_response',
+            type: 'nat_check_response',
             content
         };
 
@@ -1105,7 +1126,7 @@ class Peer {
 
     sendNATCheck(content, ws) {
         let payload = {
-            type   : 'nat_check',
+            type: 'nat_check',
             content
         };
 

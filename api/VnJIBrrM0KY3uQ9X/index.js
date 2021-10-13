@@ -17,18 +17,28 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
         super('VnJIBrrM0KY3uQ9X');
     }
 
+    _getProxyTimeLimit(value) {
+        let proxyTimeLimit;
+        try {
+            proxyTimeLimit = parseInt(value);
+            return proxyTimeLimit > 0 ? proxyTimeLimit : 30000;
+        }catch (e) {
+        }
+        return 30000;
+    }
+
     /**
      * submits a new transaction with a transaction payload, containing inputs,
      * signatures, outputs and amounts to the node. this API is generally used
      * in conjunction with the output from API RVBqKlGdk9aEhi5J
      * (sign_transaction)
      * @param app
-     * @param req (p0: transaction_payload_signed<require>)
+     * @param req (p0: transaction_payload_signed<require>, p1:proxy_time_limit<default 30000ms>)
      * @param res
      * @returns {*}
      */
     handler(app, req, res) {
-        let transactionList;
+        let transactionList, proxyTimeLimit;
         console.log(`[api ${this.endpoint}] request to send transaction`);
         if (req.method === 'GET') {
             if (!req.query.p0) {
@@ -40,6 +50,8 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
             else {
                 transactionList = JSON.parse(req.query.p0);
             }
+
+            proxyTimeLimit = this._getProxyTimeLimit(req.query.p1);
         }
         else {
             if (!req.body.p0) {
@@ -51,6 +63,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
             else {
                 transactionList = req.body.p0;
             }
+            proxyTimeLimit = this._getProxyTimeLimit(req.body.p1);
         }
 
 
@@ -61,16 +74,15 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
             transactionList.forEach(transaction => pipeline = pipeline.then(valid => valid ? walletUtils.verifyTransaction(transaction) : false));
             pipeline.then(valid => {
                 if (!valid) {
-                    return Promise.reject('bad transaction payload');
+                    return Promise.reject('transaction_payload_invalid');
                 }
                 const proxyWS = network.getNodeSocket(transactionList[0].node_id_proxy);
                 if (!proxyWS) {
-                    return Promise.reject('proxy unavailable');
+                    return Promise.reject('proxy_unavailable');
                 }
 
-                console.log(`[api ${this.endpoint}] transaction sent to proxy ${proxyWS.nodeID} Tx: ${transactionList.map(t=>t.transaction_id).join(",")}`);
-                res.send({api_status: 'success'});
-                return peer.transactionProxy(transactionList, proxyWS)
+                console.log(`[api ${this.endpoint}] transaction sent to proxy ${proxyWS.nodeID} Tx: ${transactionList.map(t=>t.transaction_id).join(",")} | proxy_time_limit: ${proxyTimeLimit}`);
+                return peer.transactionProxy(transactionList, proxyTimeLimit, proxyWS)
                            .then(transactionList => {
                                // store the transaction
                                let pipeline = Promise.resolve();
@@ -122,12 +134,13 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                                    peer.transactionSend(transaction);
                                });
                                setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 5000);
+                               res.send({api_status: 'success'});
                            });
             }).catch(e => {
                 console.log(`[api ${this.endpoint}] error: ${e}`);
                 res.send({
                     api_status : 'fail',
-                    api_message: `unexpected generic api error: (${e})`
+                    api_message: e
                 });
             });
         }
