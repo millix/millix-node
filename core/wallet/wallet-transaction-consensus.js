@@ -384,12 +384,12 @@ export class WalletTransactionConsensus {
                                            cause: 'consensus_timeout',
                                            depth
                                        });
-                                   } else if(proxyTimeLimit != null && proxyTimeStart !=null && (Date.now() - proxyTimeStart) >= proxyTimeLimit ) {
+                                   } /*else if(proxyTimeLimit != null && proxyTimeStart !=null && (Date.now() - proxyTimeStart) >= proxyTimeLimit ) {
                                        return reject({
                                            cause: 'proxy_time_limit_exceed',
                                            depth
                                        });
-                                   }
+                                   }*/
 
                                    /* compare input and output amount */
                                    let outputTotalAmount = 0;
