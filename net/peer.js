@@ -249,7 +249,7 @@ class Peer {
                         console.log('[peer] self-triggered transaction proxy timeout on for transaction', transactionID);
                         reject('proxy_time_limit_exceed');
                     }
-                }, proxyTimeLimit + config.NETWORK_SHORT_TIME_WAIT_MAX);
+                }, proxyTimeLimit); // + config.NETWORK_SHORT_TIME_WAIT_MAX
                 ws.nodeConnectionReady && ws.send(data);
             }
             catch (e) {
