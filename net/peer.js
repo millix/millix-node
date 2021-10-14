@@ -236,7 +236,7 @@ class Peer {
                             reject('proxy_time_limit_exceed');
                         }
                         else {
-                            console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID, 'cause:', err.cause);
+                            console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID, 'cause:', response.cause);
                             reject('transaction_proxy_rejected');
                         }
                         clearTimeout(timeoutHandler);
