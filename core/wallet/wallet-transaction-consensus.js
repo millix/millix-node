@@ -748,7 +748,7 @@ export class WalletTransactionConsensus {
                     this._transactionValidationRejected.add(transactionID);
                     database.applyShards((shardID) => {
                         return database.getRepository('transaction', shardID)
-                                       .invalidateAllTransactions(transactionID);
+                                       .invalidateTransaction(transactionID);
                     }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
                             .then(() => {
                                 consensusData.resolve();

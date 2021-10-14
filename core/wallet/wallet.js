@@ -652,7 +652,9 @@ class Wallet {
             return;
         }
 
-        if (!this.isProcessingNewTransactionFromNetwork && !this.isRequestedTransaction(transaction.transaction_id)) {
+        const hasKeyIdentifier = this.transactionHasKeyIdentifier(transaction);
+
+        if ( !hasKeyIdentifier && !this.isProcessingNewTransactionFromNetwork && !this.isRequestedTransaction(transaction.transaction_id)) {
             walletSync.clearTransactionSync(transaction.transaction_id);
             walletSync.add(transaction.transaction_id, {
                 delay   : 5000,
@@ -698,7 +700,7 @@ class Wallet {
 
                                                                                           database.applyShards((shardID) => {
                                                                                               return database.getRepository('transaction', shardID)
-                                                                                                             .invalidateAllTransactions(transaction.transaction_id);
+                                                                                                             .invalidateTransaction(transaction.transaction_id);
                                                                                           }).then(_ => _).catch(err => console.log(`Failed to find and set spenders as invalid. Error: ${err}`));
 
                                                                                           eventBus.emit('badTransaction:' + transaction.transaction_id);
@@ -711,11 +713,10 @@ class Wallet {
 
                                                                                       const isFundingWallet  = !!this._transactionFundingActiveWallet[transaction.transaction_id];
                                                                                       const syncPriority     = isFundingWallet ? 1 : this.getTransactionSyncPriority(transaction);
-                                                                                      const hasKeyIdentifier = this.transactionHasKeyIdentifier(transaction);
                                                                                       delete this._transactionFundingActiveWallet[transaction.transaction_id];
 
                                                                                       if (syncPriority === 1) {
-                                                                                          console.log('[wallet-key-identifier] ', transaction);
+                                                                                          console.log(`[wallet] wallet-key-identifier >> transaction found ${transaction.transaction_id}`);
                                                                                       }
 
                                                                                       let transactionRepository = shardZeroTransactionRepository;

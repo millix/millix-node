@@ -526,7 +526,7 @@ class WalletUtils {
                 return resolve(false);
             }
 
-            console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
+            console.log(`[wallet-utils] Verifying transaction ${transaction.transaction_id}`);
 
             let transactionDate;
             if (![

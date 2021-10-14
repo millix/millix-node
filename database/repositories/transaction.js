@@ -318,9 +318,9 @@ export default class Transaction {
             this.database.get(
                 'WITH transaction_wallet AS ( \
                 SELECT transaction_input.transaction_id FROM transaction_input \
-                WHERE transaction_input.address_key_identifier = ? AND transaction_input.status != 3 \
+                WHERE transaction_input.address_key_identifier = ? \
                 UNION SELECT transaction_output.transaction_id FROM transaction_output \
-                WHERE transaction_output.address_key_identifier = ? AND transaction_output.status != 3 \
+                WHERE transaction_output.address_key_identifier = ? \
                 ) \
                 SELECT COUNT(DISTINCT transaction_id) as transaction_count FROM transaction_wallet',
                 [
@@ -1041,6 +1041,54 @@ export default class Transaction {
                     resolve(rows.map(r => r.transaction_id_child));
                 });
         });
+    }
+
+    invalidateTransaction(transactionID) {
+        return new Promise((resolve, reject) => {
+            this.database.serialize(() => {
+                let sql = `
+                update 'transaction'
+                set status      = 3,
+                    is_stable   = 1,
+                    stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                where transaction_id = ${transactionID};
+                update transaction_output
+                set status            = 3,
+                    is_stable         = 1,
+                    stable_date       = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_double_spend   = 0,
+                    double_spend_date = NULL,
+                    is_spent          = 0,
+                    spent_date        = NULL
+                where transaction_id = ${transactionID};
+                update transaction_input
+                set status            = 3,
+                    is_double_spend   = 0,
+                    double_spend_date = NULL
+                where transaction_id = ${transactionID};
+                update transaction_output as o
+                set stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = exists (
+                    select o2.transaction_id from transaction_input i
+                    inner join transaction_output o2 on i.transaction_id = o2.transaction_id
+                    where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
+                    o2.status != 3 and o2.is_double_spend = 0
+                    ), spent_date = (
+                    select t.transaction_date from 'transaction' t
+                    inner join transaction_input i on i.transaction_id = t.transaction_id
+                    inner join transaction_output o2 on i.transaction_id = o2.transaction_id
+                    where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
+                    o2.status != 3 and o2.is_double_spend = 0
+                    )
+                where transaction_id in (select output_transaction_id from transaction_input where transaction_id = ${transactionID});
+                `;
+                this.database.exec(sql, (err) => {
+                    if (err) {
+                        return reject();
+                    }
+                    return resolve();
+                });
+            });
+        })
     }
 
     invalidateAllTransactions(transactionID) {
