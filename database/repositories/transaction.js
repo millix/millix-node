@@ -1051,7 +1051,7 @@ export default class Transaction {
                 set status      = 3,
                     is_stable   = 1,
                     stable_date = CAST(strftime('%s', 'now') AS INTEGER)
-                where transaction_id = ${transactionID};
+                where transaction_id = "${transactionID}";
                 update transaction_output
                 set status            = 3,
                     is_stable         = 1,
@@ -1060,12 +1060,12 @@ export default class Transaction {
                     double_spend_date = NULL,
                     is_spent          = 0,
                     spent_date        = NULL
-                where transaction_id = ${transactionID};
+                where transaction_id = "${transactionID}";
                 update transaction_input
                 set status            = 3,
                     is_double_spend   = 0,
                     double_spend_date = NULL
-                where transaction_id = ${transactionID};
+                where transaction_id = "${transactionID}";
                 update transaction_output as o
                 set stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = exists (
                     select o2.transaction_id from transaction_input i
@@ -1079,7 +1079,7 @@ export default class Transaction {
                     where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
                     o2.status != 3 and o2.is_double_spend = 0
                     )
-                where transaction_id in (select output_transaction_id from transaction_input where transaction_id = ${transactionID});
+                where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
                 `;
                 this.database.exec(sql, (err) => {
                     if (err) {
