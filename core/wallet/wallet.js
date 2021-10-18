@@ -1523,7 +1523,8 @@ class Wallet {
             'proxy_timeout',
             'invalid_proxy_transaction_chain',
             'proxy_connection_state_invalid',
-            'transaction_proxy_rejected'
+            'transaction_proxy_rejected',
+            'proxy_time_limit_exceed'
         ];
         return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
                                     .then(proxyCandidates => {
