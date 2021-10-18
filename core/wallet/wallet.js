@@ -1,7 +1,7 @@
 import walletUtils from './wallet-utils';
 import walletSync from './wallet-sync';
 import walletTransactionConsensus from './wallet-transaction-consensus';
-import database, {Database} from '../../database/database';
+import database from '../../database/database';
 import eventBus from '../event-bus';
 import signature from '../crypto/signature';
 import objectHash from '../crypto/object-hash';
@@ -273,7 +273,7 @@ class Wallet {
                 })
                     .then((outputs) => {
                         const keychainRepository = database.getRepository('keychain');
-                        return keychainRepository.getAddresses(_.map(outputs, output => output.address)).then(addresses => {
+                        return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
                             const mapAddresses = {};
                             addresses.forEach(address => mapAddresses[address.address] = address);
 
@@ -1507,7 +1507,7 @@ class Wallet {
                               else if (chainFromProxy.length === 0) {
                                   return Promise.reject('invalid_proxy_transaction_chain');
                               }
-                              return propagateTransaction ? peer.transactionProxy(transactionList, proxyWS) : transactionList;
+                              return propagateTransaction ? peer.transactionProxy(transactionList, config.TRANSACTION_TIME_LIMIT_PROXY, proxyWS) : transactionList;
                           })
                           .then(transactionList => {
                               let pipeline = new Promise(resolve => resolve(true));

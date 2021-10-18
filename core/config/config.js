@@ -719,6 +719,7 @@ export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
+export const TRANSACTION_TIME_LIMIT_PROXY                      = 15000;
 export const TRANSACTION_FEE_PROXY                             = 1000;
 export const TRANSACTION_FEE_DEFAULT                           = 1000;
 export const TRANSACTION_FEE_NETWORK                           = 0.0;
@@ -859,6 +860,7 @@ export default {
     TRANSACTION_FEE_NETWORK,
     TRANSACTION_FEE_DEFAULT,
     TRANSACTION_PRUNE_AGE_MIN,
+    TRANSACTION_TIME_LIMIT_PROXY,
     TRANSACTION_PRUNE_COUNT,
     TRANSACTION_INPUT_MAX,
     TRANSACTION_OUTPUT_MAX,
