@@ -17,6 +17,7 @@ import dns from 'dns';
 import DHT from 'bittorrent-dht';
 import signature from '../core/crypto/signature';
 import NatAPI from 'nat-api';
+import statistics from '../core/statistics';
 
 const WebSocketServer = Server;
 
@@ -194,14 +195,16 @@ class Network {
             return console.log('[network] failed to parse json message ' + message);
         }
 
-        const messageType = jsonMessage.type;
+        const messageType = jsonMessage.type.split(':')[0];
         const content     = jsonMessage.content;
+
+        statistics.newEvent(messageType);
 
         if (ws.outBound && !ws.bidirectional && this.shouldBlockMessage(messageType)) {
             return;
         }
 
-        eventBus.emit(messageType, content, ws);
+        eventBus.emit(jsonMessage.type, content, ws);
     }
 
     shouldBlockMessage(messageType) {
@@ -493,9 +496,11 @@ class Network {
                                 .then(() => eventBus.emit('node_list_update'))
                                 .catch(() => eventBus.emit('node_list_update'));
 
-                        peer.sendNATCheck({
-                            url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
-                        }, ws);
+                        if(config.NODE_NAT_PMP_CHECK) {
+                            peer.sendNATCheck({
+                                url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
+                            }, ws);
+                        }
 
                         eventBus.emit('peer_connection_new', ws);
                         eventBus.emit('node_status_update');
@@ -712,46 +717,21 @@ class Network {
     }
 
     _requestAllNodeAttribute(nodeID, ws) {
-        peer.nodeAttributeRequest({
-            node_id       : nodeID,
-            attribute_type: 'shard_protocol'
-        }, ws);
+        const attributeNameList = _.filter(['shard_protocol', 'transaction_count', 'peer_count', 'job_list', 'address_default', 'node_about', 'peer_connection', 'transaction_fee'], attributeName => {
+            if (!peer.nodeAttributeCache[nodeID] || !peer.nodeAttributeCache[nodeID][attributeName]) {
+                return true;
+            }
+            else {
+                return Date.now() - peer.nodeAttributeCache[nodeID][attributeName].updatedAt > 30000;
+            }
+        });
 
-        peer.nodeAttributeRequest({
-            node_id       : nodeID,
-            attribute_type: 'transaction_count'
-        }, ws);
-
-        peer.nodeAttributeRequest({
-            node_id       : nodeID,
-            attribute_type: 'peer_count'
-        }, ws);
-
-        peer.nodeAttributeRequest({
-            node_id       : nodeID,
-            attribute_type: 'job_list'
-        }, ws);
-
-        peer.nodeAttributeRequest({
-            node_id       : nodeID,
-            attribute_type: 'address_default'
-        }, ws);
-
-        peer.nodeAttributeRequest({
-            node_id       : nodeID,
-            attribute_type: 'node_about'
-        }, ws);
-
-        peer.nodeAttributeRequest({
-            node_id       : nodeID,
-            attribute_type: 'peer_connection'
-        }, ws);
-
-        peer.nodeAttributeRequest({
-            node_id       : nodeID,
-            attribute_type: 'transaction_fee'
-        }, ws);
-
+        attributeNameList.forEach(attributeName => {
+            peer.nodeAttributeRequest({
+                node_id       : nodeID,
+                attribute_type: attributeName
+            }, ws);
+        });
     }
 
     _onConnectionReady(content, ws) {
@@ -776,9 +756,11 @@ class Network {
                         .then(() => eventBus.emit('node_list_update'))
                         .catch(() => eventBus.emit('node_list_update'));
 
-                peer.sendNATCheck({
-                    url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
-                }, ws);
+                if(config.NODE_NAT_PMP_CHECK) {
+                    peer.sendNATCheck({
+                        url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
+                    }, ws);
+                }
 
                 eventBus.emit('peer_connection_new', ws);
                 eventBus.emit('node_status_update');

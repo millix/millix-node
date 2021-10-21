@@ -11,6 +11,7 @@ export const NODE_HOST                                         = 'localhost';
 export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
 export const NODE_NAT_PMP                                      = true;
+export const NODE_NAT_PMP_CHECK                                = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = false;
@@ -826,6 +827,7 @@ export default {
     NODE_HOST_FORCE,
     NODE_BIND_IP,
     NODE_NAT_PMP,
+    NODE_NAT_PMP_CHECK,
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
     NODE_INITIAL_LIST,

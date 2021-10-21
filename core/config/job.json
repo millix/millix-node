@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "processor_list": {
     "localhost": {
       "instances": 2
@@ -58,7 +58,7 @@
       "priority": 0,
       "option_list": {
         "run_always": 1,
-        "run_delay": 6000,
+        "run_delay": 60000,
         "enable": true
       }
     },

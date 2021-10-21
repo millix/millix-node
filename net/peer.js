@@ -7,6 +7,7 @@ import database from '../database/database';
 import async from 'async';
 import walletSync from '../core/wallet/wallet-sync';
 import peerRotation from './peer-rotation';
+import statistics from '../core/statistics';
 
 
 class Peer {
@@ -18,6 +19,7 @@ class Peer {
         this.pendingTransactionSpendSync       = {};
         this.pendingTransactionOutputSpendSync = {};
         this.pendingTransactionIncludePathSync = {};
+        this.nodeAttributeCache                = {};
     }
 
     sendNodeAddress(ipAddress, messageID, ws) {
@@ -1075,6 +1077,11 @@ class Peer {
         const nodeRepository = database.getRepository('node');
         async.eachSeries(nodes, (data, callback) => {
             data.node_port_api = data.node_port_api || config.NODE_PORT_API;
+
+            if (network.nodeList[`${data.node_prefix}${data.node_address}:${data.node_port}`]) {
+                return callback();
+            }
+
             network.addNode(data.node_prefix, data.node_address, data.node_port, data.node_port_api, data.node_id);
             callback();
         }, () => {
@@ -1225,6 +1232,27 @@ class Peer {
             content
         });
         if (content.node_id && content.attribute_type && content.value !== undefined) {
+            if (!this.nodeAttributeCache[content.node_id]) {
+                this.nodeAttributeCache[content.node_id] = {};
+            }
+
+            if (!this.nodeAttributeCache[content.node_id][content.attribute_type]) {
+                this.nodeAttributeCache[content.node_id] = {
+                    [content.attribute_type]: {
+                        value    : content.value,
+                        updatedAt: Date.now()
+                    }
+                };
+            }
+            else {
+                this.nodeAttributeCache[content.node_id][content.attribute_type].updatedAt = Date.now();
+                if (this.nodeAttributeCache[content.node_id][content.attribute_type].value === content.value) {
+                    return;
+                }
+                this.nodeAttributeCache[content.node_id][content.attribute_type] = content.value;
+            }
+
+            statistics.newEvent('add_or_update_attribute');
             const nodeRepository = database.getRepository('node');
             nodeRepository.addNodeAttribute(content.node_id, content.attribute_type, content.value)
                           .then(_ => _)
