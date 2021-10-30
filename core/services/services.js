@@ -7,6 +7,7 @@ import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
 import database from '../../database/database';
+import fileManager from '../files/file-manager';
 
 
 class Service {
@@ -28,6 +29,7 @@ class Service {
             this.mode = mode;
         }
         return logManager.initialize()
+                         .then(() => fileManager.initialize())
                          .then(() => server.initialize())
                          .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
                          .then(() => network.initialize())

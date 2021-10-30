@@ -765,6 +765,7 @@ export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
+export const FILES_CONNECTION                                  = {};
 export const MILLIX_CIRCULATION                                = 9e15;
 export const NODE_MILLIX_BUILD_DATE                            = 1631097631;
 export const NODE_MILLIX_VERSION                               = '1.11.6';
@@ -814,6 +815,8 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCHEMA_VERSION                        = '16';
 }
 
+FILES_CONNECTION.FOLDER                                       = DATA_BASE_DIR + '/files/';
+
 export default {
     MODE_DEBUG,
     MODE_TEST_NETWORK,
@@ -838,6 +841,7 @@ export default {
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
+    FILES_CONNECTION,
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
     CONSENSUS_VALIDATION_DEPTH_MAX,
