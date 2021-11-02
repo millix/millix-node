@@ -119,12 +119,12 @@ export default class Shard {
                             }
                             console.log('[shard] database initialized');
                             this.database.shardID = this.shardID;
-                            resolve();
+                            this.database.run('PRAGMA journal_mode = MEMORY', () => this.database.run('PRAGMA synchronous = OFF', () => resolve()));
                         });
                     });
                 }
                 else {
-                    resolve();
+                    this.database.run('PRAGMA journal_mode = MEMORY', () => this.database.run('PRAGMA synchronous = OFF', () => resolve()));
                 }
             });
         });
