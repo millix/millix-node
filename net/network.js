@@ -18,6 +18,7 @@ import DHT from 'bittorrent-dht';
 import signature from '../core/crypto/signature';
 import NatAPI from 'nat-api';
 import statistics from '../core/statistics';
+import console from '../core/console';
 
 const WebSocketServer = Server;
 
@@ -496,7 +497,7 @@ class Network {
                                 .then(() => eventBus.emit('node_list_update'))
                                 .catch(() => eventBus.emit('node_list_update'));
 
-                        if(config.NODE_NAT_PMP_CHECK) {
+                        if (config.NODE_NAT_PMP_CHECK) {
                             peer.sendNATCheck({
                                 url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
                             }, ws);
@@ -604,7 +605,30 @@ class Network {
     }
 
     hasInboundConnectionsSlotAvailable() {
-        return (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) < config.NODE_CONNECTION_INBOUND_MAX;
+        return (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) < config.NODE_CONNECTION_INBOUND_MAX || this._hasToDropPublicNodeConnection();
+    }
+
+    _hasToDropPublicNodeConnection() {
+        const totalInboundConnections = (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount);
+        const count                   = this._countPublicNodesOnInboundSlots();
+        return count >= Math.floor(config.NODE_CONNECTION_PUBLIC_PERCENT * config.NODE_CONNECTION_INBOUND_MAX) && totalInboundConnections >= config.NODE_CONNECTION_INBOUND_MAX;
+    }
+
+    _countPublicNodesOnInboundSlots() {
+        return _.filter(_.flatten(_.values(this._inboundRegistry)), ws => ws.nodeIsPublic === true).length;
+    }
+
+    _dropOldestPublicNodeConnection() {
+        const peerToDisconnect = _.minBy(_.filter(_.flatten(_.values(this._inboundRegistry)), peer => peer.nodeIsPublic), peer => peer.createTime);
+        if (peerToDisconnect && peerToDisconnect.close) {
+            console.log(`[peer-rotation] drop with node id ${peerToDisconnect.nodeID} - ${peerToDisconnect.node}`);
+            if (peerToDisconnect.readyState === WebSocket.CLOSED || peerToDisconnect.readyState === WebSocket.CLOSING) {
+                network._unregisterWebsocket(peerToDisconnect);
+            }
+            else {
+                peerToDisconnect.close();
+            }
+        }
     }
 
     hasOutboundConnectionsSlotAvailable() {
@@ -641,6 +665,36 @@ class Network {
         }
         else {
             registry[nodeID] = [ws];
+        }
+
+        if (ws.inBound) {
+            // check if node is public
+            async.retry({
+                times   : 3,
+                interval: 500
+            }, (callback) => {
+                this._natCheckTryConnect(ws.node)
+                    .then(() => callback())
+                    .catch(() => callback(true));
+            }, (err) => {
+                if (err) {
+                    // private node
+                    ws.nodeIsPublic = false;
+                }
+                else {
+                    // public node
+                    ws.nodeIsPublic = true;
+                    if (this._hasToDropPublicNodeConnection()) {
+                        this._dropOldestPublicNodeConnection();
+                    }
+                }
+
+                const nodeRepository = database.getRepository('node');
+                nodeRepository.addNodeAttribute(ws.nodeID, 'node_connection', JSON.stringify({public: ws.nodeIsPublic}))
+                              .then(_ => _)
+                              .catch(_ => _);
+
+            });
         }
 
         console.log('[network] node ' + ws.node + ' registered with node id ' + nodeID);
@@ -717,7 +771,16 @@ class Network {
     }
 
     _requestAllNodeAttribute(nodeID, ws) {
-        const attributeNameList = _.filter(['shard_protocol', 'transaction_count', 'peer_count', 'job_list', 'address_default', 'node_about', 'peer_connection', 'transaction_fee'], attributeName => {
+        const attributeNameList = _.filter([
+            'shard_protocol',
+            'transaction_count',
+            'peer_count',
+            'job_list',
+            'address_default',
+            'node_about',
+            'peer_connection',
+            'transaction_fee'
+        ], attributeName => {
             if (!peer.nodeAttributeCache[nodeID] || !peer.nodeAttributeCache[nodeID][attributeName]) {
                 return true;
             }
@@ -756,7 +819,7 @@ class Network {
                         .then(() => eventBus.emit('node_list_update'))
                         .catch(() => eventBus.emit('node_list_update'));
 
-                if(config.NODE_NAT_PMP_CHECK) {
+                if (config.NODE_NAT_PMP_CHECK) {
                     peer.sendNATCheck({
                         url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
                     }, ws);
