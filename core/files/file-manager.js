@@ -5,6 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import wallet from '../wallet/wallet';
 
+
 class FileManager {
     constructor() {
         this.filesRootFolder = null;
@@ -17,7 +18,7 @@ class FileManager {
         }
     }
 
-    uploadFiles(files){
+    uploadFiles(files) {
         return new Promise((resolve, reject) => {
             fs.readFile(path.join(os.homedir(), config.WALLET_KEY_PATH), 'utf8', (err, data) => {
                 if (err) {
@@ -25,29 +26,39 @@ class FileManager {
                 }
 
                 var walletKeyIdentifier = wallet.getKeyIdentifier();
-                var personalFolder = path.join(this.filesRootFolder, walletKeyIdentifier);
+                var personalFolder      = path.join(this.filesRootFolder, walletKeyIdentifier);
                 if (!fs.existsSync(personalFolder)) {
                     fs.mkdirSync(path.join(personalFolder));
                 }
 
-                for (var i = 0; i < files.rows.length; i++) {
-                    let filePath = files.rows[i].path;
-                    var md5sum = crypto.createHash('md5');
-                    fs.readFile(filePath,  function (err,file) {
+                // Transaction missing here
+                var transactionID = "to do";
+                var transationFolder = path.join(personalFolder, transactionID);
+                if (!fs.existsSync(transationFolder)) {
+                    fs.mkdirSync(path.join(transationFolder));
+                }
+
+                const promises = files.rows.map(upFile => {
+                    let filePath = upFile.path;
+                    var md5sum   = crypto.createHash('md5');
+                    fs.readFile(filePath, function(err, file) {
                         if (err) {
                             return reject(err);
                         }
-                        var fileHash = md5sum.update(file).digest('hex');;
-                        let outPath = path.join(personalFolder, fileHash);
+                        var fileHash = md5sum.update(file).digest('hex');
+                        let outPath  = path.join(transationFolder, fileHash);
                         fs.writeFile(outPath, file, err => {
                             if (err) {
                                 return reject(err);
                             }
                             //file written successfully
-                        })
+                        });
                     });
-                }
-                return resolve();
+                });
+                Promise.all(promises)
+                       .then(() => {
+                           resolve();
+                       });
             });
         });
     }
@@ -70,4 +81,6 @@ class FileManager {
 
 
 }
+
+
 export default new FileManager();
