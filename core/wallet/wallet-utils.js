@@ -35,6 +35,11 @@ class WalletUtils {
         };
     }
 
+    derivePublicKey(extendedPrivateKey, isChange, addressPosition) {
+        const publicKey = extendedPrivateKey.derive(isChange, false).derive(addressPosition, false).publicKey;
+        return publicKey.toBuffer({size: 32});
+    }
+
     getAddressFromPublicKey(addressKeyPublicBuffer) {
         const hash            = crypto.createHash('sha256').update(addressKeyPublicBuffer).digest();
         const encryptedPubKey = (config.MODE_TEST_NETWORK ? '6f' : '00') + crypto.createHash('ripemd160').update(hash).digest('hex');
@@ -764,7 +769,7 @@ class WalletUtils {
         return true;
     }
 
-    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion) {
+    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes={}) {
         if (feeOutputList.length < 1 || !feeOutputList[0].node_id_proxy) {
             // there should be at least one output entry for the proxy (fees).
             return Promise.reject('proxy/output fee information is required');
@@ -981,7 +986,8 @@ class WalletUtils {
                           transaction_fee: _.map(feeOutputList, o => _.pick(o, [
                               'node_id_proxy',
                               'fee_type'
-                          ]))
+                          ])),
+                          transaction_output_metadata:outputAttributes
                       };
                       transaction.transaction_output_attribute.transaction_fee.forEach((outputAttribute, idx) => outputAttribute['output_position'] = idx - feeOutputList.length);
                   }

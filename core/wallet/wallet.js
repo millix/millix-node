@@ -254,7 +254,30 @@ class Wallet {
         });
     }
 
-    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion) {
+    addFileTransaction(outputFee, srcOutputs, transactionVersion, outputAttributes={}){
+        const addressRepository = database.getRepository('address');
+        const addressVersion = addressRepository.getDefaultAddressVersion();
+        return database.applyShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
+                                                                         .then(outputs => outputs.length ? resolve(outputs) : reject()));
+        }).then(freeOutputs => {
+            for(let i=0; i<freeOutputs.lenght; i++){
+                if(freeOutputs[i].amount > outputFee)
+                    return freeOutputs[i];
+            }
+            return Promise.reject('Do not have enough funds on wallet');
+        }).then(output => this.addTransaction([
+            {
+                address_base          : this.defaultKeyIdentifier,
+                address_version       : addressVersion,
+                address_key_identifier: this.defaultKeyIdentifier,
+                amount                : output.amount - outputFee.amount
+            }
+        ], outputFee, [output], transactionVersion, outputAttributes));
+    }
+
+    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion, outputAttributes={}) {
         const addressRepository = database.getRepository('address');
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
@@ -361,7 +384,7 @@ class Wallet {
                                 amount                : change
                             });
                         }
-                        return this.signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION);
+                        return this.signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION, outputAttributes);
                     })
                     .then(transactionList => {
                         transactionList.forEach(transaction => peer.transactionSend(transaction));
@@ -1453,7 +1476,7 @@ class Wallet {
         });
     }
 
-    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
+    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes={}) {
         const addressRepository = database.getRepository('address');
         const time              = ntp.now();
 
@@ -1472,7 +1495,7 @@ class Wallet {
                 address_key_identifier: addressKeyIdentifier
             }
         ];
-        return walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
+        return walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes)
                           .then(transactionList => ([
                               transactionList,
                               proxyCandidateData
@@ -1500,7 +1523,7 @@ class Wallet {
                           });
     };
 
-    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
+    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes={}) {
         const transactionRepository = database.getRepository('transaction');
         const proxyErrorList        = [
             'proxy_network_error',
@@ -1513,7 +1536,7 @@ class Wallet {
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
-                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction)
+                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction, outputAttributes)
                                                     .then(transaction => callback({
                                                         error: false,
                                                         transaction
@@ -1528,9 +1551,9 @@ class Wallet {
                                     });
     }
 
-    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
+    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, outputAttributes={}) {
         const transactionRepository = database.getRepository('transaction');
-        return this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true)
+        return this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, outputAttributes)
                    .then(transactionList => {
                        // store the transaction
                        let pipeline = Promise.resolve();

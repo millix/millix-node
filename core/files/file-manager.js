@@ -59,6 +59,22 @@ class FileManager {
                            console.log(transationAttr);
                            var transactionID = 'todo';
 
+                           /*
+                           outputAttribute={
+                                    "file_list":[
+                                        {
+                                            "public": true/false,
+                                            "hash": md5sum,
+                                            "size": bytes,
+                                            "type": string,
+                                            "name": string
+                                        }, ...
+                                    ],
+                                    "shared_key": string hex
+                                }
+                           public/private
+                           key (optional)
+                           * */
                            return transactionID;
                        }).then((transactionID) => {
                     let transationFolder = path.join(personalFolder, transactionID);
