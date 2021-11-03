@@ -34,26 +34,31 @@ class FileManager {
                 const keybuf = crypto.randomBytes(32);
                 const key    = crypto.createSecretKey(keybuf).export().toString('hex');
                 const cipher = crypto.createCipher('aes-256-cbc', key);
+                let transationAttr = [];
 
-                const promisesForTransaction = files.rows.map(upFile => {
-                    let filePath   = upFile.path;
-                    let publicFile = upFile.public;
-                    let md5sum     = crypto.createHash('md5');
+                const promisesForTransaction = files.rows.map(upFile => new Promise((resolve, reject) => {
+                        let filePath   = upFile.path;
+                        let publicFile = upFile.public;
+                        let md5sum     = crypto.createHash('md5');
 
-                    fs.readFile(filePath, function(err, file) {
-                        if (err) {
-                            return reject(err);
-                        }
-                        let fileHash = md5sum.update(file).digest('hex');
-                    });
-                    if(publicFile)
-                        console.log("save key")
-                });
+                        fs.readFile(filePath, function(err, file) {
+                            if (err) {
+                                return reject(err);
+                            }
+                            let fileHash = md5sum.update(file).digest('hex');
+                            if(publicFile)
+                                console.log("save key")
+                            transationAttr.push({filePath, md5sum});
+                            resolve();
+                        });
+                    }));
 
                 Promise.all(promisesForTransaction)
                        .then(() => {
                            //createTransation
+                           console.log(transationAttr);
                            var transactionID = 'todo';
+
                            return transactionID;
                        }).then((transactionID) => {
                     let transationFolder = path.join(personalFolder, transactionID);
@@ -61,7 +66,7 @@ class FileManager {
                         fs.mkdirSync(path.join(transationFolder));
                     }
 
-                    const promisesToWrite = files.rows.map(upFile => {
+                    const promisesToWrite = files.rows.map(upFile => new Promise((resolve, reject) => {
                         let filePath   = upFile.path;
                         let publicFile = upFile.public;
                         let md5sum     = crypto.createHash('md5');
@@ -76,6 +81,7 @@ class FileManager {
                                 let outPath  = path.join(transationFolder, fileHash);
                                 const output = fs.createWriteStream(outPath);
                                 input.pipe(cipher).pipe(output);
+                                resolve();
                             });
                         }
                         else {
@@ -90,10 +96,11 @@ class FileManager {
                                         return reject(err);
                                     }
                                     //file written successfully
+                                    resolve();
                                 });
                             });
                         }
-                    });
+                    }));
                     Promise.all(promisesToWrite)
                            .then(() => {
                                resolve();
