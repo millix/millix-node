@@ -25,40 +25,80 @@ class FileManager {
                     return reject('Couldn\'t read wallet mnemonic');
                 }
 
-                var walletKeyIdentifier = wallet.getKeyIdentifier();
-                var personalFolder      = path.join(this.filesRootFolder, walletKeyIdentifier);
+                let walletKeyIdentifier = wallet.getKeyIdentifier();
+                let personalFolder      = path.join(this.filesRootFolder, walletKeyIdentifier);
                 if (!fs.existsSync(personalFolder)) {
                     fs.mkdirSync(path.join(personalFolder));
                 }
 
-                // Transaction missing here
-                var transactionID = "to do";
-                var transationFolder = path.join(personalFolder, transactionID);
-                if (!fs.existsSync(transationFolder)) {
-                    fs.mkdirSync(path.join(transationFolder));
-                }
+                const keybuf = crypto.randomBytes(32);
+                const key    = crypto.createSecretKey(keybuf).export().toString('hex');
+                const cipher = crypto.createCipher('aes-256-cbc', key);
 
-                const promises = files.rows.map(upFile => {
-                    let filePath = upFile.path;
-                    var md5sum   = crypto.createHash('md5');
+                const promisesForTransaction = files.rows.map(upFile => {
+                    let filePath   = upFile.path;
+                    let publicFile = upFile.public;
+                    let md5sum     = crypto.createHash('md5');
+
                     fs.readFile(filePath, function(err, file) {
                         if (err) {
                             return reject(err);
                         }
-                        var fileHash = md5sum.update(file).digest('hex');
-                        let outPath  = path.join(transationFolder, fileHash);
-                        fs.writeFile(outPath, file, err => {
-                            if (err) {
-                                return reject(err);
-                            }
-                            //file written successfully
-                        });
+                        let fileHash = md5sum.update(file).digest('hex');
                     });
+                    if(publicFile)
+                        console.log("save key")
                 });
-                Promise.all(promises)
+
+                Promise.all(promisesForTransaction)
                        .then(() => {
-                           resolve();
-                       });
+                           //createTransation
+                           var transactionID = 'todo';
+                           return transactionID;
+                       }).then((transactionID) => {
+                    let transationFolder = path.join(personalFolder, transactionID);
+                    if (!fs.existsSync(transationFolder)) {
+                        fs.mkdirSync(path.join(transationFolder));
+                    }
+
+                    const promisesToWrite = files.rows.map(upFile => {
+                        let filePath   = upFile.path;
+                        let publicFile = upFile.public;
+                        let md5sum     = crypto.createHash('md5');
+
+                        if (publicFile) {
+                            const input  = fs.createReadStream(filePath);
+                            fs.readFile(filePath, function(err, file) {
+                                if (err) {
+                                    return reject(err);
+                                }
+                                let fileHash = md5sum.update(file).digest('hex');
+                                let outPath  = path.join(transationFolder, fileHash);
+                                const output = fs.createWriteStream(outPath);
+                                input.pipe(cipher).pipe(output);
+                            });
+                        }
+                        else {
+                            fs.readFile(filePath, function(err, file) {
+                                if (err) {
+                                    return reject(err);
+                                }
+                                let fileHash = md5sum.update(file).digest('hex');
+                                let outPath  = path.join(transationFolder, fileHash);
+                                fs.writeFile(outPath, file, err => {
+                                    if (err) {
+                                        return reject(err);
+                                    }
+                                    //file written successfully
+                                });
+                            });
+                        }
+                    });
+                    Promise.all(promisesToWrite)
+                           .then(() => {
+                               resolve();
+                           });
+                });
             });
         });
     }
