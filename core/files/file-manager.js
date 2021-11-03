@@ -34,11 +34,12 @@ class FileManager {
                 const keybuf = crypto.randomBytes(32);
                 const key    = crypto.createSecretKey(keybuf).export().toString('hex');
                 const cipher = crypto.createCipher('aes-256-cbc', key);
-                let transationAttr = [];
+                let transationAttr = {};
+                transationAttr["files"] = [];
 
                 const promisesForTransaction = files.rows.map(upFile => new Promise((resolve, reject) => {
                         let filePath   = upFile.path;
-                        let publicFile = upFile.public;
+                        let publicFile = upFile.public || false;
                         let md5sum     = crypto.createHash('md5');
 
                         fs.readFile(filePath, function(err, file) {
@@ -47,8 +48,14 @@ class FileManager {
                             }
                             let fileHash = md5sum.update(file).digest('hex');
                             if(publicFile)
-                                console.log("save key")
-                            transationAttr.push({filePath, md5sum});
+                                transationAttr["shared_key"] = key;
+                            transationAttr["files"].push({
+                                "public": publicFile,
+                                "hash": fileHash,
+                                "size": upFile.size,
+                                "type": upFile.type,
+                                "name": upFile.name
+                            });
                             resolve();
                         });
                     }));
@@ -57,7 +64,7 @@ class FileManager {
                        .then(() => {
                            //createTransation
                            console.log(transationAttr);
-                           var transactionID = 'todo';
+                           let transactionID = 'todo';
 
                            /*
                            outputAttribute={
