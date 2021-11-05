@@ -10,6 +10,7 @@ import wallet from './wallet';
 import walletUtils from './wallet-utils';
 import ntp from '../ntp';
 import console from '../console';
+import task from '../task';
 
 
 export class WalletTransactionConsensus {
@@ -47,6 +48,7 @@ export class WalletTransactionConsensus {
     }
 
     initialize() {
+        task.scheduleTask('trigger', () => this.doValidateTransaction(), 15000);
         return Promise.resolve();
     }
 
@@ -309,10 +311,11 @@ export class WalletTransactionConsensus {
                                                                transaction_id_fail: data.transaction_id,
                                                                message            : 'unresolved double spend. unknown state of transaction id ' + data.transaction_id
                                                            });
-                                                       } else if(responseType === 'proxy_time_limit_exceed') {
+                                                       }
+                                                       else if (responseType === 'proxy_time_limit_exceed') {
                                                            return reject({
-                                                               cause              : responseType,
-                                                               message            : 'transaction proxy time limit exceeded'
+                                                               cause  : responseType,
+                                                               message: 'transaction proxy time limit exceeded'
                                                            });
                                                        }
 
@@ -384,7 +387,8 @@ export class WalletTransactionConsensus {
                                            cause: 'consensus_timeout',
                                            depth
                                        });
-                                   } else if(proxyTimeLimit != null && proxyTimeStart !=null && (Date.now() - proxyTimeStart) >= proxyTimeLimit ) {
+                                   }
+                                   else if (proxyTimeLimit != null && proxyTimeStart != null && (Date.now() - proxyTimeStart) >= proxyTimeLimit) {
                                        return reject({
                                            cause: 'proxy_time_limit_exceed',
                                            depth
@@ -623,7 +627,7 @@ export class WalletTransactionConsensus {
             consensusData.consensus_round_count++;
             consensusData.consensus_round_response[consensusData.consensus_round_count] = {};
             consensusData.timestamp                                                     = Date.now();
-            consensusData.requestPeerValidation();
+            consensusData.requestPeerValidation && consensusData.requestPeerValidation();
         }
     }
 
@@ -750,12 +754,8 @@ export class WalletTransactionConsensus {
                         return database.getRepository('transaction', shardID)
                                        .invalidateTransaction(transactionID);
                     }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
-                            .then(() => {
-                                consensusData.resolve();
-                            })
-                            .catch(() => {
-                                consensusData.resolve();
-                            });
+                            .then(() => consensusData.resolve())
+                            .catch(() => consensusData.resolve());
                 }
             }
         }
@@ -768,18 +768,15 @@ export class WalletTransactionConsensus {
                 if (!transaction) {
                     return database.getRepository('transaction')
                                    .setPathAsStableFrom(transactionID)
-                                   .then(() => consensusData.resolve());
+                                   .then(() => consensusData.resolve())
+                                   .catch(() => consensusData.resolve());
                 }
 
                 return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
                     return transactionRepository.setPathAsStableFrom(transactionID);
                 }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
-                               .then(() => {
-                                   consensusData.resolve();
-                               })
-                               .catch(() => {
-                                   consensusData.resolve();
-                               });
+                               .then(() => consensusData.resolve())
+                               .catch(() => consensusData.resolve());
             }
         }
         this._nextConsensusRound(transactionID);
@@ -810,7 +807,13 @@ export class WalletTransactionConsensus {
     }
 
     doValidateTransaction() {
-        const consensusCount = _.keys(this._consensusRoundState).length;
+        let consensusCount = 0;
+        for (let k of _.keys(this._consensusRoundState)) {
+            if (this._consensusRoundState[k].active) {
+                consensusCount++;
+            }
+        }
+
         if (consensusCount >= config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX) {
             console.log('[consensus][request] maximum number of transactions validation running reached : ', config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX);
             return Promise.resolve();

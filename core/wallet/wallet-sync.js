@@ -121,24 +121,19 @@ export class WalletSync {
                         const spendingInputs = [];
                         return new Promise((resolve) => {
                             async.eachSeries(inputList, (input, callbackInput) => {
-                                /* check if there is any input that is double spend.
-                                 if so, we should force updating this transaction output as spent.
-                                 */
-                                transactionRepository.listTransactionInput({
-                                    'transaction_input.transaction_id': input.transaction_id,
-                                    is_double_spend                   : 1
-                                }).then(doubleSpendInputList => {
-                                    if (doubleSpendInputList.length > 0) {
-                                        return callbackInput();
-                                    }
-                                    return transactionRepository.getTransaction(input.transaction_id)
-                                                                .then(transaction => {
-                                                                    if (transaction && transaction.status !== 3) {
-                                                                        spendingInputs.push(transaction);
-                                                                    }
+                                return transactionRepository.listTransactionOutput({'`transaction`.transaction_id': input.transaction_id})
+                                                            .then(transactionOutputList => {
+                                                                if (!_.some(transactionOutputList, {is_double_spend: 1})) {
+                                                                    transactionRepository.getTransaction(input.transaction_id)
+                                                                                         .then(transaction => {
+                                                                                             transaction && spendingInputs.push(transaction);
+                                                                                             callbackInput();
+                                                                                         });
+                                                                }
+                                                                else {
                                                                     callbackInput();
-                                                                });
-                                });
+                                                                }
+                                                            });
                             }, () => resolve(spendingInputs));
                         });
                     });
@@ -155,7 +150,7 @@ export class WalletSync {
                     peer.transactionOutputSpendRequest(transactionID, outputPosition)
                         .then(_ => callback())
                         .catch(() => {
-                            if (!job.skip_on_fail) {
+                            if (job.skip_on_fail === false) {
                                 this.transactionSpendQueue.push({
                                     transaction_output_id: job.transaction_output_id
                                 });
@@ -210,7 +205,10 @@ export class WalletSync {
     }
 
     syncTransactionSpendingOutputs(transaction) {
-        const walletKeyIdentifierSet = new Set([wallet.getKeyIdentifier(), ...config.EXTERNAL_WALLET_KEY_IDENTIFIER]);
+        const walletKeyIdentifierSet = new Set([
+            wallet.getKeyIdentifier(),
+            ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
+        ]);
         for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
             this.transactionSpendQueue.push({
                 transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${outputPosition}`,

@@ -259,6 +259,7 @@ class Wallet {
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
                 this._transactionSendInterrupt = false;
+                let transactionOutputIDSpent   = new Set();
                 return new Promise(resolve => {
                     if (!srcOutputs) {
                         return database.applyShards((shardID) => {
@@ -349,6 +350,8 @@ class Wallet {
                             'address_key_identifier'
                         ]), (v, k) => keyMap[k] ? keyMap[k] : k));
 
+                        srcInputs.forEach(input => transactionOutputIDSpent.add(input.transaction_id));
+
                         let amountSent     = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
                         let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
                         let change         = totalUsedCoins - amountSent;
@@ -376,6 +379,11 @@ class Wallet {
                     })
                     .catch((e) => {
                         this._transactionSendInterrupt = false;
+
+                        if (e === 'transaction_proxy_rejected') {
+                            this.resetTransactionValidationRejected();
+                        }
+
                         reject(e);
                         unlock();
                     });
@@ -554,6 +562,48 @@ class Wallet {
 
     resetTransactionValidationRejected() {
         walletTransactionConsensus.resetTransactionValidationRejected();
+        database.applyShards(shardID => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.listTransactionWithFreeOutput(this.defaultKeyIdentifier)
+                                        .then(transactions => new Promise(resolve => {
+                                            async.eachSeries(transactions, (transaction, callback) => {
+                                                transactionRepository.resetTransaction(transaction.transaction_id)
+                                                                     .then(() => callback())
+                                                                     .catch(() => callback());
+                                            }, () => resolve(new Set(_.map(transactions, t => t.transaction_id))));
+                                        }))
+                                        .then(rootTransactions => new Promise(resolve => {
+                                            const dfs = (transactions, visited = new Set()) => {
+                                                const listInputTransactionIdSpendingTransaction = new Set();
+                                                async.eachSeries(transactions, (transaction, callback) => {
+                                                    transactionRepository.listTransactionInput({'output_transaction_id': transaction.transaction_id})
+                                                                         .then(inputs => {
+                                                                             inputs.forEach(input => {
+                                                                                 if (!visited.has(input.transaction_id)) {
+                                                                                     listInputTransactionIdSpendingTransaction.add(input.transaction_id);
+                                                                                     visited.add(input.transaction_id);
+                                                                                 }
+                                                                             });
+                                                                             callback();
+                                                                         }).catch(() => callback());
+                                                }, () => {
+                                                    async.eachSeries(listInputTransactionIdSpendingTransaction, (transactionID, callback) => {
+                                                        transactionRepository.resetTransaction(transactionID)
+                                                                             .then(() => callback())
+                                                                             .catch(() => callback());
+                                                    }, () => {
+                                                        if (listInputTransactionIdSpendingTransaction.size > 0) {
+                                                            dfs(listInputTransactionIdSpendingTransaction, visited);
+                                                        }
+                                                        else {
+                                                            resolve();
+                                                        }
+                                                    });
+                                                });
+                                            };
+                                            dfs(rootTransactions);
+                                        }));
+        }).then(_ => _);
     }
 
     getTransactionSyncPriority(transaction) {
@@ -654,7 +704,7 @@ class Wallet {
 
         const hasKeyIdentifier = this.transactionHasKeyIdentifier(transaction);
 
-        if ( !hasKeyIdentifier && !this.isProcessingNewTransactionFromNetwork && !this.isRequestedTransaction(transaction.transaction_id)) {
+        if (!hasKeyIdentifier && !this.isProcessingNewTransactionFromNetwork && !this.isRequestedTransaction(transaction.transaction_id)) {
             walletSync.clearTransactionSync(transaction.transaction_id);
             walletSync.add(transaction.transaction_id, {
                 delay   : 5000,
@@ -711,8 +761,8 @@ class Wallet {
                                                                                           // return false;
                                                                                       }
 
-                                                                                      const isFundingWallet  = !!this._transactionFundingActiveWallet[transaction.transaction_id];
-                                                                                      const syncPriority     = isFundingWallet ? 1 : this.getTransactionSyncPriority(transaction);
+                                                                                      const isFundingWallet = !!this._transactionFundingActiveWallet[transaction.transaction_id];
+                                                                                      const syncPriority    = isFundingWallet ? 1 : this.getTransactionSyncPriority(transaction);
                                                                                       delete this._transactionFundingActiveWallet[transaction.transaction_id];
 
                                                                                       if (syncPriority === 1) {
@@ -1539,8 +1589,22 @@ class Wallet {
                                                         error  : true,
                                                         message: e
                                                     }) : callback());
-                                            }, data => data && data.error && typeof data.message === 'string' && !proxyErrorList.includes(data.message) ? reject(data.message) :
-                                                       data && data.transaction ? resolve(data.transaction) : reject('proxy_not_found'));
+                                            }, data => {
+                                                if (data && data.error && typeof data.message === 'string' && !proxyErrorList.includes(data.message)) {
+                                                    reject(data.message);
+                                                }
+                                                else if (data && data.transaction) {
+                                                    resolve(data.transaction);
+                                                }
+                                                else {
+                                                    if (data && data.error && typeof data.message === 'string' && data.message === 'transaction_proxy_rejected') {
+                                                        reject('transaction_proxy_rejected');
+                                                    }
+                                                    else {
+                                                        reject('proxy_not_found');
+                                                    }
+                                                }
+                                            });
                                         });
                                     });
     }
