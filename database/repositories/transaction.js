@@ -1991,12 +1991,31 @@ export default class Transaction {
         });
     }
 
-    listTransactionWithFreeOutput(addressKeyIdentifier) {
+    listTransactionWithFreeOutput(addressKeyIdentifier, includeDoubleSpend = false) {
         return new Promise((resolve) => {
-            this.database.all('SELECT DISTINCT transaction_output.transaction_id \
-                              FROM transaction_output  INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
-                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3',
-                [addressKeyIdentifier], (err, rows) => {
+            this.database.all(`SELECT DISTINCT transaction_output.transaction_id
+                               FROM transaction_output
+                               WHERE address_key_identifier = ?
+                                 and is_spent = 0
+                                 and is_stable = 1
+                                 and is_double_spend = 0
+                                 and status != 3` +
+                              (!includeDoubleSpend ? '' :
+                              ' UNION ' + `SELECT DISTINCT transaction_output.transaction_id
+                                         FROM transaction_output
+                                                  LEFT JOIN transaction_input
+                                                            ON transaction_input.output_transaction_id =
+                                                               transaction_output.transaction_id
+                                                                AND
+                                                               transaction_input.output_position =
+                                                               transaction_output.output_position
+                                         WHERE transaction_output.address_key_identifier = ?
+                                           and transaction_output.is_spent = 1
+                                           and transaction_output.is_stable = 1
+                                           and transaction_output.is_double_spend = 1
+                                           and transaction_output.status != 3
+                                           and transaction_input.transaction_id IS NULL`),
+                [addressKeyIdentifier].concat(includeDoubleSpend ? [addressKeyIdentifier] : []), (err, rows) => {
                     resolve(rows || []);
                 });
         });

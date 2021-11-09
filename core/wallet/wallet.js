@@ -564,7 +564,7 @@ class Wallet {
         walletTransactionConsensus.resetTransactionValidationRejected();
         database.applyShards(shardID => {
             const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.listTransactionWithFreeOutput(this.defaultKeyIdentifier)
+            return transactionRepository.listTransactionWithFreeOutput(this.defaultKeyIdentifier, true)
                                         .then(transactions => new Promise(resolve => {
                                             async.eachSeries(transactions, (transaction, callback) => {
                                                 transactionRepository.resetTransaction(transaction.transaction_id)
@@ -575,8 +575,8 @@ class Wallet {
                                         .then(rootTransactions => new Promise(resolve => {
                                             const dfs = (transactions, visited = new Set()) => {
                                                 const listInputTransactionIdSpendingTransaction = new Set();
-                                                async.eachSeries(transactions, (transaction, callback) => {
-                                                    transactionRepository.listTransactionInput({'output_transaction_id': transaction.transaction_id})
+                                                async.eachSeries(transactions, (transactionID, callback) => {
+                                                    transactionRepository.listTransactionInput({'output_transaction_id': transactionID})
                                                                          .then(inputs => {
                                                                              inputs.forEach(input => {
                                                                                  if (!visited.has(input.transaction_id)) {
@@ -809,9 +809,7 @@ class Wallet {
 
                                                                                                                       this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
 
-                                                                                                                      if (isFundingWallet || hasKeyIdentifier) {
-                                                                                                                          walletSync.syncTransactionSpendingOutputs(transaction);
-                                                                                                                      }
+                                                                                                                      walletSync.syncTransactionSpendingOutputs(transaction);
 
                                                                                                                       if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
                                                                                                                           _.each(transaction.transaction_input_list, inputTransaction => {
