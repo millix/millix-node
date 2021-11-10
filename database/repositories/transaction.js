@@ -151,6 +151,72 @@ export default class Transaction {
         });
     }
 
+    getAllWalletBalance(stable) {
+        return new Promise((resolve, reject) => {
+            const sql = `
+                SELECT *
+                FROM (SELECT address_key_identifier,
+                             SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
+                      FROM transaction_output
+                      WHERE is_stable = ${stable ? 0 : 1}
+                        AND is_double_spend = 0
+                        AND is_spent = 0
+                        AND status != 3
+                      GROUP BY address_key_identifier
+                      UNION ALL
+                      SELECT address_key_identifier,
+                             SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
+                      FROM shard_zero.transaction_output
+                      WHERE is_stable = ${stable ? 0 : 1}
+                        AND is_double_spend = 0
+                        AND is_spent = 0
+                        AND status != 3
+                      GROUP BY address_key_identifier) AS T
+                GROUP BY address_key_identifier
+                ORDER BY address_key_identifier
+            `;
+            this.database.all(sql, (err, data) => {
+                if (err) {
+                    return reject(err);
+                }
+                return resolve(data);
+            });
+        });
+    }
+
+    getAllAddressBalance(stable) {
+        return new Promise((resolve, reject) => {
+            const sql = `
+                SELECT *
+                FROM (SELECT address,
+                             SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
+                      FROM transaction_output
+                      WHERE is_stable = ${stable ? 0 : 1}
+                        AND is_double_spend = 0
+                        AND is_spent = 0
+                        AND status != 3
+                      GROUP BY address
+                      UNION ALL
+                      SELECT address,
+                             SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
+                      FROM shard_zero.transaction_output
+                      WHERE is_stable = ${stable ? 0 : 1}
+                        AND is_double_spend = 0
+                        AND is_spent = 0
+                        AND status != 3
+                      GROUP BY address) AS T
+                GROUP BY address
+                ORDER BY address
+            `;
+            this.database.all(sql, (err, data) => {
+                if (err) {
+                    return reject(err);
+                }
+                return resolve(data);
+            });
+        });
+    }
+
     getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionIDList) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
@@ -2002,19 +2068,19 @@ export default class Transaction {
                                  and status != 3` +
                               (!includeDoubleSpend ? '' :
                               ' UNION ' + `SELECT DISTINCT transaction_output.transaction_id
-                                         FROM transaction_output
-                                                  LEFT JOIN transaction_input
-                                                            ON transaction_input.output_transaction_id =
-                                                               transaction_output.transaction_id
-                                                                AND
-                                                               transaction_input.output_position =
-                                                               transaction_output.output_position
-                                         WHERE transaction_output.address_key_identifier = ?
-                                           and transaction_output.is_spent = 1
-                                           and transaction_output.is_stable = 1
-                                           and transaction_output.is_double_spend = 1
-                                           and transaction_output.status != 3
-                                           and transaction_input.transaction_id IS NULL`),
+                                           FROM transaction_output
+                                                    LEFT JOIN transaction_input
+                                                              ON transaction_input.output_transaction_id =
+                                                                 transaction_output.transaction_id
+                                                                  AND
+                                                                 transaction_input.output_position =
+                                                                 transaction_output.output_position
+                                           WHERE transaction_output.address_key_identifier = ?
+                                             and transaction_output.is_spent = 1
+                                             and transaction_output.is_stable = 1
+                                             and transaction_output.is_double_spend = 1
+                                             and transaction_output.status != 3
+                                             and transaction_input.transaction_id IS NULL`),
                 [addressKeyIdentifier].concat(includeDoubleSpend ? [addressKeyIdentifier] : []), (err, rows) => {
                     resolve(rows || []);
                 });

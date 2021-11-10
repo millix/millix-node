@@ -5,6 +5,7 @@ import {Schema, Transaction} from './repositories/repositories';
 import path from 'path';
 import {Database} from './database';
 import eventBus from '../core/event-bus';
+import os from 'os';
 
 export default class Shard {
     constructor(databaseFile, shardID) {
@@ -16,6 +17,7 @@ export default class Shard {
     initialize() {
         if (config.DATABASE_ENGINE === 'sqlite') {
             return this._initializeMillixShardSqlite3()
+                       .then(() => this._attachShardZero())
                        .then(() => this._migrateTables())
                        .then(() => this._initializeTables());
         }
@@ -23,7 +25,7 @@ export default class Shard {
     }
 
     _initializeTables() {
-        this.repositories['transaction']        = new Transaction(this.database);
+        this.repositories['transaction'] = new Transaction(this.database);
         return Promise.resolve();
     }
 
@@ -71,6 +73,19 @@ export default class Shard {
                       });
                       throw Error('[shard] migration ' + err.message);
                   });
+        });
+    }
+
+    _attachShardZero() {
+        return new Promise((resolve, reject) => {
+            const databaseRootFolder = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
+            const shardZeroDBPath    = path.join(databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_MILLIX);
+            this.database.exec(`ATTACH DATABASE '${shardZeroDBPath}' AS shard_zero`, (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                return resolve();
+            });
         });
     }
 

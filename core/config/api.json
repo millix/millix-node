@@ -440,6 +440,24 @@
       "version_released": "1.11.5",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "NPCpnfUyPHRH4j29",
+      "name": "get_known_wallet_balance",
+      "description": "returns the available (stable) balance and pending (unstable) balance of all known wallet",
+      "method": "GET",
+      "version_released": "1.11.5",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "xGaf7vbfY15TGsSd",
+      "name": "get_known_address_balance",
+      "description": "returns the available (stable) balance and pending (unstable) balance of all known addresses",
+      "method": "GET",
+      "version_released": "1.11.5",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
     }
   ]
 }
