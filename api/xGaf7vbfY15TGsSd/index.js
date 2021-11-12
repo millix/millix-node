@@ -22,7 +22,7 @@ class _xGaf7vbfY15TGsSd extends Endpoint {
      */
     handler(app, req, res) {
         const transactionRepository = database.getRepository('transaction', genesisConfig.genesis_shard_id);
-        transactionRepository.getAllWalletBalance(true)
+        transactionRepository.getAllAddressBalance(true)
                              .then(stableBalance => {
                                  const balance = {};
                                  return transactionRepository.getAllAddressBalance(false)

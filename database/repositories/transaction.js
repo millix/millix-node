@@ -158,7 +158,7 @@ export default class Transaction {
                 FROM (SELECT address_key_identifier,
                              SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM transaction_output
-                      WHERE is_stable = ${stable ? 0 : 1}
+                      WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
                         AND is_spent = 0
                         AND status != 3
@@ -167,7 +167,7 @@ export default class Transaction {
                       SELECT address_key_identifier,
                              SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM shard_zero.transaction_output
-                      WHERE is_stable = ${stable ? 0 : 1}
+                      WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
                         AND is_spent = 0
                         AND status != 3
@@ -191,7 +191,7 @@ export default class Transaction {
                 FROM (SELECT address,
                              SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM transaction_output
-                      WHERE is_stable = ${stable ? 0 : 1}
+                      WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
                         AND is_spent = 0
                         AND status != 3
@@ -200,7 +200,7 @@ export default class Transaction {
                       SELECT address,
                              SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM shard_zero.transaction_output
-                      WHERE is_stable = ${stable ? 0 : 1}
+                      WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
                         AND is_spent = 0
                         AND status != 3
