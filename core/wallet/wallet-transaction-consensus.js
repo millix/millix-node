@@ -830,7 +830,7 @@ export class WalletTransactionConsensus {
         console.log('[consensus][request] get unstable transactions');
         return database.applyShards((shardID) => {
             return new Promise((resolve) => {
-                async.eachSeries([
+                async.mapSeries([
                     wallet.defaultKeyIdentifier,
                     ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
                 ], (addressKeyIdentifier, callback) => {
@@ -842,17 +842,15 @@ export class WalletTransactionConsensus {
                                 return _.filter(pendingTransactions, transaction => !(Date.now() - transaction.create_date < 30 || this._consensusRoundState[transaction.transaction_id]));
                             })
                             .then(transactionList => {
-                                if (transactionList.length > 0) {
-                                    resolve(transactionList);
-                                    callback(true);
-                                }
-                                else {
-                                    callback();
-                                }
+                                callback(null, transactionList);
                             })
-                            .catch(() => callback());
-                }, (found) => {
-                    if (!found) {
+                            .catch(() => callback(null, []));
+                }, (err, data) => {
+                    data = Array.prototype.concat.apply([], data);
+                    if(data.length > 0) {
+                        const transaction = _.minBy(data, t => t.transaction_date);
+                        resolve([transaction]);
+                    } else {
                         resolve([]);
                     }
                 });
