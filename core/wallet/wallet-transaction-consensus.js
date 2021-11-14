@@ -515,8 +515,8 @@ export class WalletTransactionConsensus {
         }
 
         /*// check if we have all answers
-        const consensusNodeIDList = _.keys(consensusData.consensus_round_response[consensusData.consensus_round_count]);
-        return consensusNodeIDList.length < config.CONSENSUS_ROUND_NODE_COUNT;*/
+         const consensusNodeIDList = _.keys(consensusData.consensus_round_response[consensusData.consensus_round_count]);
+         return consensusNodeIDList.length < config.CONSENSUS_ROUND_NODE_COUNT;*/
         return true;
     }
 
@@ -718,8 +718,8 @@ export class WalletTransactionConsensus {
             return;
         }
 
-        const isValid       = counter.valid >= 2 / 3 * responseCount;
-        const transaction   = consensusData.transaction;
+        const isValid     = counter.valid >= 2 / 3 * responseCount;
+        const transaction = consensusData.transaction;
         if (!isValid) {
             console.log('[consensus][request] the transaction ', transactionID, ' was not validated during consensus round number', consensusData.consensus_round_count);
             let isDoubleSpend = counter.double_spend >= 2 / 3 * responseCount;
@@ -797,10 +797,12 @@ export class WalletTransactionConsensus {
         for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
             if (consensusData.active && (Date.now() - consensusData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
                 console.log('[consensus][watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
-                const consensusRoundResponseData = consensusData.consensus_round_response[consensusData.consensus_round_count];
-                for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
-                    if (!consensusNodeResponseData.response) {
-                        delete consensusRoundResponseData[nodeID];
+                for (let i = 0; i <= consensusData.consensus_round_count; i++) {
+                    const consensusRoundResponseData = consensusData.consensus_round_response[i];
+                    for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
+                        if (!consensusNodeResponseData.response) {
+                            delete consensusRoundResponseData[nodeID];
+                        }
                     }
                 }
                 consensusData.requestPeerValidation();
@@ -858,10 +860,11 @@ export class WalletTransactionConsensus {
                             .catch(() => callback(null, []));
                 }, (err, data) => {
                     data = Array.prototype.concat.apply([], data);
-                    if(data.length > 0) {
+                    if (data.length > 0) {
                         const transaction = _.minBy(data, t => t.transaction_date);
                         resolve([transaction]);
-                    } else {
+                    }
+                    else {
                         resolve([]);
                     }
                 });
