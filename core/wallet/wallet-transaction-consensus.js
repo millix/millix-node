@@ -514,10 +514,9 @@ export class WalletTransactionConsensus {
             return false;
         }
 
-        /*// check if we have all answers
+        // check if we have all answers
          const consensusNodeIDList = _.keys(consensusData.consensus_round_response[consensusData.consensus_round_count]);
-         return consensusNodeIDList.length < config.CONSENSUS_ROUND_NODE_COUNT;*/
-        return true;
+         return consensusNodeIDList.length < config.CONSENSUS_ROUND_NODE_COUNT * 3;
     }
 
     _startConsensusRound(transactionID) {
