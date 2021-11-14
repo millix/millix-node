@@ -626,6 +626,14 @@ export class WalletTransactionConsensus {
             consensusData.resolve();
         }
         else {
+            // clear node that did not respond
+            const consensusRoundResponseData = consensusData.consensus_round_response[consensusData.consensus_round_count];
+            for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
+                if (!consensusNodeResponseData.response) {
+                    delete consensusRoundResponseData[nodeID];
+                }
+            }
+
             consensusData.consensus_round_count++;
             consensusData.consensus_round_response[consensusData.consensus_round_count] = {};
             consensusData.timestamp                                                     = Date.now();
