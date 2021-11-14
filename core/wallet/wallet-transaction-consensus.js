@@ -689,10 +689,14 @@ export class WalletTransactionConsensus {
             not_found   : 0
         };
 
+        let responseCount = 0;
         for (let [_, {response}] of Object.entries(consensusResponseData)) {
             if (!response) {
-                return;
+                continue;
             }
+
+            responseCount++;
+
             if (response.valid === true) {
                 counter.valid++;
             }
@@ -708,7 +712,12 @@ export class WalletTransactionConsensus {
         }
 
         // check consensus result
-        const responseCount = _.keys(consensusResponseData).length;
+        // const responseCount = _.keys(consensusResponseData).length;
+
+        if (responseCount < config.CONSENSUS_ROUND_NODE_COUNT) {
+            return;
+        }
+
         const isValid       = counter.valid >= 2 / 3 * responseCount;
         const transaction   = consensusData.transaction;
         if (!isValid) {
