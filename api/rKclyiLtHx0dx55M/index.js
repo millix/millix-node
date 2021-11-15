@@ -4,6 +4,7 @@ import database from '../../database/database';
 import _ from 'lodash';
 import network from '../../net/network';
 import logManager from '../../core/log-manager';
+import genesisConfig from '../../core/genesis/genesis-config';
 
 
 /**
@@ -31,7 +32,7 @@ class _rKclyiLtHx0dx55M extends Endpoint {
                 return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
             }).then(balances => _.sum(balances)).then(unstable => {
                 return wallet.getTransactionCount().then(transactionCount => {
-                    const transactionRepository = database.getRepository('transaction');
+                    const transactionRepository = database.getRepository('transaction', genesisConfig.genesis_shard_id)
                     return transactionRepository.countWalletUnstableTransactions(wallet.defaultKeyIdentifier).then(pendingTransactionCount => {
                         return transactionRepository.countAllUnstableTransactions()
                                                     .then(countAllUnstableTransactions => {

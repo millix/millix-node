@@ -155,7 +155,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             const sql = `
                 SELECT address_key_identifier,
-                       SUM(${stable ? 'balance_stable' : 'balance_pending'})
+                       SUM(${stable ? 'balance_stable' : 'balance_pending'}) as ${stable ? 'balance_stable' : 'balance_pending'}
                 FROM (SELECT address_key_identifier,
                              SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM transaction_output
@@ -189,7 +189,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             const sql = `
                 SELECT address,
-                       SUM(${stable ? 'balance_stable' : 'balance_pending'})
+                       SUM(${stable ? 'balance_stable' : 'balance_pending'}) as ${stable ? 'balance_stable' : 'balance_pending'}
                 FROM (SELECT address,
                              SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM transaction_output
