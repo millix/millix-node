@@ -154,7 +154,8 @@ export default class Transaction {
     getAllWalletBalance(stable) {
         return new Promise((resolve, reject) => {
             const sql = `
-                SELECT *
+                SELECT address_key_identifier,
+                       SUM(${stable ? 'balance_stable' : 'balance_pending'})
                 FROM (SELECT address_key_identifier,
                              SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM transaction_output
@@ -187,7 +188,8 @@ export default class Transaction {
     getAllAddressBalance(stable) {
         return new Promise((resolve, reject) => {
             const sql = `
-                SELECT *
+                SELECT address,
+                       SUM(${stable ? 'balance_stable' : 'balance_pending'})
                 FROM (SELECT address,
                              SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM transaction_output
@@ -243,6 +245,21 @@ export default class Transaction {
         });
     }
 
+    countAllUnstableTransactions() {
+        return new Promise((resolve, reject) => {
+            this.database.get(`select ((select count(1)
+                                        from 'transaction'
+                                        where is_stable = 0) +
+                                       (select count(1)
+                                        from shard_zero.'transaction'
+                                        where is_stable = 0)) as count;`, (err, data) => {
+                if (err) {
+                    return reject(err);
+                }
+                resolve(data.count || 0);
+            });
+        });
+    }
 
     countWalletUnstableTransactions(addressKeyIdentifier) {
         return new Promise((resolve, reject) => {

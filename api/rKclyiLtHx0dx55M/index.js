@@ -31,25 +31,30 @@ class _rKclyiLtHx0dx55M extends Endpoint {
                 return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
             }).then(balances => _.sum(balances)).then(unstable => {
                 return wallet.getTransactionCount().then(transactionCount => {
-                    return database.getRepository('transaction').countWalletUnstableTransactions(wallet.defaultKeyIdentifier).then(pendingTransactionCount => {
-                        res.send({
-                            balance    : {
-                                stable,
-                                unstable
-                            },
-                            network    : {
-                                online    : network.initialized,
-                                peer_count: network.registeredClients.length
-                            },
-                            log        : {
-                                log_count    : logManager.lastIdx,
-                                backlog_count: logManager.backLogSize
-                            },
-                            transaction: {
-                                transaction_count             : transactionCount,
-                                transaction_pending_validation: pendingTransactionCount
-                            }
-                        });
+                    const transactionRepository = database.getRepository('transaction');
+                    return transactionRepository.countWalletUnstableTransactions(wallet.defaultKeyIdentifier).then(pendingTransactionCount => {
+                        return transactionRepository.countAllUnstableTransactions()
+                                                    .then(countAllUnstableTransactions => {
+                                                        res.send({
+                                                            balance    : {
+                                                                stable,
+                                                                unstable
+                                                            },
+                                                            network    : {
+                                                                online    : network.initialized,
+                                                                peer_count: network.registeredClients.length
+                                                            },
+                                                            log        : {
+                                                                log_count    : logManager.lastIdx,
+                                                                backlog_count: logManager.backLogSize
+                                                            },
+                                                            transaction: {
+                                                                transaction_count             : transactionCount,
+                                                                transaction_pending_validation: pendingTransactionCount,
+                                                                transaction_pending_count     : countAllUnstableTransactions
+                                                            }
+                                                        });
+                                                    });
                     });
                 });
             });
