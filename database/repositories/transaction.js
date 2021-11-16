@@ -1978,49 +1978,52 @@ export default class Transaction {
 
     setPathAsStableFrom(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.exec(`
-                DROP TABLE IF EXISTS transaction_input_chain;
-                CREATE TEMPORARY TABLE transaction_input_chain AS
-                WITH RECURSIVE transaction_input_chain (transaction_id, status)
-                                   AS (
-                        SELECT "${transactionID}", 1
-                        UNION
-                        SELECT i.output_transaction_id, i.status
-                        FROM transaction_input i
-                                 INNER JOIN transaction_input_chain c
-                                            ON i.transaction_id = c.transaction_id)
-                SELECT transaction_id
-                FROM transaction_input_chain
-                WHERE status = 1;
-                UPDATE 'transaction' AS t
-                SET is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER)
-                WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
-                UPDATE transaction_input
-                SET is_double_spend   = 0,
-                    double_spend_date = NULL
-                WHERE transaction_id IN
-                      (SELECT transaction_id FROM transaction_input_chain);
-                UPDATE transaction_output AS o
-                SET is_double_spend = 0, double_spend_date = NULL, is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = EXISTS (
-                    SELECT i.output_transaction_id FROM transaction_input i
-                    INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
-                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
-                    o2.status != 3 AND o2.is_double_spend = 0
-                    ), spent_date = (
-                    SELECT t.transaction_date FROM 'transaction' t
-                    INNER JOIN transaction_input i ON i.transaction_id = t.transaction_id
-                    INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
-                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
-                    o2.status != 3 and o2.is_double_spend = 0
-                    )
-                WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
-            `, (err) => {
-                if (err) {
-                    return reject(err);
-                }
-                else {
-                    return resolve();
-                }
+            mutex.lock(['transaction-stable-path'], unlock => {
+                this.database.exec(`
+                    DROP TABLE IF EXISTS transaction_input_chain;
+                    CREATE TEMPORARY TABLE transaction_input_chain AS
+                    WITH RECURSIVE transaction_input_chain (transaction_id, status)
+                                       AS (
+                            SELECT "${transactionID}", 1
+                            UNION
+                            SELECT i.output_transaction_id, i.status
+                            FROM transaction_input i
+                                     INNER JOIN transaction_input_chain c
+                                                ON i.transaction_id = c.transaction_id)
+                    SELECT transaction_id
+                    FROM transaction_input_chain
+                    WHERE status = 1;
+                    UPDATE 'transaction' AS t
+                    SET is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                    WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
+                    UPDATE transaction_input
+                    SET is_double_spend   = 0,
+                        double_spend_date = NULL
+                    WHERE transaction_id IN
+                          (SELECT transaction_id FROM transaction_input_chain);
+                    UPDATE transaction_output AS o
+                    SET is_double_spend = 0, double_spend_date = NULL, is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = EXISTS (
+                        SELECT i.output_transaction_id FROM transaction_input i
+                        INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
+                        WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
+                        o2.status != 3 AND o2.is_double_spend = 0
+                        ), spent_date = (
+                        SELECT t.transaction_date FROM 'transaction' t
+                        INNER JOIN transaction_input i ON i.transaction_id = t.transaction_id
+                        INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
+                        WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
+                        o2.status != 3 and o2.is_double_spend = 0
+                        )
+                    WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
+                `, (err) => {
+                    unlock();
+                    if (err) {
+                        return reject(err);
+                    }
+                    else {
+                        return resolve();
+                    }
+                });
             });
         });
     }
