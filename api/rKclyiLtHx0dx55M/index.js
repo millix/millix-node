@@ -32,29 +32,33 @@ class _rKclyiLtHx0dx55M extends Endpoint {
                 return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
             }).then(balances => _.sum(balances)).then(unstable => {
                 return wallet.getTransactionCount().then(transactionCount => {
-                    const transactionRepository = database.getRepository('transaction', genesisConfig.genesis_shard_id)
+                    const transactionRepository = database.getRepository('transaction', genesisConfig.genesis_shard_id);
                     return transactionRepository.countWalletUnstableTransactions(wallet.defaultKeyIdentifier).then(pendingTransactionCount => {
                         return transactionRepository.countAllUnstableTransactions()
                                                     .then(countAllUnstableTransactions => {
-                                                        res.send({
-                                                            balance    : {
-                                                                stable,
-                                                                unstable
-                                                            },
-                                                            network    : {
-                                                                online    : network.initialized,
-                                                                peer_count: network.registeredClients.length
-                                                            },
-                                                            log        : {
-                                                                log_count    : logManager.lastIdx,
-                                                                backlog_count: logManager.backLogSize
-                                                            },
-                                                            transaction: {
-                                                                transaction_count             : transactionCount,
-                                                                transaction_pending_validation: pendingTransactionCount,
-                                                                transaction_pending_count     : countAllUnstableTransactions
-                                                            }
-                                                        });
+                                                        return transactionRepository.countAllTransactions()
+                                                                                    .then(countAllTransactions => {
+                                                                                        res.send({
+                                                                                            balance    : {
+                                                                                                stable,
+                                                                                                unstable
+                                                                                            },
+                                                                                            network    : {
+                                                                                                online    : network.initialized,
+                                                                                                peer_count: network.registeredClients.length
+                                                                                            },
+                                                                                            log        : {
+                                                                                                log_count    : logManager.lastIdx,
+                                                                                                backlog_count: logManager.backLogSize
+                                                                                            },
+                                                                                            transaction: {
+                                                                                                transaction_count                : countAllTransactions,
+                                                                                                transaction_unstable_count       : countAllUnstableTransactions,
+                                                                                                transaction_wallet_count         : transactionCount,
+                                                                                                transaction_wallet_unstable_count: pendingTransactionCount
+                                                                                            }
+                                                                                        });
+                                                                                    });
                                                     });
                     });
                 });

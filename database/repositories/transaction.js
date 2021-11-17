@@ -261,6 +261,20 @@ export default class Transaction {
         });
     }
 
+    countAllTransactions() {
+        return new Promise((resolve, reject) => {
+            this.database.get(`select ((select count(1)
+                                        from 'transaction') +
+                                       (select count(1)
+                                        from shard_zero.'transaction')) as count;`, (err, data) => {
+                if (err) {
+                    return reject(err);
+                }
+                resolve(data.count || 0);
+            });
+        });
+    }
+
     countWalletUnstableTransactions(addressKeyIdentifier) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT COUNT(1) as transaction_count FROM (SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
