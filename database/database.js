@@ -472,6 +472,9 @@ export class Database {
                         }
 
                         if (orderBy) {
+                            if(orderBy.trim().split(" ").length === 1) {
+                                orderBy += ' asc';
+                            }
                             const regExp = /^(?<column>\w+) (?<order>asc|desc)$/.exec(orderBy);
                             if (regExp && regExp.groups && regExp.groups.column && regExp.groups.order) {
                                 data = _.orderBy(data, regExp.groups.column, regExp.groups.order);
