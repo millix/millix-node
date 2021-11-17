@@ -10,10 +10,13 @@ export const NODE_PORT_API                                     = 5500;
 export const NODE_HOST                                         = 'localhost';
 export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
+export const NODE_NAT_PMP                                      = true;
+export const NODE_NAT_PMP_CHECK                                = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = true;
 export const MODE_NODE_FULL                                    = true;
+export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
         host          : '18.136.162.158',
@@ -706,17 +709,18 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT                        = 3;
-export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 2;
-export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
-export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
-export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 5;
+export const CONSENSUS_ROUND_NODE_COUNT                        = 12;
+export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 3;
+export const CONSENSUS_ROUND_VALIDATION_MAX                    = 3;
+export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 3;
+export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 3;
 export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
 export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 10000;
-export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
+export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 15 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
+export const TRANSACTION_TIME_LIMIT_PROXY                      = 15000;
 export const TRANSACTION_FEE_PROXY                             = 1000;
 export const TRANSACTION_FEE_DEFAULT                           = 1000;
 export const TRANSACTION_FEE_NETWORK                           = 0.0;
@@ -730,8 +734,9 @@ export const TRANSACTION_SIGNATURE_MAX                         = 128;
 export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 60;
 export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 10;
 export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
-export const NODE_CONNECTION_INBOUND_MAX                       = 30;
-export const NODE_CONNECTION_OUTBOUND_MAX                      = 30;
+export const NODE_CONNECTION_INBOUND_MAX                       = 60;
+export const NODE_CONNECTION_OUTBOUND_MAX                      = 60;
+export const NODE_CONNECTION_PUBLIC_PERCENT                    = 0.2;
 export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
@@ -799,19 +804,20 @@ export const PEER_ROTATION_CONFIG                              = {
 };
 
 if (DATABASE_ENGINE === 'sqlite') {
-    DATABASE_CONNECTION.MAX_CONNECTIONS                       = 1;
-    DATABASE_CONNECTION.FOLDER                                = DATA_BASE_DIR + '/';
-    DATABASE_CONNECTION.FILENAME_MILLIX                       = 'millix.sqlite';
-    DATABASE_CONNECTION.FILENAME_TRANSACTION_QUEUE            = 'millix_transaction_queue.sqlite';
-    DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE      = 'millix_transaction_spend_queue.sqlite';
-    DATABASE_CONNECTION.FILENAME_TRANSACTION_UNRESOLVED_QUEUE = 'millix_transaction_unresolved_queue.sqlite';
-    DATABASE_CONNECTION.FILENAME_JOB_ENGINE                   = 'millix_job_engine.sqlite';
-    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX                    = './scripts/initialize-millix-sqlite3.sql';
-    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_SHARD              = './scripts/initialize-millix-shard-sqlite3.sql';
-    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE         = './scripts/initialize-millix-job-engine-sqlite3.sql';
-    DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                  = './scripts/migration';
-    DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR            = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                        = '16';
+    DATABASE_CONNECTION.MAX_CONNECTIONS                         = 1;
+    DATABASE_CONNECTION.FOLDER                                  = DATA_BASE_DIR + '/';
+    DATABASE_CONNECTION.FILENAME_MILLIX                         = 'millix.sqlite';
+    DATABASE_CONNECTION.FILENAME_TRANSACTION_QUEUE              = 'millix_transaction_queue.sqlite';
+    DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE        = 'millix_transaction_spend_queue.sqlite';
+    DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_WALLET_QUEUE = 'millix_transaction_spend_wallet_queue.sqlite';
+    DATABASE_CONNECTION.FILENAME_TRANSACTION_UNRESOLVED_QUEUE   = 'millix_transaction_unresolved_queue.sqlite';
+    DATABASE_CONNECTION.FILENAME_JOB_ENGINE                     = 'millix_job_engine.sqlite';
+    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX                      = './scripts/initialize-millix-sqlite3.sql';
+    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_SHARD                = './scripts/initialize-millix-shard-sqlite3.sql';
+    DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
+    DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
+    DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '16';
 }
 
 export default {
@@ -822,6 +828,8 @@ export default {
     NODE_HOST,
     NODE_HOST_FORCE,
     NODE_BIND_IP,
+    NODE_NAT_PMP,
+    NODE_NAT_PMP_CHECK,
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
     NODE_INITIAL_LIST,
@@ -846,15 +854,18 @@ export default {
     CONSENSUS_ROUND_VALIDATION_REQUIRED,
     CONSENSUS_ROUND_DOUBLE_SPEND_MAX,
     CONSENSUS_ROUND_NOT_FOUND_MAX,
+    EXTERNAL_WALLET_KEY_IDENTIFIER,
     CONSENSUS_VALIDATION_WAIT_TIME_MAX,
     CONSENSUS_VALIDATION_RETRY_WAIT_TIME,
     CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
     CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX,
+    NODE_CONNECTION_PUBLIC_PERCENT,
     CONSENSUS_ROUND_NODE_COUNT,
     TRANSACTION_FEE_PROXY,
     TRANSACTION_FEE_NETWORK,
     TRANSACTION_FEE_DEFAULT,
     TRANSACTION_PRUNE_AGE_MIN,
+    TRANSACTION_TIME_LIMIT_PROXY,
     TRANSACTION_PRUNE_COUNT,
     TRANSACTION_INPUT_MAX,
     TRANSACTION_OUTPUT_MAX,
