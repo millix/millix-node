@@ -235,12 +235,12 @@ export class Database {
                             }
                             console.log('Database initialized');
 
-                            this.databaseMillix.run('PRAGMA journal_mode = MEMORY', () => this.databaseMillix.run('PRAGMA synchronous = OFF', () => resolve()));
+                            this.databaseMillix.run('PRAGMA journal_mode = WAL', () => this.databaseMillix.run('PRAGMA synchronous = NORMAL', () => resolve()));
                         });
                     });
                 }
                 else {
-                    this.databaseMillix.run('PRAGMA journal_mode = MEMORY', () => this.databaseMillix.run('PRAGMA synchronous = OFF', () => resolve()));
+                    this.databaseMillix.run('PRAGMA journal_mode = WAL', () => this.databaseMillix.run('PRAGMA synchronous = NORMAL', () => resolve()));
                 }
 
             });

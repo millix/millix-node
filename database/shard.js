@@ -134,12 +134,12 @@ export default class Shard {
                             }
                             console.log('[shard] database initialized');
                             this.database.shardID = this.shardID;
-                            this.database.run('PRAGMA journal_mode = MEMORY', () => this.database.run('PRAGMA synchronous = OFF', () => resolve()));
+                            this.database.run('PRAGMA journal_mode = WAL', () => this.database.run('PRAGMA synchronous = NORMAL', () => resolve()));
                         });
                     });
                 }
                 else {
-                    this.database.run('PRAGMA journal_mode = MEMORY', () => this.database.run('PRAGMA synchronous = OFF', () => resolve()));
+                    this.database.run('PRAGMA journal_mode = WAL', () => this.database.run('PRAGMA synchronous = NORMAL', () => resolve()));
                 }
             });
         });
