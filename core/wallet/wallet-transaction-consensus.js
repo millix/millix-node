@@ -545,8 +545,8 @@ export class WalletTransactionConsensus {
                            }
 
                            return new Promise(resolve => {
-
                                const requestPeerValidation = () => {
+                                   console.warn('[wallet-transaction-consensus] requesting peer for validation.');
                                    if (!this._isNeedNodesInConsensusRound(transactionID)) {
                                        return;
                                    }
@@ -583,9 +583,9 @@ export class WalletTransactionConsensus {
                                                    console.log(e);
                                                }
                                            }
-                                           requestPeerValidation();
+                                           return setTimeout(() => requestPeerValidation(), 2000);
                                        });
-                                   requestPeerValidation();
+                                   return setTimeout(() => requestPeerValidation(), 1000);
                                };
 
                                requestPeerValidation();
