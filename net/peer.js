@@ -771,7 +771,29 @@ class Peer {
         });
     }
 
-    walletTransactionSync(addressKeyIdentifier, excludeTransactionList, ws) {
+    walletTransactionSyncResponse(transactions, ws) {
+        const payload = {
+            type   : 'wallet_transaction_sync_response',
+            content: {
+                transaction_id_list     : transactions
+            }
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        const data = JSON.stringify(payload);
+        if (ws) {
+            try {
+                ws.nodeConnectionReady && ws.send(data);
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+            }
+        }
+    }
+
+    walletTransactionSync(addressKeyIdentifier, ws) {
 
         if (network.registeredClients.length === 0) {
             return;
@@ -781,8 +803,7 @@ class Peer {
         let payload = {
             type   : 'wallet_transaction_sync',
             content: {
-                address_key_identifier     : addressKeyIdentifier,
-                exclude_transaction_id_list: excludeTransactionList
+                address_key_identifier     : addressKeyIdentifier
             }
         };
 

@@ -323,6 +323,56 @@ export default class Transaction {
         });
     }
 
+    getTransactionToSyncWallet(addressKeyIdentifier) {
+        return new Promise((resolve, reject) => {
+            this.database.all(`select distinct transaction_id
+                               from (select o.transaction_id
+                                     from shard_zero.transaction_output o
+                                              left join shard_zero.transaction_input i
+                                                        on o.transaction_id =
+                                                           i.output_transaction_id and
+                                                           o.output_position =
+                                                           i.output_position
+                                     where i.transaction_id is null
+                                       and o.address_key_identifier = ?0
+                                     union
+                                     select o.transaction_id
+                                     from transaction_output o
+                                              left join transaction_input i
+                                                        on o.transaction_id =
+                                                           i.output_transaction_id and
+                                                           o.output_position =
+                                                           i.output_position
+                                     where i.transaction_id is null
+                                       and o.address_key_identifier = ?0
+                                     union
+                                     select i.transaction_id
+                                     from transaction_input i
+                                              left join transaction_output o
+                                                        on i.transaction_id =
+                                                           o.transaction_id and
+                                                           o.address_key_identifier =
+                                                           ?0
+                                     where o.transaction_id is NULL
+                                       and i.address_key_identifier = ?0
+                                     union
+                                     select i.transaction_id
+                                     from shard_zero.transaction_input i
+                                              left join shard_zero.transaction_output o
+                                                        on i.transaction_id =
+                                                           o.transaction_id and
+                                                           o.address_key_identifier =
+                                                           ?0
+                                     where o.transaction_id is NULL
+                                       and i.address_key_identifier = ?0)`, [addressKeyIdentifier], (err, data) => {
+                if(err) {
+                    return reject(err);
+                }
+                return resolve(data);
+            });
+        });
+    }
+
     getTransactionByAddressKeyIdentifier(addressKeyIdentifier, returnValidTransactions = false) {
         return new Promise((resolve, reject) => {
             this.database.all(`WITH transaction_wallet AS (
