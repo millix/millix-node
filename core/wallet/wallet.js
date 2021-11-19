@@ -828,8 +828,8 @@ class Wallet {
                                                                                                                                                   force_request_sync: true
                                                                                                                                               };
                                                                                                                                           }
+                                                                                                                                          this._transactionRequested[inputTransaction.output_transaction_id] = Date.now();
                                                                                                                                           peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority, ...options})
-                                                                                                                                              .then(() => this._transactionRequested[inputTransaction.output_transaction_id] = Date.now())
                                                                                                                                               .catch(_ => _);
                                                                                                                                       }
                                                                                                                                   });
@@ -844,8 +844,8 @@ class Wallet {
                                                                                                                                   }).then(hasTransaction => {
                                                                                                                                       if (!hasTransaction) {
                                                                                                                                           console.log('[Wallet] request sync parent transaction ', parentTransactionID);
+                                                                                                                                          this._transactionRequested[parentTransactionID] = Date.now();
                                                                                                                                           peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
-                                                                                                                                              .then(() => this._transactionRequested[parentTransactionID] = Date.now())
                                                                                                                                               .catch(_ => _);
                                                                                                                                       }
                                                                                                                                   });
@@ -1648,6 +1648,45 @@ class Wallet {
         return nodeRepository.addNodeAttribute(network.nodeID, 'address_default', defaultAddress);
     }
 
+    _propagateTransactions() {
+        const transactionRepository = database.getRepository('transaction');
+        transactionRepository.getExpiredTransactions()
+                             .then(transactions => {
+                                 if (transactions.length > 0) {
+                                     peer.propagateTransactionList(transactions);
+                                 }
+                             });
+    }
+
+    onPropagateTransactionList(data) {
+        const {transaction_id_list: transactions} = data;
+        if (transactions && transactions.length > 0) {
+            mutex.lock(['transaction-list-propagate'], unlock => {
+                async.eachSeries(transactions, (transaction, callback) => {
+                    if (!!this._getCacheItem('propagation', transaction.transaction_id)) {
+                        return callback();
+                    }
+                    const transactionRepository = database.getRepository('transaction');
+                    transactionRepository.hasTransaction(transaction.transaction_id)
+                                         .then(hasTransaction => {
+                                             if (!hasTransaction) {
+                                                 peer.transactionSyncRequest(transaction.transaction_id, {
+                                                     dispatch_request  : true,
+                                                     force_request_sync: true
+                                                 })
+                                                     .then(_ => _)
+                                                     .catch(_ => _);
+                                             }
+                                             else {
+                                                 this._setCacheItem('propagation', transaction.transaction_id, true, (transaction.transaction_date * 1000) + (config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000));
+                                             }
+                                             callback();
+                                         });
+                }, () => unlock());
+            });
+        }
+    }
+
     _purgeCache() {
         const now = Date.now();
         _.each(_.keys(this.cache), store => {
@@ -1682,6 +1721,8 @@ class Wallet {
                   .then(() => walletTransactionConsensus.initialize())
                   .then(() => {
                       task.scheduleTask('cache_purge', this._purgeCache.bind(this), 30000);
+                      task.scheduleTask('transaction_propagate', this._propagateTransactions.bind(this), 10000);
+                      eventBus.on('transaction_list_propagate', this.onPropagateTransactionList.bind(this));
                       eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
                       eventBus.on('peer_connection_closed', this._onPeerConnectionClosed.bind(this));
                       eventBus.on('transaction_new_request_proxy', this._onTransactionProxyRequest.bind(this));

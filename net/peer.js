@@ -8,6 +8,7 @@ import async from 'async';
 import walletSync from '../core/wallet/wallet-sync';
 import peerRotation from './peer-rotation';
 import statistics from '../core/statistics';
+import wallet from '../core/wallet/wallet';
 
 
 class Peer {
@@ -122,6 +123,26 @@ class Peer {
                                });
                            }
                        });
+    }
+
+    propagateTransactionList(transactions) {
+        const payload = {
+            type   : 'transaction_list_propagate',
+            content: {transaction_id_list: transactions}
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        const data = JSON.stringify(payload);
+        network.registeredClients.forEach(ws => {
+            try {
+                ws.nodeConnectionReady && ws.send(data);
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+            }
+        });
     }
 
     transactionSend(transaction, excludeWS) {
@@ -775,7 +796,7 @@ class Peer {
         const payload = {
             type   : 'wallet_transaction_sync_response',
             content: {
-                transaction_id_list     : transactions
+                transaction_id_list: transactions
             }
         };
 
@@ -803,7 +824,7 @@ class Peer {
         let payload = {
             type   : 'wallet_transaction_sync',
             content: {
-                address_key_identifier     : addressKeyIdentifier
+                address_key_identifier: addressKeyIdentifier
             }
         };
 
@@ -861,6 +882,8 @@ class Peer {
         if (!forceRequestSync && !dispatchRequest && walletSync.hasPendingTransaction(transactionID)) {
             return Promise.resolve();
         }
+
+        wallet.flagTransactionAsRequested(transactionID);
 
         return (forceRequestSync || options.routing ? Promise.resolve() : walletSync.getTransactionUnresolvedData(transactionID))
             .then(unresolvedTransaction => {

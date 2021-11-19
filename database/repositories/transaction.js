@@ -33,6 +33,18 @@ export default class Transaction {
         return Math.round(expireDate.getTime() / 1000) >= transactionDate;
     }
 
+    getExpiredTransactions() {
+        return new Promise((resolve) => {
+            this.database.all(`select transaction_id, transaction_date
+                               from 'transaction'
+                               where transaction_date >
+                                     strftime('%s', 'now', '${-config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN} minutes')`,
+                (err, data) => {
+                    return resolve(data || []);
+                });
+        });
+    }
+
     getTransactionInputChain(transaction) {
         return new Promise(resolve => {
             const dfs = (inputList, inputChain, processedInputTransactionSet = new Set()) => {
@@ -365,7 +377,7 @@ export default class Transaction {
                                                            ?1
                                      where o.transaction_id is NULL
                                        and i.address_key_identifier = ?1)`, [addressKeyIdentifier], (err, data) => {
-                if(err) {
+                if (err) {
                     return reject(err);
                 }
                 return resolve(data);
