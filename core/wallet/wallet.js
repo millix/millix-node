@@ -1652,7 +1652,7 @@ class Wallet {
         const now = Date.now();
         _.each(_.keys(this.cache), store => {
             _.each(_.keys(this.cache[store]), key => {
-                if (now < this.cache[store][key].purge_time) {
+                if (now > this.cache[store][key].purge_time) {
                     delete this.cache[store][key];
                 }
             });
