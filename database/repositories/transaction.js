@@ -334,7 +334,7 @@ export default class Transaction {
                                                            o.output_position =
                                                            i.output_position
                                      where i.transaction_id is null
-                                       and o.address_key_identifier = ?0
+                                       and o.address_key_identifier = ?1
                                      union
                                      select o.transaction_id
                                      from transaction_output o
@@ -344,7 +344,7 @@ export default class Transaction {
                                                            o.output_position =
                                                            i.output_position
                                      where i.transaction_id is null
-                                       and o.address_key_identifier = ?0
+                                       and o.address_key_identifier = ?1
                                      union
                                      select i.transaction_id
                                      from transaction_input i
@@ -352,9 +352,9 @@ export default class Transaction {
                                                         on i.transaction_id =
                                                            o.transaction_id and
                                                            o.address_key_identifier =
-                                                           ?0
+                                                           ?1
                                      where o.transaction_id is NULL
-                                       and i.address_key_identifier = ?0
+                                       and i.address_key_identifier = ?1
                                      union
                                      select i.transaction_id
                                      from shard_zero.transaction_input i
@@ -362,9 +362,9 @@ export default class Transaction {
                                                         on i.transaction_id =
                                                            o.transaction_id and
                                                            o.address_key_identifier =
-                                                           ?0
+                                                           ?1
                                      where o.transaction_id is NULL
-                                       and i.address_key_identifier = ?0)`, [addressKeyIdentifier], (err, data) => {
+                                       and i.address_key_identifier = ?1)`, [addressKeyIdentifier], (err, data) => {
                 if(err) {
                     return reject(err);
                 }
