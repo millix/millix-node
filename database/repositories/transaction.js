@@ -143,7 +143,7 @@ export default class Transaction {
 
     getWalletBalance(keyIdentifier, stable) {
         return new Promise((resolve) => {
-            this.database.get('SELECT SUM(amount) as amount FROM transaction_output ' +
+            this.database.get('SELECT COALESCE(SUM(AMOUNT), 0) as amount FROM transaction_output ' +
                               'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE transaction_output.address_key_identifier=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) +
                               ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3', [keyIdentifier],
@@ -155,7 +155,7 @@ export default class Transaction {
 
     getAddressBalance(address, stable) {
         return new Promise((resolve) => {
-            this.database.get('SELECT SUM(amount) as amount FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
+            this.database.get('SELECT COALESCE(SUM(AMOUNT), 0) as amount FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE address=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3', [address],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
@@ -169,7 +169,7 @@ export default class Transaction {
                 SELECT address_key_identifier,
                        SUM(${stable ? 'balance_stable' : 'balance_pending'}) as ${stable ? 'balance_stable' : 'balance_pending'}
                 FROM (SELECT address_key_identifier,
-                             SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
+                             COALESCE(SUM(AMOUNT), 0) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM transaction_output
                       WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
@@ -178,7 +178,7 @@ export default class Transaction {
                       GROUP BY address_key_identifier
                       UNION ALL
                       SELECT address_key_identifier,
-                             SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
+                             COALESCE(SUM(AMOUNT), 0) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM shard_zero.transaction_output
                       WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
@@ -203,7 +203,7 @@ export default class Transaction {
                 SELECT address,
                        SUM(${stable ? 'balance_stable' : 'balance_pending'}) as ${stable ? 'balance_stable' : 'balance_pending'}
                 FROM (SELECT address,
-                             SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
+                             COALESCE(SUM(AMOUNT), 0) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM transaction_output
                       WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
@@ -212,7 +212,7 @@ export default class Transaction {
                       GROUP BY address
                       UNION ALL
                       SELECT address,
-                             SUM(amount) as ${stable ? 'balance_stable' : 'balance_pending'}
+                             COALESCE(SUM(AMOUNT), 0) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM shard_zero.transaction_output
                       WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
@@ -476,11 +476,11 @@ export default class Transaction {
                 WHERE transaction_output.address_key_identifier = ? AND transaction_output.status != 3 \
                 ), \
                 transaction_amount AS ( \
-                SELECT transaction_id, SUM(amount) as amount FROM transaction_output \
+                SELECT transaction_id, COALESCE(SUM(amount), 0) as amount FROM transaction_output \
                 WHERE transaction_id IN (SELECT transaction_id FROM transaction_wallet) \
                 GROUP BY transaction_id \
                 ) \
-                SELECT t.transaction_id, t.transaction_date, a.amount, SUM(w.withdrawal) as withdrawal, t.stable_date, t.parent_date FROM `transaction` t \
+                SELECT t.transaction_id, t.transaction_date, a.amount, COALESCE(SUM(w.withdrawal), 0) as withdrawal, t.stable_date, t.parent_date FROM `transaction` t \
                 JOIN transaction_wallet w ON w.transaction_id = t.transaction_id \
                 JOIN transaction_amount a ON a.transaction_id = t.transaction_id \
                 GROUP BY t.transaction_id \
