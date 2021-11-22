@@ -698,7 +698,7 @@ class Peer {
                             callbackCalled = true;
                             reject();
                         }
-                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 3);
+                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 5);
                 }
                 else {
                     reject();
