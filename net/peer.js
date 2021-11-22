@@ -1293,7 +1293,7 @@ class Peer {
                 if (this.nodeAttributeCache[content.node_id][content.attribute_type].value === content.value) {
                     return;
                 }
-                this.nodeAttributeCache[content.node_id][content.attribute_type] = content.value;
+                this.nodeAttributeCache[content.node_id][content.attribute_type].value = content.value;
             }
 
             statistics.newEvent('add_or_update_attribute');
