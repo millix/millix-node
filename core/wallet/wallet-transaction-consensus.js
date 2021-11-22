@@ -563,12 +563,13 @@ export class WalletTransactionConsensus {
                                    if (!selectedWS) {
                                        console.log('[wallet-transaction-consensus] no node ready for this consensus round');
                                        //TODO: trigger peer rotation?
+                                       peerRotation.doPeerRotation();
                                        if (!scheduledRequestPeerValidation) {
                                            scheduledRequestPeerValidation = true;
                                            return setTimeout(() => {
                                                scheduledRequestPeerValidation = false;
                                                requestPeerValidation();
-                                           }, 2500);
+                                           }, 4000);
                                        }
                                        return;
                                    }
@@ -593,12 +594,6 @@ export class WalletTransactionConsensus {
                                                catch (e) {
                                                    console.log(e);
                                                }
-                                           }
-                                           // drop peer?
-                                           try {
-                                               selectedWS.close();
-                                           }
-                                           catch (e) {
                                            }
                                            if (!scheduledRequestPeerValidation) {
                                                scheduledRequestPeerValidation = true;
