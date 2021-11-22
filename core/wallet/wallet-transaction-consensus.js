@@ -581,15 +581,6 @@ export class WalletTransactionConsensus {
                                                console.log('[wallet-transaction-consensus] node', selectedWS.nodeID, ' accepted to validate the transaction', transactionID);
                                                requestPeerValidation();
                                            }
-                                           else {
-                                               // drop peer?
-                                               try {
-                                                   selectedWS.close();
-                                               }
-                                               catch (e) {
-                                                   peerRotation.doPeerRotation();
-                                               }
-                                           }
                                        })
                                        .catch((e) => {
                                            // remove node from
@@ -608,7 +599,6 @@ export class WalletTransactionConsensus {
                                                selectedWS.close();
                                            }
                                            catch (e) {
-                                               peerRotation.doPeerRotation();
                                            }
                                            if (!scheduledRequestPeerValidation) {
                                                scheduledRequestPeerValidation = true;
