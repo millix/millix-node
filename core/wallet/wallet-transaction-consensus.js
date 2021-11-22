@@ -2,6 +2,7 @@ import database from '../../database/database';
 import eventBus from '../event-bus';
 import network from '../../net/network';
 import peer from '../../net/peer';
+import peerRotation from '../../net/peer-rotation';
 import genesisConfig from '../genesis/genesis-config';
 import config from '../config/config';
 import async from 'async';
@@ -544,6 +545,7 @@ export class WalletTransactionConsensus {
                                });
                            }
 
+                           let scheduledRequestPeerValidation = false;
                            return new Promise(resolve => {
                                const requestPeerValidation = () => {
                                    console.log('[wallet-transaction-consensus] requesting peer for validation.');
@@ -561,7 +563,13 @@ export class WalletTransactionConsensus {
                                    if (!selectedWS) {
                                        console.log('[wallet-transaction-consensus] no node ready for this consensus round');
                                        //TODO: trigger peer rotation?
-                                       return setTimeout(() => requestPeerValidation(), 2500);
+                                       if (!scheduledRequestPeerValidation) {
+                                           scheduledRequestPeerValidation = true;
+                                           return setTimeout(() => {
+                                               scheduledRequestPeerValidation = false;
+                                               requestPeerValidation();
+                                           }, 2500);
+                                       }
                                    }
 
                                    console.log('[wallet-transaction-consensus] new node selected for consensus ', selectedWS.nodeID);
@@ -574,11 +582,20 @@ export class WalletTransactionConsensus {
                                                console.log('[wallet-transaction-consensus] node', selectedWS.nodeID, ' accepted to validate the transaction', transactionID);
                                                requestPeerValidation();
                                            }
+                                           else {
+                                               // drop peer?
+                                               try {
+                                                   selectedWS.close();
+                                               }
+                                               catch (e) {
+                                                   peerRotation.doPeerRotation();
+                                               }
+                                           }
                                        })
                                        .catch((e) => {
                                            // remove node from
                                            // consensus round
-                                           console.log('[wallet-transaction-consensus] error on node', selectedWS.nodeID, ' when selected to validate transaction', transactionID);
+                                           console.log('[wallet-transaction-consensus] error on node', selectedWS.nodeID, ' when selected to validate transaction', transactionID, '. error:', e);
                                            if (this._consensusRoundState[transactionID]) {
                                                try {
                                                    delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID];
@@ -587,9 +604,29 @@ export class WalletTransactionConsensus {
                                                    console.log(e);
                                                }
                                            }
-                                           return setTimeout(() => requestPeerValidation(), 2000);
+                                           // drop peer?
+                                           try {
+                                               selectedWS.close();
+                                           }
+                                           catch (e) {
+                                               peerRotation.doPeerRotation();
+                                           }
+                                           if (!scheduledRequestPeerValidation) {
+                                               scheduledRequestPeerValidation = true;
+                                               return setTimeout(() => {
+                                                   scheduledRequestPeerValidation = false;
+                                                   requestPeerValidation();
+                                               }, 2500);
+                                           }
                                        });
-                                   return setTimeout(() => requestPeerValidation(), 1000);
+
+                                   if (!scheduledRequestPeerValidation) {
+                                       scheduledRequestPeerValidation = true;
+                                       return setTimeout(() => {
+                                           scheduledRequestPeerValidation = false;
+                                           requestPeerValidation();
+                                       }, 1000);
+                                   }
                                };
 
                                requestPeerValidation();
