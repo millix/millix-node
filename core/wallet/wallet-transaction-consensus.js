@@ -554,6 +554,7 @@ export class WalletTransactionConsensus {
                                        return;
                                    }
                                    const consensusData     = this._consensusRoundState[transactionID];
+                                   consensusData.timestamp = Date.now();
                                    let consensusNodeIDList = [];
                                    for (let i = 0; i < consensusData.consensus_round_count + 1; i++) {
                                        consensusNodeIDList = consensusNodeIDList.concat(_.keys(consensusData.consensus_round_response[i]));
@@ -600,7 +601,7 @@ export class WalletTransactionConsensus {
                                                return setTimeout(() => {
                                                    scheduledRequestPeerValidation = false;
                                                    requestPeerValidation();
-                                               }, 2500);
+                                               }, 1000);
                                            }
                                        });
 
@@ -673,6 +674,9 @@ export class WalletTransactionConsensus {
         if (!ws || !consensusData || !consensusData.consensus_round_response || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] || !consensusData.active) {
             return;
         }
+
+        // update time to timeout
+        consensusData.timestamp = Date.now();
 
         console.log('[wallet-transaction-consensus] received reply for this consensus round from ', ws.node);
         console.log('[wallet-transaction-consensus] response', data);
@@ -942,8 +946,8 @@ export class WalletTransactionConsensus {
             const transactionID = pendingTransaction.transaction_id;
             console.log('[wallet-transaction-consensus] starting consensus round for ', transactionID);
 
+            this._transactionRetryValidation[transactionID] = Date.now();
             if (isTransactionFundingWallet) {
-                this._transactionRetryValidation[transactionID] = Date.now();
                 this._runningValidationForWalletTransaction     = true;
             }
 
