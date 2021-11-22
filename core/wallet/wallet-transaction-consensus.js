@@ -646,9 +646,10 @@ export class WalletTransactionConsensus {
     _nextConsensusRound(transactionID) {
         const consensusData = this._consensusRoundState[transactionID];
         if (consensusData.consensus_round_count === config.CONSENSUS_ROUND_VALIDATION_MAX - 1) {
-            console.log('[wallet-transaction-consensus] could not validate transaction', transactionID, ' using ', consensusData.consensus_round_count, 'consensus rounds');
+            console.log('[wallet-transaction-consensus] could not validate transaction', transactionID, ' using ', config.CONSENSUS_ROUND_VALIDATION_MAX, 'consensus rounds');
             consensusData.active = false;
             this._transactionValidationRejected.add(transactionID);
+            this._transactionRetryValidation[transactionID] = Date.now();
             consensusData.resolve();
         }
         else {
