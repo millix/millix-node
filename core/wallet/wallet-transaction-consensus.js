@@ -573,8 +573,6 @@ export class WalletTransactionConsensus {
                                    }
 
                                    console.log('[wallet-transaction-consensus] new node selected for consensus ', selectedWS.nodeID);
-                                   peer.transactionSendToNode(transaction, selectedWS);
-
                                    consensusData.consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID] = {response: null};
                                    peer.transactionValidationRequest({transaction_id: transactionID}, selectedWS)
                                        .then(data => {
