@@ -147,7 +147,7 @@ export class WalletTransactionConsensus {
     }
 
     _updateDoubleSpendTransaction(transactions, doubleSpendTransactionInput) {
-        console.log('[consensus][oracle] setting ', transactions.length, ' transaction as double spend');
+        console.log('[wallet-transaction-consensus] setting ', transactions.length, ' transaction as double spend');
         async.eachSeries(transactions, (transaction, callback) => {
             database.getRepository('transaction')
                     .setTransactionAsDoubleSpend(transaction, doubleSpendTransactionInput)
@@ -177,7 +177,7 @@ export class WalletTransactionConsensus {
                    }))().then((transaction) => {
 
                 if (transaction && transaction.status !== 3 && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
-                    console.log('[consensus][oracle] validated in consensus round after found a validated transaction at depth ', depth);
+                    console.log('[wallet-transaction-consensus-oracle] validated in consensus round after found a validated transaction at depth ', depth);
                     return resolve();
                 }
                 else if (transaction && transaction.status === 3) {
@@ -458,7 +458,7 @@ export class WalletTransactionConsensus {
             }, ws, true);
         }
 
-        console.log('[consensus][oracle] request received to validate transaction ', transactionID);
+        console.log('[wallet-transaction-consensus-oracle] request received to validate transaction ', transactionID);
         eventBus.emit('wallet_event_log', {
             type   : 'transaction_validation_request',
             content: data,
@@ -468,7 +468,7 @@ export class WalletTransactionConsensus {
         this._transactionValidationState[nodeID]['timestamp'] = Date.now();
         this._validateTransaction(transactionID, nodeID)
             .then(() => {
-                console.log('[consensus][oracle] transaction ', transactionID, ' was validated for a consensus');
+                console.log('[wallet-transaction-consensus-oracle] transaction ', transactionID, ' was validated for a consensus');
                 let ws = network.getWebSocketByID(connectionID);
                 if (ws) {
                     peer.transactionValidationResponse({
@@ -480,7 +480,7 @@ export class WalletTransactionConsensus {
                 delete this._transactionValidationState[nodeID];
             })
             .catch((err) => {
-                console.log('[consensus][oracle] consensus error: ', err);
+                console.log('[wallet-transaction-consensus-oracle] consensus error: ', err);
 
                 delete this._transactionValidationState[nodeID];
                 let ws = network.getWebSocketByID(connectionID);
@@ -515,8 +515,8 @@ export class WalletTransactionConsensus {
         }
 
         // check if we have all answers
-         const consensusNodeIDList = _.keys(consensusData.consensus_round_response[consensusData.consensus_round_count]);
-         return consensusNodeIDList.length < config.CONSENSUS_ROUND_NODE_COUNT * 3;
+        const consensusNodeIDList = _.keys(consensusData.consensus_round_response[consensusData.consensus_round_count]);
+        return consensusNodeIDList.length < config.CONSENSUS_ROUND_NODE_COUNT * 3;
     }
 
     _startConsensusRound(transactionID) {
@@ -535,7 +535,7 @@ export class WalletTransactionConsensus {
                                return Promise.reject();
                            }
 
-                           console.log('[consensus][request]', transactionID, ' is ready for consensus round');
+                           console.log('[wallet-transaction-consensus]', transactionID, ' is ready for consensus round');
                            if (transactionID === genesisConfig.genesis_transaction) { // genesis transaction
                                return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
                                    return transactionRepository.setTransactionAsStable(transactionID)
@@ -548,6 +548,7 @@ export class WalletTransactionConsensus {
                                const requestPeerValidation = () => {
                                    console.log('[wallet-transaction-consensus] requesting peer for validation.');
                                    if (!this._isNeedNodesInConsensusRound(transactionID)) {
+                                       console.log('[wallet-transaction-consensus] no more peer needed yet.');
                                        return;
                                    }
                                    const consensusData     = this._consensusRoundState[transactionID];
@@ -558,23 +559,26 @@ export class WalletTransactionConsensus {
                                    const [selectedWS] = this._selectNodesForConsensusRound(1, new Set(consensusNodeIDList));
 
                                    if (!selectedWS) {
-                                       console.log('[consensus][request] no node ready for this consensus round');
+                                       console.log('[wallet-transaction-consensus] no node ready for this consensus round');
                                        //TODO: trigger peer rotation?
                                        return setTimeout(() => requestPeerValidation(), 2500);
                                    }
 
+                                   console.log('[wallet-transaction-consensus] new node selected for consensus ', selectedWS.nodeID);
                                    peer.transactionSendToNode(transaction, selectedWS);
 
                                    consensusData.consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID] = {response: null};
                                    peer.transactionValidationRequest({transaction_id: transactionID}, selectedWS)
                                        .then(data => {
                                            if (data.type !== 'validation_start' || this._isNeedNodesInConsensusRound(transactionID)) {
+                                               console.log('[wallet-transaction-consensus] node', selectedWS.nodeID, ' accepted to validate the transaction', transactionID);
                                                requestPeerValidation();
                                            }
                                        })
-                                       .catch(() => {
+                                       .catch((e) => {
                                            // remove node from
                                            // consensus round
+                                           console.log('[wallet-transaction-consensus] error on node', selectedWS.nodeID, ' when selected to validate transaction', transactionID);
                                            if (this._consensusRoundState[transactionID]) {
                                                try {
                                                    delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID];
@@ -620,6 +624,7 @@ export class WalletTransactionConsensus {
     _nextConsensusRound(transactionID) {
         const consensusData = this._consensusRoundState[transactionID];
         if (consensusData.consensus_round_count === config.CONSENSUS_ROUND_VALIDATION_MAX - 1) {
+            console.log('[wallet-transaction-consensus] could not validate transaction', transactionID, ' using ', consensusData.consensus_round_count, 'consensus rounds');
             consensusData.active = false;
             this._transactionValidationRejected.add(transactionID);
             consensusData.resolve();
@@ -637,6 +642,7 @@ export class WalletTransactionConsensus {
             consensusData.consensus_round_response[consensusData.consensus_round_count] = {};
             consensusData.timestamp                                                     = Date.now();
             consensusData.requestPeerValidation && consensusData.requestPeerValidation();
+            console.log('[wallet-transaction-consensus] move to next consensus number', consensusData.consensus_round_count, ' on transaction', transactionID);
         }
     }
 
@@ -647,7 +653,8 @@ export class WalletTransactionConsensus {
             return;
         }
 
-        console.log('[consensus][request] received reply for this consensus round from ', ws.node);
+        console.log('[wallet-transaction-consensus] received reply for this consensus round from ', ws.node);
+        console.log('[wallet-transaction-consensus] response', data);
 
         eventBus.emit('wallet_event_log', {
             type   : 'transaction_validation_response',
@@ -722,22 +729,24 @@ export class WalletTransactionConsensus {
         // const responseCount = _.keys(consensusResponseData).length;
 
         if (responseCount < config.CONSENSUS_ROUND_NODE_COUNT) {
+            console.log('[wallet-transaction-consensus] current number of response is', responseCount, '. still waiting for more responses');
             return;
         }
 
         const isValid     = counter.valid >= 2 / 3 * responseCount;
         const transaction = consensusData.transaction;
         if (!isValid) {
-            console.log('[consensus][request] the transaction ', transactionID, ' was not validated during consensus round number', consensusData.consensus_round_count);
+            console.log('[wallet-transaction-consensus] the transaction ', transactionID, ' was not validated during consensus round number', consensusData.consensus_round_count);
             let isDoubleSpend = counter.double_spend >= 2 / 3 * responseCount;
             let isNotFound    = counter.not_found >= 2 / 3 * responseCount;
             let isInvalid     = counter.invalid >= 2 / 3 * responseCount;
             if (isDoubleSpend) {
                 consensusData.consensus_round_double_spend_count++;
+                console.log('[wallet-transaction-consensus] increase number of double spend rounds to', consensusData.consensus_round_double_spend_count);
                 if (consensusData.consensus_round_double_spend_count >= config.CONSENSUS_ROUND_DOUBLE_SPEND_MAX) {
                     consensusData.active = false;
                     this._transactionValidationRejected.add(transactionID);
-                    console.log('[consensus][request] the transaction ', transactionID, ' was not validated (due to double spend) during consensus round number ', consensusData.consensus_round_count);
+                    console.log('[wallet-transaction-consensus] the transaction ', transactionID, ' was not validated (due to double spend) during consensus round number ', consensusData.consensus_round_count);
                     return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
                         return transactionRepository.updateTransactionAsDoubleSpend(transaction.transaction_id, data.transaction_input_double_spend /*double spend input*/);
                     }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
@@ -751,9 +760,10 @@ export class WalletTransactionConsensus {
             }
             else if (isNotFound) {
                 consensusData.consensus_round_not_found_count++;
+                console.log('[wallet-transaction-consensus] increase number of not found rounds to', consensusData.consensus_round_not_found_count);
                 if (consensusData.consensus_round_not_found_count >= config.CONSENSUS_ROUND_NOT_FOUND_MAX) {
                     consensusData.active = false;
-                    console.log('[consensus][request] the transaction ', transactionID, ' was not validated (due to not found reply) during consensus round number ', consensusData.consensus_round_count);
+                    console.log('[wallet-transaction-consensus] the transaction ', transactionID, ' was not validated (due to not found reply) during consensus round number ', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
                     return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
                         return transactionRepository.timeoutTransaction(transactionID);
@@ -764,9 +774,10 @@ export class WalletTransactionConsensus {
             }
             else if (isInvalid) {
                 consensusData.consensus_round_invalid_count++;
+                console.log('[wallet-transaction-consensus] increase number of double spend rounds to', consensusData.consensus_round_invalid_count);
                 if (consensusData.consensus_round_invalid_count >= config.CONSENSUS_ROUND_DOUBLE_SPEND_MAX) {
                     consensusData.active = false;
-                    console.log('[consensus][request] the transaction ', transactionID, ' was not validated (due to not invalid tx) during consensus round number ', consensusData.consensus_round_count);
+                    console.log('[wallet-transaction-consensus] the transaction ', transactionID, ' was not validated (due to not invalid tx) during consensus round number ', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
                     database.applyShards((shardID) => {
                         return database.getRepository('transaction', shardID)
@@ -778,9 +789,10 @@ export class WalletTransactionConsensus {
             }
         }
         else {
-            console.log('[consensus][request] transaction ', transactionID, ' validated after receiving all replies for this consensus round');
             consensusData.consensus_round_validation_count++;
+            console.log('[wallet-transaction-consensus] increase number of valid rounds to', consensusData.consensus_round_validation_count);
             if (consensusData.consensus_round_validation_count >= config.CONSENSUS_ROUND_VALIDATION_REQUIRED) {
+                console.log('[wallet-transaction-consensus] transaction ', transactionID, ' validated after receiving all replies for this consensus round');
                 consensusData.active = false;
 
                 if (!transaction) {
@@ -803,7 +815,7 @@ export class WalletTransactionConsensus {
     doConsensusTransactionValidationWatchDog() {
         for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
             if (consensusData.active && (Date.now() - consensusData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
-                console.log('[consensus][watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
+                console.log('[wallet-transaction-consensus-watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
                 for (let i = 0; i <= consensusData.consensus_round_count; i++) {
                     const consensusRoundResponseData = consensusData.consensus_round_response[i];
                     for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
@@ -835,7 +847,7 @@ export class WalletTransactionConsensus {
         }
 
         if (consensusCount >= config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX) {
-            console.log('[consensus][request] maximum number of transactions validation running reached : ', config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX);
+            console.log('[wallet-transaction-consensus] maximum number of transactions validation running reached : ', config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX);
             return Promise.resolve();
         }
 
@@ -847,7 +859,7 @@ export class WalletTransactionConsensus {
         // lock a spot in the consensus state
         const lockerID                      = `locker-${consensusCount}`;
         this._consensusRoundState[lockerID] = true;
-        console.log('[consensus][request] get unstable transactions');
+        console.log('[wallet-transaction-consensus] get unstable transactions');
         return database.applyShards((shardID) => {
             return new Promise((resolve) => {
                 async.mapSeries([
@@ -893,7 +905,7 @@ export class WalletTransactionConsensus {
                 ];
             }
         }).then(([pendingTransactions, isTransactionFundingWallet]) => {
-            console.log('[consensus][request] get unstable transactions done');
+            console.log('[wallet-transaction-consensus] get unstable transactions done');
             let rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id) || this._consensusRoundState[t.transaction_id]);
             let pendingTransaction   = pendingTransactions[0];
 
@@ -902,12 +914,12 @@ export class WalletTransactionConsensus {
             }
 
             if (!pendingTransaction) {
-                console.log('[consensus][request] no pending funds available for validation.');
+                console.log('[wallet-transaction-consensus] no pending funds available for validation.');
                 return;
             }
 
             const transactionID = pendingTransaction.transaction_id;
-            console.log('[consensus][request] starting consensus round for ', transactionID);
+            console.log('[wallet-transaction-consensus] starting consensus round for ', transactionID);
 
             if (isTransactionFundingWallet) {
                 this._transactionRetryValidation[transactionID] = Date.now();
@@ -943,7 +955,7 @@ export class WalletTransactionConsensus {
                 }
             })().then(() => pendingTransaction);
         }).then(pendingTransaction => {
-            console.log('[consensus] transaction validated internally, starting consensus using oracles');
+            console.log('[wallet-transaction-consensus] transaction validated internally, starting consensus using oracles');
             // replace lock id with transaction id
             this._consensusRoundState[pendingTransaction.transaction_id] = {
                 consensus_round_validation_count  : 0,
