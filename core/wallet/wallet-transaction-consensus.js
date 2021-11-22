@@ -570,6 +570,7 @@ export class WalletTransactionConsensus {
                                                requestPeerValidation();
                                            }, 2500);
                                        }
+                                       return;
                                    }
 
                                    console.log('[wallet-transaction-consensus] new node selected for consensus ', selectedWS.nodeID);
