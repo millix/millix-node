@@ -668,7 +668,7 @@ class Peer {
     transactionValidationRequest(content, ws) {
         return new Promise((resolve, reject) => {
             let payload = {
-                type: 'transaction_validation_request',
+                type: 'transaction_validation_start',
                 content
             };
 
@@ -678,7 +678,7 @@ class Peer {
             let data = JSON.stringify(payload);
             try {
                 let callbackCalled = false;
-                if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                if (ws.nodeConnectionReady) {
                     const messageID = 'transaction_validation_response:' + content.transaction_id;
                     eventBus.removeAllListeners(messageID);
                     eventBus.once(messageID, function(eventData, eventWS) {

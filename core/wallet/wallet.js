@@ -1734,7 +1734,7 @@ class Wallet {
                       eventBus.on('shard_sync_request', this._onSyncShard.bind(this));
                       eventBus.on('wallet_transaction_sync', this._onSyncWalletBalance.bind(this));
                       eventBus.on('wallet_transaction_sync_response', this._onSyncWalletBalanceResponse.bind(this));
-                      eventBus.on('transaction_validation_request', this._onTransactionValidationRequest.bind(this));
+                      eventBus.on('transaction_validation_start', this._onTransactionValidationRequest.bind(this));
                       eventBus.on('transaction_validation_response', this._onTransactionValidationResponse.bind(this));
                       eventBus.on('transaction_spend_request', this._onSyncTransactionSpendTransaction.bind(this));
                       eventBus.on('transaction_output_spend_request', this._onSyncOutputSpendTransaction.bind(this));

@@ -461,7 +461,7 @@ export class WalletTransactionConsensus {
 
         console.log('[wallet-transaction-consensus-oracle] request received to validate transaction ', transactionID);
         eventBus.emit('wallet_event_log', {
-            type   : 'transaction_validation_request',
+            type   : 'transaction_validation_start',
             content: data,
             from   : node
         });
