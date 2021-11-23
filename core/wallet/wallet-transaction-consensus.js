@@ -147,15 +147,6 @@ export class WalletTransactionConsensus {
         });
     }
 
-    _updateDoubleSpendTransaction(transactions, doubleSpendTransactionInput) {
-        console.log('[wallet-transaction-consensus] setting ', transactions.length, ' transaction as double spend');
-        async.eachSeries(transactions, (transaction, callback) => {
-            database.getRepository('transaction')
-                    .setTransactionAsDoubleSpend(transaction, doubleSpendTransactionInput)
-                    .then(() => callback());
-        });
-    }
-
     _validateTransaction(transaction, nodeID, depth = 0, transactionVisitedSet = new Set(), doubleSpendSet = new Set(), proxyTimeStart = null, proxyTimeLimit = null) {
         let transactionID;
         if (typeof (transaction) === 'object') {
@@ -279,12 +270,6 @@ export class WalletTransactionConsensus {
                                                               response_type: responseType,
                                                               data
                                                           }) => {
-
-                                                       if (data && (responseType === 'transaction_double_spend' || responseType === 'transaction_valid')) {
-                                                           let doubleSpendInputs = _.filter(doubleSpendTransactions, i => i.transaction_id !== data.transaction_id);
-                                                           doubleSpendInputs.forEach(doubleSpendInput => doubleSpendSet.add(doubleSpendInput.transaction_id));
-                                                           this._updateDoubleSpendTransaction(doubleSpendInputs, input);
-                                                       }
 
                                                        if ((responseType === 'transaction_double_spend' && !data) ||
                                                            (responseType === 'transaction_valid' && data.transaction_id !== transaction.transaction_id)) {
@@ -417,7 +402,6 @@ export class WalletTransactionConsensus {
                                            .then(() => callback(null, true))
                                            .catch((err) => {
                                                if (err && err.cause === 'transaction_double_spend' && !err.transaction_input_double_spend) {
-                                                   this._updateDoubleSpendTransaction([transaction], srcTransaction);
                                                    err.transaction_input_double_spend = _.pick(srcTransaction, [
                                                        'output_transaction_id',
                                                        'output_position',
