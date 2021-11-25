@@ -2690,6 +2690,40 @@ export default class Transaction {
             });
         });
     }
+
+    checkup() {
+        return new Promise(resolve => {
+            this.database.exec(`
+                create temporary table transaction_unspent as
+                with outputs
+                         as (select o.transaction_id, o.output_position
+                             from transaction_output o
+                                      inner join transaction_input i
+                                                 on o.transaction_id =
+                                                    i.output_transaction_id and
+                                                    o.output_position =
+                                                    i.output_position
+                             where o.is_stable = 1
+                               and o.status != 3
+                               and o.is_spent = 1
+                               and i.status = 3)
+                select distinct o.transaction_id, o.output_position
+                from outputs o
+                         left join transaction_input i
+                                   on i.output_transaction_id =
+                                      o.transaction_id and
+                                      i.output_position =
+                                      o.output_position and
+                                      i.status != 3
+                where i.transaction_id is NULL;
+                update transaction_output
+                set is_spent = 0
+                where transaction_id in
+                      (select transaction_id from transaction_unspent)`, () => {
+                resolve();
+            });
+        });
+    }
 }
 
 

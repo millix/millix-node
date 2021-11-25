@@ -261,7 +261,7 @@ export class WalletSync {
                 path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE),
                 setImmediate: global.setImmediate
             }),
-            batchSize               : config.NODE_CONNECTION_OUTBOUND_MAX,
+            batchSize               : this.CARGO_MAX_LENGHT,
             precondition            : function(cb) {
                 if (network.registeredClients.length > 0) {
                     cb(null, true);
