@@ -34,6 +34,7 @@ class Network {
         this._bidirectionaInboundConnectionCount  = 0;
         this._wss                                 = null;
         this.nodeID                               = null;
+        this.nodeIsPublic                         = undefined;
         this.certificatePem                       = null;
         this.certificatePrivateKeyPem             = null;
         this.nodeConnectionID                     = this.generateNewID();
@@ -858,6 +859,7 @@ class Network {
 
     _onNATCheckResponse(content, ws) {
         console.log('[network] on natcheck response', content);
+        this.nodeIsPublic = content.is_valid_nat;
     }
 
     _natCheckTryConnect(url) {

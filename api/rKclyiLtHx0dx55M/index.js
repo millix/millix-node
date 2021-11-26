@@ -44,8 +44,10 @@ class _rKclyiLtHx0dx55M extends Endpoint {
                                                                                                 unstable
                                                                                             },
                                                                                             network    : {
-                                                                                                online    : network.initialized,
-                                                                                                peer_count: network.registeredClients.length
+                                                                                                online        : network.initialized,
+                                                                                                peer_count    : network.registeredClients.length,
+                                                                                                node_is_public: network.nodeIsPublic === undefined ? 'unknown' : network.nodeIsPublic,
+                                                                                                node_public_ip: network.nodePublicIp
                                                                                             },
                                                                                             log        : {
                                                                                                 log_count    : logManager.lastIdx,
