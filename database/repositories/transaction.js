@@ -2719,7 +2719,8 @@ export default class Transaction {
                 update transaction_output
                 set is_spent = 0
                 where transaction_id in
-                      (select transaction_id from transaction_unspent)`, () => {
+                      (select transaction_id from transaction_unspent);
+                drop table if exists transaction_unspent;`, () => {
                 resolve();
             });
         });

@@ -6,6 +6,8 @@ import path from 'path';
 import {Database} from './database';
 import eventBus from '../core/event-bus';
 import os from 'os';
+import async from 'async';
+import _ from 'lodash';
 
 export default class Shard {
     constructor(databaseFile, shardID) {
@@ -142,6 +144,19 @@ export default class Shard {
                     this.database.run('PRAGMA journal_mode = WAL', () => this.database.run('PRAGMA synchronous = NORMAL', () => resolve()));
                 }
             });
+        });
+    }
+
+    checkup() {
+        return new Promise(resolve => {
+            async.eachSeries(_.keys(this.repositories), (repositoryName, callback) => {
+                if (this.repositories[repositoryName].checkup) {
+                    this.repositories[repositoryName].checkup().then(() => callback());
+                }
+                else {
+                    callback();
+                }
+            }, () => resolve());
         });
     }
 

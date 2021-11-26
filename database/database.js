@@ -472,7 +472,7 @@ export class Database {
                         }
 
                         if (orderBy) {
-                            if(orderBy.trim().split(" ").length === 1) {
+                            if (orderBy.trim().split(' ').length === 1) {
                                 orderBy += ' asc';
                             }
                             const regExp = /^(?<column>\w+) (?<order>asc|desc)$/.exec(orderBy);
@@ -661,7 +661,18 @@ export class Database {
                 else {
                     callback();
                 }
-            }, () => resolve());
+            }, () => {
+                async.eachSeries(_.keys(this.shards), (shardID, callback) => {
+                    if (this.shards[shardID].checkup) {
+                        this.shards[shardID].checkup().then(() => callback());
+                    }
+                    else {
+                        callback();
+                    }
+                }, () => {
+                    resolve();
+                });
+            });
         });
     }
 }
