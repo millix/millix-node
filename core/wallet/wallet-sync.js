@@ -115,9 +115,10 @@ export class WalletSync {
                 database.applyShards(shardID => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.listTransactionInput({
-                        output_transaction_id: transactionID,
-                        output_shard_id      : outputShardID,
-                        output_position      : outputPosition
+                        output_transaction_id   : transactionID,
+                        output_shard_id         : outputShardID,
+                        output_position         : outputPosition,
+                        '``transaction`.status!': 3
                     }).then(inputList => {
                         const spendingInputs = [];
                         return new Promise((resolve) => {
@@ -211,7 +212,8 @@ export class WalletSync {
                     return transactionRepository.listTransactionInput({
                         output_transaction_id: transactionID,
                         output_shard_id      : outputShardID,
-                        output_position      : outputPosition
+                        output_position      : outputPosition,
+                        '``transaction`.status!': 3
                     }).then(inputList => {
                         const spendingInputs = [];
                         return new Promise((resolve) => {
@@ -583,7 +585,8 @@ export class WalletSync {
                                                                         transaction_output_id: transactionOutputID
                                                                     });
                                                                 }
-                                                            } else {
+                                                            }
+                                                            else {
                                                                 if (!queuedTransactionOutputs.has(transactionOutputID)) {
                                                                     this.transactionSpendQueue.push({
                                                                         transaction_output_id: transactionOutputID
