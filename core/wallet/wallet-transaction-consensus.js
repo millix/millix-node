@@ -619,7 +619,7 @@ export class WalletTransactionConsensus {
                 ...data,
                 type: 'validation_start'
             }, ws);
-            peer.transactionValidationRequest(cachedValidation, ws, true).then(_ => _);
+            peer.transactionValidationResponse(cachedValidation, ws, true);
             cache.refreshCacheTime('validation', data.transaction_id, 90000);
             return;
         }
