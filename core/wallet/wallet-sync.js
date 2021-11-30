@@ -118,7 +118,7 @@ export class WalletSync {
                         output_transaction_id   : transactionID,
                         output_shard_id         : outputShardID,
                         output_position         : outputPosition,
-                        '``transaction`.status!': 3
+                        '`transaction`.status!': 3
                     }).then(inputList => {
                         const spendingInputs = [];
                         return new Promise((resolve) => {
