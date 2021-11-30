@@ -1280,20 +1280,21 @@ class Peer {
                 this.nodeAttributeCache[content.node_id] = {};
             }
 
+            const now = Date.now();
             if (!this.nodeAttributeCache[content.node_id][content.attribute_type]) {
                 this.nodeAttributeCache[content.node_id] = {
                     [content.attribute_type]: {
                         value    : content.value,
-                        updatedAt: Date.now()
+                        updatedAt: now
                     }
                 };
             }
             else {
-                this.nodeAttributeCache[content.node_id][content.attribute_type].updatedAt = Date.now();
-                if (this.nodeAttributeCache[content.node_id][content.attribute_type].value === content.value) {
+                this.nodeAttributeCache[content.node_id][content.attribute_type].value = content.value;
+                if (now < this.nodeAttributeCache[content.node_id][content.attribute_type].updatedAt + 60000) {
                     return;
                 }
-                this.nodeAttributeCache[content.node_id][content.attribute_type].value = content.value;
+                this.nodeAttributeCache[content.node_id][content.attribute_type].updatedAt = now;
             }
 
             statistics.newEvent('add_or_update_attribute');
