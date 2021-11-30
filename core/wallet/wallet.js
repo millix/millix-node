@@ -19,6 +19,7 @@ import path from 'path';
 import console from '../console';
 import base58 from 'bs58';
 import task from '../task';
+import cache from '../cache';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -41,7 +42,6 @@ class Wallet {
         this._maxBacklogThresholdReached     = false;
         this.initialized                     = false;
         this._transactionSendInterrupt       = false;
-        this.cache                           = {};
     }
 
     get isProcessingNewTransactionFromNetwork() {
@@ -1084,7 +1084,7 @@ class Wallet {
         mutex.lock(['sync-wallet-balance-response'], unlock => {
             const transactions = data.transaction_id_list || [];
             async.eachSeries(transactions, (transactionID, callback) => {
-                if (!!this._getCacheItem('sync', transactionID)) {
+                if (!!cache.getCacheItem('sync', transactionID)) {
                     return callback();
                 }
                 database.firstShards((shardID) => {
@@ -1098,7 +1098,7 @@ class Wallet {
                             .catch(_ => _);
                     }
                     else {
-                        this._setCacheItem('sync', transactionID, true, Number.MAX_SAFE_INTEGER);
+                        cache.setCacheItem('sync', transactionID, true, Number.MAX_SAFE_INTEGER);
                     }
                     callback();
                 });
@@ -1663,7 +1663,7 @@ class Wallet {
         if (transactions && transactions.length > 0) {
             mutex.lock(['transaction-list-propagate'], unlock => {
                 async.eachSeries(transactions, (transaction, callback) => {
-                    if (!!this._getCacheItem('propagation', transaction.transaction_id)) {
+                    if (!!cache.getCacheItem('propagation', transaction.transaction_id)) {
                         return callback();
                     }
                     const transactionRepository = database.getRepository('transaction');
@@ -1678,7 +1678,7 @@ class Wallet {
                                                      .catch(_ => _);
                                              }
                                              else {
-                                                 this._setCacheItem('propagation', transaction.transaction_id, true, (transaction.transaction_date * 1000) + (config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000));
+                                                 cache.setCacheItem('propagation', transaction.transaction_id, true, (transaction.transaction_date * 1000) + (config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000));
                                              }
                                              callback();
                                          });
@@ -1687,40 +1687,10 @@ class Wallet {
         }
     }
 
-    _purgeCache() {
-        const now = Date.now();
-        _.each(_.keys(this.cache), store => {
-            _.each(_.keys(this.cache[store]), key => {
-                if (now > this.cache[store][key].purge_time) {
-                    delete this.cache[store][key];
-                }
-            });
-        });
-    }
-
-    _setCacheItem(store, key, value, cacheTime = 30000) {
-        if (!this.cache[store]) {
-            this.cache[store] = {};
-        }
-
-        this.cache[store][key] = {
-            value,
-            purge_time: Date.now() + cacheTime
-        };
-    }
-
-    _getCacheItem(store, key) {
-        if (this.cache[store] && this.cache[store][key]) {
-            return this.cache[store][key].value;
-        }
-        return null;
-    }
-
     _initializeEvents() {
         walletSync.initialize()
                   .then(() => walletTransactionConsensus.initialize())
                   .then(() => {
-                      task.scheduleTask('cache_purge', this._purgeCache.bind(this), 30000);
                       task.scheduleTask('transaction_propagate', this._propagateTransactions.bind(this), 10000);
                       eventBus.on('transaction_list_propagate', this.onPropagateTransactionList.bind(this));
                       eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
@@ -1793,7 +1763,6 @@ class Wallet {
     stop() {
         this.initialized = false;
         walletSync.close().then(_ => _).catch(_ => _);
-        task.removeTask('cache_purge');
         eventBus.removeAllListeners('peer_connection_new');
         eventBus.removeAllListeners('peer_connection_closed');
         eventBus.removeAllListeners('transaction_new_request_proxy');

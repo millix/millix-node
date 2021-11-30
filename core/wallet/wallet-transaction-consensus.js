@@ -12,6 +12,7 @@ import walletUtils from './wallet-utils';
 import ntp from '../ntp';
 import console from '../console';
 import task from '../task';
+import cache from '../cache';
 
 
 export class WalletTransactionConsensus {
@@ -456,11 +457,13 @@ export class WalletTransactionConsensus {
                 console.log('[wallet-transaction-consensus-oracle] transaction ', transactionID, ' was validated for a consensus');
                 let ws = network.getWebSocketByID(connectionID);
                 if (ws) {
-                    peer.transactionValidationResponse({
+                    const validationResult = {
                         transaction_id: transactionID,
                         valid         : true,
                         type          : 'validation_response'
-                    }, ws, true);
+                    };
+                    cache.setCacheItem('validation', transactionID, validationResult, 90000);
+                    peer.transactionValidationResponse(validationResult, ws, true);
                 }
                 delete this._transactionValidationState[nodeID];
             })
@@ -478,12 +481,14 @@ export class WalletTransactionConsensus {
                 }
 
                 if (ws) {
-                    peer.transactionValidationResponse({
+                    const validationResult = {
                         ...err,
                         transaction_id: transactionID,
                         valid         : false,
                         type          : 'validation_response'
-                    }, ws, true);
+                    };
+                    cache.setCacheItem('validation', transactionID, validationResult, 90000);
+                    peer.transactionValidationResponse(validationResult, ws, true);
                 }
             });
 
@@ -608,6 +613,16 @@ export class WalletTransactionConsensus {
 
     processTransactionValidationRequest(data, ws) {
         // deal with the allocation process
+        const cachedValidation = cache.getCacheItem('validation', data.transaction_id);
+        if (cachedValidation) {
+            peer.transactionValidationResponse({
+                ...data,
+                type: 'validation_start'
+            }, ws);
+            peer.transactionValidationRequest(cachedValidation, ws, true).then(_ => _);
+            cache.refreshCacheTime('validation', data.transaction_id, 90000);
+            return;
+        }
 
         if (_.keys(this._transactionValidationState).length >= config.CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX) {
             peer.transactionValidationResponse({
@@ -933,7 +948,7 @@ export class WalletTransactionConsensus {
 
             this._transactionRetryValidation[transactionID] = Date.now();
             if (isTransactionFundingWallet) {
-                this._runningValidationForWalletTransaction     = true;
+                this._runningValidationForWalletTransaction = true;
             }
 
             delete this._consensusRoundState[lockerID];
