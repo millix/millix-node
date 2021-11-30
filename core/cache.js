@@ -20,6 +20,12 @@ class Cache {
         });
     }
 
+    removeCacheItem(store, key) {
+        if (this.cache[store][key]) {
+            delete this.cache[store][key];
+        }
+    }
+
     refreshCacheTime(store, key, cacheTime = 30000) {
         if (this.cache[store][key]) {
             this.cache[store][key].purge_time = Date.now() + cacheTime;
