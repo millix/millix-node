@@ -5,6 +5,7 @@ import _ from 'lodash';
 import network from '../../net/network';
 import logManager from '../../core/log-manager';
 import genesisConfig from '../../core/genesis/genesis-config';
+import config from '../../core/config/config';
 
 
 /**
@@ -44,10 +45,14 @@ class _rKclyiLtHx0dx55M extends Endpoint {
                                                                                                 unstable
                                                                                             },
                                                                                             network    : {
-                                                                                                online        : network.initialized,
-                                                                                                peer_count    : network.registeredClients.length,
-                                                                                                node_is_public: network.nodeIsPublic === undefined ? 'unknown' : network.nodeIsPublic,
-                                                                                                node_public_ip: network.nodePublicIp
+                                                                                                online                : network.initialized,
+                                                                                                peer_count            : network.registeredClients.length,
+                                                                                                node_id               : network.nodeID,
+                                                                                                node_port             : config.NODE_PORT,
+                                                                                                node_bind_ip          : config.NODE_BIND_IP,
+                                                                                                node_is_public        : network.nodeIsPublic === undefined ? 'unknown' : network.nodeIsPublic,
+                                                                                                node_public_ip        : network.nodePublicIp,
+                                                                                                node_network_addresses: network.networkInterfaceAddresses
                                                                                             },
                                                                                             log        : {
                                                                                                 log_count    : logManager.lastIdx,

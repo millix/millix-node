@@ -19,6 +19,7 @@ import signature from '../core/crypto/signature';
 import NatAPI from 'nat-api';
 import statistics from '../core/statistics';
 import console from '../core/console';
+import os from 'os';
 
 const WebSocketServer = Server;
 
@@ -33,6 +34,7 @@ class Network {
         this._bidirectionaOutboundConnectionCount = 0;
         this._bidirectionaInboundConnectionCount  = 0;
         this._wss                                 = null;
+        this.networkInterfaceAddresses            = [];
         this.nodeID                               = null;
         this.nodeIsPublic                         = undefined;
         this.certificatePem                       = null;
@@ -958,7 +960,21 @@ class Network {
         eventBus.on('nat_check_response', this._onNATCheckResponse.bind(this));
     }
 
+    loadNetworkInterfaceIpList() {
+        this.networkInterfaceAddresses = [];
+        const nets                     = os.networkInterfaces();
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name]) {
+                // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
+                if (net.family === 'IPv4' && !net.internal) {
+                    this.networkInterfaceAddresses.push(net.address);
+                }
+            }
+        }
+    }
+
     initialize() {
+        this.loadNetworkInterfaceIpList();
         this.nodeConnectionID = this.generateNewID();
         return new Promise(resolve => {
             console.log('[network] starting network');
