@@ -11,7 +11,6 @@ class _qRHogKQ1Bb7OT4N9 extends Endpoint {
 
     handler(app, req, res) {
         res.send({
-            api_status: 'ok',
             node_public_ip: network.nodePublicIp
         })
     }
