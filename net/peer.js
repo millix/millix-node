@@ -696,18 +696,18 @@ class Peer {
                         if (!callbackCalled) {
                             console.log('[peer] validation response from node ', ws.node, 'timeout');
                             callbackCalled = true;
-                            reject();
+                            reject('node_timeout');
                         }
                     }, config.NETWORK_LONG_TIME_WAIT_MAX * 5);
                 }
                 else {
-                    reject();
+                    reject('node_connection_not_ready');
                 }
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
                 ws && ws.close();
-                reject();
+                reject('node_connection_closed');
             }
 
         });

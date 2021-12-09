@@ -566,10 +566,26 @@ export class WalletTransactionConsensus {
 
                                    console.log('[wallet-transaction-consensus] new node selected for consensus ', selectedWS.nodeID);
                                    consensusData.consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID] = {response: null};
+                                   const consensusRoundNumber                                                                     = consensusData.consensus_round_count;
                                    peer.transactionValidationRequest({transaction_id: transactionID}, selectedWS)
                                        .then(data => {
-                                           if (data.type !== 'validation_start' || this._isNeedNodesInConsensusRound(transactionID)) {
+                                           if (data.type !== 'validation_start'){
+                                               console.log('[wallet-transaction-consensus] node', selectedWS.nodeID, ' did not accept to validate the transaction', transactionID);
+                                               // reset node to available
+                                               setTimeout(() => {
+                                                   if (this._consensusRoundState[transactionID]) {
+                                                       try {
+                                                           delete this._consensusRoundState[transactionID].consensus_round_response[consensusRoundNumber][selectedWS.nodeID];
+                                                       }
+                                                       catch (e) {
+                                                           console.log(e);
+                                                       }
+                                                   }
+                                               }, 5000);
+                                           } else {
                                                console.log('[wallet-transaction-consensus] node', selectedWS.nodeID, ' accepted to validate the transaction', transactionID);
+                                           }
+                                           if (data.type !== 'validation_start' || this._isNeedNodesInConsensusRound(transactionID)) {
                                                requestPeerValidation();
                                            }
                                        })
@@ -579,7 +595,7 @@ export class WalletTransactionConsensus {
                                            console.log('[wallet-transaction-consensus] error on node', selectedWS.nodeID, ' when selected to validate transaction', transactionID, '. error:', e);
                                            if (this._consensusRoundState[transactionID]) {
                                                try {
-                                                   delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][selectedWS.nodeID];
+                                                   delete this._consensusRoundState[transactionID].consensus_round_response[consensusRoundNumber][selectedWS.nodeID];
                                                }
                                                catch (e) {
                                                    console.log(e);
