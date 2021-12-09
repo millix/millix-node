@@ -293,6 +293,10 @@ export class WalletTransactionConsensus {
                                                            });
                                                        }
                                                        else if (responseType === 'transaction_double_spend_unresolved') {
+                                                           peer.transactionSyncRequest(data.transaction_id, {
+                                                               dispatch_request  : true,
+                                                               force_request_sync: true
+                                                           }).then(_ => _).catch(_ => _);
                                                            return reject({
                                                                cause              : 'transaction_double_spend_unresolved',
                                                                transaction_id_fail: data.transaction_id,
@@ -569,7 +573,7 @@ export class WalletTransactionConsensus {
                                    const consensusRoundNumber                                                                     = consensusData.consensus_round_count;
                                    peer.transactionValidationRequest({transaction_id: transactionID}, selectedWS)
                                        .then(data => {
-                                           if (data.type !== 'validation_start'){
+                                           if (data.type !== 'validation_start') {
                                                console.log('[wallet-transaction-consensus] node', selectedWS.nodeID, ' did not accept to validate the transaction', transactionID);
                                                // reset node to available
                                                setTimeout(() => {
@@ -582,7 +586,8 @@ export class WalletTransactionConsensus {
                                                        }
                                                    }
                                                }, 5000);
-                                           } else {
+                                           }
+                                           else {
                                                console.log('[wallet-transaction-consensus] node', selectedWS.nodeID, ' accepted to validate the transaction', transactionID);
                                            }
                                            if (data.type !== 'validation_start' || this._isNeedNodesInConsensusRound(transactionID)) {
@@ -594,7 +599,7 @@ export class WalletTransactionConsensus {
                                            // consensus round
                                            console.log('[wallet-transaction-consensus] error on node', selectedWS.nodeID, ' when selected to validate transaction', transactionID, '. error:', e);
 
-                                           if(e === 'node_connection_closed' || e === 'node_timeout') {
+                                           if (e === 'node_connection_closed' || e === 'node_timeout') {
                                                peerRotation.doPeerRotation();
                                            }
 
@@ -693,7 +698,7 @@ export class WalletTransactionConsensus {
         const transactionID = data.transaction_id;
         const consensusData = this._consensusRoundState[transactionID];
         if (!ws || !consensusData || !consensusData.consensus_round_response || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] || !consensusData.active) {
-            console.log('[wallet-transaction-consensus] response accepted ',  data, 'for consensus', consensusData);
+            console.log('[wallet-transaction-consensus] response accepted ', data, 'for consensus', consensusData);
             return;
         }
 
