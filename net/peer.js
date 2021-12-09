@@ -714,10 +714,6 @@ class Peer {
     }
 
     transactionValidationResponse(message, ws, isValidationResult) {
-        if (ws.outBound && !ws.bidirectional) {
-            return message;
-        }
-
         let payload = {
             type   : isValidationResult ? 'transaction_validation_response' : 'transaction_validation_response:' + message.transaction_id,
             content: message

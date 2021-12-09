@@ -1125,6 +1125,17 @@ class Network {
         });
     }
 
+    disconnectWebSocket(ws) {
+        if (ws && ws.close) {
+            if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+                network._unregisterWebsocket(ws);
+            }
+            else {
+                ws.close();
+            }
+        }
+    }
+
     getProxyInfo(publicKey, proxyID) {
         return new Promise((resolve, reject) => {
             const hash = objectHash.getSHA1Buffer(publicKey, true);

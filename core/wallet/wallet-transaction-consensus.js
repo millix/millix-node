@@ -600,6 +600,7 @@ export class WalletTransactionConsensus {
                                            console.log('[wallet-transaction-consensus] error on node', selectedWS.nodeID, ' when selected to validate transaction', transactionID, '. error:', e);
 
                                            if (e === 'node_connection_closed' || e === 'node_timeout') {
+                                               network.disconnectWebSocket(selectedWS);
                                                peerRotation.doPeerRotation();
                                            }
 
