@@ -495,7 +495,7 @@ export class WalletTransactionConsensus {
     }
 
     _selectNodesForConsensusRound(numberOfNodes = config.CONSENSUS_ROUND_NODE_COUNT, excludeNodeSet = new Set()) {
-        return _.sampleSize(_.filter(network.registeredClients, ws => ws.nodeConnectionReady && (ws.outBound || ws.bidirectional) && !excludeNodeSet.has(ws.nodeID)), numberOfNodes);
+        return _.sampleSize(_.filter(network.registeredClients, ws => ws.nodeConnectionReady && !excludeNodeSet.has(ws.nodeID)), numberOfNodes);
     }
 
     _isNeedNodesInConsensusRound(transactionID) {
