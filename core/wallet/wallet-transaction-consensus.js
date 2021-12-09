@@ -157,7 +157,7 @@ export class WalletTransactionConsensus {
             transactionID = transaction;
             transaction   = null;
         }
-
+        const startTime = Date.now();
         return new Promise((resolve, reject) => {
             (() => transaction ? Promise.resolve(transaction) :
                    this._transactionObjectCache[transactionID] ? Promise.resolve(this._transactionObjectCache[transactionID]) :
@@ -170,7 +170,7 @@ export class WalletTransactionConsensus {
                    }))().then((transaction) => {
 
                 if (transaction && transaction.status !== 3 && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
-                    console.log('[wallet-transaction-consensus-oracle] validated in consensus round after found a validated transaction at depth ', depth);
+                    console.log('[wallet-transaction-consensus-oracle] validated in consensus round after find a validated transaction at depth ', depth, '. after:', Date.now() - startTime, 'ms');
                     return resolve();
                 }
                 else if (transaction && transaction.status === 3) {
@@ -553,7 +553,7 @@ export class WalletTransactionConsensus {
                                    if (!selectedWS) {
                                        console.log('[wallet-transaction-consensus] no node ready for this consensus round');
                                        //TODO: trigger peer rotation?
-                                       // peerRotation.doPeerRotation();
+                                       peerRotation.doPeerRotation();
                                        if (!scheduledRequestPeerValidation) {
                                            scheduledRequestPeerValidation = true;
                                            return setTimeout(() => {
@@ -593,6 +593,11 @@ export class WalletTransactionConsensus {
                                            // remove node from
                                            // consensus round
                                            console.log('[wallet-transaction-consensus] error on node', selectedWS.nodeID, ' when selected to validate transaction', transactionID, '. error:', e);
+
+                                           if(e === 'node_connection_closed' || e === 'node_timeout') {
+                                               peerRotation.doPeerRotation();
+                                           }
+
                                            if (this._consensusRoundState[transactionID]) {
                                                try {
                                                    delete this._consensusRoundState[transactionID].consensus_round_response[consensusRoundNumber][selectedWS.nodeID];
@@ -688,6 +693,7 @@ export class WalletTransactionConsensus {
         const transactionID = data.transaction_id;
         const consensusData = this._consensusRoundState[transactionID];
         if (!ws || !consensusData || !consensusData.consensus_round_response || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] || !consensusData.active) {
+            console.log('[wallet-transaction-consensus] response accepted ',  data, 'for consensus', consensusData);
             return;
         }
 
