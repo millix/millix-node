@@ -136,15 +136,16 @@ class Network {
             ws.once('open', () => {
                 console.log('[network outgoing] Open connection to ' + url);
 
-                ws.node                = url;
-                ws.nodePort            = port;
-                ws.nodePortApi         = portApi;
-                ws.nodePrefix          = prefix;
-                ws.nodeIPAddress       = ipAddress;
-                ws.lastMessageTime     = ws.createTime;
-                ws.outBound            = true;
-                ws.nodeConnectionReady = false;
-                ws.bidirectional       = false;
+                ws.node                  = url;
+                ws.nodePort              = port;
+                ws.nodePortApi           = portApi;
+                ws.nodePrefix            = prefix;
+                ws.nodeIPAddress         = ipAddress;
+                ws.lastMessageTime       = ws.createTime;
+                ws.outBound              = true;
+                ws.nodeConnectionReady   = false;
+                ws.bidirectional         = false;
+                ws.consensusTimeoutCount = 0;
                 console.log('[network outgoing] connected to ' + url + ', host ' + ws.nodeIPAddress);
                 this._doHandshake(ws)
                     .then(() => resolve(ws))
@@ -257,11 +258,12 @@ class Network {
                 ip = req.headers['x-real-ip'];
             }
 
-            ws.node                = config.WEBSOCKET_PROTOCOL + ip + ':' + req.connection.remotePort;
-            ws.createTime          = Date.now();
-            ws.lastMessageTime     = ws.createTime;
-            ws.nodeConnectionReady = false;
-            ws.bidirectional       = false;
+            ws.node                  = config.WEBSOCKET_PROTOCOL + ip + ':' + req.connection.remotePort;
+            ws.createTime            = Date.now();
+            ws.lastMessageTime       = ws.createTime;
+            ws.nodeConnectionReady   = false;
+            ws.bidirectional         = false;
+            ws.consensusTimeoutCount = 0;
 
 
             console.log('[network income] got connection from ' + ws.node + ', host ' + ip);
@@ -1126,8 +1128,8 @@ class Network {
     }
 
     disconnectWebSocket(ws) {
-        if (ws && ws.close) {
-            if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        if (ws) {
+            if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
                 this._unregisterWebsocket(ws);
             }
             else {

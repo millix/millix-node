@@ -599,9 +599,22 @@ export class WalletTransactionConsensus {
                                            // consensus round
                                            console.log('[wallet-transaction-consensus] error on node', selectedWS.nodeID, ' when selected to validate transaction', transactionID, '. error:', e);
 
-                                           if (e === 'node_connection_closed' || e === 'node_timeout') {
+                                           if (e === 'node_connection_closed') {
+                                               console.log('[wallet-transaction-consensus] disconnecting node', selectedWS.nodeID, ', reason:', e);
                                                network.disconnectWebSocket(selectedWS);
                                                peerRotation.doPeerRotation();
+                                           }
+                                           else if (e === 'node_timeout') {
+                                               selectedWS.consensusTimeoutCount += 1;
+                                               console.log('[wallet-transaction-consensus] node timeout count:', selectedWS.consensusTimeoutCount);
+                                               if (selectedWS.consensusTimeoutCount >= 5) {
+                                                   console.log('[wallet-transaction-consensus] disconnecting node', selectedWS.nodeID, ', reason:', e);
+                                                   network.disconnectWebSocket(selectedWS);
+                                                   peerRotation.doPeerRotation();
+                                               }
+                                           }
+                                           else {
+                                               console.log('[wallet-transaction-consensus] unhandled error: ', e);
                                            }
 
                                            if (this._consensusRoundState[transactionID]) {
