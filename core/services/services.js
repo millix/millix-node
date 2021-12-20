@@ -7,6 +7,7 @@ import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
 import database from '../../database/database';
+import cache from '../cache';
 
 
 class Service {
@@ -30,6 +31,7 @@ class Service {
         return logManager.initialize()
                          .then(() => server.initialize())
                          .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
+                         .then(() => cache.initialize())
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
@@ -49,6 +51,7 @@ class Service {
         }
         this.initialized = false;
         wallet.stop();
+        cache.stop();
         network.stop();
         peer.stop();
         peerRotation.stop();

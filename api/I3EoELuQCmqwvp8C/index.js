@@ -17,14 +17,14 @@ class _I3EoELuQCmqwvp8C extends Endpoint {
      * @param req (p0: transaction_id, p1: date_begin, p2: date_end, p3:
      *     address_key_identifier, p4: is_double_spend, p5:
      *     double_spend_date_begin, p6: double_spend_date_end, p7:
-     *     output_transaction_id, p8: order_by="create_date desc", p9:
-     *     record_limit=1000, p10: shard_id
+     *     output_transaction_id, p8: output_position, p9:
+     *     order_by="create_date desc", p10: record_limit=1000, p11: shard_id
      * @param res
      */
     handler(app, req, res) {
-        const orderBy = req.query.p8 || 'create_date desc';
-        const limit   = parseInt(req.query.p9) || 1000;
-        const shardID = req.query.p10 || undefined;
+        const orderBy = req.query.p9 || 'create_date desc';
+        const limit   = parseInt(req.query.p10) || 1000;
+        const shardID = req.query.p11 || undefined;
 
         database.applyShards((dbShardID) => {
             const transactionRepository = database.getRepository('transaction', dbShardID);
@@ -40,6 +40,7 @@ class _I3EoELuQCmqwvp8C extends Endpoint {
                 double_spend_date_begin           : req.query.p5,
                 double_spend_date_end             : req.query.p6,
                 output_transaction_id             : req.query.p7,
+                output_position                   : req.query.p8,
                 'transaction_input.shard_id'      : shardID
             }, orderBy, limit);
         }, orderBy, limit, shardID)

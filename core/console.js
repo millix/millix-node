@@ -10,13 +10,16 @@ console.addFilter = function(filter) {
     filters.push(filter);
 };
 
-console.log       = function() {
-    let showLog = true;
-    if(filters.length > 0) {
-        const regex = new RegExp(`^\\[(${filters.join('|')})[^\\]]*\\]`, "m");
-        showLog = !!regex.exec(arguments[0]);
+console.log = function() {
+    if (!enabled || !config.MODE_DEBUG) {
+        return;
     }
-    enabled && showLog && config.MODE_DEBUG && _consoleLog.apply(console, arguments);
+    let showLog = true;
+    if (filters.length > 0) {
+        const regex = new RegExp(`^\\[(${filters.join('|')})[^\\]]*\\]`, 'm');
+        showLog     = !!regex.exec(arguments[0]);
+    }
+    showLog && _consoleLog.apply(console, arguments);
 };
 
 config.DEBUG_LOG_FILTER.forEach(filter => console.addFilter(filter));

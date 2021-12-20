@@ -18,7 +18,6 @@ export class Database {
     static ID_CHARACTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
     constructor() {
-        this.debug              = false;
         this.databaseMillix     = null;
         this.databaseJobEngine  = null;
         this.databaseRootFolder = null;
@@ -157,7 +156,10 @@ export class Database {
     }
 
     static enableDebugger(database) {
-        const dbAll  = database.all.bind(database);
+        database.on('profile', (sql, time) => {
+            console.log(`[database] trace performance => ${sql} : ${time}ms`);
+        });
+        /*const dbAll  = database.all.bind(database);
         database.all = (function(sql, parameters, callback) {
             console.log(`[database] query all start: ${sql}`);
             if (typeof (parameters) === 'function') {
@@ -183,7 +185,7 @@ export class Database {
                 console.log(`[database] query get (run time ${timeElapsed}ms): ${sql} : ${err}`);
                 callback(err, data);
             });
-        }).bind(database);
+        }).bind(database);*/
     }
 
     _initializeMillixSqlite3() {
@@ -219,7 +221,7 @@ export class Database {
 
                 console.log('Connected to the millix database.');
 
-                this.debug && Database.enableDebugger(this.databaseMillix);
+                config.MODE_DEBUG && Database.enableDebugger(this.databaseMillix);
 
                 if (doInitialize) {
                     console.log('Initializing database');
@@ -233,12 +235,12 @@ export class Database {
                             }
                             console.log('Database initialized');
 
-                            resolve();
+                            this.databaseMillix.run('PRAGMA journal_mode = WAL', () => this.databaseMillix.run('PRAGMA synchronous = NORMAL', () => resolve()));
                         });
                     });
                 }
                 else {
-                    resolve();
+                    this.databaseMillix.run('PRAGMA journal_mode = WAL', () => this.databaseMillix.run('PRAGMA synchronous = NORMAL', () => resolve()));
                 }
 
             });
@@ -470,6 +472,9 @@ export class Database {
                         }
 
                         if (orderBy) {
+                            if (orderBy.trim().split(' ').length === 1) {
+                                orderBy += ' asc';
+                            }
                             const regExp = /^(?<column>\w+) (?<order>asc|desc)$/.exec(orderBy);
                             if (regExp && regExp.groups && regExp.groups.column && regExp.groups.order) {
                                 data = _.orderBy(data, regExp.groups.column, regExp.groups.order);
@@ -594,7 +599,7 @@ export class Database {
                               is_sticky: true,
                               timestamp: Date.now()
                           });
-                          throw Error('[shard] migration ' + err.message);
+                          throw Error('[database] migration ' + err.message);
                       }
                   });
         });
@@ -656,7 +661,18 @@ export class Database {
                 else {
                     callback();
                 }
-            }, () => resolve());
+            }, () => {
+                async.eachSeries(_.keys(this.shards), (shardID, callback) => {
+                    if (this.shards[shardID].checkup) {
+                        this.shards[shardID].checkup().then(() => callback());
+                    }
+                    else {
+                        callback();
+                    }
+                }, () => {
+                    resolve();
+                });
+            });
         });
     }
 }
