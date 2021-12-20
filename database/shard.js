@@ -5,10 +5,12 @@ import {Schema, Transaction} from './repositories/repositories';
 import path from 'path';
 import {Database} from './database';
 import eventBus from '../core/event-bus';
+import os from 'os';
+import async from 'async';
+import _ from 'lodash';
 
 export default class Shard {
     constructor(databaseFile, shardID) {
-        this.debug        = false;
         this.databaseFile = databaseFile;
         this.shardID      = shardID;
         this.repositories = {};
@@ -17,6 +19,7 @@ export default class Shard {
     initialize() {
         if (config.DATABASE_ENGINE === 'sqlite') {
             return this._initializeMillixShardSqlite3()
+                       .then(() => this._attachShardZero())
                        .then(() => this._migrateTables())
                        .then(() => this._initializeTables());
         }
@@ -24,7 +27,7 @@ export default class Shard {
     }
 
     _initializeTables() {
-        this.repositories['transaction']        = new Transaction(this.database);
+        this.repositories['transaction'] = new Transaction(this.database);
         return Promise.resolve();
     }
 
@@ -75,6 +78,19 @@ export default class Shard {
         });
     }
 
+    _attachShardZero() {
+        return new Promise((resolve, reject) => {
+            const databaseRootFolder = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
+            const shardZeroDBPath    = path.join(databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_MILLIX);
+            this.database.exec(`ATTACH DATABASE '${shardZeroDBPath}' AS shard_zero`, (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                return resolve();
+            });
+        });
+    }
+
     _initializeMillixShardSqlite3() {
         return new Promise(resolve => {
             const sqlite3                       = require('sqlite3');
@@ -106,7 +122,7 @@ export default class Shard {
 
                 console.log('[shard] connected to the shard database: ', this.shardID);
 
-                this.debug && Database.enableDebugger(this.database);
+                config.MODE_DEBUG && Database.enableDebugger(this.database);
 
                 if (doInitialize) {
                     console.log('[shard] initializing database');
@@ -120,14 +136,27 @@ export default class Shard {
                             }
                             console.log('[shard] database initialized');
                             this.database.shardID = this.shardID;
-                            resolve();
+                            this.database.run('PRAGMA journal_mode = WAL', () => this.database.run('PRAGMA synchronous = NORMAL', () => resolve()));
                         });
                     });
                 }
                 else {
-                    resolve();
+                    this.database.run('PRAGMA journal_mode = WAL', () => this.database.run('PRAGMA synchronous = NORMAL', () => resolve()));
                 }
             });
+        });
+    }
+
+    checkup() {
+        return new Promise(resolve => {
+            async.eachSeries(_.keys(this.repositories), (repositoryName, callback) => {
+                if (this.repositories[repositoryName].checkup) {
+                    this.repositories[repositoryName].checkup().then(() => callback());
+                }
+                else {
+                    callback();
+                }
+            }, () => resolve());
         });
     }
 
