@@ -14,7 +14,7 @@ export default class Node {
     }
 
     addNodeAttributeType(attributeType) {
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
             let nodeAttributeID = this.normalizationRepository.get(attributeType);
             if (!nodeAttributeID) {
                 nodeAttributeID = Database.generateID(20);
@@ -26,7 +26,11 @@ export default class Node {
                 ], (err) => {
                     if (err) {
                         this.database.get('SELECT attribute_type_id FROM node_attribute_type WHERE attribute_type = ?',
-                            [attributeType], (_, row) => {
+                            [attributeType], (err, row) => {
+                                if (!row) {
+                                    console.log("[node] unexpected error ", err, "attribute ", attributeType, " value", row);
+                                    return reject(err);
+                                }
                                 resolve(row.attribute_type_id);
                             });
                         return;

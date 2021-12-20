@@ -13,18 +13,22 @@ const argv = require('yargs')
         'initial-peers': {
             demandOption: false,
             array       : true
+        },
+        'nat-pmp'      : {
+            type   : 'boolean',
+            default: true
         }
     }).argv;
 
 if (argv.initialPeers) {
     config.NODE_INITIAL_LIST = argv.initialPeers.map(e => {
-        const part = e.split(":");
+        const part = e.split(':');
         return {
             host          : part[0],
             port_protocol : parseInt(part[1]),
             port_api      : parseInt(part[2]),
             port_discovery: parseInt(part[3])
-        }
+        };
     });
 }
 
@@ -71,6 +75,10 @@ if (argv.dataFolder) {
 
 if (argv.debug === 'true') {
     config.MODE_DEBUG = true;
+}
+
+if (!argv.natPmp) {
+    config.NODE_NAT_PMP = false;
 }
 
 process.title = 'millix-node';
