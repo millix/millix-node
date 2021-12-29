@@ -212,6 +212,11 @@ export class WalletTransactionConsensus {
                 }
 
                 if (!transaction) {
+                    wallet.requestTransactionFromNetwork(transactionID, {
+                        priority: 1,
+                        dispatch_request  : true
+                    });
+
                     return reject({
                         cause              : 'transaction_not_found',
                         transaction_id_fail: transactionID,
@@ -286,6 +291,12 @@ export class WalletTransactionConsensus {
                                                            });
                                                        }
                                                        else if (responseType === 'transaction_not_found') {
+
+                                                           wallet.requestTransactionFromNetwork(data.transaction_id, {
+                                                               priority: 1,
+                                                               dispatch_request  : true
+                                                           });
+
                                                            return reject({
                                                                cause              : responseType,
                                                                transaction_id_fail: data.transaction_id,
@@ -330,6 +341,12 @@ export class WalletTransactionConsensus {
                                            });
                                        }).then(output => {
                                            if (!output) {
+
+                                               wallet.requestTransactionFromNetwork(input.output_transaction_id, {
+                                                   priority: 1,
+                                                   dispatch_request  : true
+                                               });
+
                                                return callback({
                                                    cause              : 'transaction_not_found',
                                                    transaction_id_fail: input.output_transaction_id,
@@ -744,7 +761,7 @@ export class WalletTransactionConsensus {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     transactionRepository.getTransactionObject(data.transaction_id_fail)
                                          .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject());
-                });
+                }).then(transaction => peer.transactionSendToNode(transaction, ws));
             }).then(transaction => {
                 if (!transaction) {
                     peer.transactionSyncRequest(data.transaction_id_fail, {dispatch_request: true}).then(_ => _).catch(_ => _);

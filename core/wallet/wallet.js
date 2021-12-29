@@ -1452,7 +1452,7 @@ class Wallet {
                                .then(knownKeyIdentifierSet => {
                                    config.EXTERNAL_WALLET_KEY_IDENTIFIER.forEach(externalKeyIdentifier => knownKeyIdentifierSet.add(externalKeyIdentifier));
                                    return database.getRepository('transaction') // shard zero
-                                                  .pruneShardZero(externalKeyIdentifier);
+                                                  .pruneShardZero(knownKeyIdentifierSet);
                                })
                                .then(() => {
                                    unlock();
