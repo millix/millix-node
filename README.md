@@ -56,7 +56,7 @@ git clone https://github.com/millix/millix-node.git -b develop
 ## Run millix-node
 ```
 cd millix-node
-vi run-millix-node.sh.sh
+vi run-millix-node.sh
 #replace “127.0.0.1” with your ip  (find by whatismyip)
 ```
 
