@@ -863,6 +863,10 @@ class Wallet {
 
                                                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                                                       delete this._transactionRequested[transaction.transaction_id];
+                                                                                                                      const cachedValidation = cache.getCacheItem('validation', transaction.transaction_id);
+                                                                                                                      if(cachedValidation && cachedValidation.cause === 'transaction_not_found') {
+                                                                                                                          cache.removeCacheItem('validation', transaction.transaction_id);
+                                                                                                                      }
                                                                                                                   });
                                                                                   });
 
