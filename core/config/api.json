@@ -397,6 +397,15 @@
       "enable": true
     },
     {
+      "id": "RLOk0Wji0lQVjynT",
+      "name": "get_os_info",
+      "description": "get the node os info",
+      "method": "GET",
+      "version_released": "1.10.2",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "XPzc85T3reYmGro1",
       "name": "send_transaction_from_wallet",
       "description": "submits a new transaction from the active wallet, specifying the outputs and amounts to the node. this API builds the tx payload and submits it",
