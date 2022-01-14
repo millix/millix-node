@@ -401,7 +401,7 @@
       "name": "get_os_info",
       "description": "get the node os info",
       "method": "GET",
-      "version_released": "1.10.2",
+      "version_released": "1.12.8",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
