@@ -122,7 +122,7 @@ class Wallet {
         return mnemonic.phrase;
     }
 
-    getMnemonic() {
+    getMnemonic(createIfNotExits) {
         return new Promise((resolve) => {
             walletUtils.loadMnemonic()
                        .then(([passphrase, isNewMnemonic]) => resolve([
@@ -130,11 +130,19 @@ class Wallet {
                            isNewMnemonic
                        ]))
                        .catch(() => {
-                           console.log('Creating new mnemonic');
-                           let passphrase = this.createMnemonic();
-                           resolve([
+                           console.log('[wallet] ' + (createIfNotExits ? 'Creating new mnemonic' : 'No wallet found in the system'));
+                           let passphrase = undefined;
+                           if (createIfNotExits) {
+                               passphrase = this.createMnemonic();
+                               console.log('[wallet] creating a new mnemonic. please backup these 24 words to be able to recover you wallet.');
+                               console.log('[wallet] mnemonic phrase => ', passphrase);
+                           }
+                           resolve(createIfNotExits ? [
                                passphrase,
                                true
+                           ] : [
+                               undefined,
+                               false
                            ]);
                        });
         });
@@ -864,7 +872,7 @@ class Wallet {
                                                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                                                       delete this._transactionRequested[transaction.transaction_id];
                                                                                                                       const cachedValidation = cache.getCacheItem('validation', transaction.transaction_id);
-                                                                                                                      if(cachedValidation && cachedValidation.cause === 'transaction_not_found') {
+                                                                                                                      if (cachedValidation && cachedValidation.cause === 'transaction_not_found') {
                                                                                                                           cache.removeCacheItem('validation', transaction.transaction_id);
                                                                                                                       }
                                                                                                                   });
@@ -1716,26 +1724,43 @@ class Wallet {
                   });
     }
 
-    initialize(initializeEventsOnly) {
+    initialize(initializeEventsOnly, createWalletIfNotExists) {
         if (!initializeEventsOnly) {
-            return this.getMnemonic()
-                       .then(([mnemonicPhrase, isNewMnemonic]) =>
-                           this.getWalletPrivateKey(mnemonicPhrase, isNewMnemonic).then(xPrivkey => [
+            return this.getMnemonic(createWalletIfNotExists)
+                       .then(([mnemonicPhrase, isNewMnemonic]) => {
+
+                           if (mnemonicPhrase === undefined) { // not wallet found
+                               return Promise.resolve(null);
+                           }
+
+                           return this.getWalletPrivateKey(mnemonicPhrase, isNewMnemonic).then(xPrivkey => [
                                xPrivkey,
                                isNewMnemonic
                            ])
-                               .then(([xPrivkey, isNewMnemonic]) => this.isCreateWallet(xPrivkey, isNewMnemonic))
-                               .then(([xPrivkey, isCreated]) => this.activateWalletByMasterKey(xPrivkey, isCreated))
-                               .then((walletID) => {
-                                   if (isNewMnemonic) {
-                                       return walletUtils.storeMnemonic(mnemonicPhrase).then(() => walletID);
-                                   }
-                                   else {
-                                       return Promise.resolve(walletID);
-                                   }
-                               })
-                       )
+                                      .then(([xPrivkey, isNewMnemonic]) => this.isCreateWallet(xPrivkey, isNewMnemonic))
+                                      .then(([xPrivkey, isCreated]) => this.activateWalletByMasterKey(xPrivkey, isCreated))
+                                      .then((walletID) => {
+                                          if (isNewMnemonic) {
+                                              return walletUtils.storeMnemonic(mnemonicPhrase).then(() => walletID);
+                                          }
+                                          else {
+                                              return Promise.resolve(walletID);
+                                          }
+                                      });
+                       })
                        .then(walletID => {
+                           if (!walletID) { // not wallet found
+                               return new Promise((_, reject) => {
+                                   console.log('[wallet] waiting for a new wallet to be created...');
+                                   const error = {
+                                       cause  : 'wallet_not_found',
+                                       message: 'there is no wallet configured'
+                                   };
+                                   eventBus.emit('wallet_authentication_error', error);
+                                   reject(error);
+                               });
+                           }
+
                            this._initializeEvents();
                            return database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
                                           .then(defaultKeyIdentifier => {
@@ -1754,6 +1779,9 @@ class Wallet {
                                           });
                        })
                        .catch((err) => {
+                           if (err && err.cause === 'wallet_not_found') {
+                               return Promise.reject(err);
+                           }
                            throw Error(`Could not initialize wallet ${err}`);
                        });
         }
