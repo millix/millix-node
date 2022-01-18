@@ -2481,21 +2481,10 @@ export default class Transaction {
                     if (err) {
                         return reject();
                     }
-                    const supportedShard = database.shards;
                     async.eachSeries(transactionList, (transaction, callback) => {
-                        if (transaction.is_stable === 0) {
-                            return this.deleteTransaction(transaction.transaction_id)
-                                       .then(() => callback())
-                                       .catch(() => callback());
-                        }
-
                         this.getTransactionObject(transaction.transaction_id)
                             .then(transaction => {
-                                if (_.find(transaction.transaction_input_list, _.matchesProperty('is_double_spend', 1)) ||
-                                    _.find(transaction.transaction_output_list, _.matchesProperty('is_double_spend', 1))) {
-                                    return this.deleteTransaction(transaction.transaction_id);
-                                }
-                                else if (database.getShard(transaction.shard_id)) {
+                                if (database.getShard(transaction.shard_id)) {
                                     // is supported shard? move transaction to
                                     // shard
                                     const transactionRepository = database.getRepository('transaction', transaction.shard_id);

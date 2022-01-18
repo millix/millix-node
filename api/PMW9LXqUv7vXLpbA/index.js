@@ -53,8 +53,8 @@ class _PMW9LXqUv7vXLpbA extends Endpoint {
                         res.send({
                             api_status: 'success',
                             wallet    : {
-                                id         : walletID,
-                                address    : `${keyIdentifier}${addressVersion}${keyIdentifier}`,
+                                id                    : walletID,
+                                address               : `${keyIdentifier}${addressVersion}${keyIdentifier}`,
                                 address_key_identifier: keyIdentifier
                             }
                         });
@@ -63,7 +63,10 @@ class _PMW9LXqUv7vXLpbA extends Endpoint {
         };
         eventBus.once('wallet_unlock', authenticationSuccessHandler);
         services.stop();
-        services.initialize({initialize_wallet_event: false}).catch(e => {
+        services.initialize({
+            initialize_wallet_event: false,
+            auto_create_wallet     : false
+        }).catch(e => {
             eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
             eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
             res.send({
