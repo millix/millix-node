@@ -1,6 +1,6 @@
 import console from './core/console';
 import db from './database/database';
-import wallet from './core/wallet/wallet';
+import eventBus from './core/event-bus';
 import config from './core/config/config';
 import configLoader from './core/config/config-loader';
 import genesisConfig from './core/genesis/genesis-config';

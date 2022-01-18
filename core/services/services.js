@@ -17,10 +17,11 @@ class Service {
     }
 
     initialize(options = {}) {
-        const {
-                  mode,
-                  initialize_wallet_event: initializeWalletEvent
-              } = options;
+        let {
+                mode,
+                initialize_wallet_event: initializeWalletEvent,
+                auto_create_wallet     : createWalletIfNotExists
+            } = options;
         if (this.initialized) {
             return Promise.resolve();
         }
@@ -28,9 +29,13 @@ class Service {
         if (mode) {
             this.mode = mode;
         }
+
+        if (createWalletIfNotExists === undefined) {
+            createWalletIfNotExists = true;
+        }
         return logManager.initialize()
                          .then(() => server.initialize())
-                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
+                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent, createWalletIfNotExists))
                          .then(() => cache.initialize())
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
@@ -41,6 +46,9 @@ class Service {
                          .catch(e => {
                              console.log(`[services] ${e.message}`);
                              this.initialized = false;
+                             if (e.cause === 'wallet_not_found') {
+                                 return;
+                             }
                              return this.initialize(options);
                          });
     }

@@ -212,6 +212,11 @@ export class WalletTransactionConsensus {
                 }
 
                 if (!transaction) {
+                    wallet.requestTransactionFromNetwork(transactionID, {
+                        priority        : 1,
+                        dispatch_request: true
+                    });
+
                     return reject({
                         cause              : 'transaction_not_found',
                         transaction_id_fail: transactionID,
@@ -286,6 +291,12 @@ export class WalletTransactionConsensus {
                                                            });
                                                        }
                                                        else if (responseType === 'transaction_not_found') {
+
+                                                           wallet.requestTransactionFromNetwork(data.transaction_id, {
+                                                               priority        : 1,
+                                                               dispatch_request: true
+                                                           });
+
                                                            return reject({
                                                                cause              : responseType,
                                                                transaction_id_fail: data.transaction_id,
@@ -330,6 +341,12 @@ export class WalletTransactionConsensus {
                                            });
                                        }).then(output => {
                                            if (!output) {
+
+                                               wallet.requestTransactionFromNetwork(input.output_transaction_id, {
+                                                   priority        : 1,
+                                                   dispatch_request: true
+                                               });
+
                                                return callback({
                                                    cause              : 'transaction_not_found',
                                                    transaction_id_fail: input.output_transaction_id,
@@ -475,13 +492,15 @@ export class WalletTransactionConsensus {
                 console.log('[wallet-transaction-consensus-oracle] consensus error: ', err);
 
                 delete this._transactionValidationState[nodeID];
-                let ws = network.getWebSocketByID(connectionID);
+                let ws        = network.getWebSocketByID(connectionID);
+                let cacheTime = 90000;
                 if (err.cause === 'consensus_timeout') {
                     return;
                 }
                 else if (err.cause === 'transaction_not_found') {
                     ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
                     wallet.requestTransactionFromNetwork(err.transaction_id_fail);
+                    cacheTime = 2000;
                 }
 
                 if (ws) {
@@ -491,7 +510,7 @@ export class WalletTransactionConsensus {
                         valid         : false,
                         type          : 'validation_response'
                     };
-                    cache.setCacheItem('validation', transactionID, validationResult, 90000);
+                    cache.setCacheItem('validation', transactionID, validationResult, cacheTime);
                     peer.transactionValidationResponse(validationResult, ws, true);
                 }
             });
@@ -660,7 +679,9 @@ export class WalletTransactionConsensus {
                 type: 'validation_start'
             }, ws);
             peer.transactionValidationResponse(cachedValidation, ws, true);
-            cache.refreshCacheTime('validation', data.transaction_id, 90000);
+            if (cachedValidation.cause !== 'transaction_not_found') {
+                cache.refreshCacheTime('validation', data.transaction_id, 90000);
+            }
             return;
         }
 
@@ -735,7 +756,7 @@ export class WalletTransactionConsensus {
             'transaction_invalid_amount'
         ].includes(data.cause)) {
             delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][ws.nodeID];
-            this._consensusRoundState[transactionID].requestPeerValidation();
+            this._consensusRoundState[transactionID].requestPeerValidation && this._consensusRoundState[transactionID].requestPeerValidation();
             return;
         }
         else if (data.cause === 'transaction_not_found') {
@@ -744,7 +765,7 @@ export class WalletTransactionConsensus {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     transactionRepository.getTransactionObject(data.transaction_id_fail)
                                          .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject());
-                });
+                }).then(transaction => peer.transactionSendToNode(transaction, ws));
             }).then(transaction => {
                 if (!transaction) {
                     peer.transactionSyncRequest(data.transaction_id_fail, {dispatch_request: true}).then(_ => _).catch(_ => _);
