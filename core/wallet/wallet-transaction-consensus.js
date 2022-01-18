@@ -756,7 +756,7 @@ export class WalletTransactionConsensus {
             'transaction_invalid_amount'
         ].includes(data.cause)) {
             delete this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count][ws.nodeID];
-            this._consensusRoundState[transactionID].requestPeerValidation();
+            this._consensusRoundState[transactionID].requestPeerValidation && this._consensusRoundState[transactionID].requestPeerValidation();
             return;
         }
         else if (data.cause === 'transaction_not_found') {
