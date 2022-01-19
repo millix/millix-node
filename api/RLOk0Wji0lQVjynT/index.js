@@ -1,5 +1,6 @@
 import Endpoint from '../endpoint';
 import os from 'os';
+import {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../../core/config/config';
 
 
 /**
@@ -28,8 +29,9 @@ class _RLOk0Wji0lQVjynT extends Endpoint {
             }
 
             let cpu = {
-                model: [],
-                speed: []
+                model  : [],
+                speed  : [],
+                loadavg: []
             };
             for (const p in osCpus.model) {
                 cpu.model.push(osCpus.model[p] + ' × ' + p);
@@ -40,19 +42,26 @@ class _RLOk0Wji0lQVjynT extends Endpoint {
             cpu.model = cpu.model.join(', ');
             cpu.speed = cpu.speed.join(', ') + ' MHz';
 
+            const loadavg = os.loadavg();
+            loadavg.forEach(item => {
+                cpu.loadavg.push(item.toFixed(2));
+            });
+
             let memory = {
                 total      : Math.round((os.totalmem() / 1024 / 1024 / 1024) * 100) / 100 + 'GB',
                 free       : Math.round((os.freemem() / 1024 / 1024 / 1024) * 100) / 100 + 'GB',
-                freePercent: Math.round(os.freemem() / os.totalmem() * 100).toString() + '%'
+                freePercent: Math.round(os.freemem() / os.totalmem() * 100).toString() + '%',
             };
 
             res.send({
-                type    : os.type(),
-                platform: os.platform(),
-                release : os.release(),
-                arch    : os.arch(),
-                cpu     : cpu,
-                memory  : memory
+                type                  : os.type(),
+                platform              : os.platform(),
+                release               : os.release(),
+                arch                  : os.arch(),
+                cpu                   : cpu,
+                memory                : memory,
+                node_millix_version   : NODE_MILLIX_VERSION,
+                node_millix_build_date: NODE_MILLIX_BUILD_DATE
             });
         }
         catch (e) {
