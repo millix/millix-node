@@ -626,7 +626,7 @@ export class WalletTransactionConsensus {
                                            else if (e === 'node_timeout') {
                                                selectedWS.consensusTimeoutCount += 1;
                                                console.log('[wallet-transaction-consensus] node timeout count:', selectedWS.consensusTimeoutCount);
-                                               if (selectedWS.consensusTimeoutCount >= 5) {
+                                               if (selectedWS.consensusTimeoutCount >= 15) {
                                                    console.log('[wallet-transaction-consensus] disconnecting node', selectedWS.nodeID, ', reason:', e);
                                                    network.disconnectWebSocket(selectedWS);
                                                    peerRotation.doPeerRotation();
