@@ -575,8 +575,7 @@ export class WalletTransactionConsensus {
 
                                    if (!selectedWS) {
                                        console.log('[wallet-transaction-consensus] no node ready for this consensus round');
-                                       //TODO: trigger peer rotation?
-                                       peerRotation.doPeerRotation();
+                                       //TODO: trigger peer rotation? check the best way to do it
                                        if (!scheduledRequestPeerValidation) {
                                            scheduledRequestPeerValidation = true;
                                            return setTimeout(() => {
@@ -592,6 +591,7 @@ export class WalletTransactionConsensus {
                                    const consensusRoundNumber                                                                     = consensusData.consensus_round_count;
                                    peer.transactionValidationRequest({transaction_id: transactionID}, selectedWS)
                                        .then(data => {
+                                           selectedWS.consensusTimeoutCount = 0;
                                            if (data.type !== 'validation_start') {
                                                console.log('[wallet-transaction-consensus] node', selectedWS.nodeID, ' did not accept to validate the transaction', transactionID);
                                                // reset node to available
