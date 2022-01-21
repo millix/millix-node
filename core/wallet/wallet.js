@@ -327,12 +327,18 @@ class Wallet {
                         }
                         outputs = _.orderBy(outputs, ['amount'], ['asc']);
 
-                        let remainingAmount       = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
+                        const transactionAmount = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
+                        let remainingAmount       = transactionAmount;
                         const outputsToUse        = [];
                         const privateKeyMap       = {};
                         const addressAttributeMap = {};
 
                         for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
+
+                            if (i === config.TRANSACTION_INPUT_MAX - 1) { /* we cannot add more inputs and still we did not aggregate the required amount for the transaction */
+                                return Promise.reject(`the maximum allowed number of inputs can fund a transaction of ${(transactionAmount - remainingAmount).toLocaleString('en-US')} mlx`);
+                            }
+
                             let output                               = outputs[i];
                             remainingAmount -= output.amount;
                             const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());

@@ -333,7 +333,7 @@ class Peer {
                                               eventBus.removeAllListeners(`transaction_new_proxy:${nodeID}:${transactionID}`);
                                               reject('proxy_timeout');
                                           }
-                                      }, config.NETWORK_LONG_TIME_WAIT_MAX * 5);
+                                      }, config.NETWORK_LONG_TIME_WAIT_MAX * 15);
 
                                   }
                                   else {
@@ -698,7 +698,7 @@ class Peer {
                             callbackCalled = true;
                             reject('node_timeout');
                         }
-                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 5);
+                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 15);
                 }
                 else {
                     reject('node_connection_not_ready');
