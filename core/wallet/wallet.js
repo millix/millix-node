@@ -323,11 +323,14 @@ class Wallet {
                     })
                     .then((outputs) => {
                         if (!outputs || outputs.length === 0) {
-                            return Promise.reject('insufficient_balance');
+                            return Promise.reject({
+                                error: 'insufficient_balance',
+                                data : {balance_stable: 0}
+                            });
                         }
                         outputs = _.orderBy(outputs, ['amount'], ['asc']);
 
-                        const transactionAmount = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
+                        const transactionAmount   = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
                         let remainingAmount       = transactionAmount;
                         const outputsToUse        = [];
                         const privateKeyMap       = {};
@@ -336,7 +339,10 @@ class Wallet {
                         for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
 
                             if (i === config.TRANSACTION_INPUT_MAX - 1) { /* we cannot add more inputs and still we did not aggregate the required amount for the transaction */
-                                return Promise.reject(`the maximum allowed number of inputs can fund a transaction of ${(transactionAmount - remainingAmount).toLocaleString('en-US')} mlx`);
+                                return Promise.reject({
+                                    error: 'transaction_input_max_error',
+                                    data : {amount_max: transactionAmount - remainingAmount}
+                                });
                             }
 
                             let output                               = outputs[i];
@@ -349,7 +355,10 @@ class Wallet {
                         }
 
                         if (remainingAmount > 0) {
-                            return Promise.reject('insufficient_balance');
+                            return Promise.reject({
+                                error: 'insufficient_balance',
+                                data : {balance_stable: transactionAmount - remainingAmount}
+                            });
                         }
                         let keyMap      = {
                             'transaction_id'  : 'output_transaction_id',
@@ -400,7 +409,7 @@ class Wallet {
                             this.resetTransactionValidationRejected();
                         }
 
-                        reject(e);
+                        reject({error: e});
                         unlock();
                     });
             });
