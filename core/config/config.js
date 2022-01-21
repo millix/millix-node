@@ -1,31 +1,31 @@
-export const MODE_DEBUG = true;
-export const MODE_TEST_NETWORK = true;
-export const NODE_PORT_MAIN_NETWORK = 10000;
-export const NODE_PORT_TEST_NETWORK = 30000;
-export const NODE_PORT_DISCOVERY_TEST_NETWORK = 4000;
-export const NODE_PORT_DISCOVERY_MAIN_NETWORK = 2000;
-export const NODE_PORT_DISCOVERY = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
-export const NODE_PORT = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
-export const NODE_PORT_API = 5500;
-export const NODE_HOST = 'localhost';
-export const NODE_HOST_FORCE = false;
-export const NODE_BIND_IP = '0.0.0.0';
-export const NODE_NAT_PMP = true;
-export const NODE_NAT_PMP_CHECK = false;
-export const WEBSOCKET_PROTOCOL = 'wss://';
-export const RPC_INTERFACE = '0.0.0.0';
-export const NODE_PUBLIC = false;
-export const MODE_NODE_FULL = false;
-export const EXTERNAL_WALLET_KEY_IDENTIFIER = [];
-export const NODE_INITIAL_LIST_MAIN_NETWORK = [
+export const MODE_DEBUG                                        = true;
+export const MODE_TEST_NETWORK                                 = true;
+export const NODE_PORT_MAIN_NETWORK                            = 10000;
+export const NODE_PORT_TEST_NETWORK                            = 30000;
+export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
+export const NODE_PORT_DISCOVERY_MAIN_NETWORK                  = 2000;
+export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
+export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
+export const NODE_PORT_API                                     = 5500;
+export const NODE_HOST                                         = 'localhost';
+export const NODE_HOST_FORCE                                   = false;
+export const NODE_BIND_IP                                      = '0.0.0.0';
+export const NODE_NAT_PMP                                      = true;
+export const NODE_NAT_PMP_CHECK                                = false;
+export const WEBSOCKET_PROTOCOL                                = 'wss://';
+export const RPC_INTERFACE                                     = '0.0.0.0';
+export const NODE_PUBLIC                                       = false;
+export const MODE_NODE_FULL                                    = false;
+export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
+export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
-        host: '18.136.162.158',
-        port_protocol: 10000,
-        port_api: 5500,
+        host          : '18.136.162.158',
+        port_protocol : 10000,
+        port_api      : 5500,
         port_discovery: 2000
     },
     {
-        host: '18.136.162.158',
+        host          : '18.136.162.158',
         port_protocol : 10001,
         port_api      : 5500,
         port_discovery: 2000
@@ -699,53 +699,53 @@ export const NODE_INITIAL_LIST_TEST_NETWORK                    = [
         port_discovery: 4000
     },
     {
-        host: 'test-node-00010.millix.com',
-        port_protocol: 30000,
-        port_api: 5500,
+        host          : 'test-node-00010.millix.com',
+        port_protocol : 30000,
+        port_api      : 5500,
         port_discovery: 4000
     }
 ];
-export const NODE_CONNECTION_INBOUND_WHITELIST = [];
-export const NODE_CONNECTION_OUTBOUND_WHITELIST = [];
-export const NODE_CONNECTION_STATIC = [];
-export const NODE_INITIAL_LIST = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT = 1;
-export const CONSENSUS_ROUND_VALIDATION_REQUIRED = 2;
-export const CONSENSUS_ROUND_VALIDATION_MAX = 5;
-export const CONSENSUS_ROUND_NOT_FOUND_MAX = 5;
-export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX = 5;
-export const CONSENSUS_VALIDATION_DEPTH_MAX = 50;
-export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX = 10000;
-export const CONSENSUS_VALIDATION_WAIT_TIME_MAX = 30 * 1000;
-export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME = 10 * 1000;
-export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX = 2;
-export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX = 2;
-export const TRANSACTION_TIME_LIMIT_PROXY = 15000;
-export const TRANSACTION_FEE_PROXY = 1000;
-export const TRANSACTION_FEE_DEFAULT = 1000;
-export const TRANSACTION_FEE_NETWORK = 0.0;
-export const TRANSACTION_PRUNE_AGE_MIN = 10;
-export const TRANSACTION_PRUNE_COUNT = 1000;
-export const TRANSACTION_RETRY_SYNC_MAX = 100;
-export const TRANSACTION_INPUT_MAX = 128;
-export const TRANSACTION_OUTPUT_MAX = 128;
-export const TRANSACTION_PARENT_MAX = 16;
-export const TRANSACTION_SIGNATURE_MAX = 128;
-export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN = 60;
-export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN = 10;
-export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN = 10;
-export const NODE_CONNECTION_INBOUND_MAX = 30;
-export const NODE_CONNECTION_OUTBOUND_MAX = 30;
-export const NODE_CONNECTION_PUBLIC_PERCENT = 0.2;
-export const HEARTBEAT_TIMEOUT = 10 * 1000;
-export const HEARTBEAT_RESPONSE_TIMEOUT = 60 * 1000;
-export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT = 100;
-export const WALLET_LOG_SIZE_MAX = 1000;
-export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK = '0a20';
-export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK = 'la2l';
-export const WALLET_TRANSACTION_DEFAULT_VERSION = MODE_TEST_NETWORK ? WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK : WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK;
-export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK = '0b20';
-export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK = 'lb2l';
+export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
+export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
+export const NODE_CONNECTION_STATIC                            = [];
+export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
+export const CONSENSUS_ROUND_NODE_COUNT                        = 1;
+export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 2;
+export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
+export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
+export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 5;
+export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
+export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 10000;
+export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
+export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
+export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
+export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
+export const TRANSACTION_TIME_LIMIT_PROXY                      = 15000;
+export const TRANSACTION_FEE_PROXY                             = 1000;
+export const TRANSACTION_FEE_DEFAULT                           = 1000;
+export const TRANSACTION_FEE_NETWORK                           = 0.0;
+export const TRANSACTION_PRUNE_AGE_MIN                         = 10;
+export const TRANSACTION_PRUNE_COUNT                           = 1000;
+export const TRANSACTION_RETRY_SYNC_MAX                        = 100;
+export const TRANSACTION_INPUT_MAX                             = 128;
+export const TRANSACTION_OUTPUT_MAX                            = 128;
+export const TRANSACTION_PARENT_MAX                            = 16;
+export const TRANSACTION_SIGNATURE_MAX                         = 128;
+export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 60;
+export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 10;
+export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
+export const NODE_CONNECTION_INBOUND_MAX                       = 30;
+export const NODE_CONNECTION_OUTBOUND_MAX                      = 30;
+export const NODE_CONNECTION_PUBLIC_PERCENT                    = 0.2;
+export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
+export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
+export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
+export const WALLET_LOG_SIZE_MAX                               = 1000;
+export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a20';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la2l';
+export const WALLET_TRANSACTION_DEFAULT_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK : WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK;
+export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b20';
+export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb2l';
 export const WALLET_TRANSACTION_REFRESH_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK : WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a0',
