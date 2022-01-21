@@ -497,7 +497,7 @@
     },
     {
       "id": "LOLb7q23p8rYSLwv",
-      "name": "get_get_is_key_present",
+      "name": "get_is_key_present",
       "description": "returns boolean value of presence of private_key.json",
       "method": "GET",
       "version_released": "1.11.5",
