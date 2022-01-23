@@ -888,13 +888,13 @@ export class WalletTransactionConsensus {
 
                 if (!transaction) {
                     return database.getRepository('transaction')
-                                   .setPathAsStableFrom(transactionID)
+                                   .updateTransactionAsStable(transactionID)
                                    .then(() => consensusData.resolve())
                                    .catch(() => consensusData.resolve());
                 }
 
                 return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
-                    return transactionRepository.setPathAsStableFrom(transactionID);
+                    return transactionRepository.updateTransactionAsStable(transactionID);
                 }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
                                .then(() => consensusData.resolve())
                                .catch(() => consensusData.resolve());
