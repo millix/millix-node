@@ -1,6 +1,7 @@
 const async  = require('async');
 const sqlite = require('sqlite3');
 const uuid   = require('node-uuid');
+const fs     = require('fs');
 
 function SqliteStore(opts) {
     opts = opts || {};
@@ -120,6 +121,14 @@ SqliteStore.prototype.getLock = function (lockId, cb) {
 SqliteStore.prototype.getRunningTasks = function (cb) {
     const self = this;
     self._db.all(`SELECT * FROM ${self._tableName} WHERE NOT lock = ?`, [''], function (err, rows) {
+
+        if (err && err.code === 'SQLITE_CORRUPT') {
+            console.log('[queue-sqlite] reinitialize corrupted queue');
+            return fs.unlink(self._path, _ => {
+                self.connect(() => cb(err, []));
+            });
+        }
+
         if (err) return cb(err);
         const tasks = {};
         rows.forEach(function (row) {
