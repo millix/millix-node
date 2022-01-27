@@ -917,6 +917,13 @@ export default class Transaction {
             'address_attribute',
             'signature'
         ])), 'address_base');
+
+        for (let signature of transaction['transaction_signature_list']) {
+            if (!signature.address_attribute.key_public) {
+                return null;
+            }
+        }
+
         transaction['transaction_date']           = [
                                                         '0a0',
                                                         '0b0',

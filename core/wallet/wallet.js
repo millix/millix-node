@@ -896,7 +896,7 @@ class Wallet {
                                                             });
                    })
                    .catch((err) => {
-                       console.log('[Wallet] cleanup dangling transaction ', transaction.transaction_id, '. [message]: ', err);
+                       console.log('[wallet] cleanup dangling transaction ', transaction.transaction_id, '. [message]: ', err, 'from node', ws.node);
                        delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                        delete this._transactionRequested[transaction.transaction_id];
                        walletSync.clearTransactionSync(transaction.transaction_id);
@@ -1010,17 +1010,31 @@ class Wallet {
                     let ws = network.getWebSocketByID(connectionID);
                     if (ws) {
                         try {
-                            peer.transactionSyncResponse({
-                                transaction            : transactionRepository.normalizeTransactionObject(transaction),
-                                depth                  : data.depth,
-                                routing                : data.routing,
-                                routing_request_node_id: data.routing_request_node_id
-                            }, ws);
-                            console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                            const normalizedTransaction = transactionRepository.normalizeTransactionObject(transaction);
+                            if (normalizedTransaction) {
+                                peer.transactionSyncResponse({
+                                    transaction            : normalizedTransaction,
+                                    depth                  : data.depth,
+                                    routing                : data.routing,
+                                    routing_request_node_id: data.routing_request_node_id
+                                }, ws);
+                                console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
+                                return;
+                            }
+                            else {
+                                console.log('[wallet] it is not possible to normalize the transaction', data.transaction_id);
+                            }
                         }
                         catch (e) {
                             console.log('[wallet] error sending transaction sync response. transaction normalization issue. ' + e.message);
                         }
+                        peer.transactionSyncResponse({
+                            transaction            : {transaction_id: data.transaction_id},
+                            transaction_not_found  : true,
+                            depth                  : data.depth,
+                            routing                : data.routing,
+                            routing_request_node_id: data.routing_request_node_id
+                        }, ws);
                     }
                 }
                 else {
@@ -1159,6 +1173,11 @@ class Wallet {
 
 
     _onSyncTransactionSpendTransaction(data, ws) {
+
+        if (mutex.getKeyQueuedSize(['sync-transaction-spend']) > config.NODE_CONNECTION_INBOUND_MAX) {
+            return peer.transactionSpendResponse(data.transaction_id, [], ws);
+        }
+
         let node             = ws.node;
         let connectionID     = ws.connectionID;
         const startTimestamp = Date.now();
@@ -1189,6 +1208,11 @@ class Wallet {
     }
 
     _onSyncOutputSpendTransaction(data, ws) { //TODO: check this
+
+        if (mutex.getKeyQueuedSize(['sync-transaction-spend']) > config.NODE_CONNECTION_INBOUND_MAX) {
+            return peer.transactionOutputSpendResponse(data.transaction_id, data.output_position, [], ws);
+        }
+
         let node             = ws.node;
         let connectionID     = ws.connectionID;
         const startTimestamp = Date.now();
@@ -1698,6 +1722,9 @@ class Wallet {
     }
 
     onPropagateTransactionList(data) {
+        if (mutex.getKeyQueuedSize(['transaction-list-propagate']) > config.NODE_CONNECTION_OUTBOUND_MAX) {
+            return Promise.resolve();
+        }
         const {transaction_id_list: transactions} = data;
         if (transactions && transactions.length > 0) {
             mutex.lock(['transaction-list-propagate'], unlock => {
