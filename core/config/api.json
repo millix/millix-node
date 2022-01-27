@@ -496,6 +496,15 @@
       "enable": true
     },
     {
+      "id": "LOLb7q23p8rYSLwv",
+      "name": "get_is_key_present",
+      "description": "returns boolean value of presence of private_key.json",
+      "method": "GET",
+      "version_released": "1.11.5",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "P2LMh8NsUTkpWAH3",
       "name": "reset_validation_transaction_by_guid",
       "description": "reset transaction validation by transaction guid",
