@@ -55,11 +55,11 @@ class LogManager {
 
         eventBus.on('node_event_log', data => {
             this.addLog(data, this.getTime());
-            this.setBacklogSize(mutex.getKeyQueuedSize(['transaction'], true));
+            this.setBacklogSize(mutex.getKeyQueuedSize(['transaction']));
         });
         eventBus.on('wallet_event_log', data => {
             this.addLog(data, this.getTime());
-            this.setBacklogSize(mutex.getKeyQueuedSize(['transaction'], true));
+            this.setBacklogSize(mutex.getKeyQueuedSize(['transaction']));
         });
 
         return Promise.resolve();

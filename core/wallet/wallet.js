@@ -323,16 +323,28 @@ class Wallet {
                     })
                     .then((outputs) => {
                         if (!outputs || outputs.length === 0) {
-                            return Promise.reject('insufficient_balance');
+                            return Promise.reject({
+                                error: 'insufficient_balance',
+                                data : {balance_stable: 0}
+                            });
                         }
                         outputs = _.orderBy(outputs, ['amount'], ['asc']);
 
-                        let remainingAmount       = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
+                        const transactionAmount   = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
+                        let remainingAmount       = transactionAmount;
                         const outputsToUse        = [];
                         const privateKeyMap       = {};
                         const addressAttributeMap = {};
 
                         for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
+
+                            if (i === config.TRANSACTION_INPUT_MAX - 1) { /* we cannot add more inputs and still we did not aggregate the required amount for the transaction */
+                                return Promise.reject({
+                                    error: 'transaction_input_max_error',
+                                    data : {amount_max: transactionAmount - remainingAmount}
+                                });
+                            }
+
                             let output                               = outputs[i];
                             remainingAmount -= output.amount;
                             const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
@@ -343,7 +355,10 @@ class Wallet {
                         }
 
                         if (remainingAmount > 0) {
-                            return Promise.reject('insufficient_balance');
+                            return Promise.reject({
+                                error: 'insufficient_balance',
+                                data : {balance_stable: transactionAmount - remainingAmount}
+                            });
                         }
                         let keyMap      = {
                             'transaction_id'  : 'output_transaction_id',
@@ -394,7 +409,7 @@ class Wallet {
                             this.resetTransactionValidationRejected();
                         }
 
-                        reject(e);
+                        reject({error: e});
                         unlock();
                     });
             });
@@ -1360,6 +1375,14 @@ class Wallet {
     }
 
     _onTransactionProxyRequest(data, ws) {
+        if (mutex.getKeyQueuedSize(['transaction-proxy-request']) > 0) {
+            peer.transactionProxyResponse({
+                transaction_id         : data.transaction_id,
+                transaction_input_chain: []
+            }, ws);
+            return;
+        }
+
         mutex.lock(['transaction-proxy-request'], unlock => {
             database.getRepository('transaction')
                     .getTransactionInputChain(data)
@@ -1370,7 +1393,7 @@ class Wallet {
                         }, ws);
                         unlock();
                     });
-        }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX * 5);
+        });
     }
 
     _onTransactionProxy(data, ws) {
@@ -1482,11 +1505,11 @@ class Wallet {
         let networkTransactions = _.keys(this._transactionReceivedFromNetwork);
         console.log('[wallet] status (_transactionReceivedFromNetwork:', networkTransactions.length, ' | _transactionValidationRejected:', walletTransactionConsensus.getRejectedTransactionList().size, ' | _activeConsensusRound:', _.keys(this._activeConsensusRound).length + ')');
 
-        if (!this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction'], true) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+        if (!this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction']) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
             this._maxBacklogThresholdReached = true;
             this.lockProcessNewTransaction();
         }
-        else if (this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction'], true) <= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+        else if (this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction']) <= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
             this._maxBacklogThresholdReached = false;
             this.unlockProcessNewTransaction();
         }
@@ -1516,6 +1539,10 @@ class Wallet {
     }
 
     _doTransactionOutputExpiration() {
+        if (mutex.getKeyQueuedSize(['transaction-output-expiration']) > 0) {
+            return Promise.resolve();
+        }
+
         return new Promise(resolve => {
             console.log('[Wallet] Starting transaction output expiration');
             mutex.lock(['transaction-output-expiration'], unlock => {

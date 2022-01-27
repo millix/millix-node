@@ -74,7 +74,7 @@ class _XPzc85T3reYmGro1 extends Endpoint {
                           console.log(`[api ${this.endpoint}] error: ${e}`);
                           res.send({
                               api_status : 'fail',
-                              api_message: `unexpected generic api error: (${e})`
+                              api_message: e
                           });
                           unlock();
                       });
