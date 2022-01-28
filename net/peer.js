@@ -146,6 +146,10 @@ class Peer {
     }
 
     transactionSend(transaction, excludeWS) {
+        if(!transaction) {
+            return;
+        }
+
         let payload = {
             type   : 'transaction_new',
             content: {transaction}
@@ -170,6 +174,10 @@ class Peer {
     }
 
     transactionSendToNode(transaction, ws) {
+        if(!transaction) {
+            return;
+        }
+
         let payload = {
             type   : 'transaction_new',
             content: {transaction}
