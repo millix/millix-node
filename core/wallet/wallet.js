@@ -599,12 +599,7 @@ class Wallet {
 
 
                                         });
-        }).then(data => {
-            return data;
-        })
-                       .catch(e => {
-                           reject(e);
-                       });
+        });
     }
 
     resetTransactionValidationRejected() {
