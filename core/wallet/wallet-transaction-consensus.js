@@ -575,7 +575,8 @@ export class WalletTransactionConsensus {
 
                                    if (!selectedWS) {
                                        console.log('[wallet-transaction-consensus] no node ready for this consensus round');
-                                       //TODO: trigger peer rotation? check the best way to do it
+                                       //TODO: trigger peer rotation? check the
+                                       // best way to do it
                                        if (!scheduledRequestPeerValidation) {
                                            scheduledRequestPeerValidation = true;
                                            return setTimeout(() => {

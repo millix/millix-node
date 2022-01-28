@@ -129,11 +129,15 @@ SqliteStore.prototype.getRunningTasks = function (cb) {
             });
         }
 
-        if (err) return cb(err);
+        if (err) {
+            return cb(err);
+        }
         const tasks = {};
-        rows.forEach(function (row) {
-            if (!row.lock) return;
-            tasks[row.lock] = tasks[row.lock] || [];
+        rows.forEach(function(row) {
+            if (!row.lock) {
+                return;
+            }
+            tasks[row.lock]         = tasks[row.lock] || [];
             tasks[row.lock][row.id] = JSON.parse(row.task);
         });
         cb(null, tasks);
