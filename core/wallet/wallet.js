@@ -580,24 +580,17 @@ class Wallet {
         return walletTransactionConsensus;
     }
 
-    resetTransactionValidationByGuid(transactionID) {
+    resetTransactionValidationByTransactionId(transactionID) {
         return database.applyShards(shardID => {
             const transactionRepository = database.getRepository('transaction', shardID);
             return transactionRepository.getTransactionObject(transactionID)
                                         .then((transaction) => {
-                                            if (!transaction) { // transaction data not found
-                                                console.warn('[wallet-transaction] transaction not found. unexpected behaviour.');
-                                                return Promise.reject();
+                                            if (transaction) { // transaction data not found
+                                                return transactionRepository.resetTransaction(transactionID)
+                                                                            .then(() => {
+                                                                                return this.resetValidation(new Set([transaction.transaction_id]), shardID);
+                                                                            });
                                             }
-                                            transactionRepository.resetTransaction(transactionID)
-                                                                 .then(() => {
-                                                                     return this.resetValidation(new Set([transaction.transaction_id]));
-                                                                 })
-                                                                 .catch(e => {
-                                                                     Promise.reject(e);
-                                                                 });
-
-
                                         });
         });
     }
@@ -614,13 +607,14 @@ class Wallet {
                                                                      .catch(() => callback());
                                             }, () => resolve(new Set(_.map(transactions, t => t.transaction_id))));
                                         }))
-                                        .then(rootTransactions => this.resetValidation(rootTransactions))
+                                        .then(rootTransactions => this.resetValidation(rootTransactions, shardID))
                                         .then(result => result ? resolve(result) : reject());
         }).then(_ => _);
     }
 
-    resetValidation(rootTransactions) {
-        return new Promise(resolve => {
+    resetValidation(rootTransactions, shardID) {
+        const transactionRepository = database.getRepository('transaction', shardID);
+        return new Promise((resolve) => {
             const dfs = (transactions, visited = new Set()) => {
                 const listInputTransactionIdSpendingTransaction = new Set();
                 async.eachSeries(transactions, (transactionID, callback) => {
@@ -644,10 +638,7 @@ class Wallet {
                             dfs(listInputTransactionIdSpendingTransaction, visited);
                         }
                         else {
-                            resolve({
-                                'transaction_id'    : transactionID,
-                                'transaction_status': true
-                            });
+                            resolve();
                         }
                     });
                 });

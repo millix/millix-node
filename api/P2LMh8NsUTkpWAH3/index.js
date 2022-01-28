@@ -1,5 +1,7 @@
 import wallet from '../../core/wallet/wallet';
 import Endpoint from '../endpoint';
+import _ from 'lodash';
+import async from 'async';
 
 
 /**
@@ -17,16 +19,16 @@ class _P2LMh8NsUTkpWAH3 extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        let transactionID;
+        let transactionIdList;
 
         if (req.method === 'POST') {
-            transactionID = req.body.p0;
+            transactionIdList = req.body.p0;
         }
         else if (req.method === 'GET') {
-            transactionID = req.query.p0;
+            transactionIdList = req.query.p0;
         }
 
-        if (!transactionID) {
+        if (!transactionIdList) {
             return res
                 .status(400)
                 .send({
@@ -35,15 +37,36 @@ class _P2LMh8NsUTkpWAH3 extends Endpoint {
                 });
         }
 
-        wallet.resetTransactionValidationByGuid(transactionID)
-              .then((result) => res.send({
-                  api_status: 'success',
-                  result    : result
-              }))
-              .catch(e => res.send({
-                  api_status : 'fail',
-                  api_message: `unexpected generic api error: (${e})`
-              }));
+        if (_.isArray(transactionIdList)) {
+            async.eachSeries(transactionIdList, (transaction, callback) => {
+                wallet.resetTransactionValidationByTransactionId(transaction)
+                      .then(() => callback())
+                      .catch((e) => callback(true, e));
+            }, (error, exception) => {
+                if (error) {
+                    res.send({
+                        api_status : 'fail',
+                        api_message: `unexpected generic api error: (${exception})`
+                    });
+                }
+                else {
+                    res.send({
+                        api_status: 'success'
+                    });
+                }
+            });
+
+        }
+        else {
+            wallet.resetTransactionValidationByTransactionId(transactionIdList)
+                  .then(() => res.send({
+                      api_status: 'success'
+                  }))
+                  .catch(e => res.send({
+                      api_status : 'fail',
+                      api_message: `unexpected generic api error: (${e})`
+                  }));
+        }
     }
 }
 
