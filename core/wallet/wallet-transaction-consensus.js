@@ -575,7 +575,8 @@ export class WalletTransactionConsensus {
 
                                    if (!selectedWS) {
                                        console.log('[wallet-transaction-consensus] no node ready for this consensus round');
-                                       //TODO: trigger peer rotation? check the best way to do it
+                                       //TODO: trigger peer rotation? check the
+                                       // best way to do it
                                        if (!scheduledRequestPeerValidation) {
                                            scheduledRequestPeerValidation = true;
                                            return setTimeout(() => {
@@ -854,6 +855,7 @@ export class WalletTransactionConsensus {
                     consensusData.active = false;
                     console.log('[wallet-transaction-consensus] the transaction ', transactionID, ' was not validated (due to not found reply) during consensus round number ', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
+                    this._transactionRetryValidation[transactionID] = Date.now();
                     return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
                         return transactionRepository.timeoutTransaction(transactionID);
                     }).then(() => {
@@ -869,6 +871,7 @@ export class WalletTransactionConsensus {
                     consensusData.active = false;
                     console.log('[wallet-transaction-consensus] the transaction ', transactionID, ' was not validated (due to not invalid tx) during consensus round number ', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
+                    this._transactionRetryValidation[transactionID] = Date.now();
                     database.applyShards((shardID) => {
                         return database.getRepository('transaction', shardID)
                                        .invalidateTransaction(transactionID);

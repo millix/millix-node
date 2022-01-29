@@ -580,6 +580,21 @@ class Wallet {
         return walletTransactionConsensus;
     }
 
+    resetTransactionValidationByTransactionId(transactionID) {
+        return database.applyShards(shardID => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.getTransactionObject(transactionID)
+                                        .then((transaction) => {
+                                            if (transaction) { // transaction data not found
+                                                return transactionRepository.resetTransaction(transactionID)
+                                                                            .then(() => {
+                                                                                return this.resetValidation(new Set([transaction.transaction_id]), shardID);
+                                                                            });
+                                            }
+                                        });
+        });
+    }
+
     resetTransactionValidationRejected() {
         walletTransactionConsensus.resetTransactionValidationRejected();
         database.applyShards(shardID => {
@@ -592,38 +607,45 @@ class Wallet {
                                                                      .catch(() => callback());
                                             }, () => resolve(new Set(_.map(transactions, t => t.transaction_id))));
                                         }))
-                                        .then(rootTransactions => new Promise(resolve => {
-                                            const dfs = (transactions, visited = new Set()) => {
-                                                const listInputTransactionIdSpendingTransaction = new Set();
-                                                async.eachSeries(transactions, (transactionID, callback) => {
-                                                    transactionRepository.listTransactionInput({'output_transaction_id': transactionID})
-                                                                         .then(inputs => {
-                                                                             inputs.forEach(input => {
-                                                                                 if (!visited.has(input.transaction_id)) {
-                                                                                     listInputTransactionIdSpendingTransaction.add(input.transaction_id);
-                                                                                     visited.add(input.transaction_id);
-                                                                                 }
-                                                                             });
-                                                                             callback();
-                                                                         }).catch(() => callback());
-                                                }, () => {
-                                                    async.eachSeries(listInputTransactionIdSpendingTransaction, (transactionID, callback) => {
-                                                        transactionRepository.resetTransaction(transactionID)
-                                                                             .then(() => callback())
-                                                                             .catch(() => callback());
-                                                    }, () => {
-                                                        if (listInputTransactionIdSpendingTransaction.size > 0) {
-                                                            dfs(listInputTransactionIdSpendingTransaction, visited);
-                                                        }
-                                                        else {
-                                                            resolve();
-                                                        }
-                                                    });
-                                                });
-                                            };
-                                            dfs(rootTransactions);
-                                        }));
+                                        .then(rootTransactions => this.resetValidation(rootTransactions, shardID))
+                                        .then(result => result ? resolve(result) : reject());
         }).then(_ => _);
+    }
+
+    resetValidation(rootTransactions, shardID) {
+        const transactionRepository = database.getRepository('transaction', shardID);
+        return new Promise((resolve) => {
+            const dfs = (transactions, visited = new Set()) => {
+                const listInputTransactionIdSpendingTransaction = new Set();
+                async.eachSeries(transactions, (transactionID, callback) => {
+                    transactionRepository.listTransactionInput({'output_transaction_id': transactionID})
+                                         .then(inputs => {
+                                             inputs.forEach(input => {
+                                                 if (!visited.has(input.transaction_id)) {
+                                                     listInputTransactionIdSpendingTransaction.add(input.transaction_id);
+                                                     visited.add(input.transaction_id);
+                                                 }
+                                             });
+                                             callback();
+                                         }).catch(() => callback());
+                }, () => {
+                    async.eachSeries(listInputTransactionIdSpendingTransaction, (transactionID, callback) => {
+                        transactionRepository.resetTransaction(transactionID)
+                                             .then(() => callback())
+                                             .catch(() => callback());
+                    }, () => {
+                        if (listInputTransactionIdSpendingTransaction.size > 0) {
+                            dfs(listInputTransactionIdSpendingTransaction, visited);
+                        }
+                        else {
+                            resolve();
+                        }
+                    });
+                });
+            };
+            dfs(rootTransactions);
+        });
+
     }
 
     getTransactionSyncPriority(transaction) {
