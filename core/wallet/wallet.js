@@ -719,7 +719,7 @@ class Wallet {
             transactionDate = transaction.transaction_date;
         }
 
-        if (transaction.shard_id !== genesisConfig.genesis_shard_id && transactionDate.getTime() > 1643234996 || !(this._activeShards.has(transaction.shard_id) && transactionDate.getTime() <= 1643234996)) { /* do not accept transactions to other shards after this timestamp*/
+        if (transaction.shard_id !== genesisConfig.genesis_shard_id && transactionDate > 1643234996 || !(this._activeShards.has(transaction.shard_id) && transactionDate <= 1643234996)) { /* do not accept transactions to other shards after this timestamp*/
             return false;
         }
 
