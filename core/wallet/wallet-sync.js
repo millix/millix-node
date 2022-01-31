@@ -296,7 +296,7 @@ export class WalletSync {
                            .getMissingInputTransactions();
         }).then(transactions => { /*add the missing inputs to the sync queue*/
             transactions.forEach(transaction => this.add(transaction.transaction_id));
-        });
+        }).then(() => this.updateSyncTransactionSpend());
     }
 
     syncTransactionSpendingOutputs(transaction) {
@@ -545,7 +545,7 @@ export class WalletSync {
         });
     }
 
-    _doSyncTransactionSpend() {
+    updateSyncTransactionSpend() {
         if (!this.transactionSpendWalletQueue || !this.transactionSpendQueue) {
             return Promise.resolve();
         }
