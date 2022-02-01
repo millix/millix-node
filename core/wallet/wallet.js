@@ -31,6 +31,7 @@ class Wallet {
 
     constructor() {
         this.mode                            = WALLET_MODE.CONSOLE;
+        this.INACTIVE_SHARD_ID               = 'AyAC3kjLtjM4vktAJ5Xq6mbXKjzEqXoSsmGhhgjnkXUvjtF2M';
         this._activeWallets                  = {};
         this._activeConsensusRound           = {};
         this._transactionReceivedFromNetwork = {};
@@ -42,6 +43,12 @@ class Wallet {
         this._maxBacklogThresholdReached     = false;
         this.initialized                     = false;
         this._transactionSendInterrupt       = false;
+        this._activeShards                   = new Set();
+
+        this._activeShards.add(genesisConfig.genesis_shard_id);
+        if (!config.MODE_TEST_NETWORK) {
+            this._activeShards.add(this.INACTIVE_SHARD_ID);
+        }
     }
 
     get isProcessingNewTransactionFromNetwork() {
@@ -699,10 +706,6 @@ class Wallet {
     }
 
     _shouldProcessTransaction(transaction) {
-        if (!!this._transactionFundingActiveWallet[transaction.transaction_id] || this.transactionHasKeyIdentifier(transaction)) {
-            return true;
-        }
-
         let transactionDate;
         if ([
             '0a0',
@@ -710,13 +713,21 @@ class Wallet {
             'la0l',
             'lb0l'
         ].includes(transaction.version)) {
-            transactionDate = new Date(transaction.transaction_date);
+            transactionDate = new Date(transaction.transaction_date).getTime() / 1000;
         }
         else {
-            transactionDate = new Date(transaction.transaction_date * 1000);
+            transactionDate = transaction.transaction_date;
         }
 
-        const isExpired = database.getRepository('transaction').isExpired(transactionDate.getTime() / 1000);
+        if (transaction.shard_id !== genesisConfig.genesis_shard_id && transactionDate > 1643234996 || !this._activeShards.has(transaction.shard_id) && transactionDate <= 1643234996) { /* do not accept transactions to other shards after this timestamp*/
+            return false;
+        }
+
+        if (!!this._transactionFundingActiveWallet[transaction.transaction_id] || this.transactionHasKeyIdentifier(transaction)) {
+            return true;
+        }
+
+        const isExpired = database.getRepository('transaction').isExpired(transactionDate);
         if (isExpired && !database.getShard(transaction.shard_id)) { // not a supported shard
             return false;
         }
@@ -824,7 +835,7 @@ class Wallet {
 
                                                                                       if (new Date(transaction.transaction_date).getTime() <= (Date.now() - config.TRANSACTION_PRUNE_AGE_MIN * 60000)) {
                                                                                           let shardTransactionRepository = database.getRepository('transaction', transaction.shard_id);
-                                                                                          if (shardTransactionRepository || hasKeyIdentifier) {
+                                                                                          if (shardTransactionRepository || hasKeyIdentifier || transaction.shard_id === this.INACTIVE_SHARD_ID) {
                                                                                               transactionRepository = shardTransactionRepository || transactionRepository;
                                                                                           }
                                                                                           else {
@@ -1448,7 +1459,7 @@ class Wallet {
             transactionList = data.transaction_list;
             proxyTimeLimit  = data.proxy_time_limit;
         }
-        else {
+        else { //TODO: remove in future versions
             transactionList = data;
             proxyTimeLimit  = 30000;
         }
@@ -1465,10 +1476,18 @@ class Wallet {
             }, network.getWebSocketByID(connectionID));
         }
         let pipeline = Promise.resolve();
-        transactionList.forEach(transaction => {
+        for (let transaction of transactionList) {
+            if (transaction.shard_id !== genesisConfig.genesis_shard_id) {
+                return peer.transactionProxyResult({
+                    transaction_proxy_fail   : 'invalid_transaction',
+                    transaction_id           : transaction.transaction_id,
+                    transaction_proxy_success: false
+                }, network.getWebSocketByID(connectionID));
+            }
+
             walletTransactionConsensus.addTransactionToCache(transaction);
             pipeline = pipeline.then(() => walletTransactionConsensus._validateTransaction(transaction, undefined, 0, new Set(), new Set(), proxyTimeStart, proxyTimeLimit));
-        });
+        }
 
         transactionList.forEach(transaction => {
             pipeline = pipeline.then(() => {
