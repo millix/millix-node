@@ -7,6 +7,8 @@ class Mutex {
         this.debug              = false;
         this.arrQueuedJobs      = {};
         this.arrLockedKeyArrays = [];
+
+        setInterval(() => console.log('[mutex]', this.getCountOfQueuedJobs()), 15000);
     }
 
     getCountOfQueuedJobs() {

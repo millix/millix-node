@@ -917,6 +917,13 @@ export default class Transaction {
             'address_attribute',
             'signature'
         ])), 'address_base');
+
+        for (let signature of transaction['transaction_signature_list']) {
+            if (!signature.address_attribute.key_public) {
+                return null;
+            }
+        }
+
         transaction['transaction_date']           = [
                                                         '0a0',
                                                         '0b0',
@@ -2482,6 +2489,9 @@ export default class Transaction {
                         return reject();
                     }
                     async.eachSeries(transactionList, (transaction, callback) => {
+                        if(transaction.shard_id === 'AyAC3kjLtjM4vktAJ5Xq6mbXKjzEqXoSsmGhhgjnkXUvjtF2M') { /* do not prune this special shard id. TODO: refactor and activate shard */
+                            return callback();
+                        }
                         this.getTransactionObject(transaction.transaction_id)
                             .then(transaction => {
                                 if (database.getShard(transaction.shard_id)) {
