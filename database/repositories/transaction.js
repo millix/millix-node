@@ -2489,7 +2489,7 @@ export default class Transaction {
                         return reject();
                     }
                     async.eachSeries(transactionList, (transaction, callback) => {
-                        if(transaction.shard_id === 'AyAC3kjLtjM4vktAJ5Xq6mbXKjzEqXoSsmGhhgjnkXUvjtF2M') { /* do not prune this special shard id. TODO: refactor and activate shard */
+                        if (transaction.shard_id === 'AyAC3kjLtjM4vktAJ5Xq6mbXKjzEqXoSsmGhhgjnkXUvjtF2M') { /* do not prune this special shard id. TODO: refactor and activate shard */
                             return callback();
                         }
                         this.getTransactionObject(transaction.transaction_id)
