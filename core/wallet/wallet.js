@@ -940,67 +940,6 @@ class Wallet {
                    });
     }
 
-    _onSyncTransactionByDate(data, ws) {
-        let node         = ws.node;
-        let connectionID = ws.connectionID;
-        const start      = Date.now();
-        mutex.lock(['sync-transaction'], unlock => {
-            eventBus.emit('wallet_event_log', {
-                type   : 'transaction_sync_by_date',
-                content: data,
-                from   : node
-            });
-
-            const beginTimestamp         = data.begin_timestamp;
-            const endTimestamp           = data.end_timestamp;
-            const excludeTransactionList = data.exclude_transaction_id_list;
-
-            database.applyShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.listTransactions({
-                    transaction_date_end  : endTimestamp,
-                    transaction_date_begin: beginTimestamp
-                });
-            }).then(transactionsByDate => {
-                // let's exclude the list of tx already present in our
-                // peer.
-                const excludeTransactionSet = new Set(excludeTransactionList);
-                const transactions          = _.filter(transactionsByDate, transactionID => !excludeTransactionSet.has(transactionID));
-
-                // get peers' current web socket
-                let ws = network.getWebSocketByID(connectionID);
-                peer.transactionSyncByDateResponse(transactions, ws);
-                console.log(`[wallet] sending transactions sync by date to node ${ws.nodeID} (response time: ${Date.now() - start}ms)`);
-                // unlock here. now on we are going to send missing
-                // transactions to peer.
-                unlock();
-
-                if (transactionsByDate.length === 0) { // no transaction will be synced
-                    return;
-                }
-
-                // get transaction objects
-                async.mapSeries(transactionsByDate, (transaction, callback) => {
-                    database.firstShardZeroORShardRepository('transaction', transaction.shard_id, transactionRepository => {
-                        return new Promise((resolve, reject) => {
-                            transactionRepository.getTransactionObject(transaction.transaction_id)
-                                                 .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject())
-                                                 .catch(() => reject());
-                        });
-                    }).then(transaction => callback(null, transaction));
-                }, (err, transactions) => {
-                    async.eachSeries(transactions, (transaction, callback) => {
-                        // get peers' current web socket
-                        let ws = network.getWebSocketByID(connectionID);
-                        peer.transactionSendToNode(transaction, ws);
-                        setTimeout(() => callback(), 250);
-                    });
-                });
-
-            }).catch(() => unlock());
-        });
-    }
-
     _onSyncTransaction(data, ws) {
         const startTimestamp = Date.now();
         if (data.routing) {
@@ -1536,11 +1475,9 @@ class Wallet {
         if (this.initialized) {
             this.syncWalletTransactions(ws).then(_ => _);
         }
-        walletSync.doProgressiveSync(ws);
     }
 
     _onPeerConnectionClosed(ws) {
-        walletSync.stopProgressiveSync(ws);
     }
 
     _doShardZeroPruning() {
@@ -1806,7 +1743,6 @@ class Wallet {
                       eventBus.on('transaction_new_proxy', this._onTransactionProxy.bind(this));
                       eventBus.on('transaction_new', this._onNewTransaction.bind(this));
                       eventBus.on('transaction_sync', this._onSyncTransaction.bind(this));
-                      eventBus.on('transaction_sync_by_date', this._onSyncTransactionByDate.bind(this));
                       eventBus.on('transaction_sync_response', this._onTransactionSyncResponse.bind(this));
                       eventBus.on('shard_sync_request', this._onSyncShard.bind(this));
                       eventBus.on('wallet_transaction_sync', this._onSyncWalletBalance.bind(this));
@@ -1896,9 +1832,7 @@ class Wallet {
         eventBus.removeAllListeners('transaction_new_proxy');
         eventBus.removeAllListeners('transaction_new');
         eventBus.removeAllListeners('transaction_sync');
-        eventBus.removeAllListeners('transaction_sync_by_date');
         eventBus.removeAllListeners('transaction_sync_response');
-        eventBus.removeAllListeners('transaction_sync_by_date_response');
         eventBus.removeAllListeners('shard_sync_request');
         eventBus.removeAllListeners('wallet_transaction_sync');
         eventBus.removeAllListeners('transaction_validation_request');

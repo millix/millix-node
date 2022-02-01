@@ -21,7 +21,6 @@ export class WalletSync {
         this.pendingTransactions         = {};
         this.scheduledQueueAdd           = {};
         this.CARGO_MAX_LENGHT            = config.NODE_CONNECTION_OUTBOUND_MAX * 10;
-        this.progressiveSync             = {};
     }
 
     initialize() {
@@ -316,70 +315,6 @@ export class WalletSync {
                 });
             }
         }
-    }
-
-    doProgressiveSync(ws) {
-        if (this.progressiveSync[ws.nodeID]) {
-            return;
-        }
-        this.progressiveSync[ws.nodeID] = {
-            ws,
-            timestamp: Math.round(Date.now() / 1000)
-        };
-        this._runProgressiveSync(ws.nodeID);
-    }
-
-    _runProgressiveSync(nodeID) {
-        const peerSyncInfo = this.progressiveSync[nodeID];
-        if (!this.progressiveSync[nodeID]) {
-            return;
-        }
-
-        const {
-                  ws,
-                  timestamp
-              } = peerSyncInfo;
-        if (ws.readyState !== ws.OPEN) {
-            return;
-        }
-        const beginTimestamp = timestamp - config.TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN;
-        if (database.getRepository('transaction').isExpired(timestamp)) {
-            return;
-        }
-        // get transactions from shard, filtered by date
-        database.applyShards((shardID) => {
-            const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.listTransactions({
-                transaction_date_end  : timestamp,
-                transaction_date_begin: beginTimestamp
-            });
-        }).then(transactions => new Set(_.map(transactions, transaction => transaction.transaction_id)))
-                .then(transactions => peer.transactionSyncByDate(beginTimestamp, timestamp, Array.from(transactions), peerSyncInfo.ws))
-                .then((data) => {
-                    if (data.transaction_id_list) {
-                        data.transaction_id_list.forEach(transactionToSync => this.add(transactionToSync));
-                    }
-                    this.moveProgressiveSync(ws);
-                    setTimeout(() => this._runProgressiveSync(nodeID), config.NETWORK_LONG_TIME_WAIT_MAX * 5);
-                })
-                .catch((e) => {
-                    if (e === 'sync_not_allowed') {
-                        return;
-                    }
-                    setTimeout(() => this._runProgressiveSync(nodeID), config.NETWORK_LONG_TIME_WAIT_MAX * 5);
-                });
-    }
-
-    moveProgressiveSync(ws) {
-        const peerSyncInfo = this.progressiveSync[ws.nodeID];
-        if (!peerSyncInfo) {
-            return;
-        }
-        peerSyncInfo.timestamp = peerSyncInfo.timestamp - config.TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN;
-    }
-
-    stopProgressiveSync(ws) {
-        delete this.progressiveSync[ws.nodeID];
     }
 
     add(transactionID, options) {
