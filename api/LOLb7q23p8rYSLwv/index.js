@@ -13,7 +13,7 @@ class _LOLb7q23p8rYSLwv extends Endpoint {
     handler(app, req, res) {
         WalletUtils.loadMnemonic().then(() => {
             return res.send({
-                private_key_exist: true
+                private_key_exists: true
             });
         })
                    .catch(e => res.send({
