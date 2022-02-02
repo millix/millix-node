@@ -119,7 +119,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
 
                 if (row.transaction_id_parent && !parents.has(row.transaction_id_parent)) {
                     parents.add(row.transaction_id_parent);
-                    transaction['transaction_parent_list'].push(_.mapKeys(_.pick(row, 'transaction_id_parent', 'transaction_id_child', 'transaction_parent_status', 'transaction_parent_create_date'), keyMapFunction));
+                    transaction['transaction_parent_list'].push(_.mapKeys(_.pick(row, 'transaction_id_parent', 'shard_id_parent', 'transaction_id_child', 'shard_id_child', 'transaction_parent_status', 'transaction_parent_create_date'), keyMapFunction));
                 }
 
             });
