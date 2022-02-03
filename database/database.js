@@ -45,7 +45,8 @@ export class Database {
         if (where) {
             _.each(_.keys(where), key => {
                 if (where[key] === undefined ||
-                    ((key.endsWith('_begin') || key.endsWith('_min') || key.endsWith('_end') || key.endsWith('_max')) && !where[key])) {
+                    ((key.endsWith('_begin') || key.endsWith('_min') || key.endsWith('_end') || key.endsWith('_max')) && !where[key]) ||
+                    (key.endsWith('_in') && !(where[key] instanceof Array))) {
                     return;
                 }
 
@@ -61,6 +62,13 @@ export class Database {
                 }
                 else if (key.endsWith('_end') || key.endsWith('_max')) {
                     sql += `${key.substring(0, key.lastIndexOf('_'))} <= ?`;
+                }
+                else if (key.endsWith('_in')) {
+                    sql += `${key.substring(0, key.lastIndexOf('_'))} IN (${where[key].map(() => '?').join(',')})`;
+                    for(let parameter of where[key]) {
+                        parameters.push(parameter);
+                    }
+                    return;
                 }
                 else {
                     sql += `${key}= ?`;

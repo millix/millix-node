@@ -44,6 +44,22 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 }));
             }
 
+            const parentSet = {};
+            _.each(data, row => parentSet[row.transaction_id_parent] = null);
+            const parentTransactionListID = Object.keys(parentSet);
+            return database.applyShards((shardID) => {
+                return database.getRepository('transaction', shardID)
+                               .listTransactions({'transaction_id_in': parentTransactionListID});
+            }).then(parentTransactionList => {
+                _.each(parentTransactionList, parentTransaction => {
+                    if(!parentSet[parentTransaction.transaction_id]) {
+                        parentSet[parentTransaction.transaction_id] = parentTransaction.shard_id;
+                    }
+                });
+                _.each(data, transaction => transaction.shard_id_parent = parentSet[transaction.transaction_id_parent] || null);
+                return data;
+            });
+        }).then(data => {
             const normalization = database.getRepository('normalization');
             const transaction   = {};
             _.extend(transaction, _.pick(data[0], 'transaction_id', 'shard_id', 'transaction_date', 'node_id_origin', 'node_id_proxy', 'version', 'payload_hash', 'stable_date', 'is_stable', 'parent_date', 'is_parent', 'timeout_date', 'is_timeout', 'status', 'create_date'));
@@ -51,11 +67,11 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 transaction['transaction_date'] = Math.floor(transaction.transaction_date.getTime() / 1000);
             }
 
-            const signatures                          = new Set();
-            const inputs                              = new Set();
-            const outputs                             = new Set();
-            const outputAttributes                    = new Set();
-            const parents                             = new Set();
+            const signatures       = new Set();
+            const inputs           = new Set();
+            const outputs          = new Set();
+            const outputAttributes = new Set();
+            const parents          = new Set();
 
             transaction['transaction_signature_list'] = [];
             transaction['transaction_input_list']     = [];
@@ -119,7 +135,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
 
                 if (row.transaction_id_parent && !parents.has(row.transaction_id_parent)) {
                     parents.add(row.transaction_id_parent);
-                    transaction['transaction_parent_list'].push(_.mapKeys(_.pick(row, 'transaction_id_parent', 'transaction_id_child', 'transaction_parent_status', 'transaction_parent_create_date'), keyMapFunction));
+                    transaction['transaction_parent_list'].push(_.mapKeys(_.pick(row, 'transaction_id_parent', 'shard_id_parent', 'transaction_id_child', 'shard_id_child', 'transaction_parent_status', 'transaction_parent_create_date'), keyMapFunction));
                 }
 
             });
