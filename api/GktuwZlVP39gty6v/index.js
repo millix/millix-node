@@ -29,9 +29,6 @@ class _GktuwZlVP39gty6v extends Endpoint {
                 p1: mnemonicPhrase
             } = req.query;
 
-        passPhrase     = decodeURIComponent(passPhrase);
-        mnemonicPhrase = decodeURIComponent(mnemonicPhrase);
-
         if (!passPhrase || !(mnemonicPhrase)) {
             return res.status(400).send({
                 api_status : 'fail',

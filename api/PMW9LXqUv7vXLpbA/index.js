@@ -24,7 +24,6 @@ class _PMW9LXqUv7vXLpbA extends Endpoint {
      */
     handler(app, req, res) {
         let {p0: passPhrase} = req.query;
-        passPhrase           = decodeURIComponent(passPhrase);
 
         if (!passPhrase) {
             return res.status(400).send({
