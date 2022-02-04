@@ -24,7 +24,14 @@ class _GktuwZlVP39gty6v extends Endpoint {
      * @returns {*}
      */
     handler(app, req, res) {
-        const {p0: passPhrase, p1: mnemonicPhrase} = req.query;
+        let {
+                p0: passPhrase,
+                p1: mnemonicPhrase
+            } = req.query;
+
+        passPhrase     = decodeURIComponent(passPhrase);
+        mnemonicPhrase = decodeURIComponent(mnemonicPhrase);
+
         if (!passPhrase || !(mnemonicPhrase)) {
             return res.status(400).send({
                 api_status : 'fail',
@@ -55,21 +62,23 @@ class _GktuwZlVP39gty6v extends Endpoint {
                                    .then(keyIdentifier => {
                                        const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
                                        const privateKey     = wallet.getActiveWalletKey(walletID);
-                                       console.log(privateKey);
                                        res.send({
                                            api_status: 'success',
                                            wallet    : {
-                                               id         : walletID,
-                                               private_key: privateKey.privateKey.toString(),
-                                               address    : `${keyIdentifier}${addressVersion}${keyIdentifier}`
+                                               id                    : walletID,
+                                               private_key           : privateKey.privateKey.toString(),
+                                               address               : `${keyIdentifier}${addressVersion}${keyIdentifier}`,
+                                               address_key_identifier: keyIdentifier
                                            }
                                        });
                                    });
                            eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
                        };
                        eventBus.once('wallet_unlock', authenticationSuccessHandler);
-
-                       return services.initialize({initialize_wallet_event: false});
+                       services.stop();
+                       return services.initialize({
+                           initialize_wallet_event: false
+                       });
                    })
                    .catch(e => {
                        eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
