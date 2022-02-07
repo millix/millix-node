@@ -627,14 +627,12 @@ export default class Transaction {
                         'address_version',
                         'address_key_identifier'
                     ]);
-                    promise                    = promise.then(() => this.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now())) // shard zero
-                                                        .then(() => {
-                                                            const transactionOutputRepository = database.getRepository('transaction', input.output_shard_id);
-                                                            if (!transactionOutputRepository) {
-                                                                return Promise.resolve();
-                                                            }
-                                                            return transactionOutputRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now());
-                                                        });
+                    promise                    = promise.then(() => {
+                        return database.applyShards((shardID) => {
+                            const transactionRepository = database.getRepository('transaction', shardID);
+                            return transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now());
+                        });
+                    });
                 });
 
                 promise = promise.then(() => {
