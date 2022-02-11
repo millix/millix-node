@@ -12,6 +12,7 @@ import async from 'async';
 import _ from 'lodash';
 import genesisConfig from '../genesis/genesis-config';
 import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
+import statsApi from '../../api/rKclyiLtHx0dx55M/index';
 import network from '../../net/network';
 import mutex from '../mutex';
 import ntp from '../ntp';
@@ -290,14 +291,14 @@ class Wallet {
                     }
                 })
                     .then((outputs) => {
-                        const availableOutputs = [];
+                        const availableOutputs   = [];
                         const keychainRepository = database.getRepository('keychain');
                         return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
                             const mapAddresses = {};
                             addresses.forEach(address => mapAddresses[address.address] = address);
 
                             for (let i = 0; i < outputs.length; i++) {
-                                const output        = outputs[i];
+                                const output = outputs[i];
 
                                 if (cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)) {
                                     continue;
@@ -615,20 +616,22 @@ class Wallet {
         walletTransactionConsensus.resetTransactionValidationRejected();
         database.applyShards(shardID => {
             const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.listTransactionWithFreeOutput(this.defaultKeyIdentifier, true)
+            return transactionRepository.listWalletTransactionOutputNotSpent(this.defaultKeyIdentifier)
                                         .then(transactions => new Promise(resolve => {
                                             async.eachSeries(transactions, (transaction, callback) => {
+                                                walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
+                                                walletTransactionConsensus.removeFromRetryTransactions(transaction.transaction_id);
                                                 transactionRepository.resetTransaction(transaction.transaction_id)
                                                                      .then(() => callback())
                                                                      .catch(() => callback());
                                             }, () => resolve(new Set(_.map(transactions, t => t.transaction_id))));
                                         }))
-                                        .then(rootTransactions => this.resetValidation(rootTransactions, shardID))
-                                        .then(result => result ? resolve(result) : reject());
+                                        .then(rootTransactions => this.resetValidation(rootTransactions, shardID));
         }).then(_ => _);
     }
 
     resetValidation(rootTransactions, shardID) {
+        statsApi.clearCache();
         const transactionRepository = database.getRepository('transaction', shardID);
         return new Promise((resolve) => {
             const dfs = (transactions, visited = new Set()) => {
