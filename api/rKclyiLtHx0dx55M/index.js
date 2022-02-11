@@ -26,6 +26,15 @@ class _rKclyiLtHx0dx55M extends Endpoint {
         });
     }
 
+    clearCache() {
+        cache.removeCacheItem('api_stats', 'wallet_balance_stable');
+        cache.removeCacheItem('api_stats', 'wallet_balance_unstable');
+        cache.removeCacheItem('api_stats', 'count_wallet_total');
+        cache.removeCacheItem('api_stats', 'count_wallet_unstable');
+        cache.removeCacheItem('api_stats', 'count_unstable');
+        cache.removeCacheItem('api_stats', 'count_all');
+    }
+
     /**
      * returns the node stat summary
      * @param app
