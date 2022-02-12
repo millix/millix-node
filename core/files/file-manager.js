@@ -81,13 +81,17 @@ class FileManager {
                                          resolve(transaction);
                                      })
                                      .catch(e => {
-                                         console.log(`[api ${this.endpoint}] error: ${e}`);
+                                         console.log(`error`);
                                          unlock();
                                      });
                            });
                        })
-                       .then((transactionID) => {
+                       .then((resolve, reject) => {
+                       //.then((transactionID) => {
                            //Create transaction directory to write file
+                           let transactionID = "123transaction321";/*apagar isto*/
+
+
                            let transationFolder = path.join(personalFolder, transactionID);
                            if (!fs.existsSync(transationFolder)) {
                                fs.mkdirSync(path.join(transationFolder));
@@ -113,19 +117,23 @@ class FileManager {
                                    });
                                }
                                else {
+                                   const input = fs.createReadStream(filePath);
                                    fs.readFile(filePath, function(err, file) {
                                        if (err) {
                                            return reject(err);
                                        }
+
+                                       const individualKeybuf            = crypto.randomBytes(32);
+                                       const individualKey               = crypto.createSecretKey(individualKeybuf).export().toString('hex');
+                                       const individualCipher            = crypto.createCipher('aes-256-cbc', individualKey);
+                                       const encryptedKey                = btoa(individualKey);
+
                                        let fileHash = md5sum.update(file).digest('hex');
                                        let outPath  = path.join(transationFolder, fileHash);
-                                       fs.writeFile(outPath, file, err => {
-                                           if (err) {
-                                               return reject(err);
-                                           }
-                                           //file written successfully
-                                           resolve();
-                                       });
+                                       const output = fs.createWriteStream(outPath);
+                                       output.write("{'key':"+encryptedKey+"}");
+                                       input.pipe(individualCipher).pipe(output);
+                                       resolve();
                                    });
                                }
                            }));
@@ -133,7 +141,10 @@ class FileManager {
                                   .then(() => {
                                       resolve();
                                   });
-                       });
+                       })
+                       .then(() => {
+                            resolve();
+                        });;
 
             });
         });
