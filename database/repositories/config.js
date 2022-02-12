@@ -39,8 +39,7 @@ export default class Config {
             ], (err, row) => {
                 if (err) {
                     reject(row);
-                }
-                else {
+                } else {
                     resolve(row);
                 }
             });
@@ -60,11 +59,15 @@ export default class Config {
     }
 
     updateConfigByID(configID, value) {
+        let where = {config_id: configID};
+        let set = [];
         return new Promise((resolve, reject) => {
-            this.database.run('UPDATE config SET value=? WHERE config_id=?', [
-                configID,
-                value
-            ], (err, row) => {
+            set['value'] = value;
+            const {
+                sql,
+                parameters
+            } = Database.buildUpdate('UPDATE config', set, where);
+            this.database.run(sql, parameters, (err, row) => {
                 if (err) {
                     return reject(err.message);
                 }

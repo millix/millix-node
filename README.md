@@ -2,7 +2,7 @@
   <br>
   <a href="#"><img src="https://github.com/millix/millix-wallet/blob/master/app/icon.png?raw=true" alt="millix node" width="200"></a>
   <br>
-  millix node <small>v1.11.6</small>
+  millix node <small>v1.12.7</small>
   <br>
 </h1>
 
@@ -56,7 +56,7 @@ git clone https://github.com/millix/millix-node.git -b develop
 ## Run millix-node
 ```
 cd millix-node
-vi run-millix-node.sh.sh
+vi run-millix-node.sh
 #replace “127.0.0.1” with your ip  (find by whatismyip)
 ```
 

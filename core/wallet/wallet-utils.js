@@ -531,8 +531,6 @@ class WalletUtils {
                 return resolve(false);
             }
 
-            console.log(`\n\n[wallet-utils] Verifying transaction ${transaction.transaction_id}\n\n`);
-
             let transactionDate;
             if (![
                 '0a0',
@@ -576,7 +574,7 @@ class WalletUtils {
                         resolve(!isConsumingExpired);
                     })
                     .catch(err => {
-                        console.log(`Failed to check if consuming expired. Abandoning verification. Error: ${err}`);
+                        console.log(`[wallet-utils] failed to check if consuming expired. abandoning verification. error: ${err}`);
                         resolve(false);
                     });
             }
@@ -611,10 +609,7 @@ class WalletUtils {
                         }
                     }
                 });
-            }, (isConsumingExpired) => {
-                console.log(`[wallet-utils] CONSUMING EXPIRED OUTPUTS: ${isConsumingExpired}`);
-                resolve(isConsumingExpired);
-            });
+            }, (isConsumingExpired) => resolve(isConsumingExpired));
         });
     }
 

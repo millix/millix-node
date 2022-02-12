@@ -18,21 +18,39 @@ class _LLpSTquu4tZL8Nu5 extends Endpoint {
      * @returns {*}
      */
     handler(app, req, res) {
-        const {p0: configID, p1: value} = req.query;
-        if (!configID || value === undefined) {
-            return res.status(400).send({
-                api_status : 'fail',
-                api_message: 'p0<config_id> and p1<value> are required'
-            });
-        }
+        if (req.method === 'POST') {
+            if (!req.body.p0 || !req.body.p1) {
+                return res.status(400)
+                    .send({
+                        api_status: 'fail',
+                        api_message: `p0<config_id> and p1<config_value> are rquired`
+                    })
+            }
 
-        const configurationRepository = database.getRepository('config');
-        configurationRepository.updateConfigByID(configID, value)
-                               .then(() => res.send({api_status: 'success'}))
-                               .catch(e => res.send({
-                                   api_status : 'fail',
-                                   api_message: `unexpected generic api error: (${e})`
-                               }));
+            let configID = req.body.p0;
+            let value = req.body.p1;
+            const configurationRepository = database.getRepository('config');
+            if (typeof value === 'object') {
+                value = JSON.stringify(value);
+            }
+
+            configurationRepository.updateConfigByID(configID, value)
+                .then((row) => res.send({
+                    api_status: 'success',
+                    row: row
+                }))
+                .catch(e => res.send({
+                    api_status: 'fail',
+                    api_message: `unexpected generic api error: (${e})`
+                }));
+
+        } else {
+            return res.status(400)
+                .send({
+                    api_status: 'fail',
+                    api_message: 'POST only'
+                })
+        }
     }
 }
 

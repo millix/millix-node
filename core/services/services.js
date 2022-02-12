@@ -8,6 +8,7 @@ import console from '../console';
 import logManager from '../log-manager';
 import database from '../../database/database';
 import fileManager from '../files/file-manager';
+import cache from '../cache';
 
 
 class Service {
@@ -17,10 +18,11 @@ class Service {
     }
 
     initialize(options = {}) {
-        const {
-                  mode,
-                  initialize_wallet_event: initializeWalletEvent
-              } = options;
+        let {
+                mode,
+                initialize_wallet_event: initializeWalletEvent,
+                auto_create_wallet     : createWalletIfNotExists
+            } = options;
         if (this.initialized) {
             return Promise.resolve();
         }
@@ -28,10 +30,15 @@ class Service {
         if (mode) {
             this.mode = mode;
         }
+
+        if (createWalletIfNotExists === undefined) {
+            createWalletIfNotExists = true;
+        }
         return logManager.initialize()
                          .then(() => fileManager.initialize())
                          .then(() => server.initialize())
-                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent))
+                         .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent, createWalletIfNotExists))
+                         .then(() => cache.initialize())
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
@@ -41,6 +48,9 @@ class Service {
                          .catch(e => {
                              console.log(`[services] ${e.message}`);
                              this.initialized = false;
+                             if (e.cause === 'wallet_not_found') {
+                                 return;
+                             }
                              return this.initialize(options);
                          });
     }
@@ -51,6 +61,7 @@ class Service {
         }
         this.initialized = false;
         wallet.stop();
+        cache.stop();
         network.stop();
         peer.stop();
         peerRotation.stop();
