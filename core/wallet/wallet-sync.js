@@ -113,36 +113,23 @@ export class WalletSync {
 
                 database.applyShards(shardID => {
                     const transactionRepository = database.getRepository('transaction', shardID);
-                    return transactionRepository.listTransactionInput({
+                    return transactionRepository.listTransactionSpendingOutput({
                         output_transaction_id   : transactionID,
-                        output_shard_id         : outputShardID,
-                        output_position         : outputPosition,
-                        '`transaction`.status!': 3
-                    }).then(inputList => {
-                        const spendingInputs = [];
-                        return new Promise((resolve) => {
-                            async.eachSeries(inputList, (input, callbackInput) => {
-                                return transactionRepository.listTransactionOutput({'`transaction`.transaction_id': input.transaction_id})
-                                                            .then(transactionOutputList => {
-                                                                if (!_.some(transactionOutputList, {is_double_spend: 1})) {
-                                                                    transactionRepository.getTransaction(input.transaction_id)
-                                                                                         .then(transaction => {
-                                                                                             transaction && spendingInputs.push(transaction);
-                                                                                             callbackInput();
-                                                                                         });
-                                                                }
-                                                                else {
-                                                                    callbackInput();
-                                                                }
-                                                            });
-                            }, () => resolve(spendingInputs));
-                        });
+                        output_position         : outputPosition
+                    }).then(transactionSpendingOutputList => {
+                        let spendingTransaction = undefined;
+                        for (let transactionSpendingOutput of transactionSpendingOutputList) {
+                            if (transactionSpendingOutput.status !== 3 && (transactionSpendingOutput.is_stable === 0 || transactionSpendingOutput.is_double_spend === 0)) {
+                                spendingTransaction = spendingTransaction === undefined ? spendingTransaction : _.minBy([spendingTransaction, transactionSpendingOutput], t => t.transaction_date.getTime());
+                            }
+                        }
+                        return !!spendingTransaction ? [spendingTransaction] : [];
                     });
                 }).then(spendingTransactionList => {
                     // skip if we already know that the tx is spent
                     if (spendingTransactionList.length > 0) {
                         return database.applyShardZeroAndShardRepository('transaction', outputShardID, transactionRepository => {
-                            return transactionRepository.updateTransactionOutput(transactionID, outputPosition, _.min(_.map(spendingTransactionList, spendingInput => spendingInput.transaction_date)));
+                            return transactionRepository.updateTransactionOutput(transactionID, outputPosition, _.minBy(spendingTransactionList, t => t.transaction_date.getTime()));
                         }).then(() => {
                             callback();
                         });
@@ -304,14 +291,15 @@ export class WalletSync {
             ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
         ]);
         for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
-            if (walletKeyIdentifierSet.has(transaction.transaction_output_list[outputPosition].address_key_identifier)) {
+            const transactionOutput = transaction.transaction_output_list[outputPosition];
+            if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
                 this.transactionSpendWalletQueue.push({
-                    transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${outputPosition}`
+                    transaction_output_id: `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`
                 });
             }
             else {
                 this.transactionSpendQueue.push({
-                    transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${outputPosition}`
+                    transaction_output_id: `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`
                 });
             }
         }
