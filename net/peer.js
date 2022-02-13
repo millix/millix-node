@@ -146,7 +146,7 @@ class Peer {
     }
 
     transactionSend(transaction, excludeWS) {
-        if(!transaction) {
+        if (!transaction) {
             return;
         }
 
@@ -174,7 +174,7 @@ class Peer {
     }
 
     transactionSendToNode(transaction, ws) {
-        if(!transaction) {
+        if (!transaction) {
             return;
         }
 
@@ -487,7 +487,7 @@ class Peer {
 
     }
 
-    transactionOutputSpendRequest(transactionID, outputPosition) {
+    transactionOutputSpendRequest(transactionID, outputPosition, tryOnce = false) {
         const transactionOutputID = `${transactionID}_${outputPosition}`;
         if (this.pendingTransactionOutputSpendSync[transactionOutputID]) {
             return Promise.reject();
@@ -510,6 +510,10 @@ class Peer {
             eventBus.emit('node_event_log', payload);
 
             let nodesWS = _.shuffle(network.registeredClients);
+
+            if (tryOnce) {
+                nodesWS = [nodesWS[0]];
+            }
 
             async.eachSeries(nodesWS, (ws, callback) => {
                 let callbackCalled = false;
@@ -987,7 +991,7 @@ class Peer {
                 });
             });
     }
-    
+
     transactionSyncByWebSocket(transactionID, ws, currentDepth) {
         return walletSync.getTransactionUnresolvedData(transactionID)
                          .then(unresolvedTransaction => {

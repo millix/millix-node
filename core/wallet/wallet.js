@@ -858,7 +858,7 @@ class Wallet {
                                                                                       }
 
                                                                                       console.log('New Transaction from network ', transaction.transaction_id);
-                                                                                      transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 300000));
+                                                                                      transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
                                                                                       return transactionRepository.addTransactionFromObject(transaction, hasKeyIdentifier)
                                                                                                                   .then(() => {
                                                                                                                       console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
@@ -1688,7 +1688,7 @@ class Wallet {
                        // store the transaction
                        let pipeline = Promise.resolve();
                        transactionList.forEach(transaction => {
-                           transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 300000));
+                           transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
                            const dbTransaction            = _.cloneDeep(transaction);
                            dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
                            pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)));
