@@ -90,7 +90,7 @@ export class WalletSync {
         });
 
         this.transactionSpendWalletQueue = new Queue((batch, done) => {
-            console.log('[wallet-sync] transaction spend sync stats ', this.transactionSpendWalletQueue.getStats());
+            console.log('[wallet-sync] wallet transaction output spend sync stats ', this.transactionSpendWalletQueue.getStats());
             if (batch.length === 0) {
                 return setTimeout(done, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             }
@@ -191,7 +191,7 @@ export class WalletSync {
         });
 
         this.transactionSpendQueue = new Queue((batch, done) => {
-            console.log('[wallet-sync] transaction spend sync stats ', this.transactionSpendQueue.getStats());
+            console.log('[wallet-sync] transaction output spend sync stats ', this.transactionSpendQueue.getStats());
             if (batch.length === 0) {
                 return setTimeout(done, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             }
@@ -250,7 +250,7 @@ export class WalletSync {
             }, () => {
                 const transactionOutputToQueue = [];
                 async.eachSeries(transactionOutputToSyncList, (transactionOutput, callback) => {
-                    peer.transactionOutputSpendRequest(transactionOutput.transaction_id, transactionOutput.output_position)
+                    peer.transactionOutputSpendRequest(transactionOutput.transaction_id, transactionOutput.output_position, true)
                         .then(_ => callback())
                         .catch(() => {
                             transactionOutputToQueue.push({
