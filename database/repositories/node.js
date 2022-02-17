@@ -2,6 +2,7 @@ import ntp from '../../core/ntp';
 import console from '../../core/console';
 import {Database} from '../database';
 import _ from 'lodash';
+import cache from '../../core/cache';
 
 export default class Node {
     constructor(database) {
@@ -15,6 +16,11 @@ export default class Node {
 
     addNodeAttributeType(attributeType) {
         return new Promise((resolve, reject) => {
+            const cachedAttributeType = cache.getCacheItem('node_repository', 'node_attribute_type_' + attributeType);
+            if (cachedAttributeType) {
+                return resolve(cachedAttributeType);
+            }
+
             let nodeAttributeID = this.normalizationRepository.get(attributeType);
             if (!nodeAttributeID) {
                 nodeAttributeID = Database.generateID(20);
@@ -28,13 +34,15 @@ export default class Node {
                         this.database.get('SELECT attribute_type_id FROM node_attribute_type WHERE attribute_type = ?',
                             [attributeType], (err, row) => {
                                 if (!row) {
-                                    console.log("[node] unexpected error ", err, "attribute ", attributeType, " value", row);
+                                    console.log('[node] unexpected error ', err, 'attribute ', attributeType, ' value', row);
                                     return reject(err);
                                 }
+                                cache.setCacheItem('node_repository', 'node_attribute_type_' + attributeType, row.attribute_type_id, Number.MAX_SAFE_INTEGER);
                                 resolve(row.attribute_type_id);
                             });
                         return;
                     }
+                    cache.setCacheItem('node_repository', 'node_attribute_type_' + attributeType, nodeAttributeID, Number.MAX_SAFE_INTEGER);
                     resolve(nodeAttributeID);
                 });
         });
