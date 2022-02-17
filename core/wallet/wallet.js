@@ -1347,14 +1347,7 @@ class Wallet {
                                     }
                                     callback();
                                 });
-                    }, () => {
-                        async.eachLimit(network.registeredClients, 4, (ws, wsCallback) => {
-                            attributes.forEach(attribute => {
-                                peer.nodeAttributeResponse(attribute, ws);
-                            });
-                            setTimeout(wsCallback, 250);
-                        }, () => resolve());
-                    });
+                    }, () => resolve());
                 });
             });
     }
