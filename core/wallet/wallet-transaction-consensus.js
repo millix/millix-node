@@ -86,7 +86,7 @@ export class WalletTransactionConsensus {
         this._transactionValidationRejected = new Set();
     }
 
-    _getValidInputOnDoubleSpend(doubleSpendTransactionID, inputs, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit) {
+    _getValidInputOnDoubleSpend(doubleSpendTransactionID, inputs, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime) {
         return new Promise(resolve => {
             let responseType = 'transaction_double_spend';
             let responseData = null;
@@ -111,7 +111,7 @@ export class WalletTransactionConsensus {
 
                         let newVisitedTransactionSet = new Set(transactionVisitedSet);
                         newVisitedTransactionSet.add(doubleSpendTransactionID);
-                        this._validateTransaction(transaction.transaction_id, nodeID, 0, newVisitedTransactionSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit)
+                        this._validateTransaction(transaction.transaction_id, nodeID, 0, newVisitedTransactionSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime)
                             .then(() => {
                                 responseType = 'transaction_valid';
                                 responseData = transaction;
@@ -148,7 +148,7 @@ export class WalletTransactionConsensus {
         });
     }
 
-    _validateTransaction(transaction, nodeID, depth = 0, transactionVisitedSet = new Set(), doubleSpendSet = new Set(), proxyTimeStart = null, proxyTimeLimit = null) {
+    _validateTransaction(transaction, nodeID, depth = 0, transactionVisitedSet = new Set(), doubleSpendSet = new Set(), proxyTimeStart = null, proxyTimeLimit = null, startTime = Date.now()) {
         let transactionID;
         if (typeof (transaction) === 'object') {
             transactionID = transaction.transaction_id;
@@ -157,7 +157,6 @@ export class WalletTransactionConsensus {
             transactionID = transaction;
             transaction   = null;
         }
-        const startTime = Date.now();
         return new Promise((resolve, reject) => {
             (() => transaction ? Promise.resolve(transaction) :
                    this._transactionObjectCache[transactionID] ? Promise.resolve(this._transactionObjectCache[transactionID]) :
@@ -271,7 +270,7 @@ export class WalletTransactionConsensus {
                                                    shard_id      : transaction.shard_id,
                                                    ...input
                                                });
-                                               this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit)
+                                               this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime)
                                                    .then(({
                                                               response_type: responseType,
                                                               data
@@ -420,7 +419,7 @@ export class WalletTransactionConsensus {
 
                                    // check inputs transactions
                                    async.everySeries(sourceTransactions, (srcTransaction, callback) => {
-                                       this._validateTransaction(this._transactionObjectCache[srcTransaction.output_transaction_id] || srcTransaction.output_transaction_id, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit)
+                                       this._validateTransaction(this._transactionObjectCache[srcTransaction.output_transaction_id] || srcTransaction.output_transaction_id, nodeID, depth + 1, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime)
                                            .then(() => callback(null, true))
                                            .catch((err) => {
                                                if (err && err.cause === 'transaction_double_spend' && !err.transaction_input_double_spend) {
