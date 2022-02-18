@@ -715,7 +715,7 @@ export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
 export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
 export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 5;
 export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
-export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 10000;
+export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 100;
 export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
@@ -822,6 +822,7 @@ if (DATABASE_ENGINE === 'sqlite') {
 
 export default {
     MODE_DEBUG,
+    MODE_NODE_FULL,
     MODE_TEST_NETWORK,
     NODE_PORT,
     NODE_PORT_DISCOVERY,

@@ -72,11 +72,11 @@ class _XPzc85T3reYmGro1 extends Endpoint {
                       })
                       .catch(e => {
                           console.log(`[api ${this.endpoint}] error: ${e}`);
+                          unlock();
                           res.send({
                               api_status : 'fail',
                               api_message: e
                           });
-                          unlock();
                       });
             });
         }

@@ -12,6 +12,7 @@ import async from 'async';
 import _ from 'lodash';
 import genesisConfig from '../genesis/genesis-config';
 import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
+import statsApi from '../../api/rKclyiLtHx0dx55M/index';
 import network from '../../net/network';
 import mutex from '../mutex';
 import ntp from '../ntp';
@@ -290,13 +291,19 @@ class Wallet {
                     }
                 })
                     .then((outputs) => {
+                        const availableOutputs   = [];
                         const keychainRepository = database.getRepository('keychain');
                         return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
                             const mapAddresses = {};
                             addresses.forEach(address => mapAddresses[address.address] = address);
 
                             for (let i = 0; i < outputs.length; i++) {
-                                const output        = outputs[i];
+                                const output = outputs[i];
+
+                                if (cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)) {
+                                    continue;
+                                }
+
                                 const outputAddress = mapAddresses[output.address];
                                 if (!outputAddress) {
                                     console.log('[wallet][warn] output address not found', output);
@@ -324,8 +331,9 @@ class Wallet {
                                     output['address_position']       = outputAddress.address_position;
                                     output['address_attribute']      = outputAddress.address_attribute;
                                 }
+                                availableOutputs.push(output);
                             }
-                            return outputs;
+                            return availableOutputs;
                         });
                     })
                     .then((outputs) => {
@@ -608,20 +616,22 @@ class Wallet {
         walletTransactionConsensus.resetTransactionValidationRejected();
         database.applyShards(shardID => {
             const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.listTransactionWithFreeOutput(this.defaultKeyIdentifier, true)
+            return transactionRepository.listWalletTransactionOutputNotSpent(this.defaultKeyIdentifier)
                                         .then(transactions => new Promise(resolve => {
                                             async.eachSeries(transactions, (transaction, callback) => {
+                                                walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
+                                                walletTransactionConsensus.removeFromRetryTransactions(transaction.transaction_id);
                                                 transactionRepository.resetTransaction(transaction.transaction_id)
                                                                      .then(() => callback())
                                                                      .catch(() => callback());
                                             }, () => resolve(new Set(_.map(transactions, t => t.transaction_id))));
                                         }))
-                                        .then(rootTransactions => this.resetValidation(rootTransactions, shardID))
-                                        .then(result => result ? resolve(result) : reject());
+                                        .then(rootTransactions => this.resetValidation(rootTransactions, shardID));
         }).then(_ => _);
     }
 
     resetValidation(rootTransactions, shardID) {
+        statsApi.clearCache();
         const transactionRepository = database.getRepository('transaction', shardID);
         return new Promise((resolve) => {
             const dfs = (transactions, visited = new Set()) => {
@@ -848,6 +858,7 @@ class Wallet {
                                                                                       }
 
                                                                                       console.log('New Transaction from network ', transaction.transaction_id);
+                                                                                      transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
                                                                                       return transactionRepository.addTransactionFromObject(transaction, hasKeyIdentifier)
                                                                                                                   .then(() => {
                                                                                                                       console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
@@ -1124,9 +1135,9 @@ class Wallet {
     _onSyncWalletBalance(data, ws) {
 
         const addressKeyIdentifier = data.address_key_identifier;
-        const cachedTransactions = cache.getCacheItem('wallet', 'wallet_transaction_sync_' + addressKeyIdentifier);
+        const cachedTransactions   = cache.getCacheItem('wallet', 'wallet_transaction_sync_' + addressKeyIdentifier);
         if (cachedTransactions) {
-            if(cachedTransactions.length > 0) {
+            if (cachedTransactions.length > 0) {
                 peer.walletTransactionSyncResponse(cachedTransactions, ws);
             }
             return;
@@ -1336,14 +1347,7 @@ class Wallet {
                                     }
                                     callback();
                                 });
-                    }, () => {
-                        async.eachLimit(network.registeredClients, 4, (ws, wsCallback) => {
-                            attributes.forEach(attribute => {
-                                peer.nodeAttributeResponse(attribute, ws);
-                            });
-                            setTimeout(wsCallback, 250);
-                        }, () => resolve());
-                    });
+                    }, () => resolve());
                 });
             });
     }
@@ -1677,6 +1681,7 @@ class Wallet {
                        // store the transaction
                        let pipeline = Promise.resolve();
                        transactionList.forEach(transaction => {
+                           transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
                            const dbTransaction            = _.cloneDeep(transaction);
                            dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
                            pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)));
