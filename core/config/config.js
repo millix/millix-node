@@ -1,5 +1,5 @@
-export const MODE_DEBUG                                        = true;
-export const MODE_TEST_NETWORK                                 = true;
+export const MODE_DEBUG                                        = false;
+export const MODE_TEST_NETWORK                                 = false;
 export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
@@ -14,8 +14,8 @@ export const NODE_NAT_PMP                                      = true;
 export const NODE_NAT_PMP_CHECK                                = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
-export const NODE_PUBLIC                                       = false;
-export const MODE_NODE_FULL                                    = false;
+export const NODE_PUBLIC                                       = true;
+export const MODE_NODE_FULL                                    = true;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
@@ -709,14 +709,14 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT                        = 1;
-export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 2;
-export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
-export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
-export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 5;
+export const CONSENSUS_ROUND_NODE_COUNT                        = 12;
+export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 3;
+export const CONSENSUS_ROUND_VALIDATION_MAX                    = 3;
+export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 3;
+export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 3;
 export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
 export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 100;
-export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
+export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 15 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
@@ -734,8 +734,8 @@ export const TRANSACTION_SIGNATURE_MAX                         = 128;
 export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 60;
 export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 10;
 export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
-export const NODE_CONNECTION_INBOUND_MAX                       = 30;
-export const NODE_CONNECTION_OUTBOUND_MAX                      = 30;
+export const NODE_CONNECTION_INBOUND_MAX                       = 60;
+export const NODE_CONNECTION_OUTBOUND_MAX                      = 60;
 export const NODE_CONNECTION_PUBLIC_PERCENT                    = 0.2;
 export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
@@ -893,8 +893,3 @@ export default {
     JOB_CONFIG_VERSION,
     DEBUG_LOG_FILTER
 };
-
-// dev branch should be running in the test-network
-if (!MODE_TEST_NETWORK) {
-    throw Error('develop branch should be running in the test-network');
-}
