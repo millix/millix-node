@@ -318,12 +318,12 @@ export class WalletSync {
             const transactionOutput = transaction.transaction_output_list[outputPosition];
             if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
                 this.transactionSpendWalletQueue.push({
-                    transaction_output_id: `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`
+                    transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
                 });
             }
             else {
                 this.transactionSpendQueue.push({
-                    transaction_output_id: `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`
+                    transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
                 });
             }
         }
