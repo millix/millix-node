@@ -1033,7 +1033,7 @@ export class WalletTransactionConsensus {
 
                 return database.applyShards((shardID) => {
                     return database.getRepository('transaction', shardID)
-                                   .findUnstableTransaction(excludeTransactionList);
+                                   .findUnstableTransaction(excludeTransactionList, config.MODE_NODE_FULL);
                 }, 'transaction_date').then(transactions => [
                     _.filter(transactions, transaction => !(Date.now() - transaction.create_date < 30 || this._consensusRoundState[transaction.transaction_id])),
                     false

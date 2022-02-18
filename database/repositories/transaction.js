@@ -1666,17 +1666,25 @@ export default class Transaction {
         });
     }
 
-    findUnstableTransaction(excludeTransactionIDList) {
+    findUnstableTransaction(excludeTransactionIDList, returnHibernatedTransactions = false) {
         return new Promise((resolve, reject) => {
             const insertDate      = Math.floor(Date.now() / 1000) - 30;
             let unstableDateStart = ntp.now();
             unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
             unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
-            this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
-                [
+            let sql, params;
+            if(!returnHibernatedTransactions){
+                sql = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
+                params = [
                     unstableDateStart,
                     insertDate
-                ].concat(excludeTransactionIDList), (err, rows) => {
+                ].concat(excludeTransactionIDList);
+            } else {
+                sql = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
+                params = [insertDate].concat(excludeTransactionIDList)
+            }
+
+            this.database.all(sql, params, (err, rows) => {
                     if (err) {
                         console.log(err);
                         return reject(err);
