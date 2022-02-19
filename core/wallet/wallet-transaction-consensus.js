@@ -543,7 +543,8 @@ export class WalletTransactionConsensus {
                        .then(transaction => {
 
                            if (!transaction) { // transaction data not found
-                               console.warn('[wallet-transaction-consensus] transaction not found. unexpected behaviour.');
+                               console.log('[wallet-transaction-consensus] transaction not found. unexpected behaviour.');
+                               this._transactionValidationRejected.add(transactionID);
                                return Promise.reject();
                            }
 
