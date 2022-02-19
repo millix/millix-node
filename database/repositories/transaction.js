@@ -858,6 +858,7 @@ export default class Transaction {
 
     normalizeTransactionObject(transactionDB) {
         if (!transactionDB) {
+            console.log('[transaction-normalization] tried to normalise a null object');
             return null;
         }
         //TODO: check genesis case
@@ -900,6 +901,7 @@ export default class Transaction {
 
         for (let signature of transaction['transaction_signature_list']) {
             if (!signature.address_attribute.key_public) {
+                console.log('[transaction-normalization] key_public not found ', transactionDB);
                 return null;
             }
         }
@@ -992,6 +994,7 @@ export default class Transaction {
                                          (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
                                           !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
                                           !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0)) {
+                                         console.log('[transaction-object] invalid transaction from database with id', transaction);
                                          return this.deleteTransaction(transactionID).then(_ => null).catch(_ => null);
                                      }
 
@@ -1000,7 +1003,7 @@ export default class Transaction {
                  })
                  .then(transaction => resolve(_.cloneDeep(transaction))) /*TODO: addTransactionFromObject is deleting address from output and input object. that is changing the cachedItem. we should not change the object. now we are creating a clone (refactor)*/
                  .catch((e) => {
-                     console.log('[transaction] cannot get transaction with id', transactionID, 'err:', e);
+                     console.log('[transaction-object] cannot get transaction with id', transactionID, 'err:', e);
                      resolve(null);
                  });
         });
