@@ -1245,7 +1245,7 @@ class Wallet {
                     // get peers' current web socket
                     let ws = network.getWebSocketByID(connectionID);
                     if (ws) {
-                        peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, transactions, ws);
+                        peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, _.filter(transactions, i => !_.isNil(i)), ws);
                         console.log(`[wallet] sending transactions spending from output tx: ${data.transaction_id}:${data.output_position} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                     }
                     unlock();
@@ -1746,7 +1746,7 @@ class Wallet {
                                                  cache.setCacheItem('propagation', transaction.transaction_id, true, (transaction.transaction_date * 1000) + (config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000));
                                              }
                                              callback();
-                                         });
+                                         }).catch(() => callback());
                 }, () => unlock());
             });
         }
