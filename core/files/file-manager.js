@@ -1,6 +1,6 @@
 import path from 'path';
 import os from 'os';
-import config from '../config/config';
+import config, {TRANSACTION_FEE_DEFAULT} from '../config/config';
 import fs from 'fs';
 import crypto from 'crypto';
 import wallet from '../wallet/wallet';
@@ -19,7 +19,7 @@ class FileManager {
         }
     }
 
-    uploadFiles(files, fees) {
+    uploadFiles(files, fees, address) {
         return new Promise((resolve, reject) => {
             fs.readFile(path.join(os.homedir(), config.WALLET_KEY_PATH), 'utf8', (err, data) => {
                 //Verify if mnemonic is available
@@ -61,37 +61,35 @@ class FileManager {
                             'size'  : upFile.size,
                             'type'  : upFile.type,
                             'name'  : upFile.name
-                        });
+                        });//meter aqui a chave privada
                         resolve();
                     });
                 }));
 
                 //After reading all files
                 Promise.all(promisesForTransaction)
-                       .then((resolve, reject) => {
-                           //create transaction
-                           mutex.lock(['submit_transaction'], (unlock) => {
-                               //ERRO ESTÁ AQUI
-                               wallet.addFileTransaction({
-                                   fee_type: 'transaction_fee_default',
-                                   amount  : fees
-                               }, null, null, transationAttr)
-                                     .then(transaction => {
-                                         unlock();
-                                         resolve(transaction);
-                                     })
-                                     .catch(e => {
-                                         console.log(`error`);
-                                         unlock();
-                                     });
-                           });
+                       .then(() => {
+                           return new Promise((resolve, reject) =>{
+                                //create transaction
+                               mutex.lock(['submit_transaction'], (unlock) => {
+                                   wallet.addTransaction([address],{
+                                       fee_type: 'transaction_fee_default',
+                                       amount  : fees
+                                   }, null, null, transationAttr)
+                                         .then(transaction => {
+                                             unlock();
+                                             resolve(transaction);
+                                         })
+                                         .catch(e => {
+                                             console.log(`error`);
+                                             unlock();
+                                             reject();
+                                         });
+                               })
+                           })
                        })
-                       .then((resolve, reject) => {
-                       //.then((transactionID) => {
+                       .then((transactionID) => {
                            //Create transaction directory to write file
-                           let transactionID = "123transaction321";/*apagar isto*/
-
-
                            let transationFolder = path.join(personalFolder, transactionID);
                            if (!fs.existsSync(transationFolder)) {
                                fs.mkdirSync(path.join(transationFolder));
@@ -137,6 +135,8 @@ class FileManager {
                                    });
                                }
                            }));
+
+                           //add json file com os attributos
                            Promise.all(promisesToWrite)
                                   .then(() => {
                                       resolve();
