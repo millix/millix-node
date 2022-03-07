@@ -1721,9 +1721,6 @@ class Wallet {
     }
 
     onPropagateTransactionList(data) {
-        if (mutex.getKeyQueuedSize(['transaction-list-propagate']) > config.NODE_CONNECTION_OUTBOUND_MAX) {
-            return Promise.resolve();
-        }
         const {transaction_id_list: transactions} = data;
         if (transactions && transactions.length > 0) {
             mutex.lock(['transaction-list-propagate'], unlock => {
