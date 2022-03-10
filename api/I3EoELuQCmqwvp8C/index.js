@@ -1,5 +1,6 @@
 import database from '../../database/database';
 import Endpoint from '../endpoint';
+import _ from 'lodash';
 
 
 /**
@@ -44,7 +45,7 @@ class _I3EoELuQCmqwvp8C extends Endpoint {
                 'transaction_input.shard_id'      : shardID
             }, orderBy, limit);
         }, orderBy, limit, shardID)
-                .then(data => res.send(data))
+                .then(data => res.send(_.uniqBy(data, 'input_position')))
                 .catch(e => res.send({
                     api_status : 'fail',
                     api_message: `unexpected generic api error: (${e})`
