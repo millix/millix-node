@@ -993,9 +993,10 @@ export default class Transaction {
                                      if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
                                          (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
                                           !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
-                                          !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0)) {
+                                          !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0 ||
+                                          !transaction.transaction_parent_list || transaction.transaction_parent_list.length === 0)) {
                                          console.log('[transaction-object] invalid transaction from database with id', transaction);
-                                         return this.deleteTransaction(transactionID).then(_ => null).catch(_ => null);
+                                         return Promise.reject('transaction_not_found');
                                      }
 
                                      return transaction;
