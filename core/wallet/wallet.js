@@ -1725,7 +1725,8 @@ class Wallet {
         if (transactions && transactions.length > 0) {
             mutex.lock(['transaction-list-propagate'], unlock => {
                 async.eachSeries(transactions, (transaction, callback) => {
-                    if (!!cache.getCacheItem('propagation', transaction.transaction_id)) {
+                    if (!!cache.getCacheItem('propagation', transaction.transaction_id) ||
+                        walletSync.hasPendingTransaction(transaction.transaction_id)) {
                         return callback();
                     }
                     const transactionRepository = database.getRepository('transaction');
@@ -1739,9 +1740,7 @@ class Wallet {
                                                      .then(_ => _)
                                                      .catch(_ => _);
                                              }
-                                             else {
-                                                 cache.setCacheItem('propagation', transaction.transaction_id, true, (transaction.transaction_date * 1000) + (config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000));
-                                             }
+                                             cache.setCacheItem('propagation', transaction.transaction_id, true, (transaction.transaction_date * 1000) + (config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000));
                                              callback();
                                          }).catch(() => callback());
                 }, () => unlock());
