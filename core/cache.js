@@ -46,6 +46,7 @@ class Cache {
     getCachedIfPresent(store, key, getter, cacheTime = 30000) {
         const cachedItem = this.getCacheItem(store, key);
         return cachedItem ? Promise.resolve(cachedItem) : getter().then(value => {
+            if(_.isNil(value) || _.isArray(value) && _.isEmpty(value))
             this.setCacheItem(store, key, value, cacheTime);
             return value;
         });
