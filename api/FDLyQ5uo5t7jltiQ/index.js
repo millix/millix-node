@@ -49,7 +49,7 @@ class _FDLyQ5uo5t7jltiQ extends Endpoint {
                 'transaction_output.shard_id'         : shardID
             }, orderBy, limit);
         }, orderBy, limit, shardID)
-                .then(data => res.send(_.uniqBy(data, 'input_position')))
+                .then(data => res.send(_.uniqBy(data, i => `${i.transaction_id}_${i.output_position}`)))
                 .catch(e => res.send({
                     api_status : 'fail',
                     api_message: `unexpected generic api error: (${e})`
