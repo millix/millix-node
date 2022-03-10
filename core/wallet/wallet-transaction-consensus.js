@@ -862,17 +862,28 @@ export class WalletTransactionConsensus {
                                     let isDoubleSpend = false;
                                     for (let transactionSpendingOutput of transactionSpendingOutputList) {
                                         if (transactionSpendingOutput.transaction_id !== transaction.transaction_id &&
-                                            transactionSpendingOutput.status !== 3 && (transactionSpendingOutput.is_stable === 0 || transactionSpendingOutput.is_double_spend === 0)) {
+                                            transactionSpendingOutput.status !== 3 &&
+                                            !this._transactionValidationRejected[transactionSpendingOutput.transaction_id] &&
+                                            (transactionSpendingOutput.is_stable === 0 || transactionSpendingOutput.is_double_spend === 0)) {
                                             isDoubleSpend = true;
                                             break;
                                         }
                                     }
 
                                     if (!isDoubleSpend) {
-                                        database.applyShardZeroAndShardRepository('transaction', input.output_shard_id,
-                                            transactionRepository => transactionRepository.resetTransaction(input.output_transaction_id, input.output_shard_id))
-                                                .then(() => callback())
-                                                .catch(() => callback());
+                                        database.firstShardORShardZeroRepository('transaction', input.output_shard_id, repository => {
+                                            return repository.isDoubleSpendTransaction(input.output_transaction_id).then(isDoubleSpend => isDoubleSpend ? Promise.resolve(true) : Promise.reject());
+                                        }).then(isDoubleSpend => {
+
+                                            if (isDoubleSpend === true) {
+                                                return callback();
+                                            }
+
+                                            return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id,
+                                                transactionRepository => transactionRepository.resetTransaction(input.output_transaction_id, input.output_shard_id))
+                                                           .then(() => callback())
+                                                           .catch(() => callback());
+                                        });
                                     }
                                     else {
                                         callback();
