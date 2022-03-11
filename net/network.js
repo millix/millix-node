@@ -338,6 +338,9 @@ class Network {
 
         return new Promise(resolve => {
             async.eachLimit(_.shuffle(Array.from(inactiveClients)), 4, (node, callback) => {
+                if (this._nodeRegistry[node.node_id]) {
+                    return callback();
+                }
                 this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
                     .then(() => setTimeout(callback, 1000))
                     .catch(() => setTimeout(callback, 1000));
@@ -1127,14 +1130,16 @@ class Network {
         });
     }
 
-    disconnectWebSocket(ws) {
-        if (ws) {
-            if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-                this._unregisterWebsocket(ws);
-            }
-            else {
-                ws.close();
-            }
+    disconnectWebSocket(targetWS) {
+        if (targetWS) {
+            _.each([...this._nodeRegistry[targetWS.nodeID]], ws => { // clone the refs because the array will be mutated in the loop
+                if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) { // unregister all websocket from this node that are in closed state
+                    this._unregisterWebsocket(ws);
+                }
+                else if (ws === targetWS) {
+                    ws.close();
+                }
+            });
         }
     }
 
