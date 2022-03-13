@@ -1132,7 +1132,8 @@ class Network {
 
     disconnectWebSocket(targetWS) {
         if (targetWS) {
-            _.each([...this._nodeRegistry[targetWS.nodeID]], ws => { // clone the refs because the array will be mutated in the loop
+            let wsList = this._nodeRegistry[targetWS.nodeID];
+            _.each([... wsList || [targetWS]], ws => { // clone the refs because the array will be mutated in the loop
                 if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) { // unregister all websocket from this node that are in closed state
                     this._unregisterWebsocket(ws);
                 }
