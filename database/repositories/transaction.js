@@ -235,28 +235,36 @@ export default class Transaction {
     }
 
     getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionIDList) {
-        return new Promise((resolve, reject) => {
-            this.database.all('SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE transaction_input.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100) ' +
-                              'UNION SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100) ' +
-                              'UNION SELECT * FROM (SELECT `transaction`.* FROM transaction_input ' +
-                              'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE output_transaction_id IN (SELECT transaction_id FROM transaction_output WHERE address_key_identifier = ?1 ' +
-                              'AND is_stable = 1 AND is_spent = 1 AND status = 2) ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100) ',
-                [
-                    addressKeyIdentifier
-                ].concat(excludeTransactionIDList),
-                (err, rows) => {
-                    if (err) {
-                        console.log(err);
-                        return reject(err);
+        const params = [addressKeyIdentifier].concat(excludeTransactionIDList);
+        return new Promise(resolve => {
+            async.eachOfSeries([
+                /* get transaction by input using wallet funds */
+                'SELECT DISTINCT `transaction`.* FROM `transaction` ' +
+                'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
+                'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
+                'WHERE transaction_input.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100',
+                /* get transaction by wallet output */
+                'SELECT DISTINCT `transaction`.* FROM `transaction` ' +
+                'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
+                'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100',
+                /* get transaction by output received by active wallet */
+                'SELECT DISTINCT `transaction`.* FROM transaction_input ' +
+                'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
+                'INNER JOIN `transaction_output` ON `transaction_output`.transaction_id = transaction_input.transaction_id ' +
+                'WHERE transaction_input.output_transaction_id IN (SELECT transaction_input.transaction_id FROM transaction_input INNER JOIN transaction_output ON transaction_input.transaction_id =  transaction_output.transaction_id WHERE transaction_input.address_key_identifier = ?1 AND transaction_output.is_stable = 1 AND transaction_output.is_spent = 1 AND transaction_output.status = 2) ' +
+                'AND transaction_input.address_key_identifier != ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') +
+                'AND +`transaction`.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100'
+            ], (sql, idx, callback) => {
+                this.database.all(sql, params, (err, rows) => {
+                    if (rows && rows.length > 0) {
+                        return callback(rows);
                     }
-                    return resolve(rows);
+                    else if (err) {
+                        console.log(err);
+                    }
+                    callback();
                 });
+            }, data => resolve(data || []));
         });
     }
 
@@ -1711,24 +1719,25 @@ export default class Transaction {
             unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
             unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
             let sql, params;
-            if(!returnHibernatedTransactions){
-                sql = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
+            if (!returnHibernatedTransactions) {
+                sql    = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
                 params = [
                     unstableDateStart,
                     insertDate
                 ].concat(excludeTransactionIDList);
-            } else {
-                sql = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
-                params = [insertDate].concat(excludeTransactionIDList)
+            }
+            else {
+                sql    = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
+                params = [insertDate].concat(excludeTransactionIDList);
             }
 
             this.database.all(sql, params, (err, rows) => {
-                    if (err) {
-                        console.log(err);
-                        return reject(err);
-                    }
-                    return resolve(rows);
-                });
+                if (err) {
+                    console.log(err);
+                    return reject(err);
+                }
+                return resolve(rows);
+            });
         });
     }
 
@@ -2762,7 +2771,8 @@ export default class Transaction {
 
         return new Promise((resolve, reject) => {
             this.database.exec(`DROP TABLE IF EXISTS transaction_expired;
-            CREATE TEMPORARY TABLE transaction_expired AS
+            CREATE
+            TEMPORARY TABLE transaction_expired AS
             WITH expired AS (SELECT t.transaction_id
                              FROM 'transaction' t
                              WHERE t.transaction_date <= ${seconds}
