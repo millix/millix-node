@@ -302,17 +302,10 @@ export default class Transaction {
 
     countWalletUnstableTransactions(addressKeyIdentifier) {
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT COUNT(1) as transaction_count FROM (SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE transaction_input.address_key_identifier = ?1 AND transaction_output.is_stable = 0 ) ' +
-                              'UNION SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ?1 AND transaction_output.is_stable = 0 ) ' +
-                              'UNION SELECT * FROM (SELECT `transaction`.* FROM transaction_input ' +
-                              'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE output_transaction_id IN (SELECT transaction_id FROM transaction_output WHERE address_key_identifier = ?1 ' +
-                              'AND is_stable = 1 AND is_spent = 1 AND status = 2) AND +`transaction`.is_stable = 0 )) ',
+            this.database.get(`SELECT COUNT(DISTINCT transaction_id) AS transaction_count
+                               FROM transaction_output
+                               WHERE address_key_identifier = ?1
+                                 AND is_stable = 0`,
                 [
                     addressKeyIdentifier
                 ],
