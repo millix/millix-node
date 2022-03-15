@@ -501,6 +501,7 @@ class Wallet {
             eventBus.emit('wallet_update');
             // start consensus in 1s
             setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
+            statsApi.clearCacheItem('wallet_balance');
         }
     }
 
