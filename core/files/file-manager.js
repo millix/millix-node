@@ -1,6 +1,6 @@
 import path from 'path';
 import os from 'os';
-import config, {TRANSACTION_FEE_DEFAULT} from '../config/config';
+import config from '../config/config';
 import fs from 'fs';
 import crypto from 'crypto';
 import wallet from '../wallet/wallet';
@@ -99,7 +99,8 @@ class FileManager {
                                       resolve();
                                   });
                        })
-                       .then(() => {
+                       .then(() => {//aqui chatear o pessoal
+
                            resolve();
                        });
 
