@@ -493,7 +493,7 @@ export class WalletSync {
     }
 
     updateSyncTransactionSpend() {
-        if (!this.transactionSpendWalletQueue || !this.transactionSpendQueue) {
+        if (!this.transactionSpendWalletQueue || !this.transactionSpendQueue || !config.FORCE_QUEUE_UPDATE) {
             return Promise.resolve();
         }
         const walletKeyIdentifierSet = new Set([

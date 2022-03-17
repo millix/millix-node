@@ -1049,6 +1049,7 @@ export class WalletTransactionConsensus {
                 });
             });
         }, 'transaction_date').then(pendingTransactions => {
+
             if (pendingTransactions.length === 0) {
                 let pipeline = Promise.resolve();
                 if (!cache.getCacheItem('wallet-consensus', 'update_transaction_rejected')) {
@@ -1083,7 +1084,7 @@ export class WalletTransactionConsensus {
                 ];
             }
         }).then(([pendingTransactions, isTransactionFundingWallet]) => {
-            console.log('[wallet-transaction-consensus] get unstable transactions done');
+            console.log('[wallet-transaction-consensus] get unstable transactions done. is wallet transaction', isTransactionFundingWallet);
             let rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id) || this._consensusRoundState[t.transaction_id]);
             let pendingTransaction   = pendingTransactions[0];
 

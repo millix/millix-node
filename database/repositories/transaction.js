@@ -253,7 +253,7 @@ export default class Transaction {
                 'SELECT DISTINCT `transaction`.* FROM transaction_input ' +
                 'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
                 'INNER JOIN `transaction_output` ON `transaction_output`.transaction_id = transaction_input.transaction_id ' +
-                'WHERE transaction_input.output_transaction_id IN (SELECT transaction_input.transaction_id FROM transaction_input INNER JOIN transaction_output ON transaction_input.transaction_id =  transaction_output.transaction_id WHERE transaction_input.address_key_identifier = ?1 AND transaction_output.is_stable = 1 AND transaction_output.is_spent = 1 AND transaction_output.status = 2) ' +
+                'WHERE transaction_input.output_transaction_id IN (SELECT transaction_input.transaction_id FROM transaction_input INNER JOIN transaction_output ON transaction_input.transaction_id =  transaction_output.transaction_id WHERE transaction_input.address_key_identifier = ?1 AND +transaction_output.is_stable = 1 AND +transaction_output.is_spent = 1 AND transaction_output.status = 2) ' +
                 'AND transaction_input.address_key_identifier != ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') +
                 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100'
             ], (sql, idx, callback) => {
