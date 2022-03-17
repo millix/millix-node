@@ -955,16 +955,11 @@ export class WalletTransactionConsensus {
                 cache.removeCacheItem('validation', transactionID);
                 consensusData.active = false;
 
-                if (!transaction) {
-                    return database.getRepository('transaction')
-                                   .updateTransactionAsStable(transactionID)
-                                   .then(() => consensusData.resolve())
-                                   .catch(() => consensusData.resolve());
-                }
-
-                return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
+                console.log('[wallet-transaction-consensus] transaction object no present for tx id:', transactionID);
+                return database.applyShards(shardID => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.updateTransactionAsStable(transactionID);
-                }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
+                }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
                                .then(() => consensusData.resolve())
                                .catch(() => consensusData.resolve());
             }
