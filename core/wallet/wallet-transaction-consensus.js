@@ -894,7 +894,7 @@ export class WalletTransactionConsensus {
                                             }
 
                                             return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id,
-                                                transactionRepository => transactionRepository.resetTransaction(input.output_transaction_id, input.output_shard_id))
+                                                transactionRepository => transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, null))
                                                            .then(() => callback())
                                                            .catch(() => callback());
                                         });
