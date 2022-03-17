@@ -1730,20 +1730,14 @@ class Wallet {
                         walletSync.hasPendingTransaction(transaction.transaction_id)) {
                         return callback();
                     }
-                    const transactionRepository = database.getRepository('transaction');
-                    transactionRepository.hasTransaction(transaction.transaction_id)
-                                         .then(hasTransaction => {
-                                             if (!hasTransaction) {
-                                                 peer.transactionSyncRequest(transaction.transaction_id, {
-                                                     dispatch_request  : true,
-                                                     force_request_sync: true
-                                                 })
-                                                     .then(_ => _)
-                                                     .catch(_ => _);
-                                             }
-                                             cache.setCacheItem('propagation', transaction.transaction_id, true, (transaction.transaction_date * 1000) + (config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000));
-                                             callback();
-                                         }).catch(() => callback());
+                    else {
+                        peer.transactionSyncRequest(transaction.transaction_id, {
+                            dispatch_request  : true,
+                            force_request_sync: true
+                        }).then(_ => _).catch(_ => _);
+                        cache.setCacheItem('propagation', transaction.transaction_id, true, config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000);
+                        callback();
+                    }
                 }, () => unlock());
             });
         }

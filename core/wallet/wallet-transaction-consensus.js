@@ -1050,10 +1050,11 @@ export class WalletTransactionConsensus {
             });
         }, 'transaction_date').then(pendingTransactions => {
             if (pendingTransactions.length === 0) {
-
+                let pipeline = Promise.resolve();
                 if (!cache.getCacheItem('wallet-consensus', 'update_transaction_rejected')) {
                     cache.setCacheItem('wallet-consensus', 'update_transaction_rejected', false, 60000);
-                    database.applyShards(shardID => {
+                    console.log('[wallet-transaction-consensus] update rejected transaction using output status');
+                    pipeline = pipeline.then(() => database.applyShards(shardID => {
                         const transactionRepository = database.getRepository('transaction', shardID);
                         return transactionRepository.listTransactionOutput({
                             address_key_identifier        : wallet.defaultKeyIdentifier,
@@ -1063,16 +1064,16 @@ export class WalletTransactionConsensus {
                         });
                     }).then(unstableTransactionList => {
                         unstableTransactionList.forEach(transaction => this._transactionValidationRejected.delete(transaction.transaction_id));
-                    });
+                    }));
                 }
-
-                return database.applyShards((shardID) => {
+                console.log('[wallet-transaction-consensus] get all unstable transactions');
+                return pipeline.then(() => database.applyShards((shardID) => {
                     return database.getRepository('transaction', shardID)
                                    .findUnstableTransaction(excludeTransactionList, config.MODE_NODE_FULL);
                 }, 'transaction_date').then(transactions => [
                     _.filter(transactions, transaction => !(Date.now() - transaction.create_date < 30 || this._consensusRoundState[transaction.transaction_id])),
                     false
-                ]);
+                ]));
             }
             else {
                 cache.setCacheItem('wallet-consensus', 'transaction_rejected_updated', true);
