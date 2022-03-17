@@ -108,7 +108,6 @@ class Network {
             return Promise.reject();
         }
         else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && (!id || !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id))) {
-            console.log('[network warn]: node id not in NODE_CONNECTION_OUTBOUND_WHITELIST');
             return Promise.reject();
         }
 

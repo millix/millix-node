@@ -257,6 +257,7 @@ export default class Transaction {
                 'AND transaction_input.address_key_identifier != ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') +
                 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100'
             ], (sql, idx, callback) => {
+                console.log('[transaction] build query getWalletUnstableTransactions', sql, params);
                 this.database.all(sql, params, (err, rows) => {
                     if (rows && rows.length > 0) {
                         return callback(rows);

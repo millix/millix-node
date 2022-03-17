@@ -1049,6 +1049,9 @@ export class WalletTransactionConsensus {
                 });
             });
         }, 'transaction_date').then(pendingTransactions => {
+
+            console.log('[wallet-transaction-consensus] wallet pending transactions', pendingTransactions);
+
             if (pendingTransactions.length === 0) {
                 let pipeline = Promise.resolve();
                 if (!cache.getCacheItem('wallet-consensus', 'update_transaction_rejected')) {
