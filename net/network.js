@@ -107,7 +107,7 @@ class Network {
         else if (!prefix || !ipAddress || !port || portApi === undefined || id === this.nodeID) {
             return Promise.reject();
         }
-        else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && id && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id)) {
+        else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && (!id || !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id))) {
             console.log('[network warn]: node id not in NODE_CONNECTION_OUTBOUND_WHITELIST');
             return Promise.reject();
         }
@@ -1133,7 +1133,7 @@ class Network {
     disconnectWebSocket(targetWS) {
         if (targetWS) {
             let wsList = this._nodeRegistry[targetWS.nodeID];
-            _.each([... wsList || [targetWS]], ws => { // clone the refs because the array will be mutated in the loop
+            _.each([...wsList || [targetWS]], ws => { // clone the refs because the array will be mutated in the loop
                 if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) { // unregister all websocket from this node that are in closed state
                     this._unregisterWebsocket(ws);
                 }
