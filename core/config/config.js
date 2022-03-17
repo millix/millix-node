@@ -16,6 +16,7 @@ export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = false;
 export const MODE_NODE_FULL                                    = false;
+export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
@@ -823,6 +824,7 @@ if (DATABASE_ENGINE === 'sqlite') {
 export default {
     MODE_DEBUG,
     MODE_NODE_FULL,
+    FORCE_QUEUE_UPDATE,
     MODE_TEST_NETWORK,
     NODE_PORT,
     NODE_PORT_DISCOVERY,
