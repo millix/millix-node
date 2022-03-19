@@ -41,6 +41,7 @@ class Network {
         this.certificatePrivateKeyPem             = null;
         this.nodeConnectionID                     = this.generateNewID();
         this._selfConnectionNode                  = new Set();
+        this._allowedMessageInOutboudConnection   = new Set(['node_attribute_request', 'wallet_transaction_sync']);
         this.initialized                          = false;
         this.dht                                  = null;
         this.noop                                 = () => {
@@ -212,7 +213,7 @@ class Network {
     }
 
     shouldBlockMessage(messageType) {
-        return !!/.*_(request|sync|allocate)$/g.exec(messageType);
+        return !this._allowedMessageInOutboudConnection.has(messageType) && !!/.*_(request|sync|allocate)$/g.exec(messageType);
     }
 
     getHostByNode(node) {
