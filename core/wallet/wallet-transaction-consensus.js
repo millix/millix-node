@@ -174,6 +174,7 @@ export class WalletTransactionConsensus {
                     return resolve();
                 }
                 else if (transaction && transaction.status === 3) {
+                    console.log('[wallet-transaction-consensus-oracle] found invalid transaction ', transaction.transaction_id);
                     return reject({
                         cause              : 'transaction_invalid',
                         transaction_id_fail: transactionID,
@@ -227,6 +228,7 @@ export class WalletTransactionConsensus {
                 walletUtils.verifyTransaction(transaction)
                            .then(valid => {
                                if (!valid) {
+                                   console.log('[wallet-transaction-consensus-oracle] transaction data was is not valid ', transaction.transaction_id);
                                    return reject({
                                        cause              : 'transaction_invalid',
                                        transaction_id_fail: transaction.transaction_id,
@@ -359,6 +361,7 @@ export class WalletTransactionConsensus {
                                            const outputAddress = output.address || `${output.address_base}${output.address_version}${output.address_key_identifier}`;
 
                                            if (outputUsedInTransaction.has(outputID)) {
+                                               console.log(`[wallet-transaction-consensus-oracle] transaction ${transaction.transaction_id} is invalid because output already used ${outputID}`, transaction.transaction_input_list);
                                                return callback({
                                                    cause              : 'transaction_invalid',
                                                    transaction_id_fail: input.output_transaction_id,
@@ -366,6 +369,7 @@ export class WalletTransactionConsensus {
                                                }, false);
                                            }
                                            else if (outputAddress !== `${input.address_base}${input.address_version}${input.address_key_identifier}`) {
+                                               console.log(`[wallet-transaction-consensus-oracle] transaction ${transaction.transaction_id} is invalid because invalid input address ${input.address_base}${input.address_version}${input.address_key_identifier}`, output);
                                                return callback({
                                                    cause              : 'transaction_invalid',
                                                    transaction_id_fail: transactionID,
@@ -410,6 +414,7 @@ export class WalletTransactionConsensus {
                                    });
 
                                    if (outputTotalAmount > inputTotalAmount) {
+                                       console.log(`[wallet-transaction-consensus-oracle] transaction ${transaction.transaction_id} is invalid because invalid amount ${outputTotalAmount} > ${inputTotalAmount}`);
                                        return reject({
                                            cause              : 'transaction_invalid_amount',
                                            transaction_id_fail: transactionID,
