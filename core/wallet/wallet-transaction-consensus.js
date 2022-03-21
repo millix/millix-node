@@ -899,7 +899,10 @@ export class WalletTransactionConsensus {
                                             }
 
                                             return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id,
-                                                transactionRepository => transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, null))
+                                                transactionRepository =>
+                                                    (config.CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET ?
+                                                     transactionRepository.resetTransaction(input.output_transaction_id) :
+                                                     transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, null)))
                                                            .then(() => callback())
                                                            .catch(() => callback());
                                         });
