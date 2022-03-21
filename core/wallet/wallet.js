@@ -1435,10 +1435,21 @@ class Wallet {
                 transaction_proxy_success: false
             }, network.getWebSocketByID(connectionID));
         }
+
+        const now    = Math.floor(ntp.now().getTime() / 1000);
         let pipeline = Promise.resolve();
         for (let transaction of transactionList) {
             if (transaction.shard_id !== genesisConfig.genesis_shard_id) {
                 return peer.transactionProxyResult({
+                    cause                    : 'invalid transaction shard',
+                    transaction_proxy_fail   : 'invalid_transaction',
+                    transaction_id           : transaction.transaction_id,
+                    transaction_proxy_success: false
+                }, network.getWebSocketByID(connectionID));
+            }
+            else if (transaction.transaction_date >= (now + 60)) { //clock skew: 1 minute ahead
+                return peer.transactionProxyResult({
+                    cause                    : 'invalid transaction date',
                     transaction_proxy_fail   : 'invalid_transaction',
                     transaction_id           : transaction.transaction_id,
                     transaction_proxy_success: false
