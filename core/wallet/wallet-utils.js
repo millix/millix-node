@@ -1003,6 +1003,7 @@ class WalletUtils {
 
         const totalTransactions = Math.min(Math.floor(inputList.length / config.TRANSACTION_INPUT_MAX), config.WALLET_TRANSACTION_AGGREGATION_MAX - 1);
         if (totalTransactions === 0) { // we just need to create a single transaction
+            feeOutputList[0].amount = config.TRANSACTION_FEE_DEFAULT;
             const outputList = this.splitOutputAmount(inputList, feeOutputList, maxNumberOfOutputs);
             return this.signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion);
         }
