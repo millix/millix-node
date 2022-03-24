@@ -29,6 +29,20 @@ class Mutex {
         }
     }
 
+    getQueueJobs() {
+        return {
+            0: {job_name: 'sadkjasldkjaslkdjalsjdlaskjd'},
+            1: {job_name: 'qweqweqweqweqweqweqweqweqweq'},
+            2: {job_name: 'fsdfsdfsdfsdfsdfsdfsdfsdfsdf'},
+            3: {job_name: 'xcvxcvxcvxcvxcvxcvxvxcvxcvxc'},
+            4: {job_name: 'ghjghjghjghgjghjghjghjghjghj'},
+            5: {job_name: 'uiouiouioiuouiouiouiouiouioo'},
+        }
+/*
+        return this.arrQueuedJobs;
+*/
+    }
+
     getCountOfLocks() {
         return this.arrLockedKeyArrays.length;
     }

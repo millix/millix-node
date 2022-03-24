@@ -72,6 +72,10 @@ class LogManager {
         this.backLogSize = 0;
     }
 
+    getBacklogData() {
+        return mutex.getQueueJobs();
+    }
+
     setBacklogSize(size) {
         this.backLogSize = size;
     }
