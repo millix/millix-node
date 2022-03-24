@@ -501,6 +501,7 @@ class Wallet {
             eventBus.emit('wallet_update');
             // start consensus in 1s
             setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
+            statsApi.clearCacheItem('wallet_balance');
         }
     }
 
@@ -1245,7 +1246,7 @@ class Wallet {
                     // get peers' current web socket
                     let ws = network.getWebSocketByID(connectionID);
                     if (ws) {
-                        peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, transactions, ws);
+                        peer.transactionOutputSpendResponse(transactionID, transactionOutputPosition, _.filter(transactions, i => !_.isNil(i)), ws);
                         console.log(`[wallet] sending transactions spending from output tx: ${data.transaction_id}:${data.output_position} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                     }
                     unlock();
@@ -1434,10 +1435,21 @@ class Wallet {
                 transaction_proxy_success: false
             }, network.getWebSocketByID(connectionID));
         }
+
+        const now    = Math.floor(ntp.now().getTime() / 1000);
         let pipeline = Promise.resolve();
         for (let transaction of transactionList) {
             if (transaction.shard_id !== genesisConfig.genesis_shard_id) {
                 return peer.transactionProxyResult({
+                    cause                    : 'invalid transaction shard',
+                    transaction_proxy_fail   : 'invalid_transaction',
+                    transaction_id           : transaction.transaction_id,
+                    transaction_proxy_success: false
+                }, network.getWebSocketByID(connectionID));
+            }
+            else if (transaction.transaction_date >= (now + 60)) { //clock skew: 1 minute ahead
+                return peer.transactionProxyResult({
+                    cause                    : 'invalid transaction date',
                     transaction_proxy_fail   : 'invalid_transaction',
                     transaction_id           : transaction.transaction_id,
                     transaction_proxy_success: false
@@ -1721,32 +1733,22 @@ class Wallet {
     }
 
     onPropagateTransactionList(data) {
-        if (mutex.getKeyQueuedSize(['transaction-list-propagate']) > config.NODE_CONNECTION_OUTBOUND_MAX) {
-            return Promise.resolve();
-        }
         const {transaction_id_list: transactions} = data;
         if (transactions && transactions.length > 0) {
             mutex.lock(['transaction-list-propagate'], unlock => {
                 async.eachSeries(transactions, (transaction, callback) => {
-                    if (!!cache.getCacheItem('propagation', transaction.transaction_id)) {
+                    if (!!cache.getCacheItem('propagation', transaction.transaction_id) ||
+                        walletSync.hasPendingTransaction(transaction.transaction_id)) {
                         return callback();
                     }
-                    const transactionRepository = database.getRepository('transaction');
-                    transactionRepository.hasTransaction(transaction.transaction_id)
-                                         .then(hasTransaction => {
-                                             if (!hasTransaction) {
-                                                 peer.transactionSyncRequest(transaction.transaction_id, {
-                                                     dispatch_request  : true,
-                                                     force_request_sync: true
-                                                 })
-                                                     .then(_ => _)
-                                                     .catch(_ => _);
-                                             }
-                                             else {
-                                                 cache.setCacheItem('propagation', transaction.transaction_id, true, (transaction.transaction_date * 1000) + (config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000));
-                                             }
-                                             callback();
-                                         });
+                    else {
+                        peer.transactionSyncRequest(transaction.transaction_id, {
+                            dispatch_request  : true,
+                            force_request_sync: true
+                        }).then(_ => _).catch(_ => _);
+                        cache.setCacheItem('propagation', transaction.transaction_id, true, config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN * 60 * 1000);
+                        callback();
+                    }
                 }, () => unlock());
             });
         }

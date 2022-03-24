@@ -527,7 +527,7 @@ class Peer {
 
                             if (!callbackCalled) {
                                 callbackCalled = true;
-                                if (!eventData || !eventData.transaction_list || eventData.transaction_list.length === 0) {
+                                if (!eventData || _.isEmpty(_.filter(eventData.transaction_list, i => !_.isNil(i)))) {
                                     callback();
                                 }
                                 else {

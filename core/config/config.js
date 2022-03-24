@@ -16,6 +16,7 @@ export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = false;
 export const MODE_NODE_FULL                                    = false;
+export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
@@ -720,7 +721,8 @@ export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
-export const TRANSACTION_TIME_LIMIT_PROXY                      = 45000;
+export const CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET      = true;
+export const TRANSACTION_TIME_LIMIT_PROXY                      = 5000;
 export const TRANSACTION_FEE_PROXY                             = 1000;
 export const TRANSACTION_FEE_DEFAULT                           = 1000;
 export const TRANSACTION_FEE_NETWORK                           = 0.0;
@@ -817,12 +819,13 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '17';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '18';
 }
 
 export default {
     MODE_DEBUG,
     MODE_NODE_FULL,
+    FORCE_QUEUE_UPDATE,
     MODE_TEST_NETWORK,
     NODE_PORT,
     NODE_PORT_DISCOVERY,
@@ -860,6 +863,7 @@ export default {
     CONSENSUS_VALIDATION_RETRY_WAIT_TIME,
     CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
     CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX,
+    CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET,
     NODE_CONNECTION_PUBLIC_PERCENT,
     CONSENSUS_ROUND_NODE_COUNT,
     TRANSACTION_FEE_PROXY,
