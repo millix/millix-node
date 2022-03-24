@@ -11,7 +11,7 @@ import peer from '../../net/peer';
 import async from 'async';
 import _ from 'lodash';
 import genesisConfig from '../genesis/genesis-config';
-import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
+import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION, WALLET_TRANSACTION_AGGREGATION_MAX} from '../config/config';
 import statsApi from '../../api/rKclyiLtHx0dx55M/index';
 import network from '../../net/network';
 import mutex from '../mutex';
@@ -272,12 +272,125 @@ class Wallet {
         });
     }
 
-    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion) {
-        const addressRepository = database.getRepository('address');
+    updateTransactionOutputWithAddressInformation(outputs) {
+        const addressRepository  = database.getRepository('address');
+        const keychainRepository = database.getRepository('keychain');
+        return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
+            const mapAddresses = {};
+            addresses.forEach(address => mapAddresses[address.address] = address);
+
+            for (let i = 0; i < outputs.length; i++) {
+                const output        = outputs[i];
+                const outputAddress = mapAddresses[output.address];
+                if (!outputAddress) {
+                    console.log('[wallet][warn] output address not found', output);
+                    const {address: missingAddress} = addressRepository.getAddressComponent(output.address);
+                    //TODO: find a better way to get the address
+                    for (let addressPosition = 0; addressPosition < 2 ** 32; addressPosition++) {
+                        let {
+                                address          : addressBase,
+                                address_attribute: addressAttribute
+                            } = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
+                        if (addressBase === missingAddress) {
+                            output['address_version']        = addressRepository.getDefaultAddressVersion().version;
+                            output['address_key_identifier'] = this.defaultKeyIdentifier;
+                            output['address_base']           = addressBase;
+                            output['address_position']       = addressPosition;
+                            output['address_attribute']      = addressAttribute;
+                            break;
+                        }
+                    }
+                }
+                else {
+                    output['address_version']        = outputAddress.address_version;
+                    output['address_key_identifier'] = outputAddress.address_key_identifier;
+                    output['address_base']           = outputAddress.address_base;
+                    output['address_position']       = outputAddress.address_position;
+                    output['address_attribute']      = outputAddress.address_attribute;
+                }
+            }
+            return outputs;
+        });
+    }
+
+    aggregateOutputs() {
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
                 this._transactionSendInterrupt = false;
-                let transactionOutputIDSpent   = new Set();
+                return database.applyShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
+                                                                                 .then(outputs => outputs.length ? resolve(outputs) : reject()));
+                }).then((outputs) => this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`))))
+                               .then((outputs) => {
+                                   if (!outputs || outputs.length === 0) {
+                                       return Promise.resolve();
+                                   }
+                                   outputs = _.orderBy(outputs, ['amount'], ['asc']);
+
+                                   const maxOutputsToUse     = (config.WALLET_TRANSACTION_AGGREGATION_MAX - 1) * config.TRANSACTION_INPUT_MAX;
+                                   const outputsToUse        = [];
+                                   const privateKeyMap       = {};
+                                   const addressAttributeMap = {};
+
+                                   for (let i = 0; i < outputs.length && outputsToUse.length <= maxOutputsToUse; i++) {
+                                       let output                               = outputs[i];
+                                       const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
+                                       const privateKeyBuf                      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
+                                       privateKeyMap[output.address_base]       = privateKeyBuf.toString('hex');
+                                       addressAttributeMap[output.address_base] = output.address_attribute;
+                                       outputsToUse.push(output);
+                                   }
+
+                                   let keyMap      = {
+                                       'transaction_id'  : 'output_transaction_id',
+                                       'transaction_date': 'output_transaction_date',
+                                       'shard_id'        : 'output_shard_id'
+                                   };
+                                   const srcInputs = _.map(outputsToUse, o => _.mapKeys(_.pick(o, [
+                                       'transaction_id',
+                                       'output_position',
+                                       'transaction_date',
+                                       'shard_id',
+                                       'address_base',
+                                       'address_version',
+                                       'address_key_identifier',
+                                       'amount'
+                                   ]), (v, k) => keyMap[k] ? keyMap[k] : k));
+
+                                   const outputFee = {
+                                       fee_type: 'transaction_fee_default'
+                                   };
+
+                                   return this.signAndStoreTransaction(srcInputs, [], outputFee, addressAttributeMap, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION, true);
+                               })
+                               .then(transactionList => {
+                                   transactionList.forEach(transaction => peer.transactionSend(transaction));
+                                   return transactionList;
+                               })
+                               .then((transactionList) => {
+                                   this._transactionSendInterrupt = false;
+                                   unlock();
+                                   resolve(transactionList);
+                                   this._doWalletUpdate();
+                               })
+                               .catch((e) => {
+                                   this._transactionSendInterrupt = false;
+                                   unlock();
+                                   reject({error: e});
+                                   if (e === 'transaction_proxy_rejected') {
+                                       this.resetTransactionValidationRejected();
+                                       this._doWalletUpdate();
+                                   }
+                               });
+            });
+        });
+    }
+
+    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion) {
+        return new Promise((resolve, reject) => {
+            mutex.lock(['write'], (unlock) => {
+                this._transactionSendInterrupt = false;
                 return new Promise(resolve => {
                     if (!srcOutputs) {
                         return database.applyShards((shardID) => {
@@ -290,52 +403,7 @@ class Wallet {
                         resolve(srcOutputs);
                     }
                 })
-                    .then((outputs) => {
-                        const availableOutputs   = [];
-                        const keychainRepository = database.getRepository('keychain');
-                        return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
-                            const mapAddresses = {};
-                            addresses.forEach(address => mapAddresses[address.address] = address);
-
-                            for (let i = 0; i < outputs.length; i++) {
-                                const output = outputs[i];
-
-                                if (cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)) {
-                                    continue;
-                                }
-
-                                const outputAddress = mapAddresses[output.address];
-                                if (!outputAddress) {
-                                    console.log('[wallet][warn] output address not found', output);
-                                    const {address: missingAddress} = addressRepository.getAddressComponent(output.address);
-                                    //TODO: find a better way to get the address
-                                    for (let addressPosition = 0; addressPosition < 2 ** 32; addressPosition++) {
-                                        let {
-                                                address          : addressBase,
-                                                address_attribute: addressAttribute
-                                            } = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
-                                        if (addressBase === missingAddress) {
-                                            output['address_version']        = addressRepository.getDefaultAddressVersion().version;
-                                            output['address_key_identifier'] = this.defaultKeyIdentifier;
-                                            output['address_base']           = addressBase;
-                                            output['address_position']       = addressPosition;
-                                            output['address_attribute']      = addressAttribute;
-                                            break;
-                                        }
-                                    }
-                                }
-                                else {
-                                    output['address_version']        = outputAddress.address_version;
-                                    output['address_key_identifier'] = outputAddress.address_key_identifier;
-                                    output['address_base']           = outputAddress.address_base;
-                                    output['address_position']       = outputAddress.address_position;
-                                    output['address_attribute']      = outputAddress.address_attribute;
-                                }
-                                availableOutputs.push(output);
-                            }
-                            return availableOutputs;
-                        });
-                    })
+                    .then((outputs) => this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`))))
                     .then((outputs) => {
                         if (!outputs || outputs.length === 0) {
                             return Promise.reject({
@@ -387,10 +455,9 @@ class Wallet {
                             'shard_id',
                             'address_base',
                             'address_version',
-                            'address_key_identifier'
+                            'address_key_identifier',
+                            'amount'
                         ]), (v, k) => keyMap[k] ? keyMap[k] : k));
-
-                        srcInputs.forEach(input => transactionOutputIDSpent.add(input.transaction_id));
 
                         let amountSent     = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
                         let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
@@ -412,20 +479,18 @@ class Wallet {
                     })
                     .then((transactionList) => {
                         this._transactionSendInterrupt = false;
-                        resolve(transactionList);
-                        //wait 1 second then start the validation process
-                        setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
                         unlock();
+                        resolve(transactionList);
+                        this._doWalletUpdate();
                     })
                     .catch((e) => {
                         this._transactionSendInterrupt = false;
-
+                        unlock();
+                        reject({error: e});
                         if (e === 'transaction_proxy_rejected') {
                             this.resetTransactionValidationRejected();
+                            this._doWalletUpdate();
                         }
-
-                        reject({error: e});
-                        unlock();
                     });
             });
         });
@@ -498,11 +563,15 @@ class Wallet {
 
     _checkIfWalletUpdate(addressesKeyIdentifierSet) {
         if (addressesKeyIdentifierSet.has(this.defaultKeyIdentifier)) {
-            eventBus.emit('wallet_update');
-            // start consensus in 1s
-            setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
-            statsApi.clearCacheItem('wallet_balance');
+            this._doWalletUpdate();
         }
+    }
+
+    _doWalletUpdate() {
+        eventBus.emit('wallet_update');
+        // start consensus in 1s
+        setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
+        statsApi.clearCacheItem('wallet_balance');
     }
 
     getAllTransactions() {
@@ -1596,7 +1665,7 @@ class Wallet {
         });
     }
 
-    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
+    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, isAggregationTransaction = false) {
         const addressRepository = database.getRepository('address');
         const time              = ntp.now();
 
@@ -1615,35 +1684,32 @@ class Wallet {
                 address_key_identifier: addressKeyIdentifier
             }
         ];
-        return walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
-                          .then(transactionList => ([
-                              transactionList,
-                              proxyCandidateData
-                          ]))
-                          .then(([transactionList, proxyCandidateData]) => {
-                              if (this._transactionSendInterrupt) {
-                                  return Promise.reject('transaction_send_interrupt');
-                              }
-                              return peer.transactionProxyRequest(transactionList, proxyCandidateData);
-                          })
-                          .then(([transactionList, proxyResponse, proxyWS]) => {
-                              const chainFromProxy = proxyResponse.transaction_input_chain;
-                              if (this._transactionSendInterrupt) {
-                                  return Promise.reject('transaction_send_interrupt');
-                              }
-                              else if (chainFromProxy.length === 0) {
-                                  return Promise.reject('invalid_proxy_transaction_chain');
-                              }
-                              return propagateTransaction ? peer.transactionProxy(transactionList, config.TRANSACTION_TIME_LIMIT_PROXY, proxyWS) : transactionList;
-                          })
-                          .then(transactionList => {
-                              let pipeline = new Promise(resolve => resolve(true));
-                              transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
-                              return pipeline.then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transactionList);
-                          });
+        return (!isAggregationTransaction ? walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
+                                          : walletUtils.signAggregationTransaction(srcInputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion))
+            .then((transactionList) => {
+                if (this._transactionSendInterrupt) {
+                    return Promise.reject('transaction_send_interrupt');
+                }
+                return peer.transactionProxyRequest(transactionList, proxyCandidateData);
+            })
+            .then(([transactionList, proxyResponse, proxyWS]) => {
+                const chainFromProxy = proxyResponse.transaction_input_chain;
+                if (this._transactionSendInterrupt) {
+                    return Promise.reject('transaction_send_interrupt');
+                }
+                else if (chainFromProxy.length === 0) {
+                    return Promise.reject('invalid_proxy_transaction_chain');
+                }
+                return propagateTransaction ? peer.transactionProxy(transactionList, config.TRANSACTION_TIME_LIMIT_PROXY, proxyWS) : transactionList;
+            })
+            .then(transactionList => {
+                let pipeline = new Promise(resolve => resolve(true));
+                transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
+                return pipeline.then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transactionList);
+            });
     };
 
-    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
+    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, isAggregationTransaction = false) {
         const transactionRepository = database.getRepository('transaction');
         const proxyErrorList        = [
             'proxy_network_error',
@@ -1657,7 +1723,7 @@ class Wallet {
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
-                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction)
+                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction, isAggregationTransaction)
                                                     .then(transaction => callback({
                                                         error: false,
                                                         transaction
@@ -1686,9 +1752,9 @@ class Wallet {
                                     });
     }
 
-    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
+    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, isAggregationTransaction = false) {
         const transactionRepository = database.getRepository('transaction');
-        return this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true)
+        return this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, isAggregationTransaction)
                    .then(transactionList => {
                        // store the transaction
                        let pipeline = Promise.resolve();
