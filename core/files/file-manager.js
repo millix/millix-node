@@ -5,6 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import wallet from '../wallet/wallet';
 import mutex from '../mutex';
+import fileExchange from './file-exchange';
 
 
 class FileManager {
@@ -35,12 +36,12 @@ class FileManager {
                 }
 
                 //Init ciphers and attr
-                const keybuf                = crypto.randomBytes(32);
-                const key                   = crypto.createSecretKey(keybuf).export().toString('hex');
-                const cipher                = crypto.createCipher('aes-256-cbc', key);
-                const keys                  = {};
-                let transactionAttr         = {};
-                transactionAttr['files']    = [];
+                const keybuf             = crypto.randomBytes(32);
+                const key                = crypto.createSecretKey(keybuf).export().toString('hex');
+                const cipher             = crypto.createCipher('aes-256-cbc', key);
+                const keys               = {};
+                let transactionAttr      = {};
+                transactionAttr['files'] = [];
 
                 const promisesForTransaction = files.rows.map(upFile => new Promise((resolve, reject) => {
                     let filePath   = upFile.path;
@@ -69,8 +70,8 @@ class FileManager {
                             const encKey           = btoa(individualKey); //falta
                                                                           // aqui
                                                                           // isto
-                            fileAttr['key']        = encKey;
-                            keys[fileHash]         = individualKey;
+                            fileAttr['key'] = encKey;
+                            keys[fileHash]  = individualKey;
                         }
                         transactionAttr['files'].push(fileAttr);
                         resolve();
@@ -96,11 +97,15 @@ class FileManager {
                            const promisesToWrite = this._writeFiles(files, transationFolder, cipher, keys);
                            Promise.all(promisesToWrite)
                                   .then(() => {
-                                      resolve();
+                                      fileExchange.exchangeTmp(transationFolder).then(() => {
+                                          resolve();
+                                      }).catch(e => {
+                                          console.log(`error`);
+                                          reject();
+                                      });
                                   });
                        })
-                       .then(() => {//aqui chatear o pessoal
-
+                       .then(() => {
                            resolve();
                        });
 
@@ -122,7 +127,7 @@ class FileManager {
                       console.log(`error`);
                       unlock();
                       //reject();
-                      resolve('123transaction321');//remover esta linha e
+                      resolve('123transaction321');//CHANGE THIS remover esta linha e
                                                    // descomentar a outra
                   });
         });
@@ -155,7 +160,7 @@ class FileManager {
                     input.pipe(publicChiper).pipe(output);
                 }
                 else {
-                    const individualKey = keys[fileHash];
+                    const individualKey    = keys[fileHash];
                     const individualCipher = crypto.createCipher('aes-256-cbc', individualKey);
                     input.pipe(individualCipher).pipe(output);
                 }

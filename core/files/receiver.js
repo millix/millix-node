@@ -1,109 +1,171 @@
-import WebSocket, {Server} from 'ws';
+import express from 'express';
+import helmet from 'helmet';
+import bodyParser from 'body-parser';
+import cors from 'cors';
+import chunker from './chunker';
 import path from 'path';
 import os from 'os';
-import configfrom '../config/config';
-import fs from 'fs';
-import crypto from 'crypto';
-import wallet from '../wallet/wallet';
-import mutex from '../mutex';
-import console from '../console';
-import database from '../../database/database';
 import config, {NODE_BIND_IP} from '../config/config';
 import https from 'https';
 import walletUtils from '../wallet/wallet-utils';
-import base58 from 'bs58';
+import queue from './queue';
+import request from 'request';
 
-const WebSocketServer = Server;
-
-class Receiver {
-    constructor() {
-        this.receiver_public = false;
-        this.sender_public = false;
-        this.num_active_receiver_servers = 0;
-        this.num_active_sender_servers = 0;
+class Receiver{
+    constructor(){
+        this.isSenderPublic = false;
         this.filesRootFolder = null;
+        this.isSenderPublic  = true;
+        this.serverOptions   = {};
+        this.httpsServer     = null;
+        this.app             = null;
     }
 
     initialize() {
-        this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
-        // to do: enviar mensagens para o pessoal para perceber se ha interessados em receber ficheiros e quais.
-        this._startClient()
-        this._startSever()
+        return new Promise((resolve, reject) => {
+            this._setUpApp();
+            this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
+
+            walletUtils.loadNodeKeyAndCertificate()
+                       .then(({
+                                  certificate_private_key_pem: certificatePrivateKeyPem,
+                                  certificate_pem            : certificatePem,
+                                  node_private_key           : nodePrivateKey,
+                                  node_public_key            : nodePublicKey
+                              }) => {
+                           this.serverOptions = {
+                               key      : certificatePrivateKeyPem,
+                               cert     : certificatePem,
+                               ecdhCurve: 'prime256v1'
+                           };
+                           resolve();
+                       }).then(() => {
+                queue.initialize().then(() => {
+                    const promisesToSend = queue.getListOfPendingFiles().rows.map(requestInfo => new Promise((resolve, reject) => {
+                        this._startSending(resolve, reject, requestInfo);
+                    }));
+                    Promise.all(promisesToSend)
+                           .then(() => {
+                               resolve();
+                           });
+                });
+            });
+        });
     }
 
-    receiveAction(action){
+    receive(server, requestInfo){
         return new Promise((resolve, reject) => {
-            this.receiver_public = action.receiver_public;
-            this.sender_public = action.sender_public;
+            if (!this.isSenderPublic && !requestInfo.receiver_public) {
+             console.log('Both peers are private! Cannot communicate!');
+             reject();
+             }
 
-            if (this.receiver_public &&  this.sender_public){
-                console.log("Both peers are private! Cannot communicate!");
-                reject();
+            if (this.isSenderPublic) {
+                this._receiveFromPublicServer(server, requestInfo)
+                    .then(()=>{
+                        resolve();
+                    }).catch(e => {
+                    console.log('error');
+                    reject();
+                });
             }
+            else {
+                this._receiveFromPrivateServer(server, requestInfo)
+                    .then(()=>{
+                        resolve();
+                    }).catch(e => {
+                    console.log('error');
+                    reject();
+                });
+            }
+        });
+    }
 
-            if (this.sender_public) {//Sender is public, receiver can be both
-                this._startSenderServer();
-            } else if (this.receiver_public) {//Sender is private and receiver is public
-                this._startReceiverServer();
-            }
+    _receiveFromPublicServer(server, requestedFiles){
+        return new Promise((resolve, reject) => {
+            const wallet = requestedFiles.wallet;
+            const transactionId = requestedFiles.transaction;
+            const promisesToReceive = requestedFiles.files.map(file => new Promise((resolve, reject) => {
+                for (let chunk = 0; chunk < file.chunks; chunk++){
+                    const service = server.concat("/file/").concat(wallet).concat("/").concat(transactionId).concat("/").concat(file.name).concat("/").concat(chunk);
+                    console.log(service)
+                    request.get(service, (error, response, body) => {
+                        if(error) {
+                            console.log("error")
+                            reject();
+                        }
+                        chunker.writeFile(wallet, transactionId, file.name, body);
+                    });
+                }
+                resolve();
+            }));
+
+            Promise.all(promisesToReceive)
+                   .then(() => {
+                       return new Promise((resolve, reject) => {
+                           const service = server.concat("/ack");
+                           request.post(service, (error, response, body) => {
+                               if(error) {
+                                   console.log("error")
+                                   reject();
+                               }
+                               resolve();
+                           });
+                       });
+                   })
+                   .then(() => {
+                       resolve();
+                   });
+        });
+    }
+
+    _receiveFromPrivateServer(server, requestInfo){
+        return new Promise((resolve, reject) => {
+            console.log("eeee");
             resolve();
         });
     }
 
-    _startReceiverServer(){
+    _setUpApp(){
+        let filesRootFolder = this.filesRootFolder;
+        this.app = express();
+        this.app.use(helmet());
+        this.app.use(bodyParser.json({limit: '50mb'}));
+        this.app.use(cors());
 
-        walletUtils.loadNodeKeyAndCertificate()
-                   .then(({certificate_private_key_pem: certificatePrivateKeyPem, certificate_pem: certificatePem, node_private_key: nodePrivateKey, node_public_key: nodePublicKey}) => {
-                       // starting the server
-                       const httpsServer = https.createServer({
-                           key      : certificatePrivateKeyPem,
-                           cert     : certificatePem,
-                           ecdhCurve: 'prime256v1'
-                       }, app);
+        this.app.post("/file/:wallet/:txid/:fname/:chunkn", (req, res) => {
+            let wallet = req.params.wallet;
+            let transactionId = req.params.txid;
+            let fileName = req.params.fname;
+            let chunkNumber = req.params.chunkn;
 
-                       httpsServer.listen(config.NODE_PORT_API, config.NODE_BIND_IP, () => {
-                           console.log(`[api] listening on port ${config.NODE_PORT_API}`);
-                           this.nodeID         = walletUtils.getNodeIdFromCertificate(certificatePem, 'pem');
-                           this.nodePrivateKey = nodePrivateKey;
-                           console.log(`[api] node_id ${this.nodeID}`);
-                           let nodeSignature = walletUtils.signMessage(nodePrivateKey, this.nodeID);
-                           console.log(`[api] node_signature ${nodeSignature}`);
-                           walletUtils.storeNodeData({
-                               node_id       : this.nodeID,
-                               node_signature: nodeSignature
-                           }).then(_ => _).catch(_ => _);
-                           const nodeRepository = database.getRepository('node');
-                           const nop            = () => {
-                           };
-                           nodeRepository.addNodeAttribute(this.nodeID, 'node_public_key', base58.encode(nodePublicKey.toBuffer()))
-                                         .then(nop)
-                                         .catch(nop);
-                       });
-                       resolve();
-                   });
-    }
+            console.log(req.body);
 
-    _startSenderServer(){//not done
-        const server = https.createServer({
-            key      : certificatePrivateKeyPem,
-            cert     : certificatePem,
-            ecdhCurve: 'prime256v1'
+            /*let location = path.join(filesRootFolder, wallet);
+             location = path.join(location, transactionId);
+             location = path.join(location, fileName);
+
+             res.writeHead(200);
+             chunker.getChunck(res, location, chunkNumber);*/
         });
 
-        server.listen(port, address);
-
-        let wss = new WebSocketServer({server});
-
-        this.setWebSocket(wss);
-
-
-
-
-
+        this.app.post("/ack", function (req, res) {
+            //VALIDATE REQUEST (SIGNATURE)
+            queue.decrementReceiverServerInstances();
+            res.writeHead(200);
+            res.end("ok");
+        });
     }
 
 
+    getPublicReceiverInfo(){
+        if(!queue.anyActiveReceiverServer()){
+            this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
+            console.log('Listening on port ' + this.httpsServer.address().port);
+        }
+        queue.incrementReceiverServerInstances();
+        return this.httpsServer;
+    }
 }
-
 
 export default new Receiver();

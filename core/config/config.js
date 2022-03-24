@@ -785,6 +785,8 @@ export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR +
 export const JOB_CONFIG_VERSION                                = 7;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
 export const DEBUG_LOG_FILTER                                  = [];
+export const CHUNK_SIZE                                        = 50331648; //48MB
+export const MAX_STORAGE_RESERVED                              = 1073741824; //1GB
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
 export const PEER_ROTATION_MORE_THAN_ALL                       = 0.01;
@@ -821,7 +823,8 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCHEMA_VERSION                          = '17';
 }
 
-FILES_CONNECTION.FOLDER                                       = DATA_BASE_DIR + '/files/';
+FILES_CONNECTION.FOLDER                                         = DATA_BASE_DIR + '/files/';
+FILES_CONNECTION.PENDING_TO_SEND                                = DATA_BASE_DIR + '/files/pending.log';
 
 export default {
     MODE_DEBUG,
@@ -894,7 +897,9 @@ export default {
     PEER_ROTATION_CONFIG,
     JOB_CONFIG_PATH,
     JOB_CONFIG_VERSION,
-    DEBUG_LOG_FILTER
+    DEBUG_LOG_FILTER,
+    CHUNK_SIZE,
+    MAX_STORAGE_RESERVED
 };
 
 // dev branch should be running in the test-network

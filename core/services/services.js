@@ -9,6 +9,7 @@ import logManager from '../log-manager';
 import database from '../../database/database';
 import fileManager from '../files/file-manager';
 import fileExchange from '../files/file-exchange';
+import sender from '../files/sender';
 import cache from '../cache';
 
 
@@ -44,7 +45,8 @@ class Service {
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
                          .then(() => jobEngine.initialize())
-                         .then(() => fileExchange.initialize())
+                        //.then(() => fileExchange.initialize())
+                         .then(() => sender.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => database.checkup())
                          .catch(e => {
