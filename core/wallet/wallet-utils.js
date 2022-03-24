@@ -646,7 +646,12 @@ class WalletUtils {
                     || !this.isValidAddress(input.address_key_identifier)
                     || !addressRepository.supportedVersionSet.has(input.address_version)
                     || outputUsedInTransaction.has(outputID)
-                    || transactionDate < input.output_transaction_date) {
+                    || transactionDate < input.output_transaction_date
+                    || !_.has(input, 'input_position')
+                    || !_.has(input, 'output_position')
+                    || !_.has(input, 'output_transaction_date')
+                    || !_.has(input, 'output_transaction_id')
+                    || !_.has(input, 'output_shard_id')) {
                     return false;
                 }
                 outputUsedInTransaction.add(outputID);
@@ -784,31 +789,12 @@ class WalletUtils {
         maximumOldestDate.setMinutes(maximumOldestDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
         return new Promise((resolve, reject) => {
-            let allocatedFunds = 0;
-            const amount       = _.sum(_.map(outputList, o => o.amount)) + _.sum(_.map(feeOutputList, o => o.amount));
-            async.eachSeries(inputList, (input, callback) => {
-                database.firstShards((shardID) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    return transactionRepository.getTransactionOutput({
-                        transaction_id        : input.output_transaction_id,
-                        output_position       : input.output_position,
-                        address_key_identifier: input.address_key_identifier
-                    });
-                }).then(output => {
-                    allocatedFunds += output.amount;
-                    callback();
-                }).catch(() => {
-                    callback(`transaction_output_not_found: ${JSON.stringify(input)}`);
-                });
-            }, (err) => {
-                if (err) {
-                    return reject(err);
-                }
-                else if (amount !== allocatedFunds) {
-                    return reject(`invalid_amount: allocated (${allocatedFunds}), spend (${amount})`);
-                }
-                resolve();
-            });
+            const allocatedFunds = _.sum(_.map(inputList, o => o.amount));
+            const amount         = _.sum(_.map(outputList, o => o.amount)) + _.sum(_.map(feeOutputList, o => o.amount));
+            if (amount !== allocatedFunds) {
+                return reject(`invalid_amount: allocated (${allocatedFunds}), spend (${amount})`);
+            }
+            resolve();
         }).then(() => new Promise((resolve, reject) => {
             const addressBaseList = _.uniq(_.map(inputList, i => i.address_base));
             const signatureList   = _.map(addressBaseList, addressBase => ({
@@ -983,6 +969,106 @@ class WalletUtils {
               }
               return transactionList;
           });
+    }
+
+    splitOutputAmount(inputList, feeOutputList, maxNumberOfOutputs) {
+        const outputList      = [];
+        const amount          = _.sum(_.map(inputList, o => o.amount)) - _.sum(_.map(feeOutputList, o => o.amount));
+        const amountPerOutput = Math.floor(amount / maxNumberOfOutputs);
+        const remainingAmount = amount - maxNumberOfOutputs * amountPerOutput;
+
+        const address = inputList[inputList.length - 1];
+
+        for (let i = 0; i < maxNumberOfOutputs; i++) {
+            outputList.push({
+                address_base          : address.address_base,
+                address_version       : address.address_version,
+                address_key_identifier: address.address_key_identifier,
+                amount                : amountPerOutput
+            });
+        }
+        // add the remaining amount to the last output
+        outputList[outputList.length - 1].amount += remainingAmount;
+        return outputList;
+    }
+
+    /*
+     * generates an aggregation transaction from the active wallet which optimizes the funds and allows spending more funds in fewer transactions
+     */
+    signAggregationTransaction(inputList = [], feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, consumeSmallerFirst = true) {
+        const maxNumberOfOutputs = 120;
+        if (inputList.length <= maxNumberOfOutputs) {
+            return Promise.reject('aggregation_not_required');
+        }
+
+        const totalTransactions = Math.min(Math.floor(inputList.length / config.TRANSACTION_INPUT_MAX), config.WALLET_TRANSACTION_AGGREGATION_MAX - 1);
+        if (totalTransactions === 0) { // we just need to create a single transaction
+            const outputList = this.splitOutputAmount(inputList, feeOutputList, maxNumberOfOutputs);
+            return this.signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion);
+        }
+
+        const remainingInputs = inputList.length - totalTransactions * config.TRANSACTION_INPUT_MAX;
+        inputList             = _.sortBy(inputList, o => consumeSmallerFirst ? o.amount : -o.amount);
+        return new Promise((resolve, reject) => {
+            const feeOutputListIntermediate = _.cloneDeep(feeOutputList);
+            feeOutputListIntermediate.forEach(fee => fee.amount = 0); /* dont pay fee for intermediate transactions */
+            async.times(totalTransactions, (idx, callback) => {
+                const inputListSlice = _.slice(inputList, idx * config.TRANSACTION_INPUT_MAX, (idx + 1) * config.TRANSACTION_INPUT_MAX);
+                const amount         = _.sum(_.map(inputListSlice, o => o.amount));
+                const address        = inputListSlice[inputListSlice.length - 1];
+                const outputList     = [
+                    {
+                        address_base          : address.address_base,
+                        address_version       : address.address_version,
+                        address_key_identifier: address.address_key_identifier,
+                        amount
+                    }
+                ];
+
+                this.signTransaction(inputListSlice, outputList, feeOutputListIntermediate, addressAttributeMap, privateKeyMap, transactionDate, config.WALLET_TRANSACTION_REFRESH_VERSION)
+                    .then(transactions => callback(null, transactions))
+                    .catch(error => callback(error));
+            }, (error, transactionsList) => {
+                if (error) {
+                    return reject(error);
+                }
+
+                // get only the refresh transaction or the single transaction
+                // if there is no refresh
+                transactionsList = _.map(transactionsList, intermediateTransactionList => _.first(intermediateTransactionList));
+
+                // get all outputs from intermediate transactions
+                const intermediateInputList = _.map(transactionsList, intermediateTransaction => ({
+                    'output_transaction_id'  : intermediateTransaction.transaction_id,
+                    'output_position'        : 0,
+                    'output_transaction_date': intermediateTransaction.transaction_date,
+                    'output_shard_id'        : intermediateTransaction.shard_id,
+                    ..._.pick(intermediateTransaction.transaction_output_list[0], [
+                        'address_base',
+                        'address_version',
+                        'address_key_identifier',
+                        'amount'
+                    ])
+                }));
+
+                // generate the transaction that aggregates all other
+                // intermediate transactions.
+                if (_.isEmpty(feeOutputList)) {
+                    return reject('transaction_invalid_fee_output');
+                }
+
+                feeOutputList[0].amount = transactionsList.length * config.TRANSACTION_FEE_DEFAULT;
+
+                const outputList = this.splitOutputAmount(intermediateInputList, feeOutputList, Math.max(maxNumberOfOutputs - remainingInputs, 1));
+
+                this.signTransaction(intermediateInputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
+                    .then(([transaction]) => resolve([
+                        ...transactionsList,
+                        transaction
+                    ]))
+                    .catch(reject);
+            });
+        });
     }
 }
 
