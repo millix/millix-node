@@ -3,25 +3,25 @@ import mutex from "../../core/mutex";
 
 
 /**
- * api list_backlog_records
+ * api delete_backlog_records
  */
-class _0df01ae7dd51cec4 extends Endpoint {
+class _epOW5kdvb12QdgsV extends Endpoint {
     constructor() {
-        super('0df01ae7dd51cec4');
+        super('epOW5kdvb12QdgsV');
     }
 
     /**
-     * returns a list of backlog transaction.
+     * delete backlog transaction from mutex queue
      * @param app
      * @param req
      * @param res
      */
     handler(app, req, res) {
         try {
-            let data = mutex.getBacklogData()
+            mutex.deleteBacklogData()
             res.send({
                 api_status: 'success',
-                api_message: data
+                api_message: `ok`
             });
         } catch (e) {
             res.send({
@@ -33,4 +33,4 @@ class _0df01ae7dd51cec4 extends Endpoint {
 }
 
 
-export default new _0df01ae7dd51cec4();
+export default new _epOW5kdvb12QdgsV();

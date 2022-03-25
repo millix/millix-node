@@ -145,6 +145,15 @@
       "enable": true
     },
     {
+      "id": "epOW5kdvb12QdgsV",
+      "name": "delete_backlog_records",
+      "description": "delete backlog from mutex",
+      "method": "POST",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "hMrav9QMiMyLQosB",
       "name": "new_address_version_released",
       "description": "inserts a new record to table address_version.  is_main_network indicates whether the new address version is on the main network or on a test network.  if the new record indicates is_default = true the previous address_version record set to is_default = true is updated to is_default = false.  there can only be a single record for each network that is set to is_default = true",
