@@ -121,10 +121,10 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                              res.send(signedTransactionList);
                          });
         }).catch(e => {
-            console.log(`[api ${this.endpoint}] error: ${e}`);
+            console.log(`[api ${this.endpoint}] error: ${e?.message || e}`);
             res.send({
                 api_status : 'fail',
-                api_message: `unexpected generic api error: (${e})`
+                api_message: `unexpected generic api error: (${e?.message || e})`
             });
         });
     }

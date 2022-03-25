@@ -377,10 +377,16 @@ class Wallet {
                                .catch((e) => {
                                    this._transactionSendInterrupt = false;
                                    unlock();
-                                   reject({error: e});
-                                   if (e === 'transaction_proxy_rejected') {
-                                       this.resetTransactionValidationRejected();
-                                       this._doWalletUpdate();
+                                   reject({error: e.message});
+                                   if (e.message === 'transaction_proxy_rejected') {
+                                       if (e?.transaction_list?.length > 1) {
+                                           const transactions = _.slice(e.transaction_list, 0, e.transaction_list.length - 1);
+                                           const shardID      = _.last(e.transaction_list).shard_id;
+                                           const transactionsIDList = _.flatten(_.map(transactions, transaction => _.map(transaction.transaction_input_list, input => input.output_transaction_id)))
+                                           this.resetValidation(transactionsIDList, shardID)
+                                               .then(_ => _);
+                                           this._doWalletUpdate();
+                                       }
                                    }
                                });
             });
@@ -486,10 +492,16 @@ class Wallet {
                     .catch((e) => {
                         this._transactionSendInterrupt = false;
                         unlock();
-                        reject({error: e});
-                        if (e === 'transaction_proxy_rejected') {
-                            this.resetTransactionValidationRejected();
-                            this._doWalletUpdate();
+                        reject({error: e.message});
+                        if (e.message === 'transaction_proxy_rejected') {
+                            if (e?.transaction_list?.length > 1) {
+                                const transactions = _.slice(e.transaction_list, 0, e.transaction_list.length - 1);
+                                const shardID      = _.last(e.transaction_list).shard_id;
+                                const transactionsIDList = _.flatten(_.map(transactions, transaction => _.map(transaction.transaction_input_list, input => input.output_transaction_id)))
+                                this.resetValidation(transactionsIDList, shardID)
+                                    .then(_ => _);
+                                this._doWalletUpdate();
+                            }
                         }
                     });
             });
@@ -1700,7 +1712,24 @@ class Wallet {
                 else if (chainFromProxy.length === 0) {
                     return Promise.reject('invalid_proxy_transaction_chain');
                 }
-                return propagateTransaction ? peer.transactionProxy(transactionList, config.TRANSACTION_TIME_LIMIT_PROXY, proxyWS) : transactionList;
+
+                if (propagateTransaction) {
+                    return peer.transactionProxy(transactionList, config.TRANSACTION_TIME_LIMIT_PROXY, proxyWS)
+                               .catch(e => {
+                                   if (e === 'transaction_proxy_rejected') {
+                                       return Promise.reject({
+                                           message         : 'transaction_proxy_rejected',
+                                           transaction_list: transactionList
+                                       });
+                                   }
+                                   else {
+                                       return Promise.reject(e);
+                                   }
+                               });
+                }
+                else {
+                    return transactionList;
+                }
             })
             .then(transactionList => {
                 let pipeline = new Promise(resolve => resolve(true));
@@ -1716,7 +1745,6 @@ class Wallet {
             'proxy_timeout',
             'invalid_proxy_transaction_chain',
             'proxy_connection_state_invalid',
-            'transaction_proxy_rejected',
             'proxy_time_limit_exceed'
         ];
         return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
@@ -1728,24 +1756,32 @@ class Wallet {
                                                         error: false,
                                                         transaction
                                                     }))
-                                                    .catch(e => typeof e === 'string' && !proxyErrorList.includes(e) ? callback({
-                                                        error  : true,
-                                                        message: e
-                                                    }) : callback());
+                                                    .catch(e => {
+                                                        if (typeof e === 'string' && !proxyErrorList.includes(e)) {
+                                                            callback({
+                                                                error  : true,
+                                                                message: e
+                                                            });
+                                                        }
+                                                        else if (typeof e === 'object' && e.message === 'transaction_proxy_rejected') {
+                                                            callback({
+                                                                ...e,
+                                                                error: true
+                                                            });
+                                                        }
+                                                        else {
+                                                            callback();
+                                                        }
+                                                    });
                                             }, data => {
                                                 if (data && data.error && typeof data.message === 'string' && !proxyErrorList.includes(data.message)) {
-                                                    reject(data.message);
+                                                    reject(data);
                                                 }
                                                 else if (data && data.transaction) {
                                                     resolve(data.transaction);
                                                 }
                                                 else {
-                                                    if (data && data.error && typeof data.message === 'string' && data.message === 'transaction_proxy_rejected') {
-                                                        reject('transaction_proxy_rejected');
-                                                    }
-                                                    else {
-                                                        reject('proxy_not_found');
-                                                    }
+                                                    reject('proxy_not_found');
                                                 }
                                             });
                                         });
