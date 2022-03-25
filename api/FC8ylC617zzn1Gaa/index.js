@@ -25,7 +25,7 @@ class _FC8ylC617zzn1Gaa extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        this.getCachedIfPresent('wallet_balance', () => database.applyShards((shardID) => {
+        database.applyShards((shardID) => {
             const transactionRepository = database.getRepository('transaction', shardID);
             return transactionRepository.countWalletFreeOutput(wallet.defaultKeyIdentifier);
         }).then(unstableTransactionCounts => database.applyShards((shardID) => {
@@ -42,7 +42,7 @@ class _FC8ylC617zzn1Gaa extends Endpoint {
                 transaction_output_count: _.sum(unstableTransactionCounts),
                 transaction_max_amount  : _.sum(_.map(unspentOutputs, output => output.amount))
             });
-        }))).catch(e => {
+        })).catch(e => {
             res.send({
                 api_status : 'fail',
                 api_message: `unexpected generic api error: (${e})`
