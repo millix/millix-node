@@ -1,0 +1,55 @@
+import Endpoint from '../endpoint';
+import wallet from '../../core/wallet/wallet';
+import database from '../../database/database';
+import _ from 'lodash';
+import network from '../../net/network';
+import logManager from '../../core/log-manager';
+import genesisConfig from '../../core/genesis/genesis-config';
+import config from '../../core/config/config';
+import cache from '../../core/cache';
+import mutex from '../../core/mutex';
+
+
+/**
+ * api get_unspent_output_summary
+ */
+class _FC8ylC617zzn1Gaa extends Endpoint {
+    constructor() {
+        super('FC8ylC617zzn1Gaa');
+    }
+
+    /**
+     * returns the unspent output stat summary
+     * @param app
+     * @param req
+     * @param res
+     */
+    handler(app, req, res) {
+        this.getCachedIfPresent('wallet_balance', () => database.applyShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.countWalletFreeOutput(wallet.defaultKeyIdentifier);
+        }).then(unstableTransactionCounts => database.applyShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.listTransactionOutput({
+                address_key_identifier        : wallet.defaultKeyIdentifier,
+                is_spent                      : 0,
+                is_double_spend               : 0,
+                'transaction_output.is_stable': 1,
+                'transaction_output.status!'  : 3
+            }, 'amount', 128);
+        }, 'amount', 128).then(unspentOutputs => {
+            res.send({
+                transaction_output_count: _.sum(unstableTransactionCounts),
+                transaction_max_amount  : _.sum(_.map(unspentOutputs, output => output.amount))
+            });
+        }))).catch(e => {
+            res.send({
+                api_status : 'fail',
+                api_message: `unexpected generic api error: (${e})`
+            });
+        });
+    }
+}
+
+
+export default new _FC8ylC617zzn1Gaa();

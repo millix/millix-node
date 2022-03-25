@@ -2293,6 +2293,18 @@ export default class Transaction {
         });
     }
 
+    countWalletFreeOutput(addressKeyIdentifier) {
+        return new Promise((resolve) => {
+            const now = Math.floor(ntp.now().getTime() / 1000);
+            this.database.all('SELECT count(1) FROM transaction_output \
+                              INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
+                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3 and `transaction`.transaction_date < ?',
+                [addressKeyIdentifier, now], (err, rows) => {
+                    resolve(rows);
+                });
+        });
+    }
+
     listTransactionWithFreeOutput(addressKeyIdentifier, includeDoubleSpend = false) {
         return new Promise((resolve) => {
             this.database.all(`SELECT DISTINCT transaction_output.transaction_id
