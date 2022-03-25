@@ -1001,10 +1001,10 @@ class WalletUtils {
             return Promise.reject('aggregation_not_required');
         }
 
-        const totalTransactions = Math.min(Math.floor(inputList.length / config.TRANSACTION_INPUT_MAX), config.WALLET_TRANSACTION_AGGREGATION_MAX - 1);
-        if (totalTransactions === 0) { // we just need to create a single transaction
+        const totalTransactions = Math.min(Math.ceil(inputList.length / config.TRANSACTION_INPUT_MAX), config.WALLET_TRANSACTION_AGGREGATION_MAX - 1);
+        if (totalTransactions === 1) { // we just need to create a single transaction
             feeOutputList[0].amount = config.TRANSACTION_FEE_DEFAULT;
-            const outputList = this.splitOutputAmount(inputList, feeOutputList, maxNumberOfOutputs);
+            const outputList        = this.splitOutputAmount(inputList, feeOutputList, maxNumberOfOutputs);
             return this.signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion);
         }
 
@@ -1014,7 +1014,7 @@ class WalletUtils {
             const feeOutputListIntermediate = _.cloneDeep(feeOutputList);
             feeOutputListIntermediate.forEach(fee => fee.amount = 0); /* dont pay fee for intermediate transactions */
             async.times(totalTransactions, (idx, callback) => {
-                const inputListSlice = _.slice(inputList, idx * config.TRANSACTION_INPUT_MAX, (idx + 1) * config.TRANSACTION_INPUT_MAX);
+                const inputListSlice = _.slice(inputList, idx * config.TRANSACTION_INPUT_MAX, Math.min((idx + 1) * config.TRANSACTION_INPUT_MAX, inputList.length));
                 const amount         = _.sum(_.map(inputListSlice, o => o.amount));
                 const address        = inputListSlice[inputListSlice.length - 1];
                 const outputList     = [
@@ -1060,7 +1060,7 @@ class WalletUtils {
 
                 feeOutputList[0].amount = transactionsList.length * config.TRANSACTION_FEE_DEFAULT;
 
-                const outputList = this.splitOutputAmount(intermediateInputList, feeOutputList, Math.max(maxNumberOfOutputs - remainingInputs, 1));
+                const outputList = this.splitOutputAmount(intermediateInputList, feeOutputList, Math.max(remainingInputs > 0 ? maxNumberOfOutputs - remainingInputs : maxNumberOfOutputs, 1));
 
                 this.signTransaction(intermediateInputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
                     .then(([transaction]) => resolve([
