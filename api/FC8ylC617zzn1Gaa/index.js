@@ -2,12 +2,6 @@ import Endpoint from '../endpoint';
 import wallet from '../../core/wallet/wallet';
 import database from '../../database/database';
 import _ from 'lodash';
-import network from '../../net/network';
-import logManager from '../../core/log-manager';
-import genesisConfig from '../../core/genesis/genesis-config';
-import config from '../../core/config/config';
-import cache from '../../core/cache';
-import mutex from '../../core/mutex';
 
 
 /**
