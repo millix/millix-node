@@ -11,7 +11,7 @@ import peer from '../../net/peer';
 import async from 'async';
 import _ from 'lodash';
 import genesisConfig from '../genesis/genesis-config';
-import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION, WALLET_TRANSACTION_AGGREGATION_MAX} from '../config/config';
+import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
 import statsApi from '../../api/rKclyiLtHx0dx55M/index';
 import network from '../../net/network';
 import mutex from '../mutex';
@@ -431,7 +431,7 @@ class Wallet {
 
                   for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
 
-                      if (i === config.TRANSACTION_INPUT_MAX - 1) { /* we cannot add more inputs and still we did not aggregate the required amount for the transaction */
+                      if (i === config.TRANSACTION_INPUT_MAX) { /* we cannot add more inputs and still we did not aggregate the required amount for the transaction */
                           return Promise.reject({
                               error: 'transaction_input_max_error',
                               data : {amount_max: transactionAmount - remainingAmount}

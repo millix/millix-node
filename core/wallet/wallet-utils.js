@@ -935,7 +935,7 @@ class WalletUtils {
                   transaction['transaction_date']        = Math.floor(timeNow.getTime() / 1000);
                   transaction['node_id_origin']          = network.nodeID;
                   transaction['node_id_proxy']           = nodeIDProxy;
-                  transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
+                  transaction['shard_id']                = genesisConfig.genesis_shard_id;/*TODO:activate random shard _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));*/
                   transaction['version']                 = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
                   const tempAddressSignatures            = {};
                   for (let transactionSignature of transaction.transaction_signature_list) {
