@@ -326,13 +326,12 @@ class Wallet {
                         this._transactionSendInterrupt = false;
                         unlock();
                         resolve(transactionList);
-                        this._doWalletUpdate();
                     })
                     .catch((e) => {
                         this._transactionSendInterrupt = false;
                         unlock();
-                        reject({error: e.message});
-                        if (e.message === 'transaction_proxy_rejected') {
+                        reject(e);
+                        if (e.error === 'transaction_proxy_rejected' && e.data.cause === 'transaction_double_spend') {
                             if (e?.transaction_list?.length > 1) {
                                 const transactions       = _.slice(e.transaction_list, 0, e.transaction_list.length - 1);
                                 const shardID            = _.last(e.transaction_list).shard_id;
@@ -357,22 +356,53 @@ class Wallet {
                 return this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)));
             }).then((outputs) => {
                 if (!outputs || outputs.length === 0) {
-                    return Promise.resolve();
+                    return Promise.reject({
+                        error: 'insufficient_balance',
+                        data : {balance_stable: 0}
+                    });
                 }
-                outputs = _.orderBy(outputs, ['amount'], ['asc']);
+                outputs = _.orderBy(outputs, ['amount'], [config.WALLET_AGGREGATION_CONSUME_SMALLER_FIRST ? 'asc' : 'desc']);
 
-                const maxOutputsToUse     = (config.WALLET_TRANSACTION_AGGREGATION_MAX - 1) * config.TRANSACTION_INPUT_MAX;
+                const maxOutputsToUse     = config.WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT;
                 const outputsToUse        = [];
                 const privateKeyMap       = {};
                 const addressAttributeMap = {};
+                let totalAmount           = 0;
+                let lastAmount            = 0;
+                let i                     = 0;
 
-                for (let i = 0; i < outputs.length && outputsToUse.length <= maxOutputsToUse; i++) {
+                for (; i < outputs.length && outputsToUse.length < maxOutputsToUse; i++) {
                     let output                               = outputs[i];
                     const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
                     const privateKeyBuf                      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
                     privateKeyMap[output.address_base]       = privateKeyBuf.toString('hex');
                     addressAttributeMap[output.address_base] = output.address_attribute;
+                    totalAmount                              = totalAmount + output.amount;
+                    lastAmount                               = output.amount;
                     outputsToUse.push(output);
+                }
+
+                if (totalAmount <= config.TRANSACTION_FEE_PROXY) {
+                    // we will replace the last output
+                    // search for an output that matches the required amount
+                    totalAmount          = totalAmount - lastAmount;
+                    const requiredAmount = config.TRANSACTION_FEE_PROXY - totalAmount + 1;
+                    for (; i < outputs.length; i++) {
+                        let output = outputs[i];
+                        if (output.amount < requiredAmount) {
+                            continue;
+                        }
+                        const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
+                        const privateKeyBuf                      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
+                        privateKeyMap[output.address_base]       = privateKeyBuf.toString('hex');
+                        addressAttributeMap[output.address_base] = output.address_attribute;
+                        totalAmount                              = totalAmount + output.amount;
+                        outputsToUse[outputsToUse.length - 1]    = output; /* replace the last output*/
+                    }
+                }
+
+                if (totalAmount <= config.TRANSACTION_FEE_DEFAULT) {
+                    return Promise.reject({error: 'aggregation_not_possible'});
                 }
 
                 let keyMap      = {
@@ -1675,28 +1705,29 @@ class Wallet {
             }
         ];
         return (!isAggregationTransaction ? walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
-                                          : walletUtils.signAggregationTransaction(srcInputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion))
+                                          : walletUtils.signAggregationTransaction(srcInputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, config.WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT, config.WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT, config.WALLET_AGGREGATION_TRANSACTION_MAX))
+            .catch(e => Promise.reject({error: e}))
             .then((transactionList) => {
                 if (this._transactionSendInterrupt) {
-                    return Promise.reject('transaction_send_interrupt');
+                    return Promise.reject({error: 'transaction_send_interrupt'});
                 }
                 return peer.transactionProxyRequest(transactionList, proxyCandidateData);
             })
             .then(([transactionList, proxyResponse, proxyWS]) => {
                 const chainFromProxy = proxyResponse.transaction_input_chain;
                 if (this._transactionSendInterrupt) {
-                    return Promise.reject('transaction_send_interrupt');
+                    return Promise.reject({error: 'transaction_send_interrupt'});
                 }
                 else if (chainFromProxy.length === 0) {
-                    return Promise.reject('invalid_proxy_transaction_chain');
+                    return Promise.reject({error: 'invalid_proxy_transaction_chain'});
                 }
 
                 if (propagateTransaction) {
                     return peer.transactionProxy(transactionList, config.TRANSACTION_TIME_LIMIT_PROXY, proxyWS)
                                .catch(e => {
-                                   if (e === 'transaction_proxy_rejected') {
+                                   if (e.error === 'transaction_proxy_rejected') {
                                        return Promise.reject({
-                                           message         : 'transaction_proxy_rejected',
+                                           ...e,
                                            transaction_list: transactionList
                                        });
                                    }
@@ -1712,7 +1743,10 @@ class Wallet {
             .then(transactionList => {
                 let pipeline = new Promise(resolve => resolve(true));
                 transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
-                return pipeline.then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transactionList);
+                return pipeline.then(isValid => !isValid ? Promise.reject({
+                    error: 'transaction_invalid',
+                    cause: 'tried to sign and store and invalid transaction'
+                }) : transactionList);
             });
     };
 
@@ -1730,36 +1764,26 @@ class Wallet {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
                                                 this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction, isAggregationTransaction)
-                                                    .then(transaction => callback({
-                                                        error: false,
-                                                        transaction
-                                                    }))
+                                                    .then(transaction => callback({transaction}))
                                                     .catch(e => {
-                                                        if (typeof e === 'string' && !proxyErrorList.includes(e)) {
-                                                            callback({
-                                                                error  : true,
-                                                                message: e
-                                                            });
-                                                        }
-                                                        else if (typeof e === 'object' && e.message === 'transaction_proxy_rejected') {
-                                                            callback({
-                                                                ...e,
-                                                                error: true
-                                                            });
+                                                        if (!e
+                                                            || (e.data && e.error === 'transaction_proxy_rejected' && e.data.cause !== 'transaction_double_spend')
+                                                            || proxyErrorList.includes(e.error)) {
+                                                            callback();
                                                         }
                                                         else {
-                                                            callback();
+                                                            callback(e);
                                                         }
                                                     });
                                             }, data => {
-                                                if (data && data.error && typeof data.message === 'string' && !proxyErrorList.includes(data.message)) {
+                                                if (data && data.error && !proxyErrorList.includes(data.error)) {
                                                     reject(data);
                                                 }
                                                 else if (data && data.transaction) {
                                                     resolve(data.transaction);
                                                 }
                                                 else {
-                                                    reject('proxy_not_found');
+                                                    reject({error: 'proxy_not_found'});
                                                 }
                                             });
                                         });
@@ -1768,31 +1792,40 @@ class Wallet {
 
     signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, isAggregationTransaction = false) {
         const transactionRepository = database.getRepository('transaction');
-        return this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, isAggregationTransaction)
-                   .then(transactionList => {
-                       // store the transaction
-                       let pipeline = Promise.resolve();
-                       transactionList.forEach(transaction => {
-                           transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
-                           const dbTransaction            = _.cloneDeep(transaction);
-                           dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                           pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)));
-                       });
-                       return pipeline.then(() => transactionList);
-                   })
-                   .then(transactionList => {
-                       // register first
-                       // address to the
-                       // dht for receiving
-                       // proxy fees
-                       const address = _.pick(srcInputs[0], [
-                           'address_base',
-                           'address_version',
-                           'address_key_identifier'
-                       ]);
-                       network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
-                       return transactionList;
-                   });
+        return new Promise((resolve, reject) => {
+            this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, isAggregationTransaction)
+                .catch(e => {
+                    reject(e);
+                    return Promise.reject(e);
+                })
+                .then(transactionList => {
+                    resolve(transactionList); /* the transaction was propagated. we can return success (resume function call) and then store it into the db.*/
+                    // store the transaction
+                    let pipeline = Promise.resolve();
+                    transactionList.forEach(transaction => {
+                        transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
+                        const dbTransaction            = _.cloneDeep(transaction);
+                        dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
+                        pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)));
+                    });
+                    return pipeline.then(() => transactionList);
+                })
+                .then(transactionList => {
+                    this._doWalletUpdate();
+                    // register first
+                    // address to the
+                    // dht for receiving
+                    // proxy fees
+                    const address = _.pick(srcInputs[0], [
+                        'address_base',
+                        'address_version',
+                        'address_key_identifier'
+                    ]);
+                    network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
+                    return transactionList;
+                })
+                .catch(e => console.log('[wallet] error on sign and store transaction', e));
+        });
     }
 
     updateDefaultAddressAttribute() {
