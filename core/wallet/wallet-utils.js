@@ -935,7 +935,7 @@ class WalletUtils {
                   transaction['transaction_date']        = Math.floor(timeNow.getTime() / 1000);
                   transaction['node_id_origin']          = network.nodeID;
                   transaction['node_id_proxy']           = nodeIDProxy;
-                  transaction['shard_id']                = genesisConfig.genesis_shard_id;/*TODO:activate random shard _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));*/
+                  transaction['shard_id']                = genesisConfig.genesis_shard_id; // TODO:activate random shard _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
                   transaction['version']                 = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
                   const tempAddressSignatures            = {};
                   for (let transactionSignature of transaction.transaction_signature_list) {
@@ -971,15 +971,15 @@ class WalletUtils {
           });
     }
 
-    splitOutputAmount(inputList, feeOutputList, maxNumberOfOutputs) {
+    splitOutputAmount(inputList, feeOutputList, numberOfOutputs) {
         const outputList      = [];
         const amount          = _.sum(_.map(inputList, o => o.amount)) - _.sum(_.map(feeOutputList, o => o.amount));
-        const amountPerOutput = Math.floor(amount / maxNumberOfOutputs);
-        const remainingAmount = amount - maxNumberOfOutputs * amountPerOutput;
+        const amountPerOutput = Math.floor(amount / numberOfOutputs);
+        const remainingAmount = amount - numberOfOutputs * amountPerOutput;
 
         const address = inputList[inputList.length - 1];
 
-        for (let i = 0; i < maxNumberOfOutputs; i++) {
+        for (let i = 0; i < numberOfOutputs; i++) {
             outputList.push({
                 address_base          : address.address_base,
                 address_version       : address.address_version,
@@ -995,21 +995,19 @@ class WalletUtils {
     /*
      * generates an aggregation transaction from the active wallet which optimizes the funds and allows spending more funds in fewer transactions
      */
-    signAggregationTransaction(inputList = [], feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, consumeSmallerFirst = true) {
-        const maxNumberOfOutputs = 120;
-        if (inputList.length <= maxNumberOfOutputs) {
-            return Promise.reject('aggregation_not_required');
+    signAggregationTransaction(inputList = [], feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, numberOfInputs = 120, numberOfOutputs = 1, numberOfTransactions = 1) {
+        if (inputList.length === numberOfOutputs) {
+            return Promise.reject({error: 'aggregation_not_required'});
         }
 
-        const totalTransactions = Math.min(Math.ceil(inputList.length / config.TRANSACTION_INPUT_MAX), config.WALLET_TRANSACTION_AGGREGATION_MAX - 1);
+        const totalTransactions = Math.min(Math.ceil(inputList.length / config.TRANSACTION_INPUT_MAX), numberOfTransactions);
         if (totalTransactions === 1) { // we just need to create a single transaction
             feeOutputList[0].amount = config.TRANSACTION_FEE_DEFAULT;
-            const outputList        = this.splitOutputAmount(inputList, feeOutputList, maxNumberOfOutputs);
+            const outputList        = this.splitOutputAmount(inputList, feeOutputList, numberOfOutputs);
             return this.signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion);
         }
 
         const remainingInputs = inputList.length - totalTransactions * config.TRANSACTION_INPUT_MAX;
-        inputList             = _.sortBy(inputList, o => consumeSmallerFirst ? o.amount : -o.amount);
         return new Promise((resolve, reject) => {
             const feeOutputListIntermediate = _.cloneDeep(feeOutputList);
             feeOutputListIntermediate.forEach(fee => fee.amount = 0); /* dont pay fee for intermediate transactions */
@@ -1060,7 +1058,7 @@ class WalletUtils {
 
                 feeOutputList[0].amount = transactionsList.length * config.TRANSACTION_FEE_DEFAULT;
 
-                const outputList = this.splitOutputAmount(intermediateInputList, feeOutputList, Math.max(remainingInputs > 0 ? maxNumberOfOutputs - remainingInputs : maxNumberOfOutputs, 1));
+                const outputList = this.splitOutputAmount(intermediateInputList, feeOutputList, Math.max(remainingInputs > 0 ? numberOfOutputs - remainingInputs : numberOfOutputs, 1));
 
                 this.signTransaction(intermediateInputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
                     .then(([transaction]) => resolve([
