@@ -32,15 +32,19 @@ class FileExchange {
         this.walletKeyIdentifier = null;
     }
 
-    /*initialize() {
+    initialize() {
         this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
+        if (!fs.existsSync(this.filesRootFolder)) {
+            fs.mkdirSync(path.join(this.filesRootFolder));
+        }
         this.walletKeyIdentifier = wallet.getKeyIdentifier();
         this._startServiceForMessageExchange();
     }
 
     _startServiceForMessageExchange(){
-        // to do, do i need this now?
-    }*/
+        // message exchange protocol here
+    }
+
     exchange(){
         //where i will call this?
         //to do: Exchange of messages to decide if the node is interested in receiving the file.
@@ -64,25 +68,6 @@ class FileExchange {
                 }
             ]
         };
-    }
-
-    exchangeTmp(transationFolder){//delete this method
-        return new Promise((resolve, reject) => {
-            let interestedNode = this._getInterestedNode();
-
-            //for interested
-                fs.readdirSync(transationFolder).forEach(file => {
-                    let fileLocation = path.join(transationFolder, file)
-                    sender.askToSend(fileLocation, "xpto", true)//, peer.address, peer.receiver_public
-                });
-
-            resolve();
-        });
-    }
-
-    _getInterestedNode(){
-        //to do erikzao boss
-        return null;
     }
 
 }

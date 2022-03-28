@@ -7,17 +7,12 @@ import wallet from '../wallet/wallet';
 import mutex from '../mutex';
 import fileExchange from './file-exchange';
 
+const ENCRYPT = "encrypt";
+const DECRYPT = "decrypt";
 
 class FileManager {
     constructor() {
-        this.filesRootFolder = null;
-    }
-
-    initialize() {
         this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
-        if (!fs.existsSync(this.filesRootFolder)) {
-            fs.mkdirSync(path.join(this.filesRootFolder));
-        }
     }
 
     uploadFiles(files, fees, address) {
@@ -36,6 +31,7 @@ class FileManager {
                 }
 
                 //Init ciphers and attr
+                const self               = this;
                 const keybuf             = crypto.randomBytes(32);
                 const key                = crypto.createSecretKey(keybuf).export().toString('hex');
                 const cipher             = crypto.createCipher('aes-256-cbc', key);
@@ -67,9 +63,8 @@ class FileManager {
                         else {
                             const individualKeybuf = crypto.randomBytes(32);
                             const individualKey    = crypto.createSecretKey(individualKeybuf).export().toString('hex');
-                            const encKey           = btoa(individualKey); //falta
-                                                                          // aqui
-                                                                          // isto
+                            const encKey           = self._protectKey(individualKey, ENCRYPT);
+
                             fileAttr['key'] = encKey;
                             keys[fileHash]  = individualKey;
                         }
@@ -121,20 +116,18 @@ class FileManager {
             }, null, null, transactionAttr)
                   .then(transaction => {
                       unlock();
-                      resolve(transaction);
+                      resolve(transaction[0].transaction_id);
                   })
                   .catch(e => {
                       console.log(`error`);
                       unlock();
-                      //reject();
-                      resolve('123transaction321');//CHANGE THIS remover esta linha e
-                                                   // descomentar a outra
+                      reject();
                   });
         });
     }
 
     _writeTransactionAttrJSONFile(transationFolder, transactionAttr) {
-        let jsonOutPath     = path.join(transationFolder, 'transactionAttributes.json');
+        let jsonOutPath     = path.join(transationFolder, 'transaction_output_attribute_list.json');
         let jsonWriteStream = fs.createWriteStream(jsonOutPath);
         jsonWriteStream.on('error', err => console.log);
         jsonWriteStream.write(JSON.stringify(transactionAttr, null, '\t'));
@@ -169,6 +162,18 @@ class FileManager {
         }));
     }
 
+    _protectKey(individualKey, mode){
+        let key;
+        if (mode === ENCRYPT){
+            //to do
+            key = btoa(individualKey);
+        }
+        else if (mode === DECRYPT){
+            //to do
+            key = btoa(individualKey);
+        }
+        return key;
+    }
 }
 
 

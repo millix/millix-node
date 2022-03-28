@@ -28,6 +28,7 @@ class Sender {
             this._defineServerOperations();
             this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
 
+
             walletUtils.loadNodeKeyAndCertificate()
                        .then(({
                                   certificate_private_key_pem: certificatePrivateKeyPem,
@@ -42,8 +43,8 @@ class Sender {
                            };
                            resolve();
                        }).then(() => {
-                            queue.initialize().then(() => {
-                                const promisesToSend = queue.getListOfPendingFiles().rows.map(requestInfo => new Promise((resolve, reject) => {
+                            queue.initializeSender().then(() => {
+                                const promisesToSend = queue.getListOfPendingFilesInSender().rows.map(requestInfo => new Promise((resolve, reject) => {
                                     this._startSending(resolve, reject, requestInfo);
                                 }));
                                 Promise.all(promisesToSend)
@@ -78,7 +79,7 @@ class Sender {
 
         this.app.post("/ack", function (req, res) {
             //VERIFY SIGNATURES
-            queue.decrementSenderServerInstances();
+            queue.decrementServerInstancesInSender();
             res.writeHead(200);
             res.end("ok");
         });
@@ -89,13 +90,13 @@ class Sender {
             this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
             console.log('Listening on port ' + this.httpsServer.address().port);
         }
-        queue.incrementSenderServerInstances();
+        queue.incrementServerInstancesInSender();
         return this.httpsServer;
     }
 
     askToSend(fileLocation, destination, receiver_public) {
         return new Promise((resolve, reject) => {
-            queue.addNewFile(fileLocation, destination, receiver_public);
+            queue.addNewFileInSender(fileLocation, destination, receiver_public);
             this._startSending(resolve, reject, {
                 destination    : destination,
                 receiver_public: receiver_public,
@@ -106,10 +107,10 @@ class Sender {
 
     _startSending(resolve, reject, requestInfo) {
         this._send(requestInfo).then(() => {
-            queue.removeEntry(requestInfo);
+            queue.removeEntryFromSender(requestInfo);
             resolve();
         }).catch(e => {
-            queue.removeEntry(requestInfo);
+            queue.removeEntryFromSender(requestInfo);
             reject();
         });
     }
@@ -137,6 +138,7 @@ class Sender {
 
         });
     }
+
     _privateSender(server, requestedFiles) {
         return new Promise((resolve, reject) => {
             const wallet = requestedFiles.wallet;

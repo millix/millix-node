@@ -14,7 +14,7 @@ import request from 'request';
 class Receiver{
     constructor(){
         this.isSenderPublic = false;
-        this.filesRootFolder = null;
+        this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
         this.isSenderPublic  = true;
         this.serverOptions   = {};
         this.httpsServer     = null;
@@ -24,8 +24,6 @@ class Receiver{
     initialize() {
         return new Promise((resolve, reject) => {
             this._setUpApp();
-            this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
-
             walletUtils.loadNodeKeyAndCertificate()
                        .then(({
                                   certificate_private_key_pem: certificatePrivateKeyPem,
@@ -40,9 +38,9 @@ class Receiver{
                            };
                            resolve();
                        }).then(() => {
-                queue.initialize().then(() => {
-                    const promisesToSend = queue.getListOfPendingFiles().rows.map(requestInfo => new Promise((resolve, reject) => {
-                        this._startSending(resolve, reject, requestInfo);
+                queue.initializeReceiver().then(() => {
+                    const promisesToSend = queue.getListOfPendingFilesInReceiver().rows.map(requestInfo => new Promise((resolve, reject) => {
+                        //to do this._st(resolve, reject, requestInfo);
                     }));
                     Promise.all(promisesToSend)
                            .then(() => {
@@ -140,6 +138,7 @@ class Receiver{
             let chunkNumber = req.params.chunkn;
 
             console.log(req.body);
+            //HERE
 
             /*let location = path.join(filesRootFolder, wallet);
              location = path.join(location, transactionId);
@@ -150,8 +149,8 @@ class Receiver{
         });
 
         this.app.post("/ack", function (req, res) {
-            //VALIDATE REQUEST (SIGNATURE)
-            queue.decrementReceiverServerInstances();
+            //Check hash
+            queue.decrementServerInstancesInReceiver();
             res.writeHead(200);
             res.end("ok");
         });
@@ -163,7 +162,7 @@ class Receiver{
             this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
             console.log('Listening on port ' + this.httpsServer.address().port);
         }
-        queue.incrementReceiverServerInstances();
+        queue.incrementServerInstancesInReceiver();
         return this.httpsServer;
     }
 }

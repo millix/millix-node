@@ -824,7 +824,8 @@ if (DATABASE_ENGINE === 'sqlite') {
 }
 
 FILES_CONNECTION.FOLDER                                         = DATA_BASE_DIR + '/files/';
-FILES_CONNECTION.PENDING_TO_SEND                                = DATA_BASE_DIR + '/files/pending.log';
+FILES_CONNECTION.PENDING_TO_SEND                                = DATA_BASE_DIR + '/files/sending.log';
+FILES_CONNECTION.PENDING_TO_RECEIVE                             = DATA_BASE_DIR + '/files/receiving.log';
 
 export default {
     MODE_DEBUG,

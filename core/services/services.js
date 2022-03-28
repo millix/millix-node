@@ -37,7 +37,7 @@ class Service {
             createWalletIfNotExists = true;
         }
         return logManager.initialize()
-                         .then(() => fileManager.initialize())
+                         .then(() => fileExchange.initialize())
                          .then(() => server.initialize())
                          .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent, createWalletIfNotExists))
                          .then(() => cache.initialize())
@@ -45,8 +45,6 @@ class Service {
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
                          .then(() => jobEngine.initialize())
-                        //.then(() => fileExchange.initialize())
-                         .then(() => sender.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => database.checkup())
                          .catch(e => {
