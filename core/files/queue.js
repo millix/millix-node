@@ -4,6 +4,7 @@ import fs from 'fs';
 import mutex from '../mutex';
 import console from '../console';
 import config from '../config/config';
+import async from 'async';
 
 
 class Queue {
@@ -24,7 +25,7 @@ class Queue {
             if (!fs.existsSync(this.filesPendingToSend)) {
                 fs.closeSync(fs.openSync(this.filesPendingToSend, 'w'))
             }
-            this._loadPendingFilesInSender();
+            this.listOfPendingFilesInSender  = this._loadPendingFiles(this.filesPendingToSend);
             resolve();
         });
     }
@@ -34,158 +35,161 @@ class Queue {
             if (!fs.existsSync(this.filesPendingToReceive)) {
                 fs.closeSync(fs.openSync(this.filesPendingToReceive, 'w'))
             }
-            this._loadPendingFilesInReceiver();
+            this.listOfPendingFilesInReceiver  = this._loadPendingFiles(this.filesPendingToReceive);
             resolve();
         });
     }
 
-    _buildEntry(fileLocation, destination, receiver_public){
-        return destination + ';' + receiver_public + ';' + fileLocation + '\n';
+    _buildEntry(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic){
+        return nodeId + ';' + transactionId + ';' + fileHash +';' + nodePublicKey +';' + nodeIsPublic + '\n';
     }
 
+    _writeInFile(data, fileLocation){
+        return new Promise((resolve,reject) => {
+            fs.writeFile(fileLocation, "", (err) => {
+                if(err) {
+                    console.log("[file-queue] error, ", err);
+                    return reject();
+                }
+                async.forEachOf(data, (entry, index, next) => {
+                    let line = this._buildEntry(entry.nodeId, entry.transactionId, entry.fileHash, entry.nodePublicKey, entry.nodeIsPublic);
+                    fs.appendFile(fileLocation, line, (err) => {
+                        if(err) {
+                            console.log("[file-queue] error, ", err);
+                            return reject();
+                        }
+                        next();
+                    });
+                },() => resolve());
+            });
+        });
+    }
+
+    _loadPendingFiles(fileLocation){
+        let listOfPendingFiles = [];
+        mutex.lock(['update_pending_files'], (unlock) => {
+            let content = fs.readFile(fileLocation);
+            content.split(/\r?\n/).forEach(line => {
+                let elements = line.split(';');
+                listOfPendingFiles.append({
+                    nodeId          : elements[0],
+                    transactionId   : elements[1],
+                    fileHash        : elements[2],
+                    nodePublicKey   : elements[3],
+                    nodeIsPublic    : elements[4]
+                });
+            });
+            unlock();
+        });
+        return listOfPendingFiles;
+    }
     /***********************
      * Sender methods
      ***********************/
     incrementServerInstancesInSender(){
-        mutex.lock(['update_active_servers'], (unlock) => {
-            this.countActiveSenderServers += 1;
-            unlock();
-        });
+        this.countActiveSenderServers += 1;
     }
 
     decrementServerInstancesInSender(){
-        mutex.lock(['update_active_servers'], (unlock) => {
-            if(this.countActiveSenderServers > 0)
-                this.countActiveSenderServers -= 1;
-            unlock();
-        });
+        if(this.countActiveSenderServers > 0)
+            this.countActiveSenderServers -= 1;
     }
 
     anyActiveSenderServer(){
-        let activeServers;
-        mutex.lock(['update_active_servers'], (unlock) => {
-            activeServers = this.countActiveSenderServers;
-            unlock();
-        });
-        return activeServers !== 0;
+        return this.countActiveSenderServers !== 0;
     }
 
     getListOfPendingFilesInSender(){
         return this.listOfPendingFilesInSender;
     }
 
-    addNewFileInSender(fileLocation, destination, receiver_public) {
-        let newEntry = this._buildEntry(fileLocation, destination, receiver_public);
-        mutex.lock(['update_log_for_sending_files'], (unlock) => {
-            fs.appendFileSync(this.filesPendingToSend, newEntry);
-            this.listOfPendingFilesInSender.append({
-                destination    : destination,
-                receiver_public: receiver_public,
-                fileLocation   : fileLocation
-            });
-            unlock();
-        });
-    }
-
-    removeEntryFromSender(requestInfo) {
-        let entryToRemove = this._buildEntry(requestInfo.fileLocation, requestInfo.destination, requestInfo.receiver_public);
-        mutex.lock(['update_log_for_sending_files'], (unlock) => {
-            fs.closeSync(fs.openSync(this.filesPendingToSend, 'w'))
-            this.listOfPendingFilesInSender.forEach(fileInfo => {
-                let entry= this._buildEntry(fileInfo.fileLocation, fileInfo.destination, fileInfo.receiver_public);
-                if (entry !== entryToRemove){
-                    fs.appendFileSync(this.filesPendingToSend, entry);
+    addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic) {
+        let newEntry = this._buildEntry(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic);
+        mutex.lock(['update_pending_files'], (unlock) => {
+            fs.appendFile(this.filesPendingToSend, newEntry, (err)=>{
+                if(err) {
+                    console.log("[file-queue] error, ", err);
+                } else {
+                    this.listOfPendingFilesInSender.append({
+                        nodeId          : nodeId,
+                        transactionId   : transactionId,
+                        fileHash        : fileHash,
+                        nodePublicKey   : nodePublicKey,
+                        nodeIsPublic    : nodeIsPublic
+                    });
                 }
-            })
-            unlock();
+                unlock();
+            });
         });
     }
 
-    _loadPendingFilesInSender(){
-        mutex.lock(['update_log_for_sending_files'], (unlock) => {
-            let content = fs.readFileSync(this.filesPendingToSend);
-            content.split(/\r?\n/).forEach(line => {
-                let elements = line.split(';');
-                this.listOfPendingFilesInSender.append({
-                    destination    : elements[0],
-                    receiver_public: elements[1],
-                    fileLocation   : elements[2]
-                });
+    removeEntryFromSender(requestInformation) {
+        let entryToRemove = this._buildEntry(requestInformation.nodeId, requestInformation.transactionId, requestInformation.fileHash, requestInformation.nodePublicKey, requestInformation.nodeIsPublic);
+        mutex.lock(['update_pending_files'], (unlock) => {
+            this.listOfPendingFilesInSender = this.listOfPendingFilesInSender.filter(function(value, index, arr){
+                return requestInformation.nodeId !== value.nodeId && requestInformation.transactionId !== value.transactionId && requestInformation.fileHash !== value.fileHash;
             });
-            unlock();
+            this._writeInFile(this.listOfPendingFilesInSender, this.filesPendingToSend).then(()=>{
+                unlock();
+            });
         });
+    }
+
+    hasFileToSend(nodeId, transactionId, fileHash){
+        return (this.listOfPendingFilesInSender.filter((value, index, arr) => {
+            return nodeId === value.nodeId && transactionId === value.transactionId && fileHash === value.fileHash;
+        }).length > 0);
     }
 
     /***********************
      * Receiver methods
      ***********************/
     incrementServerInstancesInReceiver(){
-        mutex.lock(['update_active_servers'], (unlock) => {
-            this.countActiveReceiverServers += 1;
-            unlock();
-        });
+        this.countActiveReceiverServers += 1;
     }
 
     decrementServerInstancesInReceiver(){
-        mutex.lock(['update_active_servers'], (unlock) => {
-            if(this.countActiveReceiverServers > 0)
-                this.countActiveReceiverServers -= 1;
-            unlock();
-        });
+        if(this.countActiveReceiverServers > 0)
+            this.countActiveReceiverServers -= 1;
     }
 
     anyActiveReceiverServer(){
-        let activeServers;
-        mutex.lock(['update_active_servers'], (unlock) => {
-            activeServers = this.countActiveReceiverServers;
-            unlock();
-        });
-        return activeServers !== 0;
+        return this.countActiveReceiverServers !== 0;
     }
 
     getListOfPendingFilesInReceiver(){
         return this.listOfPendingFilesInReceiver;
     }
 
-    addNewFileInReceiver(fileLocation, destination, receiver_public) {
-        let newEntry = this._buildEntry(fileLocation, destination, receiver_public);
-        mutex.lock(['update_log_for_sending_files'], (unlock) => {
-            fs.appendFileSync(this.filesPendingToReceive, newEntry);
-            this.listOfPendingFilesInReceiver.append({
-                destination    : destination,
-                receiver_public: receiver_public,
-                fileLocation   : fileLocation
-            });
-            unlock();
-        });
-    }
-
-    removeEntryFromReceiver(requestInfo) {
-        let entryToRemove = this._buildEntry(requestInfo.fileLocation, requestInfo.destination, requestInfo.receiver_public);
-        mutex.lock(['update_log_for_sending_files'], (unlock) => {
-            fs.closeSync(fs.openSync(this.filesPendingToReceive, 'w'))
-            this.listOfPendingFilesInReceiver.forEach(fileInfo => {
-                let entry= this._buildEntry(fileInfo.fileLocation, fileInfo.destination, fileInfo.receiver_public);
-                if (entry !== entryToRemove){
-                    fs.appendFileSync(this.filesPendingToReceive, entry);
+    addNewFileInReceiver(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic) {
+        let newEntry = this._buildEntry(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic);
+        mutex.lock(['update_pending_files'], (unlock) => {
+            fs.appendFile(this.filesPendingToReceive, newEntry, (err)=>{
+                if(err) {
+                    console.log("[file-queue] error, ", err);
+                } else {
+                    this.listOfPendingFilesInReceiver.append({
+                        nodeId          : nodeId,
+                        transactionId   : transactionId,
+                        fileHash        : fileHash,
+                        nodePublicKey   : nodePublicKey,
+                        nodeIsPublic    : nodeIsPublic
+                    });
                 }
-            })
-            unlock();
+                unlock();
+            });
         });
     }
 
-    _loadPendingFilesInReceiver(){
-        mutex.lock(['update_log_for_sending_files'], (unlock) => {
-            let content = fs.readFileSync(this.filesPendingToReceive);
-            content.split(/\r?\n/).forEach(line => {
-                let elements = line.split(';');
-                this.listOfPendingFilesInReceiver.append({
-                    destination    : elements[0],
-                    receiver_public: elements[1],
-                    fileLocation   : elements[2]
-                });
+    removeEntryFromReceiver(requestInformation) {
+        let entryToRemove = this._buildEntry(requestInformation.nodeId, requestInformation.transactionId, requestInformation.fileHash, requestInformation.nodePublicKey, requestInformation.nodeIsPublic);
+        mutex.lock(['update_pending_files'], (unlock) => {
+            this.listOfPendingFilesInReceiver = this.listOfPendingFilesInReceiver.filter(function(value, index, arr){
+                return requestInformation.nodeId !== value.nodeId && requestInformation.transactionId !== value.transactionId && requestInformation.fileHash !== value.fileHash;
             });
-            unlock();
+            this._writeInFile(this.listOfPendingFilesInReceiver, this.filesPendingToReceive).then(()=>{
+                unlock();
+            });
         });
     }
 
