@@ -768,7 +768,6 @@ export class WalletTransactionConsensus {
             'transaction_invalid',
             'transaction_invalid_amount'
         ].includes(data.cause)) {
-
             delete consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID];
             consensusData.consensus_round_node_discard.add(ws.nodeID);
             consensusData.requestPeerValidation && consensusData.requestPeerValidation();
@@ -811,7 +810,8 @@ export class WalletTransactionConsensus {
         };
 
         let responseCount = 0;
-        for (let [_, {response}] of Object.entries(consensusResponseData)) {
+        const invalidResponseNodeIDList = [];
+        for (let [nodeID, {response}] of Object.entries(consensusResponseData)) {
             if (!response) {
                 continue;
             }
@@ -829,7 +829,17 @@ export class WalletTransactionConsensus {
             }
             else { /* 'transaction_invalid', 'transaction_invalid_amount' */
                 counter.invalid++;
+                invalidResponseNodeIDList.push(nodeID);
             }
+        }
+
+        if (counter.invalid > 0 && (counter.double_spend > 0 || counter.valid > 0)) { // if there is any response that is not invalid we reset the invalid ones
+            invalidResponseNodeIDList.forEach(nodeID => {
+                delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
+                consensusData.consensus_round_node_discard.add(nodeID);
+                consensusData.requestPeerValidation && consensusData.requestPeerValidation();
+            })
+            return;
         }
 
         // check consensus result
@@ -946,12 +956,18 @@ export class WalletTransactionConsensus {
                     consensusData.active = false;
                     console.log('[wallet-transaction-consensus] the transaction', transactionID, 'was not validated (due to not invalid tx) during consensus round number', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
-                    database.applyShards((shardID) => {
-                        return database.getRepository('transaction', shardID)
-                                       .invalidateTransaction(transactionID);
-                    }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
-                            .then(() => consensusData.resolve())
-                            .catch(() => consensusData.resolve());
+                    if (consensusData.consensus_round_double_spend_count === 0
+                        && consensusData.consensus_round_validation_count === 0) { // only invalidate the transaction if all rounds are invalid
+                        database.applyShards((shardID) => {
+                            return database.getRepository('transaction', shardID)
+                                           .invalidateTransaction(transactionID);
+                        }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
+                                .then(() => consensusData.resolve())
+                                .catch(() => consensusData.resolve());
+                    }
+                    else {
+                        consensusData.resolve();
+                    }
                 }
             }
         }
