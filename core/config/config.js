@@ -733,6 +733,7 @@ export const TRANSACTION_INPUT_MAX                             = 128;
 export const TRANSACTION_OUTPUT_MAX                            = 128;
 export const TRANSACTION_PARENT_MAX                            = 16;
 export const TRANSACTION_SIGNATURE_MAX                         = 128;
+export const TRANSACTION_CLOCK_SKEW_TOLERANCE                  = 10;
 export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 60;
 export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 10;
 export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
@@ -881,6 +882,7 @@ export default {
     TRANSACTION_PARENT_MAX,
     TRANSACTION_SIGNATURE_MAX,
     TRANSACTION_RETRY_SYNC_MAX,
+    TRANSACTION_CLOCK_SKEW_TOLERANCE,
     TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN,
     TRANSACTION_OUTPUT_REFRESH_OLDER_THAN,
     TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN,

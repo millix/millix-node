@@ -1,22 +1,22 @@
 import Mnemonic from 'bitcore-mnemonic';
 import Bitcore from 'bitcore-lib';
 import crypto from 'crypto';
-import config, {SHARD_ZERO_NAME} from '../config/config';
+import config from '../config/config';
 import fs from 'fs';
 import path from 'path';
 import base58 from 'bs58';
 import os from 'os';
-import {KJUR, KEYUTIL, X509, ASN1HEX} from 'jsrsasign';
+import {ASN1HEX, KEYUTIL, KJUR, X509} from 'jsrsasign';
 import async from 'async';
 import _ from 'lodash';
 import database from '../../database/database';
-import peer from '../../net/peer';
 import objectHash from '../crypto/object-hash';
 import network from '../../net/network';
 import genesisConfig from '../genesis/genesis-config';
 import signature from '../crypto/signature';
 import node from '../../database/repositories/node';
 import {v4 as uuidv4} from 'uuid';
+import ntp from '../ntp';
 
 
 class WalletUtils {
@@ -539,7 +539,11 @@ class WalletUtils {
                 transactionDate = new Date(transaction.transaction_date);
             }
 
-            if ([
+            const maxTransactionDate = ntp.now().getTime() + config.TRANSACTION_CLOCK_SKEW_TOLERANCE * 1000;
+            if (transactionDate.getTime() >= maxTransactionDate) {
+                return resolve(false);
+            }
+            else if ([
                 '0b0',
                 '0b10',
                 '0b20',

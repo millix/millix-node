@@ -1536,7 +1536,7 @@ class Wallet {
                     transaction_proxy_success: false
                 }, network.getWebSocketByID(connectionID));
             }
-            else if (transaction.transaction_date >= (now + 60)) { //clock skew: 1 minute ahead
+            else if (transaction.transaction_date >= (now + config.TRANSACTION_CLOCK_SKEW_TOLERANCE)) { //clock skew: 10 seconds ahead
                 return peer.transactionProxyResult({
                     cause                    : 'invalid transaction date',
                     transaction_proxy_fail   : 'invalid_transaction',
