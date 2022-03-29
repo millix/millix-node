@@ -19,6 +19,15 @@
       "enable": true
     },
     {
+      "id": "PZ7x3HVHVstLNYf0",
+      "name": "list_event_log",
+      "description": "returns a list of event logs",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "vM27tlHkqbRej6tP",
       "name": "list_node_memory_extended",
       "description": "returns a list of all peer nodes (node table and memory list) known by the host.  it returns the newest records by default",

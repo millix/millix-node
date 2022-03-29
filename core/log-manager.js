@@ -88,6 +88,13 @@ class LogManager {
             timestamp
         });
     }
+
+    getLog(limit = 1000) {
+        if(this.log.length <= limit) {
+            return this.log;
+        }
+        return this.log.slice(Math.max(this.log.length - limit, 0))
+    }
 }
 
 
