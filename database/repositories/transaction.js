@@ -470,9 +470,9 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.all(
                 'WITH transaction_wallet AS ( \
-                SELECT transaction_input.transaction_id, 1 as withdrawal FROM transaction_input \
+                SELECT transaction_input.transaction_id, transaction_input.is_double_spend, 1 as withdrawal FROM transaction_input \
                 WHERE transaction_input.address_key_identifier = ? AND transaction_input.status != 3 \
-                UNION SELECT transaction_output.transaction_id, 0 as withdrawal FROM transaction_output \
+                UNION SELECT transaction_output.transaction_id, transaction_output.is_double_spend, 0 as withdrawal FROM transaction_output \
                 WHERE transaction_output.address_key_identifier = ? AND transaction_output.status != 3 \
                 ), \
                 transaction_amount AS ( \
@@ -480,7 +480,7 @@ export default class Transaction {
                 WHERE transaction_id IN (SELECT transaction_id FROM transaction_wallet) \
                 GROUP BY transaction_id \
                 ) \
-                SELECT t.transaction_id, t.transaction_date, a.amount, COALESCE(SUM(w.withdrawal), 0) as withdrawal, t.stable_date, t.parent_date FROM `transaction` t \
+                SELECT t.transaction_id, t.transaction_date, a.amount, COALESCE(SUM(w.withdrawal), 0) as withdrawal, t.stable_date, t.parent_date, COALESCE(SUM(w.is_double_spend), 0) as is_double_spend FROM `transaction` t \
                 JOIN transaction_wallet w ON w.transaction_id = t.transaction_id \
                 JOIN transaction_amount a ON a.transaction_id = t.transaction_id \
                 GROUP BY t.transaction_id \
