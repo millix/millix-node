@@ -37,11 +37,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
             });
         }).then(data => {
             if (!data || data.length === 0) {
-                peer.transactionSyncRequest(req.query.p0).then(_ => _).catch(_ => _);
-                return this._getErrorStatus(req.query.p0).then(errorStatus => res.send({
-                    api_status : errorStatus,
-                    api_message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
-                }));
+                return data;
             }
 
             const parentSet = {};
@@ -52,7 +48,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                                .listTransactions({'transaction_id_in': parentTransactionListID});
             }).then(parentTransactionList => {
                 _.each(parentTransactionList, parentTransaction => {
-                    if(!parentSet[parentTransaction.transaction_id]) {
+                    if (!parentSet[parentTransaction.transaction_id]) {
                         parentSet[parentTransaction.transaction_id] = parentTransaction.shard_id;
                     }
                 });
@@ -60,6 +56,16 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 return data;
             });
         }).then(data => {
+            if (!data || data.length === 0) {
+                peer.transactionSyncRequest(req.query.p0).then(_ => _).catch(_ => _);
+                return this._getErrorStatus(req.query.p0).then(errorStatus => {
+                    res.send({
+                        api_status : errorStatus,
+                        api_message: `the transaction with id ${req.query.p0} was not found at shard ${req.query.p1}`
+                    });
+                });
+            }
+
             const normalization = database.getRepository('normalization');
             const transaction   = {};
             _.extend(transaction, _.pick(data[0], 'transaction_id', 'shard_id', 'transaction_date', 'node_id_origin', 'node_id_proxy', 'version', 'payload_hash', 'stable_date', 'is_stable', 'parent_date', 'is_parent', 'timeout_date', 'is_timeout', 'status', 'create_date'));

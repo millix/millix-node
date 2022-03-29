@@ -16,6 +16,7 @@ export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = false;
 export const MODE_NODE_FULL                                    = false;
+export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
@@ -715,12 +716,13 @@ export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
 export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
 export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 5;
 export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
-export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 10000;
+export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 100;
 export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
-export const TRANSACTION_TIME_LIMIT_PROXY                      = 45000;
+export const CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET      = true;
+export const TRANSACTION_TIME_LIMIT_PROXY                      = 5000;
 export const TRANSACTION_FEE_PROXY                             = 1000;
 export const TRANSACTION_FEE_DEFAULT                           = 1000;
 export const TRANSACTION_FEE_NETWORK                           = 0.0;
@@ -731,6 +733,7 @@ export const TRANSACTION_INPUT_MAX                             = 128;
 export const TRANSACTION_OUTPUT_MAX                            = 128;
 export const TRANSACTION_PARENT_MAX                            = 16;
 export const TRANSACTION_SIGNATURE_MAX                         = 128;
+export const TRANSACTION_CLOCK_SKEW_TOLERANCE                  = 10;
 export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 60;
 export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 10;
 export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
@@ -766,14 +769,18 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX                 = 1000;
 export const WALLET_TRANSACTION_QUEUE_SIZE_NORMAL              = 250;
+export const WALLET_AGGREGATION_TRANSACTION_MAX                = 1;
+export const WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT       = 1;
+export const WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT        = 120;
+export const WALLET_AGGREGATION_CONSUME_SMALLER_FIRST          = true;
 export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const FILES_CONNECTION                                  = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1640009160;
-export const NODE_MILLIX_VERSION                               = '1.12.7';
+export const NODE_MILLIX_BUILD_DATE                            = 1648494468;
+export const NODE_MILLIX_VERSION                               = '1.16.3';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -829,6 +836,8 @@ FILES_CONNECTION.PENDING_TO_RECEIVE                             = DATA_BASE_DIR 
 
 export default {
     MODE_DEBUG,
+    MODE_NODE_FULL,
+    FORCE_QUEUE_UPDATE,
     MODE_TEST_NETWORK,
     NODE_PORT,
     NODE_PORT_DISCOVERY,
@@ -867,6 +876,7 @@ export default {
     CONSENSUS_VALIDATION_RETRY_WAIT_TIME,
     CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
     CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX,
+    CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET,
     NODE_CONNECTION_PUBLIC_PERCENT,
     CONSENSUS_ROUND_NODE_COUNT,
     TRANSACTION_FEE_PROXY,
@@ -880,12 +890,17 @@ export default {
     TRANSACTION_PARENT_MAX,
     TRANSACTION_SIGNATURE_MAX,
     TRANSACTION_RETRY_SYNC_MAX,
+    TRANSACTION_CLOCK_SKEW_TOLERANCE,
     TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN,
     TRANSACTION_OUTPUT_REFRESH_OLDER_THAN,
     TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN,
     NETWORK_LONG_TIME_WAIT_MAX,
     NETWORK_SHORT_TIME_WAIT_MAX,
     WALLET_TRANSACTION_QUEUE_SIZE_MAX,
+    WALLET_AGGREGATION_TRANSACTION_MAX,
+    WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT,
+    WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT,
+    WALLET_AGGREGATION_CONSUME_SMALLER_FIRST,
     WALLET_TRANSACTION_QUEUE_SIZE_NORMAL,
     WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT,
     WALLET_TRANSACTION_SUPPORTED_VERSION,

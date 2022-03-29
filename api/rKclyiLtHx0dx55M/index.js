@@ -19,16 +19,15 @@ class _rKclyiLtHx0dx55M extends Endpoint {
     }
 
     getCachedIfPresent(key, getter) {
-        const cachedItem = cache.getCacheItem('api_stats', key);
-        return cachedItem ? Promise.resolve(cachedItem) : getter().then(value => {
-            cache.setCacheItem('api_stats', key, value, 15000);
-            return value;
-        });
+        return cache.getCachedIfPresent('api_stats', key, getter, 15000);
+    }
+
+    clearCacheItem(key) {
+        cache.removeCacheItem('api_stats', key);
     }
 
     clearCache() {
-        cache.removeCacheItem('api_stats', 'wallet_balance_stable');
-        cache.removeCacheItem('api_stats', 'wallet_balance_unstable');
+        cache.removeCacheItem('api_stats', 'wallet_balance');
         cache.removeCacheItem('api_stats', 'count_wallet_total');
         cache.removeCacheItem('api_stats', 'count_wallet_unstable');
         cache.removeCacheItem('api_stats', 'count_unstable');
@@ -44,55 +43,56 @@ class _rKclyiLtHx0dx55M extends Endpoint {
     handler(app, req, res) {
         database.getRepository('address');
         mutex.lock(['get_stat_summary'], unlock => {
-            this.getCachedIfPresent('wallet_balance_stable', () => database.applyShards((shardID) => {
+            this.getCachedIfPresent('wallet_balance', () => database.applyShards((shardID) => {
                 const transactionRepository = database.getRepository('transaction', shardID);
                 return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, true);
-            }).then(balances => _.sum(balances))).then(stable => {
-                return this.getCachedIfPresent('wallet_balance_unstable', () => database.applyShards((shardID) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
-                }).then(balances => _.sum(balances))).then(unstable => {
-                    return this.getCachedIfPresent('count_wallet_total', () => wallet.getTransactionCount())
-                               .then(transactionCount => {
-                                   const transactionRepository = database.getRepository('transaction', genesisConfig.genesis_shard_id);
-                                   return this.getCachedIfPresent('count_wallet_unstable', () => transactionRepository.countWalletUnstableTransactions(wallet.defaultKeyIdentifier))
-                                              .then(pendingTransactionCount => {
-                                                  return this.getCachedIfPresent('count_unstable', () => transactionRepository.countAllUnstableTransactions())
-                                                             .then(countAllUnstableTransactions => {
-                                                                 return this.getCachedIfPresent('count_all', () => transactionRepository.countAllTransactions())
-                                                                            .then(countAllTransactions => {
-                                                                                unlock();
-                                                                                res.send({
-                                                                                    balance    : {
-                                                                                        stable,
-                                                                                        unstable
-                                                                                    },
-                                                                                    network    : {
-                                                                                        online                : network.initialized,
-                                                                                        peer_count            : network.registeredClients.length,
-                                                                                        node_id               : network.nodeID,
-                                                                                        node_port             : config.NODE_PORT,
-                                                                                        node_bind_ip          : config.NODE_BIND_IP,
-                                                                                        node_is_public        : network.nodeIsPublic === undefined ? 'unknown' : network.nodeIsPublic,
-                                                                                        node_public_ip        : network.nodePublicIp,
-                                                                                        node_network_addresses: network.networkInterfaceAddresses
-                                                                                    },
-                                                                                    log        : {
-                                                                                        log_count    : logManager.lastIdx,
-                                                                                        backlog_count: logManager.backLogSize
-                                                                                    },
-                                                                                    transaction: {
-                                                                                        transaction_count                : countAllTransactions,
-                                                                                        transaction_unstable_count       : countAllUnstableTransactions,
-                                                                                        transaction_wallet_count         : transactionCount,
-                                                                                        transaction_wallet_unstable_count: pendingTransactionCount
-                                                                                    }
-                                                                                });
+            }).then(stableBalances => database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
+            }).then(unstableBalances => ([
+                _.sum(stableBalances),
+                _.sum(unstableBalances)
+            ])))).then(([stable, unstable]) => {
+                return this.getCachedIfPresent('count_wallet_total', () => wallet.getTransactionCount())
+                           .then(transactionCount => {
+                               const transactionRepository = database.getRepository('transaction', genesisConfig.genesis_shard_id);
+                               return this.getCachedIfPresent('count_wallet_unstable', () => transactionRepository.countWalletUnstableTransactions(wallet.defaultKeyIdentifier))
+                                          .then(pendingTransactionCount => {
+                                              return this.getCachedIfPresent('count_unstable', () => transactionRepository.countAllUnstableTransactions())
+                                                         .then(countAllUnstableTransactions => {
+                                                             return this.getCachedIfPresent('count_all', () => transactionRepository.countAllTransactions())
+                                                                        .then(countAllTransactions => {
+                                                                            unlock();
+                                                                            res.send({
+                                                                                balance    : {
+                                                                                    stable,
+                                                                                    unstable
+                                                                                },
+                                                                                network    : {
+                                                                                    online                : network.initialized,
+                                                                                    peer_count            : network.registeredClients.length,
+                                                                                    node_id               : network.nodeID,
+                                                                                    node_port             : config.NODE_PORT,
+                                                                                    node_bind_ip          : config.NODE_BIND_IP,
+                                                                                    node_is_public        : network.nodeIsPublic === undefined ? 'unknown' : network.nodeIsPublic,
+                                                                                    node_public_ip        : network.nodePublicIp,
+                                                                                    node_network_addresses: network.networkInterfaceAddresses
+                                                                                },
+                                                                                log        : {
+                                                                                    log_count    : logManager.lastIdx,
+                                                                                    backlog_count: logManager.backLogSize
+                                                                                },
+                                                                                transaction: {
+                                                                                    transaction_count                : countAllTransactions,
+                                                                                    transaction_unstable_count       : countAllUnstableTransactions,
+                                                                                    transaction_wallet_count         : transactionCount,
+                                                                                    transaction_wallet_unstable_count: pendingTransactionCount
+                                                                                }
                                                                             });
-                                                             });
-                                              });
-                               });
-                });
+                                                                        });
+                                                         });
+                                          });
+                           });
             }).catch(e => {
                 unlock();
                 res.send({

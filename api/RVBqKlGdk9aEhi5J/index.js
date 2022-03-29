@@ -3,6 +3,9 @@ import walletUtils from '../../core/wallet/wallet-utils';
 import ntp from '../../core/ntp';
 import config from '../../core/config/config';
 import wallet from '../../core/wallet/wallet';
+import async from 'async';
+import database from '../../database/database';
+import _ from 'lodash';
 
 
 /**
@@ -65,7 +68,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
 
         (() => {
 
-            if (!Array.isArray(transactionInputs) || !Array.isArray(transactionOutputs) || typeof(outputFee) !== "object") {
+            if (!Array.isArray(transactionInputs) || !Array.isArray(transactionOutputs) || typeof (outputFee) !== 'object') {
                 return Promise.reject('invalid request body');
             }
 
@@ -83,16 +86,45 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
             }
             return Promise.resolve();
         })().then(() => {
+            return new Promise((resolve, reject) => {
+                const amount       = _.sum(_.map(transactionOutputs, o => o.amount)) + outputFee.amount;
+                let allocatedFunds = 0;
+                async.eachSeries(transactionInputs, (input, callback) => {
+                    database.firstShards((shardID) => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.getTransactionOutput({
+                            transaction_id        : input.output_transaction_id,
+                            output_position       : input.output_position,
+                            address_key_identifier: input.address_key_identifier
+                        });
+                    }).then(output => {
+                        input.amount = output.amount;
+                        allocatedFunds += output.amount;
+                        callback();
+                    }).catch((e) => {
+                        callback(`transaction_output_not_found: ${JSON.stringify(input)}, ${e}`);
+                    });
+                }, (err) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    else if (amount !== allocatedFunds) {
+                        return reject(`invalid_amount: allocated (${allocatedFunds}), spend (${amount})`);
+                    }
+                    resolve();
+                });
+            });
+        }).then(() => {
             return wallet.proxyTransaction(transactionInputs, transactionOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, false)
                          .then(signedTransactionList => {
-                             console.log(`[api ${this.endpoint}] Successfully signed transaction transaction. Tx: ${signedTransactionList.map(t=>t.transaction_id).join(",")}`);
+                             console.log(`[api ${this.endpoint}] Successfully signed transaction transaction. Tx: ${signedTransactionList.map(t => t.transaction_id).join(',')}`);
                              res.send(signedTransactionList);
                          });
         }).catch(e => {
-            console.log(`[api ${this.endpoint}] error: ${e}`);
+            console.log(`[api ${this.endpoint}] error: ${e?.message || e}`);
             res.send({
                 api_status : 'fail',
-                api_message: `unexpected generic api error: (${e})`
+                api_message: `unexpected generic api error: (${e?.message || e})`
             });
         });
     }

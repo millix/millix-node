@@ -8,7 +8,7 @@ import async from 'async';
 import database, {Database} from '../database';
 import moment from 'moment';
 import console from '../../core/console';
-import peer from '../../net/peer';
+import cache from '../../core/cache';
 import wallet from '../../core/wallet/wallet';
 
 export default class Transaction {
@@ -37,8 +37,13 @@ export default class Transaction {
         return new Promise((resolve) => {
             this.database.all(`select transaction_id, transaction_date
                                from 'transaction'
-                               where transaction_date >
-                                     strftime('%s', 'now', '${-config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN} minutes')`,
+                               where transaction_date
+                                         >
+                                     strftime('%s'
+                                         , 'now'
+                                         ,
+                                              '${-config.TRANSACTION_OUTPUT_REFRESH_OLDER_THAN}
+                                               minutes')`,
                 (err, data) => {
                     return resolve(data || []);
                 });
@@ -232,28 +237,36 @@ export default class Transaction {
     }
 
     getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionIDList) {
-        return new Promise((resolve, reject) => {
-            this.database.all('SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE transaction_input.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100) ' +
-                              'UNION SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100) ' +
-                              'UNION SELECT * FROM (SELECT `transaction`.* FROM transaction_input ' +
-                              'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE output_transaction_id IN (SELECT transaction_id FROM transaction_output WHERE address_key_identifier = ?1 ' +
-                              'AND is_stable = 1 AND is_spent = 1 AND status = 2) ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND +`transaction`.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100) ',
-                [
-                    addressKeyIdentifier
-                ].concat(excludeTransactionIDList),
-                (err, rows) => {
-                    if (err) {
-                        console.log(err);
-                        return reject(err);
+        const params = [addressKeyIdentifier].concat(excludeTransactionIDList);
+        return new Promise(resolve => {
+            async.eachOfSeries([
+                /* get transaction by input using wallet funds */
+                'SELECT DISTINCT `transaction`.* FROM `transaction` ' +
+                'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
+                'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
+                'WHERE transaction_input.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100',
+                /* get transaction by wallet output */
+                'SELECT DISTINCT `transaction`.* FROM `transaction` ' +
+                'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
+                'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100',
+                /* get transaction by output received by active wallet */
+                'SELECT DISTINCT `transaction`.* FROM transaction_input ' +
+                'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
+                'INNER JOIN `transaction_output` ON `transaction_output`.transaction_id = transaction_input.transaction_id ' +
+                'WHERE transaction_input.output_transaction_id IN (SELECT transaction_input.transaction_id FROM transaction_input INNER JOIN transaction_output ON transaction_input.transaction_id =  transaction_output.transaction_id WHERE transaction_input.address_key_identifier = ?1 AND +transaction_output.is_stable = 1 AND +transaction_output.is_spent = 1 AND transaction_output.status = 2) ' +
+                'AND transaction_input.address_key_identifier != ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') +
+                'AND +`transaction`.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100'
+            ], (sql, idx, callback) => {
+                this.database.all(sql, params, (err, rows) => {
+                    if (rows && rows.length > 0) {
+                        return callback(rows);
                     }
-                    return resolve(rows);
+                    else if (err) {
+                        console.log(err);
+                    }
+                    callback();
                 });
+            }, data => resolve(data || []));
         });
     }
 
@@ -289,17 +302,10 @@ export default class Transaction {
 
     countWalletUnstableTransactions(addressKeyIdentifier) {
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT COUNT(1) as transaction_count FROM (SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE transaction_input.address_key_identifier = ?1 AND transaction_output.is_stable = 0 ) ' +
-                              'UNION SELECT * FROM (SELECT `transaction`.* FROM `transaction` ' +
-                              'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                              'WHERE transaction_output.address_key_identifier = ?1 AND transaction_output.is_stable = 0 ) ' +
-                              'UNION SELECT * FROM (SELECT `transaction`.* FROM transaction_input ' +
-                              'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
-                              'WHERE output_transaction_id IN (SELECT transaction_id FROM transaction_output WHERE address_key_identifier = ?1 ' +
-                              'AND is_stable = 1 AND is_spent = 1 AND status = 2) AND +`transaction`.is_stable = 0 )) ',
+            this.database.get(`SELECT COUNT(DISTINCT transaction_id) AS transaction_count
+                               FROM transaction_output
+                               WHERE address_key_identifier = ?1
+                                 AND is_stable = 0`,
                 [
                     addressKeyIdentifier
                 ],
@@ -727,6 +733,7 @@ export default class Transaction {
                 const transactionDate = Math.floor(transaction.transaction_date.getTime() / 1000);
                 /* verify if expire time is greater than transaction date */
                 let transactionStatus;
+                const transactionStableDate = transaction.stable_date || transaction.transaction_output_list[0].stable_date;
                 if (!isWalletTransaction) {
                     const expireDate = ntp.now();
                     expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
@@ -775,13 +782,13 @@ export default class Transaction {
                     return new Promise((resolve, reject) => {
                         this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
                             transaction.node_id_origin, transaction.node_id_proxy, transaction.version, transaction.parent_date,
-                            transaction.stable_date, transaction.timeout_date,
+                            transactionStableDate, transaction.timeout_date,
                             transactionStatus, transaction.create_date)
                             .then(() => resolve())
                             .catch(() => {
                                 this.updateTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate,
                                     transaction.node_id_origin, transaction.node_id_proxy, transaction.version, transaction.parent_date,
-                                    transaction.stable_date, transaction.timeout_date,
+                                    transactionStableDate, transaction.timeout_date,
                                     transactionStatus, transaction.create_date)
                                     .then(() => resolve())
                                     .catch(err => reject(err));
@@ -823,12 +830,12 @@ export default class Transaction {
                     promise = promise.then(() => {
                         return new Promise((resolve, reject) => {
                             this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier,
-                                output.amount, output.spent_date, output.stable_date, output.double_spend_date,
+                                output.amount, output.spent_date, transactionStableDate, output.double_spend_date,
                                 transactionStatus, output.create_date)
                                 .then(resolve)
                                 .catch(() => {
                                     this.updateTransactionOutput(transaction.transaction_id, output.output_position, output.spent_date ? new Date(output.spent_date * 1000) : null,
-                                        output.stable_date ? new Date(output.stable_date * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null, transactionStatus)
+                                        transactionStableDate ? new Date(transactionStableDate * 1000) : null, output.double_spend_date ? new Date(output.double_spend_date * 1000) : null, transactionStatus)
                                         .then(resolve)
                                         .catch(reject);
                                 });
@@ -858,6 +865,7 @@ export default class Transaction {
 
     normalizeTransactionObject(transactionDB) {
         if (!transactionDB) {
+            console.log('[transaction-normalization] tried to normalise a null object');
             return null;
         }
         //TODO: check genesis case
@@ -900,16 +908,17 @@ export default class Transaction {
 
         for (let signature of transaction['transaction_signature_list']) {
             if (!signature.address_attribute.key_public) {
+                console.log('[transaction-normalization] key_public not found ', transactionDB);
                 return null;
             }
         }
 
-        transaction['transaction_date']           = [
-                                                        '0a0',
-                                                        '0b0',
-                                                        'la0l',
-                                                        'lb0l'
-                                                    ].includes(transactionDB.version) ? transactionDB.transaction_date.toISOString() : Math.floor(transactionDB.transaction_date.getTime() / 1000);
+        transaction['transaction_date'] = [
+                                              '0a0',
+                                              '0b0',
+                                              'la0l',
+                                              'lb0l'
+                                          ].includes(transactionDB.version) ? transactionDB.transaction_date.toISOString() : Math.floor(transactionDB.transaction_date.getTime() / 1000);
         if (![
             '0a0',
             '0b0',
@@ -931,78 +940,80 @@ export default class Transaction {
 
     getTransactionObject(transactionID) {
         return new Promise(resolve => {
-            this.getTransaction(transactionID)
-                .then(transaction => {
+            cache.getCachedIfPresent('transaction', 'transaction_object_' + transactionID, () => this.getTransaction(transactionID))
+                 .then(transaction => {
 
-                    if (!transaction) {
-                        return Promise.reject('transaction_not_found');
-                    }
+                     if (!transaction) {
+                         return Promise.reject('transaction_not_found');
+                     }
 
-                    return this.getTransactionOutputs(transactionID)
-                               .then(outputs => {
-                                   transaction.transaction_output_list = outputs;
-                                   return transaction;
-                               });
-                })
-                .then(transaction => {
-                    return this.getTransactionInputs(transactionID)
-                               .then(inputs => {
-                                   transaction.transaction_input_list = inputs;
-                                   return transaction;
-                               });
-                })
-                .then(transaction => {
-                    return this.getTransactionSignatures(transactionID)
-                               .then(signatures => {
-                                   transaction.transaction_signature_list = signatures;
-                                   return transaction;
-                               });
-                })
-                .then(transaction => {
-                    if (![
-                        '0a0',
-                        '0b0',
-                        '0a10',
-                        '0b10',
-                        'la0l',
-                        'lb0l',
-                        'la1l',
-                        'lb1l'
-                    ].includes(transaction.version)) {
-                        return this.getTransactionOutputAttributes(transactionID)
-                                   .then(outputAttributes => {
-                                       transaction['transaction_output_attribute'] = {};
-                                       outputAttributes.forEach(outputAttribute => {
-                                           transaction.transaction_output_attribute[outputAttribute.attribute_type] = JSON.parse(outputAttribute.value);
-                                       });
-                                       return transaction;
-                                   });
-                    }
-                    else {
-                        return Promise.resolve(transaction);
-                    }
-                })
-                .then(transaction => {
-                    return this.getTransactionParents(transactionID)
-                               .then(parents => {
-                                   transaction.transaction_parent_list = parents;
+                     return cache.getCachedIfPresent('transaction', 'transaction_object_output_' + transactionID, () => this.getTransactionOutputs(transactionID))
+                                 .then(outputs => {
+                                     transaction.transaction_output_list = outputs;
+                                     return transaction;
+                                 });
+                 })
+                 .then(transaction => {
+                     return cache.getCachedIfPresent('transaction', 'transaction_object_input_' + transactionID, () => this.getTransactionInputs(transactionID))
+                                 .then(inputs => {
+                                     transaction.transaction_input_list = inputs;
+                                     return transaction;
+                                 });
+                 })
+                 .then(transaction => {
+                     return cache.getCachedIfPresent('transaction', 'transaction_object_signature_' + transactionID, () => this.getTransactionSignatures(transactionID))
+                                 .then(signatures => {
+                                     transaction.transaction_signature_list = signatures;
+                                     return transaction;
+                                 });
+                 })
+                 .then(transaction => {
+                     if (![
+                         '0a0',
+                         '0b0',
+                         '0a10',
+                         '0b10',
+                         'la0l',
+                         'lb0l',
+                         'la1l',
+                         'lb1l'
+                     ].includes(transaction.version)) {
+                         return cache.getCachedIfPresent('transaction', 'transaction_object_output_attribute_' + transactionID, () => this.getTransactionOutputAttributes(transactionID))
+                                     .then(outputAttributes => {
+                                         transaction['transaction_output_attribute'] = {};
+                                         outputAttributes.forEach(outputAttribute => {
+                                             transaction.transaction_output_attribute[outputAttribute.attribute_type] = JSON.parse(outputAttribute.value);
+                                         });
+                                         return transaction;
+                                     });
+                     }
+                     else {
+                         return Promise.resolve(transaction);
+                     }
+                 })
+                 .then(transaction => {
+                     return cache.getCachedIfPresent('transaction', 'transaction_object_parent_' + transactionID, () => this.getTransactionParents(transactionID))
+                                 .then(parents => {
+                                     transaction.transaction_parent_list = parents;
 
-                                   //TODO: check this... some data is missing
-                                   if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
-                                       (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
-                                        !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
-                                        !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0)) {
-                                       return this.deleteTransaction(transactionID).then(_ => null).catch(_ => null);
-                                   }
+                                     //TODO: check this... some data is missing
+                                     if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
+                                         (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
+                                          !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
+                                          !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0 ||
+                                          !transaction.transaction_parent_list || transaction.transaction_parent_list.length === 0)) {
+                                         console.log('[transaction-object] invalid transaction from database with id', transaction);
+                                         return Promise.reject('transaction_not_found');
+                                     }
 
-                                   return transaction;
-                               });
-                })
-                .then(transaction => resolve(transaction))
-                .catch((e) => {
-                    console.log('[transaction] cannot get transaction with id', transactionID, 'err:', e);
-                    resolve(null);
-                });
+                                     return transaction;
+                                 });
+                 })
+                 .then(transaction => resolve(_.cloneDeep(transaction))) /*TODO: addTransactionFromObject is deleting address from output and input object. that is changing the cachedItem. we should not change the object. now we are creating a clone (refactor)*/
+                 .catch((e) => {
+                     console.log('[transaction-object] cannot get transaction with id', transactionID, 'err:', e);
+                     resolve(null);
+                 });
         });
     }
 
@@ -1058,30 +1069,33 @@ export default class Transaction {
 
     updateTransactionOutput(transactionID, outputPosition, spentDate, stableDate, doubleSpendDate, status) {
         return new Promise((resolve, reject) => {
-            let sql = 'UPDATE transaction_output SET';
+            let sql      = 'UPDATE transaction_output SET';
+            const params = [];
 
             if (spentDate === null) {
                 sql += ' spent_date = NULL, is_spent = 0,';
             }
             else if (spentDate) {
-                sql += ' spent_date = ' + Math.floor(spentDate.getTime() / 1000) + ', is_spent = 1,';
+                sql += ' spent_date = ?, is_spent = 1,';
+                params.push(Math.floor(spentDate.getTime() / 1000));
             }
 
             if (doubleSpendDate === null) {
                 sql += ' double_spend_date = NULL, is_double_spend = 0,';
             }
             else if (doubleSpendDate) {
-                sql += ' double_spend_date = ' + Math.floor(doubleSpendDate.getTime() / 1000) + ', is_double_spend = 1,';
+                sql += ' double_spend_date = ?, is_double_spend = 1,';
+                params.push(Math.floor(doubleSpendDate.getTime() / 1000));
             }
 
             if (stableDate === null) {
                 sql += ' stable_date = NULL, is_stable = 0,';
             }
             else if (stableDate) {
-                sql += ' stable_date = ' + Math.floor(stableDate.getTime() / 1000) + ', is_stable = 1,';
+                sql += ' stable_date = ?, is_stable = 1,';
+                params.push(Math.floor(stableDate.getTime() / 1000));
             }
 
-            const params = [];
             if (status !== undefined) {
                 sql += ' status = ?,';
                 params.push(status);
@@ -1243,17 +1257,27 @@ export default class Transaction {
                         double_spend_date = NULL
                     where transaction_id = "${transactionID}";
                     update transaction_output as o
-                    set stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = exists (
-                        select o2.transaction_id from transaction_input i
+                    set stable_date = CAST(strftime('%s', 'now') AS INTEGER),
+                        is_spent = exists (
+                        select o2.transaction_id
+                        from transaction_input i
+                        inner join transaction_output o2
+                        on i.transaction_id = o2.transaction_id
+                        where i.output_transaction_id = o.transaction_id
+                        and i.output_position = o.output_position
+                        and o2.status != 3 and o2.is_double_spend = 0
+                        ),
+                        spent_date = (
+                        select t.transaction_date
+                        from 'transaction' t
+                        inner join transaction_input i
+                        on i.transaction_id = t.transaction_id
                         inner join transaction_output o2 on i.transaction_id = o2.transaction_id
-                        where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
-                        o2.status != 3 and o2.is_double_spend = 0
-                        ), spent_date = (
-                        select t.transaction_date from 'transaction' t
-                        inner join transaction_input i on i.transaction_id = t.transaction_id
-                        inner join transaction_output o2 on i.transaction_id = o2.transaction_id
-                        where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
-                        o2.status != 3 and o2.is_double_spend = 0
+                        where i.output_transaction_id = o.transaction_id
+                        and i.output_position = o.output_position
+                        and
+                        o2.status != 3
+                        and o2.is_double_spend = 0
                         )
                     where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
                 `;
@@ -1271,7 +1295,8 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.serialize(() => {
                 let sql = `DROP TABLE IF EXISTS transaction_invalid_all;
-                CREATE TEMPORARY TABLE transaction_invalid_all AS
+                CREATE
+                    TEMPORARY TABLE transaction_invalid_all AS
                 with recursive transaction_invalid_spenders (transaction_id, status)
                                    as (
                         select "${transactionID}", 2
@@ -1307,17 +1332,27 @@ export default class Transaction {
                 where transaction_id in
                       (select transaction_id from transaction_invalid_all);
                 update transaction_output as o
-                set stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = exists (
-                    select o2.transaction_id from transaction_input i
+                set stable_date = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_spent = exists (
+                    select o2.transaction_id
+                    from transaction_input i
+                    inner join transaction_output o2
+                    on i.transaction_id = o2.transaction_id
+                    where i.output_transaction_id = o.transaction_id
+                    and i.output_position = o.output_position
+                    and o2.status != 3 and o2.is_double_spend = 0
+                    ),
+                    spent_date = (
+                    select t.transaction_date
+                    from 'transaction' t
+                    inner join transaction_input i
+                    on i.transaction_id = t.transaction_id
                     inner join transaction_output o2 on i.transaction_id = o2.transaction_id
-                    where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
-                    o2.status != 3 and o2.is_double_spend = 0
-                    ), spent_date = (
-                    select t.transaction_date from 'transaction' t
-                    inner join transaction_input i on i.transaction_id = t.transaction_id
-                    inner join transaction_output o2 on i.transaction_id = o2.transaction_id
-                    where i.output_transaction_id = o.transaction_id and i.output_position = o.output_position and
-                    o2.status != 3 and o2.is_double_spend = 0
+                    where i.output_transaction_id = o.transaction_id
+                    and i.output_position = o.output_position
+                    and
+                    o2.status != 3
+                    and o2.is_double_spend = 0
                     )
                 where transaction_id in (select output_transaction_id from transaction_input where transaction_id in (select transaction_id from transaction_invalid_all));
                 DROP TABLE transaction_invalid_all;`;
@@ -1395,43 +1430,67 @@ export default class Transaction {
                            AND transaction_id NOT IN (SELECT o.transaction_id
                                                       FROM transaction_output o
                                                                INNER JOIN transaction_input i
-                                                                          ON o.transaction_id = i.output_transaction_id AND
-                                                                             o.output_position = i.output_position
+                                                                          ON o.transaction_id =
+                                                                             i.output_transaction_id AND
+                                                                             o.output_position =
+                                                                             i.output_position
                                                                INNER JOIN transaction_output o2
-                                                                          ON o2.transaction_id = i.transaction_id AND
-                                                                             o2.is_double_spend = 0 AND
-                                                                             o2.status != 3
-                                                               WHERE o.address_key_identifier = ?1
-                                                      UNION SELECT o.transaction_id
-                                                        FROM transaction_output o
-                                                                 INNER JOIN shard_zero.transaction_input i
-                                                                            ON o.transaction_id = i.output_transaction_id AND
-                                                                               o.output_position = i.output_position
-                                                                 INNER JOIN shard_zero.transaction_output o2
-                                                                            ON o2.transaction_id = i.transaction_id AND
-                                                                               o2.is_double_spend = 0 AND
-                                                                               o2.status != 3
-                                                                 WHERE o.address_key_identifier = ?1
-                                                      UNION SELECT o.transaction_id
-                                                        FROM shard_zero.transaction_output o
-                                                                 INNER JOIN transaction_input i
-                                                                            ON o.transaction_id = i.output_transaction_id AND
-                                                                               o.output_position = i.output_position
-                                                                 INNER JOIN transaction_output o2
-                                                                            ON o2.transaction_id = i.transaction_id AND
-                                                                               o2.is_double_spend = 0 AND
-                                                                               o2.status != 3
-                                                                 WHERE o.address_key_identifier = ?1
-                                                        UNION SELECT o.transaction_id
-                                                              FROM shard_zero.transaction_output o
-                                                                       INNER JOIN shard_zero.transaction_input i
-                                                                                  ON o.transaction_id = i.output_transaction_id AND
-                                                                                     o.output_position = i.output_position
-                                                                       INNER JOIN shard_zero.transaction_output o2
-                                                                                  ON o2.transaction_id = i.transaction_id AND
-                                                                                     o2.is_double_spend = 0 AND
-                                                                                     o2.status != 3
-                                                              WHERE o.address_key_identifier = ?1)`;
+                                                                          ON o2.transaction_id =
+                                                                             i.transaction_id AND
+                                                                             o2.is_double_spend =
+                                                                             0 AND
+                                                                             o2.status
+                                                                                 !=
+                                                                             3
+                                                      WHERE o.address_key_identifier = ?1
+                                                      UNION
+                                                      SELECT o.transaction_id
+                                                      FROM transaction_output o
+                                                               INNER JOIN shard_zero.transaction_input i
+                                                                          ON o.transaction_id =
+                                                                             i.output_transaction_id AND
+                                                                             o.output_position =
+                                                                             i.output_position
+                                                               INNER JOIN shard_zero.transaction_output o2
+                                                                          ON o2.transaction_id =
+                                                                             i.transaction_id AND
+                                                                             o2.is_double_spend =
+                                                                             0 AND
+                                                                             o2.status !=
+                                                                             3
+                                                      WHERE o.address_key_identifier = ?1
+                                                      UNION
+                                                      SELECT o.transaction_id
+                                                      FROM shard_zero.transaction_output o
+                                                               INNER JOIN transaction_input i
+                                                                          ON o.transaction_id =
+                                                                             i.output_transaction_id AND
+                                                                             o.output_position =
+                                                                             i.output_position
+                                                               INNER JOIN transaction_output o2
+                                                                          ON o2.transaction_id =
+                                                                             i.transaction_id AND
+                                                                             o2.is_double_spend =
+                                                                             0 AND
+                                                                             o2.status !=
+                                                                             3
+                                                      WHERE o.address_key_identifier = ?1
+                                                      UNION
+                                                      SELECT o.transaction_id
+                                                      FROM shard_zero.transaction_output o
+                                                               INNER JOIN shard_zero.transaction_input i
+                                                                          ON o.transaction_id =
+                                                                             i.output_transaction_id AND
+                                                                             o.output_position =
+                                                                             i.output_position
+                                                               INNER JOIN shard_zero.transaction_output o2
+                                                                          ON o2.transaction_id =
+                                                                             i.transaction_id AND
+                                                                             o2.is_double_spend =
+                                                                             0 AND
+                                                                             o2.status !=
+                                                                             3
+                                                      WHERE o.address_key_identifier = ?1)`;
             this.database.all(sql,
                 [addressKeyIdentifier], (err, rows) => {
                     if (err) {
@@ -1663,23 +1722,32 @@ export default class Transaction {
         });
     }
 
-    findUnstableTransaction(excludeTransactionIDList) {
+    findUnstableTransaction(excludeTransactionIDList, returnHibernatedTransactions = false) {
         return new Promise((resolve, reject) => {
             const insertDate      = Math.floor(Date.now() / 1000) - 30;
             let unstableDateStart = ntp.now();
             unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
             unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
-            this.database.all('SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date ASC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
-                [
+            let sql, params;
+            if (!returnHibernatedTransactions) {
+                sql    = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
+                params = [
                     unstableDateStart,
                     insertDate
-                ].concat(excludeTransactionIDList), (err, rows) => {
-                    if (err) {
-                        console.log(err);
-                        return reject(err);
-                    }
-                    return resolve(rows);
-                });
+                ].concat(excludeTransactionIDList);
+            }
+            else {
+                sql    = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
+                params = [insertDate].concat(excludeTransactionIDList);
+            }
+
+            this.database.all(sql, params, (err, rows) => {
+                if (err) {
+                    console.log(err);
+                    return reject(err);
+                }
+                return resolve(rows);
+            });
         });
     }
 
@@ -1985,7 +2053,7 @@ export default class Transaction {
 
     listTransactionSpendingOutput(transactionID, outputPosition) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT t.*, o.is_double_spend, o.is_spent FROM `transaction` t INNER JOIN transaction_input i ON t.transaction_id = i.transaction_id INNER JOIN transaction_output o ON o.transaction_id = t.transaction_id '+
+            this.database.all('SELECT t.*, o.is_double_spend, o.is_spent FROM `transaction` t INNER JOIN transaction_input i ON t.transaction_id = i.transaction_id INNER JOIN transaction_output o ON o.transaction_id = t.transaction_id ' +
                               'WHERE i.output_transaction_id = ? AND i.output_position = ?',
                 [
                     transactionID,
@@ -2038,38 +2106,64 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.exec(`
                 UPDATE 'transaction' AS t
-                SET is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                SET is_stable = 1, stable_date = CAST (strftime('%s', 'now') AS INTEGER)
                 WHERE transaction_id = "${transactionID}";
                 UPDATE transaction_input
                 SET is_double_spend   = 0,
                     double_spend_date = NULL
                 WHERE transaction_id = "${transactionID}";
                 UPDATE transaction_output AS o
-                SET is_double_spend = 0, double_spend_date = NULL, is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = EXISTS (
-                    SELECT i.output_transaction_id FROM transaction_input i
+                SET is_double_spend = 0,
+                    double_spend_date = NULL,
+                    is_stable = 1,
+                    stable_date = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_spent = EXISTS (
+                    SELECT i.output_transaction_id
+                    FROM transaction_input i
+                    INNER JOIN transaction_output o2
+                    ON i.transaction_id = o2.transaction_id
+                    WHERE i.output_transaction_id = o.transaction_id
+                    AND i.output_position = o.output_position
+                    AND o2.status != 3 AND o2.is_double_spend = 0
+                    ),
+                    spent_date = (
+                    SELECT t.transaction_date
+                    FROM 'transaction' t
+                    INNER JOIN transaction_input i
+                    ON i.transaction_id = t.transaction_id
                     INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
-                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
-                    o2.status != 3 AND o2.is_double_spend = 0
-                    ), spent_date = (
-                    SELECT t.transaction_date FROM 'transaction' t
-                    INNER JOIN transaction_input i ON i.transaction_id = t.transaction_id
-                    INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
-                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
-                    o2.status != 3 and o2.is_double_spend = 0
+                    WHERE i.output_transaction_id = o.transaction_id
+                    AND i.output_position = o.output_position
+                    AND
+                    o2.status != 3
+                    and o2.is_double_spend = 0
                     )
                 WHERE transaction_id = "${transactionID}";
                 UPDATE transaction_output AS o
-                SET is_double_spend = 0, double_spend_date = NULL, is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = EXISTS (
-                    SELECT i.output_transaction_id FROM transaction_input i
-                                                            INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
-                    WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
-                        o2.status != 3 AND o2.is_double_spend = 0
-                    ), spent_date = (
-                    SELECT t.transaction_date FROM 'transaction' t
-                    INNER JOIN transaction_input i ON i.transaction_id = t.transaction_id
+                SET is_double_spend = 0,
+                    double_spend_date = NULL,
+                    is_stable = 1,
+                    stable_date = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_spent = EXISTS (
+                    SELECT i.output_transaction_id
+                    FROM transaction_input i
+                    INNER JOIN transaction_output o2
+                    ON i.transaction_id = o2.transaction_id
+                    WHERE i.output_transaction_id = o.transaction_id
+                    AND i.output_position = o.output_position
+                    AND o2.status != 3 AND o2.is_double_spend = 0
+                    ),
+                    spent_date = (
+                    SELECT t.transaction_date
+                    FROM 'transaction' t
+                    INNER JOIN transaction_input i
+                    ON i.transaction_id = t.transaction_id
                     INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
-                WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
-                    o2.status != 3 and o2.is_double_spend = 0
+                    WHERE i.output_transaction_id = o.transaction_id
+                    AND i.output_position = o.output_position
+                    AND
+                    o2.status != 3
+                    and o2.is_double_spend = 0
                     )
                 WHERE transaction_id IN (SELECT output_transaction_id FROM transaction_input WHERE transaction_id = "${transactionID}");
             `, (err) => {
@@ -2088,7 +2182,8 @@ export default class Transaction {
             mutex.lock(['transaction-stable-path'], unlock => {
                 this.database.exec(`
                     DROP TABLE IF EXISTS transaction_input_chain;
-                    CREATE TEMPORARY TABLE transaction_input_chain AS
+                    CREATE
+                        TEMPORARY TABLE transaction_input_chain AS
                     WITH RECURSIVE transaction_input_chain (transaction_id, status)
                                        AS (
                             SELECT "${transactionID}", 1
@@ -2101,7 +2196,7 @@ export default class Transaction {
                     FROM transaction_input_chain
                     WHERE status = 1;
                     UPDATE 'transaction' AS t
-                    SET is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                    SET is_stable = 1, stable_date = CAST (strftime('%s', 'now') AS INTEGER)
                     WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
                     UPDATE transaction_input
                     SET is_double_spend   = 0,
@@ -2109,17 +2204,30 @@ export default class Transaction {
                     WHERE transaction_id IN
                           (SELECT transaction_id FROM transaction_input_chain);
                     UPDATE transaction_output AS o
-                    SET is_double_spend = 0, double_spend_date = NULL, is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), is_spent = EXISTS (
-                        SELECT i.output_transaction_id FROM transaction_input i
+                    SET is_double_spend = 0,
+                        double_spend_date = NULL,
+                        is_stable = 1,
+                        stable_date = CAST(strftime('%s', 'now') AS INTEGER),
+                        is_spent = EXISTS (
+                        SELECT i.output_transaction_id
+                        FROM transaction_input i
+                        INNER JOIN transaction_output o2
+                        ON i.transaction_id = o2.transaction_id
+                        WHERE i.output_transaction_id = o.transaction_id
+                        AND i.output_position = o.output_position
+                        AND o2.status != 3 AND o2.is_double_spend = 0
+                        ),
+                        spent_date = (
+                        SELECT t.transaction_date
+                        FROM 'transaction' t
+                        INNER JOIN transaction_input i
+                        ON i.transaction_id = t.transaction_id
                         INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
-                        WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
-                        o2.status != 3 AND o2.is_double_spend = 0
-                        ), spent_date = (
-                        SELECT t.transaction_date FROM 'transaction' t
-                        INNER JOIN transaction_input i ON i.transaction_id = t.transaction_id
-                        INNER JOIN transaction_output o2 ON i.transaction_id = o2.transaction_id
-                        WHERE i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position AND
-                        o2.status != 3 and o2.is_double_spend = 0
+                        WHERE i.output_transaction_id = o.transaction_id
+                        AND i.output_position = o.output_position
+                        AND
+                        o2.status != 3
+                        and o2.is_double_spend = 0
                         )
                     WHERE transaction_id IN (SELECT transaction_id FROM transaction_input_chain);
                 `, (err) => {
@@ -2175,11 +2283,24 @@ export default class Transaction {
 
     getFreeOutput(addressKeyIdentifier) {
         return new Promise((resolve) => {
+            const now = Math.floor(ntp.now().getTime() / 1000);
             this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
                               INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
-                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3',
-                [addressKeyIdentifier], (err, rows) => {
+                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3 and `transaction`.transaction_date < ?',
+                [addressKeyIdentifier, now], (err, rows) => {
                     resolve(rows);
+                });
+        });
+    }
+
+    countWalletFreeOutput(addressKeyIdentifier) {
+        return new Promise((resolve) => {
+            const now = Math.floor(ntp.now().getTime() / 1000);
+            this.database.get('SELECT count(1) as count FROM transaction_output \
+                              INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
+                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3 and `transaction`.transaction_date < ?',
+                [addressKeyIdentifier, now], (err, row) => {
+                    resolve(row.count);
                 });
         });
     }
@@ -2491,7 +2612,7 @@ export default class Transaction {
     }
 
     hasTransaction(transactionID) {
-        return new Promise((resolve, reject) => {
+        return cache.getCachedIfPresent('transaction', 'transaction_exists_' + transactionID, () => new Promise((resolve, reject) => {
             this.database.get('SELECT EXISTS(select transaction_id from `transaction` where transaction_id = ?) as transaction_exists',
                 [transactionID], (err, row) => {
                     if (err) {
@@ -2500,7 +2621,7 @@ export default class Transaction {
                     }
                     resolve(row.transaction_exists === 1);
                 });
-        });
+        }));
     }
 
     pruneShardZero(keyIdentifierSet) {
@@ -2673,7 +2794,8 @@ export default class Transaction {
 
         return new Promise((resolve, reject) => {
             this.database.exec(`DROP TABLE IF EXISTS transaction_expired;
-            CREATE TEMPORARY TABLE transaction_expired AS
+            CREATE
+                TEMPORARY TABLE transaction_expired AS
             WITH expired AS (SELECT t.transaction_id
                              FROM 'transaction' t
                              WHERE t.transaction_date <= ${seconds}
@@ -2721,7 +2843,8 @@ export default class Transaction {
     checkup() {
         return new Promise(resolve => {
             this.database.exec(`
-                create temporary table transaction_unspent as
+                create
+                    temporary table transaction_unspent as
                 with outputs
                          as (select o.transaction_id, o.output_position
                              from transaction_output o

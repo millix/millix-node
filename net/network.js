@@ -41,6 +41,7 @@ class Network {
         this.certificatePrivateKeyPem             = null;
         this.nodeConnectionID                     = this.generateNewID();
         this._selfConnectionNode                  = new Set();
+        this._allowedMessageInOutboudConnection   = new Set(['node_attribute_request', 'wallet_transaction_sync']);
         this.initialized                          = false;
         this.dht                                  = null;
         this.noop                                 = () => {
@@ -107,8 +108,7 @@ class Network {
         else if (!prefix || !ipAddress || !port || portApi === undefined || id === this.nodeID) {
             return Promise.reject();
         }
-        else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && id && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id)) {
-            console.log('[network warn]: node id not in NODE_CONNECTION_OUTBOUND_WHITELIST');
+        else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && (!id || !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id))) {
             return Promise.reject();
         }
 
@@ -213,7 +213,7 @@ class Network {
     }
 
     shouldBlockMessage(messageType) {
-        return !!/.*_(request|sync|allocate)$/g.exec(messageType);
+        return !this._allowedMessageInOutboudConnection.has(messageType) && !!/.*_(request|sync|allocate)$/g.exec(messageType);
     }
 
     getHostByNode(node) {
@@ -338,6 +338,9 @@ class Network {
 
         return new Promise(resolve => {
             async.eachLimit(_.shuffle(Array.from(inactiveClients)), 4, (node, callback) => {
+                if (this._nodeRegistry[node.node_id]) {
+                    return callback();
+                }
                 this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
                     .then(() => setTimeout(callback, 1000))
                     .catch(() => setTimeout(callback, 1000));
@@ -1127,14 +1130,17 @@ class Network {
         });
     }
 
-    disconnectWebSocket(ws) {
-        if (ws) {
-            if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-                this._unregisterWebsocket(ws);
-            }
-            else {
-                ws.close();
-            }
+    disconnectWebSocket(targetWS) {
+        if (targetWS) {
+            let wsList = this._nodeRegistry[targetWS.nodeID];
+            _.each([...wsList || [targetWS]], ws => { // clone the refs because the array will be mutated in the loop
+                if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) { // unregister all websocket from this node that are in closed state
+                    this._unregisterWebsocket(ws);
+                }
+                else if (ws === targetWS) {
+                    ws.close();
+                }
+            });
         }
     }
 
