@@ -425,12 +425,12 @@ class Wallet {
                     fee_type: 'transaction_fee_default'
                 };
 
-                return this.signAndStoreTransaction(srcInputs, [], outputFee, addressAttributeMap, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION, true);
+                return this.signAndStoreTransaction(srcInputs, [], outputFee, addressAttributeMap, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION, {}, true);
             });
         });
     }
 
-    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion) {
+    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion, outputAttributes={}) {
         return this.processTransaction(() => {
             return new Promise(resolve => {
                 if (!srcOutputs) {
@@ -511,7 +511,7 @@ class Wallet {
                           amount                : change
                       });
                   }
-                  return this.signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION);
+                  return this.signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION, outputAttributes);
               });
         });
     }
@@ -1685,7 +1685,7 @@ class Wallet {
         });
     }
 
-    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, isAggregationTransaction = false) {
+    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes={}, isAggregationTransaction = false) {
         const addressRepository = database.getRepository('address');
         const time              = ntp.now();
 
@@ -1704,7 +1704,7 @@ class Wallet {
                 address_key_identifier: addressKeyIdentifier
             }
         ];
-        return (!isAggregationTransaction ? walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
+        return (!isAggregationTransaction ? walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes)
                                           : walletUtils.signAggregationTransaction(srcInputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, config.WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT, config.WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT, config.WALLET_AGGREGATION_TRANSACTION_MAX))
             .catch(e => Promise.reject({error: e}))
             .then((transactionList) => {
@@ -1750,7 +1750,7 @@ class Wallet {
             });
     };
 
-    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, isAggregationTransaction = false) {
+    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes={}, isAggregationTransaction = false) {
         const transactionRepository = database.getRepository('transaction');
         const proxyErrorList        = [
             'proxy_network_error',
@@ -1763,7 +1763,7 @@ class Wallet {
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
-                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction, isAggregationTransaction)
+                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction, outputAttributes, isAggregationTransaction)
                                                     .then(transaction => callback({transaction}))
                                                     .catch(e => {
                                                         if (!e
@@ -1790,10 +1790,10 @@ class Wallet {
                                     });
     }
 
-    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, isAggregationTransaction = false) {
+    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, outputAttributes={}, isAggregationTransaction = false) {
         const transactionRepository = database.getRepository('transaction');
         return new Promise((resolve, reject) => {
-            this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, isAggregationTransaction)
+            this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, outputAttributes, isAggregationTransaction)
                 .catch(e => {
                     reject(e);
                     return Promise.reject(e);

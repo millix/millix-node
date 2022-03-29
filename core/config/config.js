@@ -710,8 +710,8 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT                        = 1;
-export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 2;
+export const CONSENSUS_ROUND_NODE_COUNT                        = 2;
+export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 1;
 export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
 export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
 export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 5;
@@ -777,6 +777,7 @@ export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
+export const FILES_CONNECTION                                  = {};
 export const MILLIX_CIRCULATION                                = 9e15;
 export const NODE_MILLIX_BUILD_DATE                            = 1648494468;
 export const NODE_MILLIX_VERSION                               = '1.16.3';
@@ -791,6 +792,8 @@ export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR +
 export const JOB_CONFIG_VERSION                                = 7;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
 export const DEBUG_LOG_FILTER                                  = [];
+export const CHUNK_SIZE                                        = 50331648; //48MB
+export const MAX_STORAGE_RESERVED                              = 1073741824; //1GB
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
 export const PEER_ROTATION_MORE_THAN_ALL                       = 0.01;
@@ -824,8 +827,12 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '18';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '19';
 }
+
+FILES_CONNECTION.FOLDER                                         = DATA_BASE_DIR + '/files/';
+FILES_CONNECTION.PENDING_TO_SEND                                = DATA_BASE_DIR + '/files/sending.log';
+FILES_CONNECTION.PENDING_TO_RECEIVE                             = DATA_BASE_DIR + '/files/receiving.log';
 
 export default {
     MODE_DEBUG,
@@ -855,6 +862,7 @@ export default {
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
+    FILES_CONNECTION,
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
     CONSENSUS_VALIDATION_DEPTH_MAX,
@@ -905,7 +913,9 @@ export default {
     PEER_ROTATION_CONFIG,
     JOB_CONFIG_PATH,
     JOB_CONFIG_VERSION,
-    DEBUG_LOG_FILTER
+    DEBUG_LOG_FILTER,
+    CHUNK_SIZE,
+    MAX_STORAGE_RESERVED
 };
 
 // dev branch should be running in the test-network

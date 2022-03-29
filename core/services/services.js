@@ -7,6 +7,9 @@ import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
 import database from '../../database/database';
+import fileManager from '../files/file-manager';
+import fileExchange from '../files/file-exchange';
+import sender from '../files/sender';
 import cache from '../cache';
 
 
@@ -34,6 +37,7 @@ class Service {
             createWalletIfNotExists = true;
         }
         return logManager.initialize()
+                         .then(() => fileExchange.initialize())
                          .then(() => server.initialize())
                          .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent, createWalletIfNotExists))
                          .then(() => cache.initialize())
