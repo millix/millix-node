@@ -12,22 +12,20 @@ import queue from './queue';
 import request from 'request';
 
 
-
 class Sender {
     constructor() {
-        this.isSenderPublic = true;
-        this.filesRootFolder = null;
         this.isSenderPublic  = true;
+        this.filesRootFolder = null;
         this.serverOptions   = {};
         this.httpsServer     = null;
         this.app             = null;
     }
 
-    initialize() {
+    initialize(isSenderPublic) {
+        this.isSenderPublic  = isSenderPublic;
         return new Promise((resolve, reject) => {
             this._defineServerOperations();
             this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
-
 
             walletUtils.loadNodeKeyAndCertificate()
                        .then(({
@@ -43,141 +41,101 @@ class Sender {
                            };
                            resolve();
                        }).then(() => {
-                            queue.initializeSender().then(() => {
-                                const promisesToSend = queue.getListOfPendingFilesInSender().rows.map(requestInfo => new Promise((resolve, reject) => {
-                                    this._startSending(resolve, reject, requestInfo);
-                                }));
-                                Promise.all(promisesToSend)
-                                       .then(() => {
-                                           resolve();
-                                       });
-                            });
+                queue.initializeSender()
+                     .then(() => {
+                         resolve();
+                     });
             });
         });
     }
 
-    _defineServerOperations(){
+    _defineServerOperations() {
         let filesRootFolder = this.filesRootFolder;
-        this.app = express();
+        this.app            = express();
         this.app.use(helmet());
         this.app.use(bodyParser.json({limit: '50mb'}));
         this.app.use(cors());
 
-        this.app.get("/file/:wallet/:txid/:fname/:chunkn", (req, res) => {
-            let wallet = req.params.wallet;
-            let transactionId = req.params.txid;
-            let fileName = req.params.fname;
-            let chunkNumber = req.params.chunkn;
+        this.app.get('/file/:nodeId/:walletId/:transactionId/:fileHash/:chunkNumber', (req, res) => {
+            let nodeId        = req.params.nodeId;
+            let walletId      = req.params.walletId;
+            let transactionId = req.params.transactionId;
+            let fileHash      = req.params.fileHash;
+            let chunkNumber   = req.params.chunkNumber;
+            let fileLocation  = path.join(filesRootFolder, walletId, transactionId, fileHash);
 
-            let location = path.join(filesRootFolder, wallet);
-            location = path.join(location, transactionId);
-            location = path.join(location, fileName);
+            if (queue.hasFileToSend(nodeId, transactionId, fileHash)) {
+                chunker.getChunck(fileLocation, chunkNumber).then((data) => {
+                    res.writeHead(200);
+                    res(data);
+                }).catch(() => {
+                    res.writeHead(403);
+                    res.end('Requested file cannot be sent!');
+                });
+            }
+            else {
+                res.writeHead(403);
+                res.end('Requested file is not in queue to be send!');
+            }
 
-            res.writeHead(200);
-            chunker.getChunck(res, location, chunkNumber);
         });
 
-        this.app.post("/ack", function (req, res) {
-            //VERIFY SIGNATURES
-            queue.decrementServerInstancesInSender();
-            res.writeHead(200);
-            res.end("ok");
+        this.app.post('/ack/:nodeId/:transactionId', function(req, res) {
+            let nodeId        = req.params.nodeId;
+            let transactionId = req.params.transactionId;
+            if (queue.hasTransactionRequest(nodeId, transactionId)) {
+                queue.decrementServerInstancesInSender();
+                queue.removeEntryFromSender(nodeId, transactionId);
+                res.writeHead(200);
+                res.end('ok');
+            }
+            else {
+                res.writeHead(403);
+                res.end('Requested file is not in queue to be send!');
+            }
         });
     }
 
-    getPublicSenderInfo(){
-        if(!queue.anyActiveSenderServer()){
+    getPublicSenderInfo() {
+        if (!queue.anyActiveSenderServer()) {
             this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
-            console.log('Listening on port ' + this.httpsServer.address().port);
+            console.log('[file-sender] Server listening on port ' + this.httpsServer.address().port);
         }
         queue.incrementServerInstancesInSender();
         return this.httpsServer;
     }
 
-    askToSend(fileLocation, destination, receiver_public) {
+    serveFile(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic) {
         return new Promise((resolve, reject) => {
-            queue.addNewFileInSender(fileLocation, destination, receiver_public);
-            this._startSending(resolve, reject, {
-                destination    : destination,
-                receiver_public: receiver_public,
-                fileLocation   : fileLocation
-            });
-        });
-    }
-
-    _startSending(resolve, reject, requestInfo) {
-        this._send(requestInfo).then(() => {
-            queue.removeEntryFromSender(requestInfo);
+            queue.addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic);
             resolve();
-        }).catch(e => {
-            queue.removeEntryFromSender(requestInfo);
-            reject();
         });
     }
 
-    _send(requestInfo) {
+    sendChunk(receiverServer, nodeId, walletId, transactionId, fileHash, chunkNumber) {
         return new Promise((resolve, reject) => {
-            if (!this.isSenderPublic && !requestInfo.receiver_public) {
-                console.log('Both peers are private! Cannot communicate!');
-                reject();
-            }
-
-            if (this.isSenderPublic) {
-                console.log('This is a open server, just needs to wait for the receiver');
-                resolve();
-            }
-            else {
-                this._privateSender(requestInfo)
-                    .then(()=>{
-                        resolve();
-                    }).catch(e => {
-                        console.log('error');
-                        reject();
-                    });
-            }
+            let fileLocation = path.join(filesRootFolder, walletId, transactionId, fileHash);
+            chunker.getChunck(fileLocation, chunkNumber).then((data) => {
+                let payload = {
+                    url: receiverServer,
+                    json: true,
+                    body: JSON.stringify({
+                        chunk: data
+                    })
+                };
+                request.post(payload, (err, response, body) => {
+                    if (err) {
+                        console.log('[file-sender] error, ', err);
+                        return reject(err);
+                    }
+                    resolve();
+                });
+            }).catch((err) => {
+                return reject(err);
+            });
 
         });
     }
-
-    _privateSender(server, requestedFiles) {
-        return new Promise((resolve, reject) => {
-            const wallet = requestedFiles.wallet;
-            const transactionId = requestedFiles.transaction;
-            const promisesToReceive = requestedFiles.files.map(file => new Promise((resolve, reject) => {
-                for (let chunk = 0; chunk < file.chunks; chunk++){
-                    const service = server.concat("/file/").concat(wallet).concat("/").concat(transactionId).concat("/").concat(file.name).concat("/").concat(chunk);
-                    console.log(service)
-                    request.post(service, (error, response, body) => {
-                        if(error) {
-                            console.log("error")
-                            reject();
-                        }
-                        //here
-                        //chunker.writeFile(wallet, transactionId, file.name, body);
-                    });
-                }
-                resolve();
-            }));
-
-            Promise.all(promisesToReceive)
-                   .then(() => {
-                       return new Promise((resolve, reject) => {
-                           const service = server.concat("/ack");
-                           request.post(service, (error, response, body) => {
-                               if(error) {
-                                   console.log("error")
-                                   reject();
-                               }
-                               resolve();
-                           });
-                       });
-                   })
-                   .then(() => {
-                       resolve();
-                   });
-        });
-    }
-
 }
 
 
