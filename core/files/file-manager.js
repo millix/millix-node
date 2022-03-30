@@ -5,7 +5,6 @@ import fs from 'fs';
 import crypto from 'crypto';
 import wallet from '../wallet/wallet';
 import mutex from '../mutex';
-import fileExchange from './file-exchange';
 
 const ENCRYPT = "encrypt";
 const DECRYPT = "decrypt";
@@ -15,7 +14,23 @@ class FileManager {
         this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
     }
 
-    uploadFiles(files, fees, address) {
+    getFileLocation(addressKeyIdentifier, transactionId, fileHash){
+        return path.join(this.filesRootFolder, addressKeyIdentifier, transactionId, fileHash);
+    }
+
+    createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash){
+        let location = path.join(this.filesRootFolder, addressKeyIdentifier);
+        if (!fs.existsSync(location)) {
+            fs.mkdirSync(location);
+        }
+        location = path.join(location, transactionId);
+        if (!fs.existsSync(location)) {
+            fs.mkdirSync(location);
+        }
+        return path.join(location, fileHash);
+    }
+
+    generateNFT(files, fees, address) {
         return new Promise((resolve, reject) => {
             fs.readFile(path.join(os.homedir(), config.WALLET_KEY_PATH), 'utf8', (err, data) => {
                 //Verify if mnemonic is available
@@ -24,10 +39,10 @@ class FileManager {
                 }
 
                 //Create directory for my files (if not exist)
-                let walletKeyIdentifier = wallet.getKeyIdentifier();
-                let personalFolder      = path.join(this.filesRootFolder, walletKeyIdentifier);
-                if (!fs.existsSync(personalFolder)) {
-                    fs.mkdirSync(path.join(personalFolder));
+                let walletKeyIdentifier = address.address_key_identifier;
+                let destinationDirectory      = path.join(this.filesRootFolder, walletKeyIdentifier);
+                if (!fs.existsSync(destinationDirectory)) {
+                    fs.mkdirSync(path.join(destinationDirectory));
                 }
 
                 //Init ciphers and attr
@@ -82,7 +97,7 @@ class FileManager {
                        })
                        .then((transactionID) => {
                            //Create transaction directory to write file
-                           let transationFolder = path.join(personalFolder, transactionID);
+                           let transationFolder = path.join(destinationDirectory, transactionID);
                            if (!fs.existsSync(transationFolder)) {
                                fs.mkdirSync(path.join(transationFolder));
                            }
@@ -90,20 +105,15 @@ class FileManager {
                            this._writeTransactionAttrJSONFile(transationFolder, transactionAttr);
 
                            const promisesToWrite = this._writeFiles(files, transationFolder, cipher, keys);
-                           Promise.all(promisesToWrite)
-                                  .then(() => {
-                                      fileExchange.exchangeTmp(transationFolder).then(() => {
-                                          resolve();
-                                      }).catch(e => {
-                                          console.log(`error`);
-                                          reject();
-                                      });
-                                  });
+                           return Promise.all(promisesToWrite);
+
                        })
                        .then(() => {
                            resolve();
+                       }).catch((err) => {
+                            console.log("[file-manager] error, ", err);
+                            reject();
                        });
-
             });
         });
     }
