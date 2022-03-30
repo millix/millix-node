@@ -3,26 +3,16 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import config, {CHUNK_SIZE} from '../config/config';
+import fileManager from './file-manager';
 
 class Chunker {
     constructor() {
-        this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
     }
 
-    writeFile(wallet, transactionId, file, chunk){
+    writeFile(addressKeyIdentifier, transactionId, fileHash, chunk){
         return new Promise((resolve, reject) => {
-            let location = path.join(this.filesRootFolder, wallet);
-            if (!fs.existsSync(location)) {
-                fs.mkdirSync(location);
-            }
-
-            location = path.join(location, transactionId);
-            if (!fs.existsSync(location)) {
-                fs.mkdirSync(location);
-            }
-
-            location = path.join(location, file);
-            fs.appendFile(location, chunk, (err) => {
+            let fileLocation = fileManager.createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            fs.appendFile(fileLocation, chunk, (err) => {
                 if (err) {
                     console.log(err);
                     return reject();
@@ -30,25 +20,44 @@ class Chunker {
                 resolve();
             });
         })
-
     }
 
-    getChunck(fileLocation, position){
+    getChunck(addressKeyIdentifier, transactionId, fileHash, position){
         return new Promise((resolve, reject)=>{
             let offset = position * CHUNK_SIZE;
-            fs.readFile(fileLocation, function(err, file) {
+            let buffer = new Buffer.alloc(CHUNK_SIZE);
+            let fileLocation = fileManager.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            fs.open(fileLocation, 'r', (err, fd) => {
                 if (err) {
                     return reject(err);
                 }
-                resolve(file.slice(offset, offset+CHUNK_SIZE));
+                fs.read(fd, buffer, 0, CHUNK_SIZE, offset,  (err, bytes) => {
+                    if (err) {
+                        return reject(err);
+                    }
+
+                    fs.close(fd, (err) => {
+                        if (err) {
+                            return reject(err);
+                        }
+
+                        resolve(buffer);
+                    });
+                });
             });
-        })
+        });
     }
 
-    getChunckSize(file){
-        let stats = fs.statSync(file)
-        let fileSizeInBytes = stats.size;
-        return fileSizeInBytes / CHUNK_SIZE;
+    getChunkSize(addressKeyIdentifier, transactionId, fileHash){
+        return new Promise((resolve,reject)=>{
+            let fileLocation = fileManager.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            fs.stat(fileLocation,(err, stats) => {
+                if (err) {
+                    return reject(err);
+                }
+                resolve(stats.size / CHUNK_SIZE);
+            })
+        });
     }
 }
 
