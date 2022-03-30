@@ -10,32 +10,39 @@ class Chunker {
     }
 
     writeFile(wallet, transactionId, file, chunk){
-        let location = path.join(this.filesRootFolder, wallet);
-        if (!fs.existsSync(location)) {
-            fs.mkdirSync(location);
-        }
-
-        location = path.join(location, transactionId);
-        if (!fs.existsSync(location)) {
-            fs.mkdirSync(location);
-        }
-
-        location = path.join(location, file);
-        fs.appendFile(location, chunk, (err) => {
-            if (err) {
-                console.log(err);
+        return new Promise((resolve, reject) => {
+            let location = path.join(this.filesRootFolder, wallet);
+            if (!fs.existsSync(location)) {
+                fs.mkdirSync(location);
             }
-        });
+
+            location = path.join(location, transactionId);
+            if (!fs.existsSync(location)) {
+                fs.mkdirSync(location);
+            }
+
+            location = path.join(location, file);
+            fs.appendFile(location, chunk, (err) => {
+                if (err) {
+                    console.log(err);
+                    return reject();
+                }
+                resolve();
+            });
+        })
+
     }
 
-    getChunck(res, fileLocation, pos){
-        let offset = pos * CHUNK_SIZE;
-        fs.readFile(fileLocation, function(err, file) {
-            if (err) {
-                return reject(err);
-            }
-            res.end((file.slice(offset, offset+CHUNK_SIZE)));
-        });
+    getChunck(fileLocation, position){
+        return new Promise((resolve, reject)=>{
+            let offset = position * CHUNK_SIZE;
+            fs.readFile(fileLocation, function(err, file) {
+                if (err) {
+                    return reject(err);
+                }
+                resolve(file.slice(offset, offset+CHUNK_SIZE));
+            });
+        })
     }
 
     getChunckSize(file){
