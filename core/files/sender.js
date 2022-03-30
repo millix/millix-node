@@ -14,18 +14,16 @@ import request from 'request';
 
 class Sender {
     constructor() {
-        this.isSenderPublic  = true;
-        this.filesRootFolder = null;
-        this.serverOptions   = {};
-        this.httpsServer     = null;
-        this.app             = null;
+        this.isSenderPublic = true;
+        this.serverOptions  = {};
+        this.httpsServer    = null;
+        this.app            = null;
     }
 
     initialize(isSenderPublic) {
-        this.isSenderPublic  = isSenderPublic;
+        this.isSenderPublic = isSenderPublic;
         return new Promise((resolve, reject) => {
             this._defineServerOperations();
-            this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
 
             walletUtils.loadNodeKeyAndCertificate()
                        .then(({
@@ -50,22 +48,20 @@ class Sender {
     }
 
     _defineServerOperations() {
-        let filesRootFolder = this.filesRootFolder;
-        this.app            = express();
+        this.app = express();
         this.app.use(helmet());
         this.app.use(bodyParser.json({limit: '50mb'}));
         this.app.use(cors());
 
-        this.app.get('/file/:nodeId/:walletId/:transactionId/:fileHash/:chunkNumber', (req, res) => {
-            let nodeId        = req.params.nodeId;
-            let walletId      = req.params.walletId;
-            let transactionId = req.params.transactionId;
-            let fileHash      = req.params.fileHash;
-            let chunkNumber   = req.params.chunkNumber;
-            let fileLocation  = path.join(filesRootFolder, walletId, transactionId, fileHash);
+        this.app.get('/file/:nodeId/:addressKeyIdentifier/:transactionId/:fileHash/:chunkNumber', (req, res) => {
+            let nodeId               = req.params.nodeId;
+            let addressKeyIdentifier = req.params.addressKeyIdentifier;
+            let transactionId        = req.params.transactionId;
+            let fileHash             = req.params.fileHash;
+            let chunkNumber          = req.params.chunkNumber;
 
             if (queue.hasFileToSend(nodeId, transactionId, fileHash)) {
-                chunker.getChunck(fileLocation, chunkNumber).then((data) => {
+                chunker.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
                     res.writeHead(200);
                     res(data);
                 }).catch(() => {
@@ -77,7 +73,6 @@ class Sender {
                 res.writeHead(403);
                 res.end('Requested file is not in queue to be send!');
             }
-
         });
 
         this.app.post('/ack/:nodeId/:transactionId', function(req, res) {
@@ -105,23 +100,27 @@ class Sender {
         return this.httpsServer;
     }
 
-    serveFile(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic) {
+    serveFile(nodeId, addressKeyIdentifier, transactionId, fileHash, nodePublicKey) {
         return new Promise((resolve, reject) => {
-            queue.addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey, nodeIsPublic);
-            resolve();
+            queue.addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey);
+            let numberOfChunks = chunker.getChunkSize(addressKeyIdentifier, transactionId, fileHash);
+            resolve(numberOfChunks);
         });
     }
 
-    sendChunk(receiverServer, nodeId, walletId, transactionId, fileHash, chunkNumber) {
+    sendChunk(receiverServer, nodeId, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
         return new Promise((resolve, reject) => {
-            let fileLocation = path.join(filesRootFolder, walletId, transactionId, fileHash);
-            chunker.getChunck(fileLocation, chunkNumber).then((data) => {
+            chunker.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
                 let payload = {
-                    url: receiverServer,
-                    json: true,
-                    body: JSON.stringify({
+                    url : receiverServer.concat('/file/')
+                                        .concat(nodeId).concat('/')
+                                        .concat(addressKeyIdentifier).concat('/')
+                                        .concat(transactionId).concat('/')
+                                        .concat(fileHash).concat('/')
+                                        .concat(chunkNumber),
+                    body: {
                         chunk: data
-                    })
+                    }
                 };
                 request.post(payload, (err, response, body) => {
                     if (err) {

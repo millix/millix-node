@@ -22,7 +22,7 @@ class Chunker {
         })
     }
 
-    getChunck(addressKeyIdentifier, transactionId, fileHash, position){
+    getChunk(addressKeyIdentifier, transactionId, fileHash, position){
         return new Promise((resolve, reject)=>{
             let offset = position * CHUNK_SIZE;
             let buffer = new Buffer.alloc(CHUNK_SIZE);
