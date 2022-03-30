@@ -123,11 +123,10 @@ class Queue {
         });
     }
 
-    removeEntryFromSender(requestInformation) {
-        let entryToRemove = this._buildEntry(requestInformation.nodeId, requestInformation.transactionId, requestInformation.fileHash, requestInformation.nodePublicKey, requestInformation.nodeIsPublic);
+    removeEntryFromSender(nodeId, transactionId) {
         mutex.lock(['update_pending_files'], (unlock) => {
             this.listOfPendingFilesInSender = this.listOfPendingFilesInSender.filter(function(value, index, arr){
-                return requestInformation.nodeId !== value.nodeId && requestInformation.transactionId !== value.transactionId && requestInformation.fileHash !== value.fileHash;
+                return nodeId !== value.nodeId && transactionId !== value.transactionId;
             });
             this._writeInFile(this.listOfPendingFilesInSender, this.filesPendingToSend).then(()=>{
                 unlock();
@@ -138,6 +137,12 @@ class Queue {
     hasFileToSend(nodeId, transactionId, fileHash){
         return (this.listOfPendingFilesInSender.filter((value, index, arr) => {
             return nodeId === value.nodeId && transactionId === value.transactionId && fileHash === value.fileHash;
+        }).length > 0);
+    }
+
+    hasTransactionRequest(nodeId, transactionId){
+        return (this.listOfPendingFilesInSender.filter((value, index, arr) => {
+            return nodeId === value.nodeId && transactionId === value.transactionId;
         }).length > 0);
     }
 
