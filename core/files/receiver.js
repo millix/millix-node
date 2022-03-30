@@ -74,8 +74,10 @@ class Receiver {
                 let chunk = req.body.chunk;
                 chunker.writeFile(addressKeyIdentifier, transactionId, fileHash, chunk);
                 if(queue.isLastChunk(nodeId, transactionId, fileHash, chunkNumber)){
-                    queue.decrementServerInstancesInReceiver();
-                    queue.removeEntryFromSender(nodeId, transactionId);
+                    queue.removeEntryFromReceiver(nodeId, transactionId, fileHash, chunkNumber);
+                    if(!queue.hasMoreFilesToReceiveFromServer(nodeId, transactionId)){
+                        queue.decrementServerInstancesInReceiver();
+                    }
                 }
                 res.writeHead(200);
                 res.end('ok');

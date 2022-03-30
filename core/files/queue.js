@@ -234,6 +234,13 @@ class Queue {
         return file[0].numberOfChunks === chunkNumber;
     }
 
+    hasMoreFilesToReceiveFromServer(nodeId, transactionId){
+        let file = this.listOfPendingFilesInReceiver.filter((value, index, arr) => {
+            return nodeId === value.nodeId && transactionId === value.transactionId;
+        });
+        return file[0].numberOfChunks === chunkNumber;
+    }
+
     _loadPendingFilesFromReceiver(fileLocation) {
         mutex.lock(['update_pending_files'], (unlock) => {
             let content = fs.readFile(fileLocation);
