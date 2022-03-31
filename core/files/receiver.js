@@ -85,6 +85,7 @@ class Receiver {
 
     downloadFileList(serverEndpoint, fileList) {
         return new Promise((resolve, reject) => {
+            const filesDownloaded = new Set();
             mutex.lock(['file-downloader'], unlock => {
                 const addressKeyIdentifier           = fileList.addressKeyIdentifier;
                 const transactionId                  = fileList.transactionId;
@@ -117,8 +118,13 @@ class Receiver {
                         });
                     }, (err) => {
                         if (err) {
-                            return reject(err);
+                            return reject({
+                                error           : err,
+                                files_downloaded: filesDownloaded
+                            });
                         }
+
+                        filesDownloaded.push(file.name);
                         return resolve();
                     });
                 }));
@@ -132,7 +138,10 @@ class Receiver {
                                unlock();
                                if (err) {
                                    console.log('[file-receiver] error, ', err);
-                                   return reject();
+                                   return reject({
+                                       error           : 'ack_error',
+                                       files_downloaded: filesDownloaded
+                                   });
                                }
                                resolve();
                            });
