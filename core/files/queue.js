@@ -12,7 +12,7 @@ class Queue {
     static RECEIVER = 'RECEIVER';
 
     constructor() {
-        this.senderLogFile             = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_SEND);
+        this.senderLogFile            = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_SEND);
         this.senderLog                = [];
         this.countActiveSendInstances = 0;
 

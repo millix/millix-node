@@ -84,64 +84,64 @@ class Receiver {
     }
 
     downloadFileList(serverEndpoint, fileList) {
-        mutex.lock(['file-downloader'], unlock => {
-            const addressKeyIdentifier           = fileList.addressKeyIdentifier;
-            const transactionId                  = fileList.transactionId;
-            const promisesToDownloadFileByChunks = fileList.files.map(file => new Promise((resolve, reject) => {
-                async.times(file.chunks, (chunkNumber, callback) => {
-                    const url = serverEndpoint.concat('/file/')
-                                              .concat(this.nodeId).concat('/')
-                                              .concat(addressKeyIdentifier).concat('/')
-                                              .concat(transactionId).concat('/')
-                                              .concat(file.name).concat('/')
-                                              .concat(chunkNumber);
-                    request.get(url, {}, (err, response, body) => {
-                        if (err) {
-                            console.log('[file-receiver] error, ', err);
-                            return callback({
-                                error       : err,
-                                chunk_number: chunkNumber,
-                                file
-                            });
-                        }
-                        chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, file.name, body).then(() => {
-                            callback();
-                        }).catch((err) => {
-                            return callback({
-                                error       : err,
-                                chunk_number: chunkNumber,
-                                file
+        return new Promise((resolve, reject) => {
+            mutex.lock(['file-downloader'], unlock => {
+                const addressKeyIdentifier           = fileList.addressKeyIdentifier;
+                const transactionId                  = fileList.transactionId;
+                const promisesToDownloadFileByChunks = fileList.files.map(file => new Promise((resolve, reject) => {
+                    async.times(file.chunks, (chunkNumber, callback) => {
+                        const url = serverEndpoint.concat('/file/')
+                                                  .concat(this.nodeId).concat('/')
+                                                  .concat(addressKeyIdentifier).concat('/')
+                                                  .concat(transactionId).concat('/')
+                                                  .concat(file.name).concat('/')
+                                                  .concat(chunkNumber);
+                        request.get(url, {}, (err, response, body) => {
+                            if (err) {
+                                console.log('[file-receiver] error, ', err);
+                                return callback({
+                                    error       : err,
+                                    chunk_number: chunkNumber,
+                                    file
+                                });
+                            }
+                            chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, file.name, body).then(() => {
+                                callback();
+                            }).catch((err) => {
+                                return callback({
+                                    error       : err,
+                                    chunk_number: chunkNumber,
+                                    file
+                                });
                             });
                         });
+                    }, (err) => {
+                        if (err) {
+                            return reject(err);
+                        }
+                        return resolve();
                     });
-                }, (err) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    return resolve();
-                });
-            }));
+                }));
 
-            return Promise.all(promisesToDownloadFileByChunks)
-                          .then(() => {
-                              return new Promise((resolve, reject) => {
-                                  const url = serverEndpoint.concat('/ack/')
-                                                            .concat(self.nodeId).concat('/')
-                                                            .concat(transactionId).concat('/');
-                                  request.post(url, {}, (err, response, body) => {
-                                      unlock();
-                                      if (err) {
-                                          console.log('[file-receiver] error, ', err);
-                                          return reject();
-                                      }
-                                      resolve();
-                                  });
-                              });
-                          })
-                          .catch(err => {
-                              unlock();
-                              return Promise.reject(err);
-                          });
+                Promise.all(promisesToDownloadFileByChunks)
+                       .then(() => {
+                           const url = serverEndpoint.concat('/ack/')
+                                                     .concat(self.nodeId).concat('/')
+                                                     .concat(transactionId).concat('/');
+                           request.post(url, {}, (err, response, body) => {
+                               unlock();
+                               if (err) {
+                                   console.log('[file-receiver] error, ', err);
+                                   return reject();
+                               }
+                               resolve();
+                           });
+                       })
+                       .catch(err => {
+                           unlock();
+                           reject(err);
+                       });
+            });
         });
     }
 

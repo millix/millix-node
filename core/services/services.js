@@ -37,7 +37,6 @@ class Service {
             createWalletIfNotExists = true;
         }
         return logManager.initialize()
-                         .then(() => fileExchange.initialize())
                          .then(() => server.initialize())
                          .then(() => wallet.setMode(this.mode).initialize(initializeWalletEvent, createWalletIfNotExists))
                          .then(() => cache.initialize())
@@ -47,6 +46,7 @@ class Service {
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => database.checkup())
+                         .then(() => fileExchange.initialize())
                          .catch(e => {
                              console.log(`[services] ${e.message}`);
                              this.initialized = false;
