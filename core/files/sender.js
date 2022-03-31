@@ -2,10 +2,7 @@ import express from 'express';
 import helmet from 'helmet';
 import bodyParser from 'body-parser';
 import cors from 'cors';
-import chunker from './chunker';
-import path from 'path';
-import os from 'os';
-import config, {NODE_BIND_IP} from '../config/config';
+import chunkUtils from './chunk-utils';
 import https from 'https';
 import walletUtils from '../wallet/wallet-utils';
 import queue from './queue';
@@ -14,37 +11,24 @@ import request from 'request';
 
 class Sender {
     constructor() {
-        this.isSenderPublic = true;
-        this.serverOptions  = {};
-        this.httpsServer    = null;
-        this.app            = null;
+        this.serverOptions = {};
+        this.httpsServer   = null;
+        this.app           = null;
     }
 
-    initialize(isSenderPublic) {
-        this.isSenderPublic = isSenderPublic;
-        return new Promise((resolve, reject) => {
-            this._defineServerOperations();
-
-            walletUtils.loadNodeKeyAndCertificate()
-                       .then(({
-                                  certificate_private_key_pem: certificatePrivateKeyPem,
-                                  certificate_pem            : certificatePem,
-                                  node_private_key           : nodePrivateKey,
-                                  node_public_key            : nodePublicKey
-                              }) => {
-                           this.serverOptions = {
-                               key      : certificatePrivateKeyPem,
-                               cert     : certificatePem,
-                               ecdhCurve: 'prime256v1'
-                           };
-                           resolve();
-                       }).then(() => {
-                queue.initializeSender()
-                     .then(() => {
-                         resolve();
-                     });
-            });
-        });
+    initialize() {
+        return walletUtils.loadNodeKeyAndCertificate()
+                          .then(({
+                                     certificate_private_key_pem: certificatePrivateKeyPem,
+                                     certificate_pem            : certificatePem
+                                 }) => {
+                              this.serverOptions = {
+                                  key      : certificatePrivateKeyPem,
+                                  cert     : certificatePem,
+                                  ecdhCurve: 'prime256v1'
+                              };
+                              this._defineServerOperations();
+                          }).then(() => queue.initializeSender());
     }
 
     _defineServerOperations() {
@@ -61,7 +45,7 @@ class Sender {
             let chunkNumber          = req.params.chunkNumber;
 
             if (queue.hasFileToSend(nodeId, transactionId, fileHash)) {
-                chunker.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
+                chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
                     res.writeHead(200);
                     res(data);
                 }).catch(() => {
@@ -80,7 +64,7 @@ class Sender {
             let transactionId = req.params.transactionId;
             if (queue.hasTransactionRequest(nodeId, transactionId)) {
                 queue.decrementServerInstancesInSender();
-                queue.removeEntryFromSender(nodeId, transactionId);
+                queue.removeEntryFromSender(nodeId, transactionId).then(_ => _);
                 res.writeHead(200);
                 res.end('ok');
             }
@@ -91,8 +75,8 @@ class Sender {
         });
     }
 
-    getPublicSenderInfo() {
-        if (!queue.anyActiveSenderServer()) {
+    newSenderInstance() {
+        if (!queue.isSenderServerActive()) {
             this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
             console.log('[file-sender] Server listening on port ' + this.httpsServer.address().port);
         }
@@ -101,38 +85,32 @@ class Sender {
     }
 
     serveFile(nodeId, addressKeyIdentifier, transactionId, fileHash, nodePublicKey) {
-        return new Promise((resolve, reject) => {
-            queue.addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey);
-            let numberOfChunks = chunker.getChunkSize(addressKeyIdentifier, transactionId, fileHash);
-            resolve(numberOfChunks);
-        });
+        return queue.addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey)
+                    .then(() => chunkUtils.getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash));
     }
 
-    sendChunk(receiverServer, nodeId, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
-        return new Promise((resolve, reject) => {
-            chunker.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
-                let payload = {
-                    url : receiverServer.concat('/file/')
-                                        .concat(nodeId).concat('/')
-                                        .concat(addressKeyIdentifier).concat('/')
-                                        .concat(transactionId).concat('/')
-                                        .concat(fileHash).concat('/')
-                                        .concat(chunkNumber),
-                    body: {
-                        chunk: data
-                    }
-                };
-                request.post(payload, (err, response, body) => {
+    sendChunk(receiverEndpoint, nodeId, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
+        return chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
+            let payload = {
+                url : receiverEndpoint.concat('/file/')
+                                      .concat(nodeId).concat('/')
+                                      .concat(addressKeyIdentifier).concat('/')
+                                      .concat(transactionId).concat('/')
+                                      .concat(fileHash).concat('/')
+                                      .concat(chunkNumber),
+                body: {
+                    chunk: data
+                }
+            };
+            return new Promise((resolve, reject) => {
+                request.post(payload, {}, (err, response, body) => {
                     if (err) {
                         console.log('[file-sender] error, ', err);
                         return reject(err);
                     }
                     resolve();
                 });
-            }).catch((err) => {
-                return reject(err);
             });
-
         });
     }
 }
