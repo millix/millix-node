@@ -21,6 +21,16 @@ class FileManager {
         return path.join(this.filesRootFolder, addressKeyIdentifier, transactionId, fileHash);
     }
 
+    hasFile(addressKeyIdentifier, transactionId, fileHash) {
+        return new Promise((resolve) => {
+            const filePath = this.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            fs.exists(filePath, (exists) => {
+                return resolve(exists);
+            });
+        });
+    }
+
+
     createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash) {
         let location = path.join(this.filesRootFolder, addressKeyIdentifier);
         if (!fs.existsSync(location)) {
@@ -54,7 +64,7 @@ class FileManager {
                 if (err) {
                     return reject(err);
                 }
-                let sha256sum  = crypto.createHash('sha256');
+                let sha256sum      = crypto.createHash('sha256');
                 let fileHashReaded = sha256sum.update(file).digest('hex');
                 if (fileHash !== fileHashReaded) {
                     return reject();
