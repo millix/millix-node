@@ -23,6 +23,63 @@ class Peer {
         this.nodeAttributeCache                = {};
     }
 
+    requestTransactionFiles(addressKeyIdentifier, transactionID, transactionFileList) {
+        let payload = {
+            type   : 'transaction_file_request',
+            content: {
+                address_key_identifier: addressKeyIdentifier,
+                transaction_id        : transactionID,
+                transaction_file_list : transactionFileList
+            }
+        };
+
+        const nodeID = ws.nodeID;
+        eventBus.emit('node_event_log', payload);
+
+        let data    = JSON.stringify(payload);
+        let nodesWS = _.shuffle(network.registeredClients);
+
+        return new Promise((resolve, reject) => {
+            async.eachSeries(nodesWS, (ws, callback) => {
+                try {
+                    eventBus.removeAllListeners(`transaction_file_response:${nodeID}:${transactionID}`);
+                    let timeLimitTriggered = false;
+                    let responseProcessed  = false;
+                    let timeoutHandler     = undefined;
+                    eventBus.once(`transaction_new_proxy:${nodeID}:${transactionID}`, (response) => {
+                        responseProcessed = true;
+                        if (!timeLimitTriggered) {
+                            if (response.transaction_file_not_found) {
+                                callback();
+                            }
+                            else {
+                                callback(response);
+                            }
+                            clearTimeout(timeoutHandler);
+                        }
+                    });
+
+                    timeoutHandler = setTimeout(() => {
+                        timeLimitTriggered = true;
+                        if (!responseProcessed) {
+                            console.log('[peer] self-triggered transaction file request timeout for transaction', transactionID);
+                            callback();
+                        }
+                    }, config.NETWORK_LONG_TIME_WAIT_MAX);
+
+                    ws.nodeConnectionReady && ws.send(data);
+                }
+                catch (e) {
+                    console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
+                    callback();
+                }
+            }, data => {
+                data ? resolve(data) : reject({'error': 'transaction_file_request_error'});
+            });
+        });
+    }
+
     sendNodeAddress(ipAddress, messageID, ws) {
         if (!ws) {
             return;
@@ -270,7 +327,7 @@ class Peer {
                             console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID, 'cause:', response.cause);
                             reject({
                                 error: 'transaction_proxy_rejected',
-                                data   : response
+                                data : response
                             });
                         }
                         clearTimeout(timeoutHandler);
