@@ -13,8 +13,8 @@ class Queue {
 
     constructor() {
         this.senderLogFile             = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_SEND);
-        this.senderLog                 = [];
-        this.countActiveSendeInstances = 0;
+        this.senderLog                = [];
+        this.countActiveSendInstances = 0;
 
         this.receiverFileLog             = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_RECEIVE);
         this.receiverLog                 = [];
@@ -85,17 +85,17 @@ class Queue {
      * Sender methods
      ***********************/
     incrementServerInstancesInSender() {
-        this.countActiveSendeInstances += 1;
+        this.countActiveSendInstances += 1;
     }
 
     decrementServerInstancesInSender() {
-        if (this.countActiveSendeInstances > 0) {
-            this.countActiveSendeInstances -= 1;
+        if (this.countActiveSendInstances > 0) {
+            this.countActiveSendInstances -= 1;
         }
     }
 
     isSenderServerActive() {
-        return this.countActiveSendeInstances > 0;
+        return this.countActiveSendInstances > 0;
     }
 
     addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey) {
