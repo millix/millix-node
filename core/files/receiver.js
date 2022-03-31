@@ -12,6 +12,7 @@ import queue from './queue';
 import request from 'request';
 import async from 'async';
 import network from '../../net/network';
+import fileManager from './file-manager';
 
 
 class Receiver {

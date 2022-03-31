@@ -38,6 +38,7 @@
     "bufferutil": "^4.0.1",
     "cors": "^2.8.5",
     "crypto-random-string": "^3.0.1",
+    "eciesjs": "^0.3.14",
     "express": "^4.17.1",
     "helmet": "^3.18.0",
     "https": "^1.0.0",

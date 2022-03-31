@@ -5,20 +5,23 @@ import fs from 'fs';
 import crypto from 'crypto';
 import wallet from '../wallet/wallet';
 import mutex from '../mutex';
+import {encrypt, decrypt, PrivateKey} from 'eciesjs';
+import walletUtils from '../wallet/wallet-utils';
 
-const ENCRYPT = "encrypt";
-const DECRYPT = "decrypt";
+const ENCRYPT = 'encrypt';
+const DECRYPT = 'decrypt';
+
 
 class FileManager {
     constructor() {
         this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
     }
 
-    getFileLocation(addressKeyIdentifier, transactionId, fileHash){
+    getFileLocation(addressKeyIdentifier, transactionId, fileHash) {
         return path.join(this.filesRootFolder, addressKeyIdentifier, transactionId, fileHash);
     }
 
-    createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash){
+    createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash) {
         let location = path.join(this.filesRootFolder, addressKeyIdentifier);
         if (!fs.existsSync(location)) {
             fs.mkdirSync(location);
@@ -30,6 +33,43 @@ class FileManager {
         return path.join(location, fileHash);
     }
 
+    checkReceivedFiles(addressKeyIdentifier, transactionId) {
+        let directory = path.join(this.filesRootFolder, addressKeyIdentifier, transactionId);
+        fs.readdir(directory, (err, files) => {
+            if (err) {
+                console.log('[file-manager] , ', err);
+                return false;
+            }
+            files.forEach((file) => {
+                //verify hash of each file received
+            });
+            return true;
+        });
+    }
+
+    decryptFile(addressKeyIdentifier, transactionId, fileHash, key, publicFile){
+        return new Promise((resolve, reject) => {
+            let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            fs.readFile(fileLocation, (err, file) => {
+                if (err) {
+                    return reject(err);
+                }
+                let fileHashReaded = sha256sum.update(file).digest('hex');
+                if (fileHash !== fileHashReaded){
+                    return reject();
+                }
+                let keyForFile = key;
+                if(!publicFile){
+                    keyForFile = this._protectKey(key, DECRYPT);
+                }
+                const cipher = crypto.createCipher('aes-256-cbc', keyForFile);
+
+                //where i stored the decrypted file?
+
+            });
+        });
+    }
+
     generateNFT(files, fees, address) {
         return new Promise((resolve, reject) => {
             fs.readFile(path.join(os.homedir(), config.WALLET_KEY_PATH), 'utf8', (err, data) => {
@@ -39,8 +79,8 @@ class FileManager {
                 }
 
                 //Create directory for my files (if not exist)
-                let walletKeyIdentifier = address.address_key_identifier;
-                let destinationDirectory      = path.join(this.filesRootFolder, walletKeyIdentifier);
+                let walletKeyIdentifier  = address.address_key_identifier;
+                let destinationDirectory = path.join(this.filesRootFolder, walletKeyIdentifier);
                 if (!fs.existsSync(destinationDirectory)) {
                     fs.mkdirSync(path.join(destinationDirectory));
                 }
@@ -60,7 +100,7 @@ class FileManager {
                     let sha256sum  = crypto.createHash('sha256');
 
                     //Read files to create transaction before writing them
-                    fs.readFile(filePath, function(err, file) {
+                    fs.readFile(filePath, (err, file) => {
                         if (err) {
                             return reject(err);
                         }
@@ -73,7 +113,7 @@ class FileManager {
                             'name'  : upFile.name
                         };
                         if (publicFile) {
-                            transactionAttr['shared_key'] = btoa(key);
+                            transactionAttr['shared_key'] = Buffer.from(key).toString('hex');
                         }
                         else {
                             const individualKeybuf = crypto.randomBytes(32);
@@ -97,23 +137,23 @@ class FileManager {
                        })
                        .then((transactionID) => {
                            //Create transaction directory to write file
-                           let transationFolder = path.join(destinationDirectory, transactionID);
-                           if (!fs.existsSync(transationFolder)) {
-                               fs.mkdirSync(path.join(transationFolder));
+                           let transactionDirectory = path.join(destinationDirectory, transactionID);
+                           if (!fs.existsSync(transactionDirectory)) {
+                               fs.mkdirSync(path.join(transactionDirectory));
                            }
 
-                           this._writeTransactionAttrJSONFile(transationFolder, transactionAttr);
+                           this._writeTransactionAttrJSONFile(transactionDirectory, transactionAttr);
 
-                           const promisesToWrite = this._writeFiles(files, transationFolder, cipher, keys);
+                           const promisesToWrite = this._writeFiles(files, transactionDirectory, cipher, keys);
                            return Promise.all(promisesToWrite);
 
                        })
                        .then(() => {
                            resolve();
                        }).catch((err) => {
-                            console.log("[file-manager] error, ", err);
-                            reject();
-                       });
+                    console.log('[file-manager] error, ', err);
+                    reject();
+                });
             });
         });
     }
@@ -172,17 +212,18 @@ class FileManager {
         }));
     }
 
-    _protectKey(individualKey, mode){
+    _protectKey(individualKey, mode) {
         let key;
-        if (mode === ENCRYPT){
-            //to do
-            key = btoa(individualKey);
+        const extendedPrivateKey = wallet.getActiveWalletKey(wallet.getDefaultActiveWallet());
+        if (mode === ENCRYPT) {
+            const keyBuf = walletUtils.derivePublicKey(extendedPrivateKey, 0, 0);
+            key          = encrypt(keyBuf.toHex(), individualKey);
         }
-        else if (mode === DECRYPT){
-            //to do
-            key = btoa(individualKey);
+        else if (mode === DECRYPT) {
+            const keyBuf = walletUtils.derivePrivateKey(extendedPrivateKey, 0, 0);
+            key          = decrypt(keyBuf.toHex(), individualKey);
         }
-        return key;
+        return key.toString('hex');
     }
 }
 
