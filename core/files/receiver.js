@@ -11,6 +11,8 @@ import async from 'async';
 import network from '../../net/network';
 import eventBus from '../event-bus';
 import mutex from '../mutex';
+import peer from '../../net/peer';
+import config from '../config/config';
 
 
 class Receiver {
@@ -46,6 +48,15 @@ class Receiver {
         return this.httpsServer;
     }
 
+    releaseReceiverInstance() {
+        queue.decrementServerInstancesInReceiver();
+        if (!queue.isReceiverServerActive()) {
+            this.httpsServer._server && this.httpsServer._server.close();
+            this.httpsServer.close();
+            this.httpsServer = undefined;
+        }
+    }
+
     _defineServerOperations() {
         this.app = express();
         this.app.use(helmet());
@@ -66,8 +77,8 @@ class Receiver {
                               if (queue.isLastChunk(nodeId, transactionId, fileHash, chunkNumber)) {
                                   queue.decrementServerInstancesInReceiver();
                               }
-                              queue.removeEntryFromReceiver(nodeId, transactionId, fileHash, chunkNumber).then(_ => _);
-                              eventBus.emit('transaction_file_chunk_response', req.params);
+                              queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, chunkNumber).then(_ => _);
+                              eventBus.emit(`transaction_file_chunk_response:${nodeId}:${transactionId}:${fileHash}`, req.params);
                               res.writeHead(200);
                               res.end('ok');
                           });
@@ -79,17 +90,21 @@ class Receiver {
         });
     }
 
-    registerFileChunk(nodeId, transactionId, fileHash, nodePublicKey, numberOfChunks, requestedChunk) {
-        return queue.addNewChunkInReceiver(nodeId, transactionId, fileHash, nodePublicKey, numberOfChunks, requestedChunk);
+    registerFileChunkForUpload(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk) {
+        return queue.addChunkToReceiver(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk);
     }
 
-    downloadFileList(serverEndpoint, fileList) {
+    unregisterFileChunkUpload(nodeId, transactionId, fileHash, nodePublicKey, requestedChunk) {
+        return queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk);
+    }
+
+    downloadFileList(serverEndpoint, fileData) {
         return new Promise((resolve, reject) => {
             const filesDownloaded = new Set();
             mutex.lock(['file-downloader'], unlock => {
-                const addressKeyIdentifier           = fileList.addressKeyIdentifier;
-                const transactionId                  = fileList.transactionId;
-                const promisesToDownloadFileByChunks = fileList.files.map(file => new Promise((resolve, reject) => {
+                const addressKeyIdentifier           = fileData.addressKeyIdentifier;
+                const transactionId                  = fileData.transactionId;
+                const promisesToDownloadFileByChunks = fileData.files.map(file => new Promise((resolve, reject) => {
                     async.times(file.chunks, (chunkNumber, callback) => {
                         const url = serverEndpoint.concat('/file/')
                                                   .concat(this.nodeId).concat('/')
@@ -119,7 +134,7 @@ class Receiver {
                     }, (err) => {
                         if (err) {
                             return reject({
-                                error           : err,
+                                ...err,
                                 files_downloaded: filesDownloaded
                             });
                         }
@@ -154,6 +169,78 @@ class Receiver {
         });
     }
 
+    requestFileListUpload(fileData, ws) {
+        const server = this.newReceiverInstance();
+        return new Promise((resolve, reject) => {
+            const filesReceived = new Set();
+            mutex.lock(['file-receiver'], unlock => {
+                const addressKeyIdentifier          = fileData.addressKeyIdentifier;
+                const transactionId                 = fileData.transactionId;
+                const promisesToReceiveFileByChunks = fileData.files.map(file => new Promise((resolve, reject) => {
+                    async.times(file.chunks, (chunkNumber, callback) => {
+                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.name, network.nodePublicKey, file.chunks, chunkNumber)
+                            .then(() => peer.requestTransactionFileChunk(addressKeyIdentifier, transactionId, file.name, network.nodePublicKey, ws))
+                            .then(() => {
+                                eventBus.once(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.name}`, () => {
+                                    callback();
+                                });
+                                setTimeout(() => {
+                                    eventBus.removeAllListeners(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.name}`);
+                                    return callback({
+                                        error       : 'chunk_request_timeout',
+                                        chunk_number: chunkNumber,
+                                        file
+                                    });
+                                }, config.NETWORK_LONG_TIME_WAIT_MAX * 20);
+                            })
+                            .catch(err => {
+                                return callback({
+                                    error       : err,
+                                    chunk_number: chunkNumber,
+                                    file
+                                });
+                            });
+                    }, (err) => {
+                        if (err) {
+                            return reject({
+                                ...err,
+                                files_downloaded: filesReceived
+                            });
+                        }
+                        filesReceived.push(file.name);
+                        return resolve();
+                    });
+                }));
+
+                Promise.all(promisesToReceiveFileByChunks)
+                       .then(() => {
+                           const url = serverEndpoint.concat('/ack/')
+                                                     .concat(self.nodeId).concat('/')
+                                                     .concat(transactionId).concat('/');
+                           request.post(url, {}, (err, response, body) => {
+                               unlock();
+                               if (err) {
+                                   console.log('[file-receiver] error, ', err);
+                                   return reject({
+                                       error           : 'ack_error',
+                                       files_downloaded: filesReceived
+                                   });
+                               }
+                               resolve();
+                           });
+                       })
+                       .catch(err => {
+                           unlock();
+                           reject(err);
+                       });
+            });
+        }).then(() => {
+            this.releaseReceiverInstance();
+        }).catch(err => {
+            this.releaseReceiverInstance();
+            return Promise.reject(err);
+        });
+    }
 
 }
 

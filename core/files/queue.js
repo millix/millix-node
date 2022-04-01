@@ -55,7 +55,6 @@ class Queue {
         return entry.nodeId + ';' +
                entry.transactionId + ';' +
                entry.fileHash + ';' +
-               entry.nodePublicKey + ';' +
                entry.numberOfChunks + ';' +
                entry.requestedChunk + '\n';
     }
@@ -98,7 +97,7 @@ class Queue {
         return this.countActiveSendInstances > 0;
     }
 
-    addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey) {
+    addNewFileToSender(nodeId, transactionId, fileHash, nodePublicKey) {
         return new Promise((resolve, reject) => {
             let newEntry = this._buildEntry({
                 nodeId,
@@ -203,13 +202,12 @@ class Queue {
         return this.countActiveReceiveInstances > 0;
     }
 
-    addNewChunkInReceiver(nodeId, transactionId, fileHash, nodePublicKey, numberOfChunks, requestedChunk) {
+    addChunkToReceiver(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk) {
         return new Promise((resolve, reject) => {
             const newEntry = this._buildEntry({
                 nodeId,
                 transactionId,
                 fileHash,
-                nodePublicKey,
                 numberOfChunks,
                 requestedChunk
             }, Queue.RECEIVER);
@@ -225,7 +223,6 @@ class Queue {
                         nodeId        : nodeId,
                         transactionId : transactionId,
                         fileHash      : fileHash,
-                        nodePublicKey : nodePublicKey,
                         numberOfChunks: numberOfChunks,
                         requestedChunk: requestedChunk
                     });
@@ -236,7 +233,7 @@ class Queue {
         });
     }
 
-    removeEntryFromReceiver(nodeId, transactionId, fileHash, requestedChunk) {
+    removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk) {
         return new Promise((resolve, reject) => {
             mutex.lock(['update-receiver-file-log'], (unlock) => {
                 this.receiverLog = this.receiverLog.filter(function(value, index, arr) {
@@ -284,9 +281,8 @@ class Queue {
                             nodeId        : elements[0],
                             transactionId : elements[1],
                             fileHash      : elements[2],
-                            nodePublicKey : elements[3],
-                            numberOfChunks: elements[4],
-                            requestedChunk: elements[5]
+                            numberOfChunks: elements[3],
+                            requestedChunk: elements[4]
                         });
                     });
                     unlock();
