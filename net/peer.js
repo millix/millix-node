@@ -74,6 +74,34 @@ class Peer {
         });
     }
 
+    requestTransactionFileChunk(addressKeyIdentifier, transactionId, fileHash, nodePublicKey, ws) {
+        return new Promise((resolve, reject) => {
+            if (!ws) {
+                return reject();
+            }
+            let payload = {
+                type   : 'transaction_file_chunk_request',
+                content: {
+                    address_key_identifier: addressKeyIdentifier,
+                    transaction_id        : transactionId,
+                    file_hash             : fileHash,
+                    node_public_key       : nodePublicKey
+                }
+            };
+            eventBus.emit('node_event_log', payload);
+            let data = JSON.stringify(payload);
+            try {
+                ws.nodeConnectionReady && ws.send(data);
+                resolve();
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+                reject();
+            }
+        });
+    }
+
     sendNodeAddress(ipAddress, messageID, ws) {
         if (!ws) {
             return;
@@ -85,7 +113,13 @@ class Peer {
         };
         eventBus.emit('node_event_log', payload);
         let data = JSON.stringify(payload);
-        ws.nodeConnectionReady && ws.send(data);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
+        }
     }
 
     getNodeAddress() {
