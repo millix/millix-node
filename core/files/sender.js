@@ -7,6 +7,8 @@ import https from 'https';
 import walletUtils from '../wallet/wallet-utils';
 import queue from './queue';
 import request from 'request';
+import eventBus from '../event-bus';
+import network from '../../net/network';
 
 
 class Sender {
@@ -29,6 +31,15 @@ class Sender {
                               };
                               this._defineServerOperations();
                           }).then(() => queue.initializeSender());
+    }
+
+    _onTransactionFileChunkRequest(data) {
+        this.sendChunk(data.receiver_endpoint, network.nodeID, data.address_key_identifier, data.transaction_id, data.file_hash, data.chunk_number)
+            .then(_ => _);
+    }
+
+    _registerEventListener() {
+        eventBus.on('transaction_file_chunk_request', this._onTransactionFileChunkRequest.bind(this));
     }
 
     _defineServerOperations() {
@@ -85,7 +96,7 @@ class Sender {
     }
 
     serveFile(nodeId, addressKeyIdentifier, transactionId, fileHash, nodePublicKey) {
-        return queue.addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey)
+        return queue.addNewFileToSender(nodeId, transactionId, fileHash, nodePublicKey)
                     .then(() => chunkUtils.getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash));
     }
 
