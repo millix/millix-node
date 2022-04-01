@@ -2,17 +2,17 @@ import express from 'express';
 import helmet from 'helmet';
 import bodyParser from 'body-parser';
 import cors from 'cors';
-import chunker from './chunker';
-import path from 'path';
-import os from 'os';
-import config, {NODE_BIND_IP} from '../config/config';
+import chunkUtils from './chunk-utils';
 import https from 'https';
 import walletUtils from '../wallet/wallet-utils';
 import queue from './queue';
 import request from 'request';
 import async from 'async';
 import network from '../../net/network';
-import fileManager from './file-manager';
+import eventBus from '../event-bus';
+import mutex from '../mutex';
+import peer from '../../net/peer';
+import config from '../config/config';
 
 
 class Receiver {
@@ -24,38 +24,37 @@ class Receiver {
     }
 
     initialize() {
-        return new Promise((resolve, reject) => {
-            this.nodeId = network.nodeID;
-            this._defineServerOperations();
-            walletUtils.loadNodeKeyAndCertificate()
-                       .then(({
-                                  certificate_private_key_pem: certificatePrivateKeyPem,
-                                  certificate_pem            : certificatePem,
-                                  node_private_key           : nodePrivateKey,
-                                  node_public_key            : nodePublicKey
-                              }) => {
-                           this.serverOptions = {
-                               key      : certificatePrivateKeyPem,
-                               cert     : certificatePem,
-                               ecdhCurve: 'prime256v1'
-                           };
-                           resolve();
-                       }).then(() => {
-                queue.initializeReceiver()
-                     .then(() => {
-                         resolve();
-                     });
-            });
-        });
+        return walletUtils.loadNodeKeyAndCertificate()
+                          .then(({
+                                     certificate_private_key_pem: certificatePrivateKeyPem,
+                                     certificate_pem            : certificatePem
+                                 }) => {
+                              this.serverOptions = {
+                                  key      : certificatePrivateKeyPem,
+                                  cert     : certificatePem,
+                                  ecdhCurve: 'prime256v1'
+                              };
+                              this.nodeId        = network.nodeID;
+                              this._defineServerOperations();
+                          }).then(() => queue.initializeReceiver());
     }
 
-    getPublicReceiverInfo() {
-        if (!queue.anyActiveReceiverServer()) {
+    newReceiverInstance() {
+        if (!queue.isReceiverServerActive()) {
             this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
             console.log('[file-receiver] Server listening on port ' + this.httpsServer.address().port);
         }
         queue.incrementServerInstancesInReceiver();
         return this.httpsServer;
+    }
+
+    releaseReceiverInstance() {
+        queue.decrementServerInstancesInReceiver();
+        if (!queue.isReceiverServerActive()) {
+            this.httpsServer._server && this.httpsServer._server.close();
+            this.httpsServer.close();
+            this.httpsServer = undefined;
+        }
     }
 
     _defineServerOperations() {
@@ -71,83 +70,177 @@ class Receiver {
             let fileHash             = req.params.fileHash;
             let chunkNumber          = req.params.chunkNumber;
 
-            if (queue.hasChunkToReceive(nodeId, transactionId, fileHash, chunkNumber)){
+            if (queue.hasChunkToReceive(nodeId, transactionId, fileHash, chunkNumber)) {
                 let chunk = req.body.chunk;
-                chunker.writeFile(addressKeyIdentifier, transactionId, fileHash, chunk);
-                if(queue.isLastChunk(nodeId, transactionId, fileHash, chunkNumber)){
-                    queue.removeEntryFromReceiver(nodeId, transactionId, fileHash, chunkNumber);
-                    if(!queue.hasMoreFilesToReceiveFromServer(nodeId, transactionId)){
-                        queue.decrementServerInstancesInReceiver();
-                    }
-                }
-                res.writeHead(200);
-                res.end('ok');
-            } else {
+                chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, fileHash, chunk)
+                          .then(() => {
+                              if (queue.isLastChunk(nodeId, transactionId, fileHash, chunkNumber)) {
+                                  queue.decrementServerInstancesInReceiver();
+                              }
+                              queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, chunkNumber).then(_ => _);
+                              eventBus.emit(`transaction_file_chunk_response:${nodeId}:${transactionId}:${fileHash}`, req.params);
+                              res.writeHead(200);
+                              res.end('ok');
+                          });
+            }
+            else {
                 res.writeHead(403);
                 res.end('Requested file is not in queue to be send!');
             }
         });
     }
 
-    registerFileChunk(nodeId, transactionId, fileHash, nodePublicKey, numberOfChunks, requestedChunk) {
-        queue.addNewChunkInReceiver(nodeId, transactionId, fileHash, nodePublicKey, numberOfChunks, requestedChunk);
+    registerFileChunkForUpload(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk) {
+        return queue.addChunkToReceiver(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk);
     }
 
-    receive(server, requestedFiles) {
+    unregisterFileChunkUpload(nodeId, transactionId, fileHash, nodePublicKey, requestedChunk) {
+        return queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk);
+    }
+
+    downloadFileList(serverEndpoint, fileData) {
         return new Promise((resolve, reject) => {
-            const self                 = this;
-            const addressKeyIdentifier = requestedFiles.addressKeyIdentifier;
-            const transactionId        = requestedFiles.transactionId;
-            const promisesToReceive    = requestedFiles.files.map(file => new Promise((resolve, reject) => {
-                async.times(file.chunks, (chunkNumber, next) => {
-                    const service = server.concat('/file/')
-                                          .concat(self.nodeId).concat('/')
-                                          .concat(addressKeyIdentifier).concat('/')
-                                          .concat(transactionId).concat('/')
-                                          .concat(file.name).concat('/')
-                                          .concat(chunkNumber);
-                    request.get(service, (err, response, body) => {
-                        if (err) {
-                            console.log('[file-receiver] error, ', err);
-                            return next(err);
-                        }
-                        chunker.writeFile(wallet, transactionId, file.name, body).then(() => {
-                            next();
-                        }).catch((err) => {
-                            return next(err);
+            const filesDownloaded = new Set();
+            mutex.lock(['file-downloader'], unlock => {
+                const addressKeyIdentifier           = fileData.addressKeyIdentifier;
+                const transactionId                  = fileData.transactionId;
+                const promisesToDownloadFileByChunks = fileData.files.map(file => new Promise((resolve, reject) => {
+                    async.times(file.chunks, (chunkNumber, callback) => {
+                        const url = serverEndpoint.concat('/file/')
+                                                  .concat(this.nodeId).concat('/')
+                                                  .concat(addressKeyIdentifier).concat('/')
+                                                  .concat(transactionId).concat('/')
+                                                  .concat(file.name).concat('/')
+                                                  .concat(chunkNumber);
+                        request.get(url, {}, (err, response, body) => {
+                            if (err) {
+                                console.log('[file-receiver] error, ', err);
+                                return callback({
+                                    error       : err,
+                                    chunk_number: chunkNumber,
+                                    file
+                                });
+                            }
+                            chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, file.name, body).then(() => {
+                                callback();
+                            }).catch((err) => {
+                                return callback({
+                                    error       : err,
+                                    chunk_number: chunkNumber,
+                                    file
+                                });
+                            });
                         });
+                    }, (err) => {
+                        if (err) {
+                            return reject({
+                                ...err,
+                                files_downloaded: filesDownloaded
+                            });
+                        }
+
+                        filesDownloaded.push(file.name);
+                        return resolve();
                     });
-                }, (err) => {
-                    if (err) {
-                        return reject();
-                    }
-                    return resolve();
-                });
+                }));
 
-            }));
-
-            Promise.all(promisesToReceive)
-                   .then(() => {
-                       return new Promise((resolve, reject) => {
-                           const service = server.concat('/ack/')
-                                                 .concat(self.nodeId).concat('/')
-                                                 .concat(transactionId).concat('/');
-                           request.post(service, (err, response, body) => {
+                Promise.all(promisesToDownloadFileByChunks)
+                       .then(() => {
+                           const url = serverEndpoint.concat('/ack/')
+                                                     .concat(self.nodeId).concat('/')
+                                                     .concat(transactionId).concat('/');
+                           request.post(url, {}, (err, response, body) => {
+                               unlock();
                                if (err) {
                                    console.log('[file-receiver] error, ', err);
-                                   return reject();
+                                   return reject({
+                                       error           : 'ack_error',
+                                       files_downloaded: filesDownloaded
+                                   });
                                }
                                resolve();
                            });
+                       })
+                       .catch(err => {
+                           unlock();
+                           reject(err);
                        });
-                   }).then(() => {
-                resolve();
-            }).catch((err) => {
-                return reject(err);
             });
         });
     }
 
+    requestFileListUpload(fileData, ws) {
+        const server = this.newReceiverInstance();
+        return new Promise((resolve, reject) => {
+            const filesReceived = new Set();
+            mutex.lock(['file-receiver'], unlock => {
+                const addressKeyIdentifier          = fileData.addressKeyIdentifier;
+                const transactionId                 = fileData.transactionId;
+                const promisesToReceiveFileByChunks = fileData.files.map(file => new Promise((resolve, reject) => {
+                    async.times(file.chunks, (chunkNumber, callback) => {
+                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.name, network.nodePublicKey, file.chunks, chunkNumber)
+                            .then(() => peer.requestTransactionFileChunk(addressKeyIdentifier, transactionId, file.name, network.nodePublicKey, ws))
+                            .then(() => {
+                                eventBus.once(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.name}`, () => {
+                                    callback();
+                                });
+                                setTimeout(() => {
+                                    eventBus.removeAllListeners(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.name}`);
+                                    return callback({
+                                        error       : 'chunk_request_timeout',
+                                        chunk_number: chunkNumber,
+                                        file
+                                    });
+                                }, config.NETWORK_LONG_TIME_WAIT_MAX * 20);
+                            })
+                            .catch(err => {
+                                return callback({
+                                    error       : err,
+                                    chunk_number: chunkNumber,
+                                    file
+                                });
+                            });
+                    }, (err) => {
+                        if (err) {
+                            return reject({
+                                ...err,
+                                files_downloaded: filesReceived
+                            });
+                        }
+                        filesReceived.push(file.name);
+                        return resolve();
+                    });
+                }));
+
+                Promise.all(promisesToReceiveFileByChunks)
+                       .then(() => {
+                           const url = serverEndpoint.concat('/ack/')
+                                                     .concat(self.nodeId).concat('/')
+                                                     .concat(transactionId).concat('/');
+                           request.post(url, {}, (err, response, body) => {
+                               unlock();
+                               if (err) {
+                                   console.log('[file-receiver] error, ', err);
+                                   return reject({
+                                       error           : 'ack_error',
+                                       files_downloaded: filesReceived
+                                   });
+                               }
+                               resolve();
+                           });
+                       })
+                       .catch(err => {
+                           unlock();
+                           reject(err);
+                       });
+            });
+        }).then(() => {
+            this.releaseReceiverInstance();
+        }).catch(err => {
+            this.releaseReceiverInstance();
+            return Promise.reject(err);
+        });
+    }
 
 }
 

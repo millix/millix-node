@@ -6,46 +6,40 @@ import console from '../console';
 import config from '../config/config';
 import async from 'async';
 
-const SENDER   = 'sender';
-const RECEIVER = 'receiver';
-
 
 class Queue {
-    constructor() {
-        this.filesPendingToSend         = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_SEND);
-        this.listOfPendingFilesInSender = [];
-        this.countActiveSenderServers   = 0;
+    static SENDER   = 'SENDER';
+    static RECEIVER = 'RECEIVER';
 
-        this.filesPendingToReceive        = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_RECEIVE);
-        this.listOfPendingFilesInReceiver = [];
-        this.countActiveReceiverServers   = 0;
+    constructor() {
+        this.senderLogFile            = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_SEND);
+        this.senderLog                = [];
+        this.countActiveSendInstances = 0;
+
+        this.receiverFileLog             = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_RECEIVE);
+        this.receiverLog                 = [];
+        this.countActiveReceiveInstances = 0;
     }
 
     initializeSender() {
-        return new Promise((resolve, reject) => {
-            if (!fs.existsSync(this.filesPendingToSend)) {
-                fs.closeSync(fs.openSync(this.filesPendingToSend, 'w'));
-            }
-            this._loadPendingFilesFromSender(this.filesPendingToSend);
-            resolve();
-        });
+        if (!fs.existsSync(this.senderLogFile)) {
+            fs.closeSync(fs.openSync(this.senderLogFile, 'w'));
+        }
+        return this._loadSenderLogFromFile(this.senderLogFile);
     }
 
     initializeReceiver() {
-        return new Promise((resolve, reject) => {
-            if (!fs.existsSync(this.filesPendingToReceive)) {
-                fs.closeSync(fs.openSync(this.filesPendingToReceive, 'w'));
-            }
-            this._loadPendingFilesFromReceiver(this.filesPendingToReceive);
-            resolve();
-        });
+        if (!fs.existsSync(this.receiverFileLog)) {
+            fs.closeSync(fs.openSync(this.receiverFileLog, 'w'));
+        }
+        return this._loadReceiverLogFromFile(this.receiverFileLog);
     }
 
-    _buildEntry(entry, side) {
-        if (side === SENDER) {
+    _buildEntry(entry, type) {
+        if (type === Queue.SENDER) {
             return this._buildEntryForSender(entry);
         }
-        else if (side === RECEIVER) {
+        else if (type === Queue.RECEIVER) {
             return this._buildEntryForReceiver(entry);
         }
     }
@@ -61,28 +55,27 @@ class Queue {
         return entry.nodeId + ';' +
                entry.transactionId + ';' +
                entry.fileHash + ';' +
-               entry.nodePublicKey + ';' +
                entry.numberOfChunks + ';' +
                entry.requestedChunk + '\n';
     }
 
-    _writeInFile(data, fileLocation, side) {
+    _writeInFile(data, fileLocation, type) {
         return new Promise((resolve, reject) => {
             fs.writeFile(fileLocation, '', (err) => {
                 if (err) {
                     console.log('[file-queue] error, ', err);
                     return reject();
                 }
-                async.forEachOf(data, (entry, index, next) => {
-                    let line = this._buildEntry(entry, side);
+                async.eachSeries(data, (entry, callback) => {
+                    let line = this._buildEntry(entry, type);
                     fs.appendFile(fileLocation, line, (err) => {
                         if (err) {
                             console.log('[file-queue] error, ', err);
-                            return reject();
+                            return callback(err);
                         }
-                        next();
+                        callback();
                     });
-                }, () => resolve());
+                }, (err) => err ? reject(err) : resolve());
             });
         });
     }
@@ -91,79 +84,104 @@ class Queue {
      * Sender methods
      ***********************/
     incrementServerInstancesInSender() {
-        this.countActiveSenderServers += 1;
+        this.countActiveSendInstances += 1;
     }
 
     decrementServerInstancesInSender() {
-        if (this.countActiveSenderServers > 0) {
-            this.countActiveSenderServers -= 1;
+        if (this.countActiveSendInstances > 0) {
+            this.countActiveSendInstances -= 1;
         }
     }
 
-    anyActiveSenderServer() {
-        return this.countActiveSenderServers !== 0;
+    isSenderServerActive() {
+        return this.countActiveSendInstances > 0;
     }
 
-    getListOfPendingFilesInSender() {
-        return this.listOfPendingFilesInSender;
-    }
-
-    addNewFileInSender(nodeId, transactionId, fileHash, nodePublicKey) {
-        let newEntry = this._buildEntry(nodeId, transactionId, fileHash, nodePublicKey);
-        mutex.lock(['update_pending_files'], (unlock) => {
-            fs.appendFile(this.filesPendingToSend, newEntry, (err) => {
-                if (err) {
-                    console.log('[file-queue] error, ', err);
-                }
-                else {
-                    this.listOfPendingFilesInSender.append({
-                        nodeId       : nodeId,
-                        transactionId: transactionId,
-                        fileHash     : fileHash,
-                        nodePublicKey: nodePublicKey
-                    });
-                }
-                unlock();
+    addNewFileToSender(nodeId, transactionId, fileHash, nodePublicKey) {
+        return new Promise((resolve, reject) => {
+            let newEntry = this._buildEntry({
+                nodeId,
+                transactionId,
+                fileHash,
+                nodePublicKey
+            }, Queue.SENDER);
+            mutex.lock(['update-sender-file-log'], (unlock) => {
+                fs.appendFile(this.senderLogFile, newEntry, (err) => {
+                    if (err) {
+                        console.log('[file-queue] error, ', err);
+                        unlock();
+                        return reject(err);
+                    }
+                    else {
+                        this.senderLog.append({
+                            nodeId       : nodeId,
+                            transactionId: transactionId,
+                            fileHash     : fileHash,
+                            nodePublicKey: nodePublicKey
+                        });
+                        unlock();
+                        resolve();
+                    }
+                });
             });
         });
     }
 
     removeEntryFromSender(nodeId, transactionId) {
-        mutex.lock(['update_pending_files'], (unlock) => {
-            this.listOfPendingFilesInSender = this.listOfPendingFilesInSender.filter(function(value, index, arr) {
-                return nodeId !== value.nodeId && transactionId !== value.transactionId;
-            });
-            this._writeInFile(this.listOfPendingFilesInSender, this.filesPendingToSend, SENDER).then(() => {
-                unlock();
+        return new Promise((resolve, reject) => {
+            mutex.lock(['update-sender-file-log'], (unlock) => {
+                this.senderLog = this.senderLog.filter(function(value, index, arr) {
+                    return nodeId !== value.nodeId && transactionId !== value.transactionId;
+                });
+                this._writeInFile(this.senderLog, this.senderLogFile, Queue.SENDER).then(() => {
+                    unlock();
+                    resolve();
+                }).catch(err => {
+                    console.log('[file-queue] error', err);
+                    unlock();
+                    reject(err);
+                });
             });
         });
     }
 
     hasFileToSend(nodeId, transactionId, fileHash) {
-        return (this.listOfPendingFilesInSender.filter((value, index, arr) => {
+        return !!this.senderLog.find((value, index, arr) => {
             return nodeId === value.nodeId && transactionId === value.transactionId && fileHash === value.fileHash;
-        }).length > 0);
+        });
     }
 
     hasTransactionRequest(nodeId, transactionId) {
-        return (this.listOfPendingFilesInSender.filter((value, index, arr) => {
+        return !!this.senderLog.filter((value, index, arr) => {
             return nodeId === value.nodeId && transactionId === value.transactionId;
-        }).length > 0);
+        });
     }
 
-    _loadPendingFilesFromSender(fileLocation) {
-        mutex.lock(['update_pending_files'], (unlock) => {
-            let content = fs.readFile(fileLocation);
-            content.split(/\r?\n/).forEach(line => {
-                let elements = line.split(';');
-                this.listOfPendingFilesInSender.append({
-                    nodeId       : elements[0],
-                    transactionId: elements[1],
-                    fileHash     : elements[2],
-                    nodePublicKey: elements[3]
+    _loadSenderLogFromFile(fileLocation) {
+        return new Promise((resolve, reject) => {
+            mutex.lock(['update-sender-file-log'], (unlock) => {
+                fs.readFile(fileLocation, 'utf-8', (err, content) => {
+                    if (err) {
+                        console.log('[file-queue] error', err);
+                        unlock();
+                        return reject(err);
+
+                    }
+
+                    content.split(/\r?\n/).forEach(line => {
+                        let elements = line.split(';');
+                        this.senderLog.append({
+                            nodeId       : elements[0],
+                            transactionId: elements[1],
+                            fileHash     : elements[2],
+                            nodePublicKey: elements[3]
+                        });
+                    });
+
+                    unlock();
+                    resolve();
                 });
             });
-            unlock();
         });
     }
 
@@ -171,91 +189,106 @@ class Queue {
      * Receiver methods
      ***********************/
     incrementServerInstancesInReceiver() {
-        this.countActiveReceiverServers += 1;
+        this.countActiveReceiveInstances += 1;
     }
 
     decrementServerInstancesInReceiver() {
-        if (this.countActiveReceiverServers > 0) {
-            this.countActiveReceiverServers -= 1;
+        if (this.countActiveReceiveInstances > 0) {
+            this.countActiveReceiveInstances -= 1;
         }
     }
 
-    anyActiveReceiverServer() {
-        return this.countActiveReceiverServers !== 0;
+    isReceiverServerActive() {
+        return this.countActiveReceiveInstances > 0;
     }
 
-    getListOfPendingFilesInReceiver() {
-        return this.listOfPendingFilesInReceiver;
-    }
+    addChunkToReceiver(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk) {
+        return new Promise((resolve, reject) => {
+            const newEntry = this._buildEntry({
+                nodeId,
+                transactionId,
+                fileHash,
+                numberOfChunks,
+                requestedChunk
+            }, Queue.RECEIVER);
+            mutex.lock(['update-receiver-file-log'], (unlock) => {
+                fs.appendFile(this.receiverFileLog, newEntry, (err) => {
+                    if (err) {
+                        console.log('[file-queue] error, ', err);
+                        unlock();
+                        return reject(err);
+                    }
 
-    addNewChunkInReceiver(nodeId, transactionId, fileHash, nodePublicKey, numberOfChunks, chunkNumber) {
-        let newEntry = this._buildEntry(nodeId, transactionId, fileHash, nodePublicKey);
-        mutex.lock(['update_pending_files'], (unlock) => {
-            fs.appendFile(this.filesPendingToReceive, newEntry, (err) => {
-                if (err) {
-                    console.log('[file-queue] error, ', err);
-                }
-                else {
-                    this.listOfPendingFilesInReceiver.append({
+                    this.receiverLog.append({
                         nodeId        : nodeId,
                         transactionId : transactionId,
                         fileHash      : fileHash,
-                        nodePublicKey : nodePublicKey,
                         numberOfChunks: numberOfChunks,
-                        chunkNumber   : chunkNumber
+                        requestedChunk: requestedChunk
                     });
-                }
-                unlock();
-            });
-        });
-    }
-
-    removeEntryFromReceiver(nodeId, transactionId, fileHash, chunkNumber) {
-        mutex.lock(['update_pending_files'], (unlock) => {
-            this.listOfPendingFilesInReceiver = this.listOfPendingFilesInReceiver.filter(function(value, index, arr) {
-                return nodeId !== value.nodeId && transactionId !== value.transactionId && transactionId !== value.fileHash && chunkNumber !== value.chunkNumber;
-            });
-            this._writeInFile(this.listOfPendingFilesInReceiver, this.filesPendingToReceive, RECEIVER).then(() => {
-                unlock();
-            });
-        });
-    }
-
-    hasChunkToReceive(nodeId, transactionId, fileHash, chunkNumber) {
-        return (this.listOfPendingFilesInReceiver.filter((value, index, arr) => {
-            return nodeId === value.nodeId && transactionId === value.transactionId && fileHash === value.fileHash && chunkNumber === value.chunkNumber;
-        }).length > 0);
-    }
-
-    isLastChunk(nodeId, transactionId, fileHash, chunkNumber) {
-        let file = this.listOfPendingFilesInReceiver.filter((value, index, arr) => {
-            return nodeId === value.nodeId && transactionId === value.transactionId && fileHash === value.fileHash && chunkNumber === value.chunkNumber;
-        });
-        return file[0].numberOfChunks === chunkNumber;
-    }
-
-    hasMoreFilesToReceiveFromServer(nodeId, transactionId){
-        let file = this.listOfPendingFilesInReceiver.filter((value, index, arr) => {
-            return nodeId === value.nodeId && transactionId === value.transactionId;
-        });
-        return file[0].numberOfChunks === chunkNumber;
-    }
-
-    _loadPendingFilesFromReceiver(fileLocation) {
-        mutex.lock(['update_pending_files'], (unlock) => {
-            let content = fs.readFile(fileLocation);
-            content.split(/\r?\n/).forEach(line => {
-                let elements = line.split(';');
-                this.listOfPendingFilesInReceiver.append({
-                    nodeId        : elements[0],
-                    transactionId : elements[1],
-                    fileHash      : elements[2],
-                    nodePublicKey : elements[3],
-                    numberOfChunks: elements[4],
-                    requestedChunk: elements[5]
+                    unlock();
+                    resolve();
                 });
             });
-            unlock();
+        });
+    }
+
+    removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk) {
+        return new Promise((resolve, reject) => {
+            mutex.lock(['update-receiver-file-log'], (unlock) => {
+                this.receiverLog = this.receiverLog.filter(function(value, index, arr) {
+                    return nodeId !== value.nodeId && transactionId !== value.transactionId && transactionId !== value.fileHash && requestedChunk !== value.requestedChunk;
+                });
+                this._writeInFile(this.receiverLog, this.receiverFileLog, Queue.RECEIVER).then(() => {
+                    unlock();
+                    resolve();
+                }).catch(err => {
+                    console.log('[file-queue] error', err);
+                    unlock();
+                    reject(err);
+                });
+            });
+        });
+    }
+
+    hasChunkToReceive(nodeId, transactionId, fileHash, requestedChunk) {
+        return !!this.receiverLog.find((value, index, arr) => {
+            return nodeId === value.nodeId && transactionId === value.transactionId && fileHash === value.fileHash && requestedChunk === value.requestedChunk;
+        });
+    }
+
+    isLastChunk(nodeId, transactionId, fileHash, requestedChunk) {
+        let data = this.receiverLog.find((value, index, arr) => {
+            return nodeId === value.nodeId && transactionId === value.transactionId && fileHash === value.fileHash && requestedChunk === value.requestedChunk;
+        });
+        return data.numberOfChunks === requestedChunk;
+    }
+
+    _loadReceiverLogFromFile(fileLocation) {
+        return new Promise((resolve, reject) => {
+            mutex.lock(['update-receiver-file-log'], (unlock) => {
+                fs.readFile(fileLocation, 'utf-8', (err, content) => {
+                    if (err) {
+                        console.log('[file-queue] error', err);
+                        unlock();
+                        return reject(err);
+
+                    }
+
+                    content.split(/\r?\n/).forEach(line => {
+                        let elements = line.split(';');
+                        this.receiverLog.append({
+                            nodeId        : elements[0],
+                            transactionId : elements[1],
+                            fileHash      : elements[2],
+                            numberOfChunks: elements[3],
+                            requestedChunk: elements[4]
+                        });
+                    });
+                    unlock();
+                    resolve();
+                });
+            });
         });
     }
 }

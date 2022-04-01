@@ -23,6 +23,85 @@ class Peer {
         this.nodeAttributeCache                = {};
     }
 
+    requestTransactionFileSync(addressKeyIdentifier, transactionID, transactionFileList, ws) {
+        let payload = {
+            type   : 'transaction_file_request',
+            content: {
+                address_key_identifier: addressKeyIdentifier,
+                transaction_id        : transactionID,
+                transaction_file_list : transactionFileList
+            }
+        };
+
+        const nodeID = ws.nodeID;
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        return new Promise((resolve, reject) => {
+            try {
+                eventBus.removeAllListeners(`transaction_file_response:${nodeID}:${transactionID}`);
+                let timeLimitTriggered = false;
+                let responseProcessed  = false;
+                let timeoutHandler     = undefined;
+                eventBus.once(`transaction_file_response:${nodeID}:${transactionID}`, (response) => {
+                    responseProcessed = true;
+                    if (!timeLimitTriggered) {
+                        if (response.transaction_file_not_found) {
+                            reject();
+                        }
+                        else {
+                            resolve(response);
+                        }
+                        clearTimeout(timeoutHandler);
+                    }
+                });
+
+                timeoutHandler = setTimeout(() => {
+                    timeLimitTriggered = true;
+                    if (!responseProcessed) {
+                        console.log('[peer] self-triggered transaction file request timeout for transaction', transactionID);
+                        reject();
+                    }
+                }, config.NETWORK_LONG_TIME_WAIT_MAX);
+
+                ws.nodeConnectionReady && ws.send(data);
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+                reject();
+            }
+        });
+    }
+
+    requestTransactionFileChunk(addressKeyIdentifier, transactionId, fileHash, nodePublicKey, ws) {
+        return new Promise((resolve, reject) => {
+            if (!ws) {
+                return reject();
+            }
+            let payload = {
+                type   : 'transaction_file_chunk_request',
+                content: {
+                    address_key_identifier: addressKeyIdentifier,
+                    transaction_id        : transactionId,
+                    file_hash             : fileHash,
+                    node_public_key       : nodePublicKey
+                }
+            };
+            eventBus.emit('node_event_log', payload);
+            let data = JSON.stringify(payload);
+            try {
+                ws.nodeConnectionReady && ws.send(data);
+                resolve();
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+                reject();
+            }
+        });
+    }
+
     sendNodeAddress(ipAddress, messageID, ws) {
         if (!ws) {
             return;
@@ -34,7 +113,13 @@ class Peer {
         };
         eventBus.emit('node_event_log', payload);
         let data = JSON.stringify(payload);
-        ws.nodeConnectionReady && ws.send(data);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
+        }
     }
 
     getNodeAddress() {
@@ -270,7 +355,7 @@ class Peer {
                             console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID, 'cause:', response.cause);
                             reject({
                                 error: 'transaction_proxy_rejected',
-                                data   : response
+                                data : response
                             });
                         }
                         clearTimeout(timeoutHandler);
