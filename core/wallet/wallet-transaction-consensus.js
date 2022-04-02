@@ -229,10 +229,13 @@ export class WalletTransactionConsensus {
                            .then(valid => {
                                if (!valid) {
                                    console.log('[wallet-transaction-consensus-oracle] transaction data was is not valid ', transaction.transaction_id);
+                                   database.applyShards(shardID => {
+                                       return database.getRepository('transaction', shardID).deleteTransaction(transaction.transaction_id);
+                                   }).then(_ => _);
                                    return reject({
-                                       cause              : 'transaction_invalid',
+                                       cause              : 'transaction_not_found',
                                        transaction_id_fail: transaction.transaction_id,
-                                       message            : `invalid transaction found: ${transaction.transaction_id}`
+                                       message            : `transaction data was is not valid: ${transaction.transaction_id}`
                                    });
                                }
 
@@ -809,7 +812,7 @@ export class WalletTransactionConsensus {
             not_found   : 0
         };
 
-        let responseCount = 0;
+        let responseCount               = 0;
         const invalidResponseNodeIDList = [];
         for (let [nodeID, {response}] of Object.entries(consensusResponseData)) {
             if (!response) {
@@ -838,7 +841,7 @@ export class WalletTransactionConsensus {
                 delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
                 consensusData.consensus_round_node_discard.add(nodeID);
                 consensusData.requestPeerValidation && consensusData.requestPeerValidation();
-            })
+            });
             return;
         }
 
