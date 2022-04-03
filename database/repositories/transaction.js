@@ -606,23 +606,16 @@ export default class Transaction {
 
                 transaction.transaction_parent_list.forEach(parentTransaction => {
                     promise = promise.then(() => {
-                        return new Promise((resolve, reject) => {
-                            database.firstShards((shardID) => {
-                                return new Promise((resolve, reject) => {
-                                    const transactionRepository = database.getRepository('transaction', shardID);
-                                    transactionRepository.getTransaction(parentTransaction)
-                                                         .then(foundParentTransaction => foundParentTransaction ? resolve(transactionRepository) : reject());
-                                });
-                            }).then(parentRepository => {
-                                if (parentRepository) {
-                                    parentRepository.updateTransactionParentDate(parentTransaction, Math.floor(new Date(transaction.transaction_date).getTime() / 1000))
-                                                    .then(() => resolve())
-                                                    .catch((err) => reject(err));
-                                }
-                                else {
-                                    resolve();
-                                }
+                        return database.firstShards((shardID) => {
+                            return new Promise((resolve, reject) => {
+                                const transactionRepository = database.getRepository('transaction', shardID);
+                                transactionRepository.getTransaction(parentTransaction)
+                                                     .then(foundParentTransaction => foundParentTransaction ? resolve(transactionRepository) : reject());
                             });
+                        }).then(parentRepository => {
+                            if (parentRepository) {
+                                return parentRepository.updateTransactionParentDate(parentTransaction, Math.floor(new Date(transaction.transaction_date).getTime() / 1000));
+                            }
                         });
                     });
                 });
@@ -652,17 +645,26 @@ export default class Transaction {
                             return transactionRepository.getTransactionParentDate(transaction.transaction_id);
                         }).then(dates => resolve(_.min(dates)));
                     });
-                }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.node_id_proxy, transaction.version, parentDate, undefined, undefined, status));
+                }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.node_id_proxy, transaction.version, parentDate, undefined, undefined, status)
+                                          .catch(err => {
+                                              console.log('[transaction-warn] add transaction error', err);
+                                          }));
 
                 if (transaction.transaction_output_attribute) {
                     _.keys(transaction.transaction_output_attribute).forEach(attributeType => {
                         const attributeValue = transaction.transaction_output_attribute[attributeType];
-                        promise              = promise.then(() => this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue)));
+                        promise              = promise.then(() => this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue))
+                                                                      .catch(err => {
+                                                                          console.log('[transaction-warn] add transaction output error', err);
+                                                                      }));
                     });
                 }
 
                 transaction.transaction_parent_list.forEach(parentTransaction => {
-                    promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id));
+                    promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id)
+                                                     .catch(err => {
+                                                         console.log('[transaction-warn] add transaction parent error', err);
+                                                     }));
                 });
 
                 transaction.transaction_input_list.forEach(input => {
@@ -670,6 +672,9 @@ export default class Transaction {
                         return this.addTransactionInput(transaction.transaction_id, transaction.shard_id, input.input_position, input.address, input.address_key_identifier, input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id, undefined, status)
                                    .then(() => {
                                        delete input['address'];
+                                   })
+                                   .catch(err => {
+                                       console.log('[transaction-warn] add transaction input error', err);
                                    });
                     });
                 });
@@ -695,6 +700,9 @@ export default class Transaction {
                         return this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate, undefined, undefined, status)
                                    .then(() => {
                                        delete output['address'];
+                                   })
+                                   .catch(err => {
+                                       console.log('[transaction-warn] add transaction output error', err);
                                    });
                     });
                 });
@@ -707,7 +715,10 @@ export default class Transaction {
                             promise = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier, signature.address_attribute));
                         }
                     });
-                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature));
+                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature)
+                                                     .catch(err => {
+                                                         console.log('[transaction-warn] add transaction signature error', err);
+                                                     }));
                 });
 
                 _.each(_.keys(addressList), key => {
