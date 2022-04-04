@@ -748,7 +748,12 @@ export class WalletTransactionConsensus {
         const transactionID      = data.transaction_id;
         const consensusData      = this._consensusRoundState[transactionID];
         ws.consensusTimeoutCount = 0;
-        if (!ws || !consensusData || !consensusData.consensus_round_response || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] || !consensusData.active) {
+        if (consensusData && consensusData.active && consensusData.consensus_round_response[consensusData.consensus_round_count] &&
+            !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID]) {
+            consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] = {timestamp: Date.now()};
+            console.log('[wallet-transaction-consensus] response reused in active consensus round ', data);
+        }
+        else if (!ws || !consensusData || !consensusData.consensus_round_response || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] || !consensusData.active) {
             console.log('[wallet-transaction-consensus] response discarded ', data);
             return;
         }
