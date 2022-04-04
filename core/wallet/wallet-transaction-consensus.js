@@ -213,10 +213,12 @@ export class WalletTransactionConsensus {
                 }
 
                 if (!transaction) {
-                    wallet.requestTransactionFromNetwork(transactionID, {
-                        priority        : 1,
-                        dispatch_request: true
-                    });
+                    if(config.MODE_NODE_SYNC_FULL) {
+                        wallet.requestTransactionFromNetwork(transactionID, {
+                            priority        : 1,
+                            dispatch_request: true
+                        });
+                    }
 
                     return reject({
                         cause              : 'transaction_not_found',
@@ -297,10 +299,12 @@ export class WalletTransactionConsensus {
                                                        }
                                                        else if (responseType === 'transaction_not_found') {
 
-                                                           wallet.requestTransactionFromNetwork(data.transaction_id, {
-                                                               priority        : 1,
-                                                               dispatch_request: true
-                                                           });
+                                                           if (config.MODE_NODE_SYNC_FULL) {
+                                                               wallet.requestTransactionFromNetwork(data.transaction_id, {
+                                                                   priority        : 1,
+                                                                   dispatch_request: true
+                                                               });
+                                                           }
 
                                                            return reject({
                                                                cause              : responseType,
@@ -309,10 +313,12 @@ export class WalletTransactionConsensus {
                                                            });
                                                        }
                                                        else if (responseType === 'transaction_double_spend_unresolved') {
-                                                           peer.transactionSyncRequest(data.transaction_id, {
-                                                               dispatch_request  : true,
-                                                               force_request_sync: true
-                                                           }).then(_ => _).catch(_ => _);
+                                                           if (config.MODE_NODE_SYNC_FULL) {
+                                                               peer.transactionSyncRequest(data.transaction_id, {
+                                                                   dispatch_request  : true,
+                                                                   force_request_sync: true
+                                                               }).then(_ => _).catch(_ => _);
+                                                           }
                                                            return reject({
                                                                cause              : 'transaction_double_spend_unresolved',
                                                                transaction_id_fail: data.transaction_id,
@@ -347,10 +353,12 @@ export class WalletTransactionConsensus {
                                        }).then(output => {
                                            if (!output) {
 
-                                               wallet.requestTransactionFromNetwork(input.output_transaction_id, {
-                                                   priority        : 1,
-                                                   dispatch_request: true
-                                               });
+                                               if(config.MODE_NODE_SYNC_FULL) {
+                                                   wallet.requestTransactionFromNetwork(input.output_transaction_id, {
+                                                       priority        : 1,
+                                                       dispatch_request: true
+                                                   });
+                                               }
 
                                                return callback({
                                                    cause              : 'transaction_not_found',
@@ -506,8 +514,10 @@ export class WalletTransactionConsensus {
                     return;
                 }
                 else if (err.cause === 'transaction_not_found') {
-                    ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
-                    wallet.requestTransactionFromNetwork(err.transaction_id_fail);
+                    if(config.MODE_NODE_SYNC_FULL) {
+                        ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
+                        wallet.requestTransactionFromNetwork(err.transaction_id_fail);
+                    }
                     cacheTime = 2000;
                 }
 
@@ -1102,7 +1112,7 @@ export class WalletTransactionConsensus {
                 console.log('[wallet-transaction-consensus] get all unstable transactions');
                 return pipeline.then(() => database.applyShards((shardID) => {
                     return database.getRepository('transaction', shardID)
-                                   .findUnstableTransaction(excludeTransactionList, config.MODE_NODE_FULL);
+                                   .findUnstableTransaction(excludeTransactionList, config.MODE_NODE_VALIDATION_FULL);
                 }, 'transaction_date').then(transactions => [
                     _.filter(transactions, transaction => !(Date.now() - transaction.create_date < 30 || this._consensusRoundState[transaction.transaction_id])),
                     false
