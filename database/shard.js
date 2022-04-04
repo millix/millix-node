@@ -19,8 +19,8 @@ export default class Shard {
     initialize() {
         if (config.DATABASE_ENGINE === 'sqlite') {
             return this._initializeMillixShardSqlite3()
-                       .then(() => this._attachShardZero())
                        .then(() => this._migrateTables())
+                       .then(() => this._attachShardZero())
                        .then(() => this._initializeTables());
         }
         return Promise.resolve();
@@ -73,6 +73,13 @@ export default class Shard {
                           is_sticky: true,
                           timestamp: Date.now()
                       });
+
+                      if (err.message && err.message.startsWith('SQLITE_CORRUPT')) {
+                          return Database.deleteCorruptedDatabase(this.databaseFile)
+                                         .then(() => this._initializeMillixShardSqlite3())
+                                         .then(() => this._migrateTables());
+                      }
+
                       throw Error('[shard] migration ' + err.message);
                   });
         });
