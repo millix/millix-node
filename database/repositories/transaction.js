@@ -584,6 +584,8 @@ export default class Transaction {
     addTransactionFromObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
+                const cachedTransaction = _.cloneDeep(transaction);
+
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
                     runPipeline = r;
@@ -604,29 +606,24 @@ export default class Transaction {
 
                 transaction.transaction_parent_list.forEach(parentTransaction => {
                     promise = promise.then(() => {
-                        return new Promise((resolve, reject) => {
-                            database.firstShards((shardID) => {
-                                return new Promise((resolve, reject) => {
-                                    const transactionRepository = database.getRepository('transaction', shardID);
-                                    transactionRepository.getTransaction(parentTransaction)
-                                                         .then(foundParentTransaction => foundParentTransaction ? resolve(transactionRepository) : reject());
-                                });
-                            }).then(parentRepository => {
-                                if (parentRepository) {
-                                    parentRepository.updateTransactionParentDate(parentTransaction, Math.floor(new Date(transaction.transaction_date).getTime() / 1000))
-                                                    .then(() => resolve())
-                                                    .catch((err) => reject(err));
-                                }
-                                else {
-                                    resolve();
-                                }
+                        return database.firstShards((shardID) => {
+                            return new Promise((resolve, reject) => {
+                                const transactionRepository = database.getRepository('transaction', shardID);
+                                transactionRepository.getTransaction(parentTransaction)
+                                                     .then(foundParentTransaction => foundParentTransaction ? resolve(transactionRepository) : reject());
                             });
+                        }).then(parentRepository => {
+                            if (parentRepository) {
+                                return parentRepository.updateTransactionParentDate(parentTransaction, Math.floor(new Date(transaction.transaction_date).getTime() / 1000));
+                            }
                         });
                     });
                 });
 
-                transaction.transaction_input_list.forEach(input => {
-                    input.address              = input.address_base + input.address_version + input.address_key_identifier;
+                transaction.transaction_input_list.forEach((input, idx) => {
+                    input.address                                         = input.address_base + input.address_version + input.address_key_identifier;
+                    cachedTransaction.transaction_input_list[idx].address = input.address;
+
                     addressList[input.address] = _.pick(input, [
                         'address',
                         'address_base',
@@ -648,17 +645,26 @@ export default class Transaction {
                             return transactionRepository.getTransactionParentDate(transaction.transaction_id);
                         }).then(dates => resolve(_.min(dates)));
                     });
-                }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.node_id_proxy, transaction.version, parentDate, undefined, undefined, status));
+                }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.node_id_proxy, transaction.version, parentDate, undefined, undefined, status)
+                                          .catch(err => {
+                                              console.log('[transaction-warn] add transaction error', err);
+                                          }));
 
                 if (transaction.transaction_output_attribute) {
                     _.keys(transaction.transaction_output_attribute).forEach(attributeType => {
                         const attributeValue = transaction.transaction_output_attribute[attributeType];
-                        promise              = promise.then(() => this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue)));
+                        promise              = promise.then(() => this.addTransactionOutputAttribute(transaction.transaction_id, transaction.shard_id, this.normalizationRepository.get(attributeType), JSON.stringify(attributeValue))
+                                                                      .catch(err => {
+                                                                          console.log('[transaction-warn] add transaction output error', err);
+                                                                      }));
                     });
                 }
 
                 transaction.transaction_parent_list.forEach(parentTransaction => {
-                    promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id));
+                    promise = promise.then(() => this.addTransactionParent(transaction.transaction_id, parentTransaction, transaction.shard_id)
+                                                     .catch(err => {
+                                                         console.log('[transaction-warn] add transaction parent error', err);
+                                                     }));
                 });
 
                 transaction.transaction_input_list.forEach(input => {
@@ -666,12 +672,17 @@ export default class Transaction {
                         return this.addTransactionInput(transaction.transaction_id, transaction.shard_id, input.input_position, input.address, input.address_key_identifier, input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id, undefined, status)
                                    .then(() => {
                                        delete input['address'];
+                                   })
+                                   .catch(err => {
+                                       console.log('[transaction-warn] add transaction input error', err);
                                    });
                     });
                 });
 
-                transaction.transaction_output_list.forEach(output => {
-                    output.address              = output.address_base + output.address_version + output.address_key_identifier;
+                transaction.transaction_output_list.forEach((output, idx) => {
+                    output.address                                         = output.address_base + output.address_version + output.address_key_identifier;
+                    cachedTransaction.transaction_output_list[idx].address = output.address;
+
                     addressList[output.address] = _.pick(output, [
                         'address',
                         'address_base',
@@ -689,6 +700,9 @@ export default class Transaction {
                         return this.addTransactionOutput(transaction.transaction_id, transaction.shard_id, output.output_position, output.address, output.address_key_identifier, output.amount, spendDate, undefined, undefined, status)
                                    .then(() => {
                                        delete output['address'];
+                                   })
+                                   .catch(err => {
+                                       console.log('[transaction-warn] add transaction output error', err);
                                    });
                     });
                 });
@@ -701,7 +715,10 @@ export default class Transaction {
                             promise = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier, signature.address_attribute));
                         }
                     });
-                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature));
+                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature)
+                                                     .catch(err => {
+                                                         console.log('[transaction-warn] add transaction signature error', err);
+                                                     }));
                 });
 
                 _.each(_.keys(addressList), key => {
@@ -711,6 +728,15 @@ export default class Transaction {
 
                 promise.then(() => {
                     eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
+                    cachedTransaction.is_stable        = 0;
+                    cachedTransaction.transaction_date = new Date(cachedTransaction.transaction_date);
+                    cachedTransaction.transaction_output_list.forEach(output => {
+                        output.is_stable       = 0;
+                        output.status          = status;
+                        output.is_double_spend = 0;
+                    });
+                    cachedTransaction.status = status;
+                    this.updateTransactionObjectCache(cachedTransaction);
                     resolve(transaction);
                     unlock();
                 }).catch((err) => {
@@ -726,6 +752,8 @@ export default class Transaction {
     addTransactionFromShardObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
+                const cachedTransaction = _.cloneDeep(transaction);
+
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
                     runPipeline = r;
@@ -850,6 +878,13 @@ export default class Transaction {
                 });
 
                 promise.then(() => {
+                    cachedTransaction.is_stable = transactionStableDate ? 1 : 0;
+                    cachedTransaction.status    = transactionStatus;
+                    cachedTransaction.transaction_output_list.forEach(output => {
+                        output.is_stable = cachedTransaction.is_stable;
+                        output.status    = transactionStatus;
+                    });
+                    this.updateTransactionObjectCache(cachedTransaction);
                     resolve(transaction);
                     unlock();
                 }).catch((err) => {
@@ -938,30 +973,48 @@ export default class Transaction {
         return transaction;
     }
 
+    _getCacheStoreName() {
+        return 'transaction_' + (this.database.shardID || 'shard_zero');
+    }
+
+    clearTransactionObjectCache(transactionID) {
+        cache.removeCacheItem(this._getCacheStoreName(), 'transaction_object_' + transactionID);
+    }
+
+    updateTransactionObjectCache(transaction) {
+        cache.setCacheItem(this._getCacheStoreName(), 'transaction_object_' + transaction.transaction_id, _.cloneDeep(transaction));
+    }
+
     getTransactionObject(transactionID) {
         return new Promise(resolve => {
-            cache.getCachedIfPresent('transaction', 'transaction_object_' + transactionID, () => this.getTransaction(transactionID))
+            const cachedTransaction = cache.getCacheItem(this._getCacheStoreName(), 'transaction_object_' + transactionID);
+            if (cachedTransaction) {
+                cache.refreshCacheTime(this._getCacheStoreName(), 'transaction_object_' + transactionID);
+                return resolve(_.cloneDeep(cachedTransaction));
+            }
+
+            cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_object_transaction_' + transactionID, () => this.getTransaction(transactionID))
                  .then(transaction => {
 
                      if (!transaction) {
                          return Promise.reject('transaction_not_found');
                      }
 
-                     return cache.getCachedIfPresent('transaction', 'transaction_object_output_' + transactionID, () => this.getTransactionOutputs(transactionID))
+                     return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_object_output_' + transactionID, () => this.getTransactionOutputs(transactionID))
                                  .then(outputs => {
                                      transaction.transaction_output_list = outputs;
                                      return transaction;
                                  });
                  })
                  .then(transaction => {
-                     return cache.getCachedIfPresent('transaction', 'transaction_object_input_' + transactionID, () => this.getTransactionInputs(transactionID))
+                     return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_object_input_' + transactionID, () => this.getTransactionInputs(transactionID))
                                  .then(inputs => {
                                      transaction.transaction_input_list = inputs;
                                      return transaction;
                                  });
                  })
                  .then(transaction => {
-                     return cache.getCachedIfPresent('transaction', 'transaction_object_signature_' + transactionID, () => this.getTransactionSignatures(transactionID))
+                     return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_object_signature_' + transactionID, () => this.getTransactionSignatures(transactionID))
                                  .then(signatures => {
                                      transaction.transaction_signature_list = signatures;
                                      return transaction;
@@ -978,7 +1031,7 @@ export default class Transaction {
                          'la1l',
                          'lb1l'
                      ].includes(transaction.version)) {
-                         return cache.getCachedIfPresent('transaction', 'transaction_object_output_attribute_' + transactionID, () => this.getTransactionOutputAttributes(transactionID))
+                         return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_object_output_attribute_' + transactionID, () => this.getTransactionOutputAttributes(transactionID))
                                      .then(outputAttributes => {
                                          transaction['transaction_output_attribute'] = {};
                                          outputAttributes.forEach(outputAttribute => {
@@ -992,7 +1045,7 @@ export default class Transaction {
                      }
                  })
                  .then(transaction => {
-                     return cache.getCachedIfPresent('transaction', 'transaction_object_parent_' + transactionID, () => this.getTransactionParents(transactionID))
+                     return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_object_parent_' + transactionID, () => this.getTransactionParents(transactionID))
                                  .then(parents => {
                                      transaction.transaction_parent_list = parents;
 
@@ -1006,6 +1059,7 @@ export default class Transaction {
                                          return Promise.reject('transaction_not_found');
                                      }
 
+                                     cache.setCacheItem(this._getCacheStoreName(), 'transaction_object_' + transactionID, transaction);
                                      return transaction;
                                  });
                  })
@@ -2287,8 +2341,26 @@ export default class Transaction {
             this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
                               INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
                               WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3 and `transaction`.transaction_date < ?',
-                [addressKeyIdentifier, now], (err, rows) => {
+                [
+                    addressKeyIdentifier,
+                    now
+                ], (err, rows) => {
                     resolve(rows);
+                });
+        });
+    }
+
+    countWalletFreeOutput(addressKeyIdentifier) {
+        return new Promise((resolve) => {
+            const now = Math.floor(ntp.now().getTime() / 1000);
+            this.database.get('SELECT count(1) as count FROM transaction_output \
+                              INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
+                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3 and `transaction`.transaction_date < ?',
+                [
+                    addressKeyIdentifier,
+                    now
+                ], (err, row) => {
+                    resolve(row.count);
                 });
         });
     }
@@ -2600,7 +2672,7 @@ export default class Transaction {
     }
 
     hasTransaction(transactionID) {
-        return cache.getCachedIfPresent('transaction', 'transaction_exists_' + transactionID, () => new Promise((resolve, reject) => {
+        return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_exists_' + transactionID, () => new Promise((resolve, reject) => {
             this.database.get('SELECT EXISTS(select transaction_id from `transaction` where transaction_id = ?) as transaction_exists',
                 [transactionID], (err, row) => {
                     if (err) {
@@ -2662,6 +2734,8 @@ export default class Transaction {
                 return resolve();
             }
 
+            _.each(transactions, transaction => this.clearTransactionObjectCache(transaction.transaction_id));
+
             this.database.serialize(() => {
                 this.database.run('DELETE FROM transaction_input WHERE transaction_id IN  ( ' + transactions.map(() => '?').join(',') + ' )', transactions, (err) => {
                     err && console.log('[Database] Failed pruning inputs. [message] ', err);
@@ -2688,32 +2762,27 @@ export default class Transaction {
 
     deleteTransaction(transactionID) {
         return new Promise((resolve) => {
-            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], unlock => {
-                this.database.serialize(() => {
-                    this.database.run('BEGIN TRANSACTION');
-                    this.database.run('DELETE FROM transaction_input WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning inputs. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM transaction_output WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning outputs. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM `transaction_output_attribute` WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM transaction_signature WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning signatures. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM transaction_parent WHERE transaction_id_child = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning parents. [message] ', err);
-                    });
-                    this.database.run('DELETE FROM `transaction` WHERE transaction_id = ?', [transactionID], (err) => {
-                        err && console.log('[Database] Failed pruning transactions. [message] ', err);
-                    });
-                    this.database.run('COMMIT', () => {
-                        resolve();
-                        unlock();
-                    });
-                }, true);
+            this.clearTransactionObjectCache(transactionID);
+            this.database.serialize(() => {
+                this.database.run('DELETE FROM transaction_input WHERE transaction_id = ?', [transactionID], (err) => {
+                    err && console.log('[Database] Failed pruning inputs. [message] ', err);
+                });
+                this.database.run('DELETE FROM transaction_output WHERE transaction_id = ?', [transactionID], (err) => {
+                    err && console.log('[Database] Failed pruning outputs. [message] ', err);
+                });
+                this.database.run('DELETE FROM `transaction_output_attribute` WHERE transaction_id = ?', [transactionID], (err) => {
+                    err && console.log('[Database] Failed pruning transactions. [message] ', err);
+                });
+                this.database.run('DELETE FROM transaction_signature WHERE transaction_id = ?', [transactionID], (err) => {
+                    err && console.log('[Database] Failed pruning signatures. [message] ', err);
+                });
+                this.database.run('DELETE FROM transaction_parent WHERE transaction_id_child = ?', [transactionID], (err) => {
+                    err && console.log('[Database] Failed pruning parents. [message] ', err);
+                });
+                this.database.run('DELETE FROM `transaction` WHERE transaction_id = ?', [transactionID], (err) => {
+                    err && console.log('[Database] Failed pruning transactions. [message] ', err);
+                    resolve();
+                });
             });
         });
     }

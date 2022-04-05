@@ -40,6 +40,7 @@ class Wallet {
         this._transactionRequested           = {};
         this._transactionFundingActiveWallet = {};
         this.defaultKeyIdentifier            = undefined;
+        this.walletSyncTimeoutHandler        = undefined;
         this._lockProcessNewTransaction      = 0;
         this._maxBacklogThresholdReached     = false;
         this.initialized                     = false;
@@ -272,162 +273,247 @@ class Wallet {
         });
     }
 
-    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion) {
-        const addressRepository = database.getRepository('address');
+    updateTransactionOutputWithAddressInformation(outputs) {
+        const addressRepository  = database.getRepository('address');
+        const keychainRepository = database.getRepository('keychain');
+        return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
+            const mapAddresses = {};
+            addresses.forEach(address => mapAddresses[address.address] = address);
+
+            for (let i = 0; i < outputs.length; i++) {
+                const output        = outputs[i];
+                const outputAddress = mapAddresses[output.address];
+                if (!outputAddress) {
+                    console.log('[wallet][warn] output address not found', output);
+                    const {address: missingAddress} = addressRepository.getAddressComponent(output.address);
+                    //TODO: find a better way to get the address
+                    for (let addressPosition = 0; addressPosition < 2 ** 32; addressPosition++) {
+                        let {
+                                address          : addressBase,
+                                address_attribute: addressAttribute
+                            } = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
+                        if (addressBase === missingAddress) {
+                            output['address_version']        = addressRepository.getDefaultAddressVersion().version;
+                            output['address_key_identifier'] = this.defaultKeyIdentifier;
+                            output['address_base']           = addressBase;
+                            output['address_position']       = addressPosition;
+                            output['address_attribute']      = addressAttribute;
+                            break;
+                        }
+                    }
+                }
+                else {
+                    output['address_version']        = outputAddress.address_version;
+                    output['address_key_identifier'] = outputAddress.address_key_identifier;
+                    output['address_base']           = outputAddress.address_base;
+                    output['address_position']       = outputAddress.address_position;
+                    output['address_attribute']      = outputAddress.address_attribute;
+                }
+            }
+            return outputs;
+        });
+    }
+
+    processTransaction(transactionFunction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
                 this._transactionSendInterrupt = false;
-                let transactionOutputIDSpent   = new Set();
-                return new Promise(resolve => {
-                    if (!srcOutputs) {
-                        return database.applyShards((shardID) => {
-                            const transactionRepository = database.getRepository('transaction', shardID);
-                            return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
-                                                                                         .then(outputs => outputs.length ? resolve(outputs) : reject()));
-                        }).then(resolve);
-                    }
-                    else {
-                        resolve(srcOutputs);
-                    }
-                })
-                    .then((outputs) => {
-                        const availableOutputs   = [];
-                        const keychainRepository = database.getRepository('keychain');
-                        return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
-                            const mapAddresses = {};
-                            addresses.forEach(address => mapAddresses[address.address] = address);
-
-                            for (let i = 0; i < outputs.length; i++) {
-                                const output = outputs[i];
-
-                                if (cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)) {
-                                    continue;
-                                }
-
-                                const outputAddress = mapAddresses[output.address];
-                                if (!outputAddress) {
-                                    console.log('[wallet][warn] output address not found', output);
-                                    const {address: missingAddress} = addressRepository.getAddressComponent(output.address);
-                                    //TODO: find a better way to get the address
-                                    for (let addressPosition = 0; addressPosition < 2 ** 32; addressPosition++) {
-                                        let {
-                                                address          : addressBase,
-                                                address_attribute: addressAttribute
-                                            } = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
-                                        if (addressBase === missingAddress) {
-                                            output['address_version']        = addressRepository.getDefaultAddressVersion().version;
-                                            output['address_key_identifier'] = this.defaultKeyIdentifier;
-                                            output['address_base']           = addressBase;
-                                            output['address_position']       = addressPosition;
-                                            output['address_attribute']      = addressAttribute;
-                                            break;
-                                        }
-                                    }
-                                }
-                                else {
-                                    output['address_version']        = outputAddress.address_version;
-                                    output['address_key_identifier'] = outputAddress.address_key_identifier;
-                                    output['address_base']           = outputAddress.address_base;
-                                    output['address_position']       = outputAddress.address_position;
-                                    output['address_attribute']      = outputAddress.address_attribute;
-                                }
-                                availableOutputs.push(output);
-                            }
-                            return availableOutputs;
-                        });
-                    })
-                    .then((outputs) => {
-                        if (!outputs || outputs.length === 0) {
-                            return Promise.reject({
-                                error: 'insufficient_balance',
-                                data : {balance_stable: 0}
-                            });
-                        }
-                        outputs = _.orderBy(outputs, ['amount'], ['asc']);
-
-                        const transactionAmount   = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
-                        let remainingAmount       = transactionAmount;
-                        const outputsToUse        = [];
-                        const privateKeyMap       = {};
-                        const addressAttributeMap = {};
-
-                        for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
-
-                            if (i === config.TRANSACTION_INPUT_MAX - 1) { /* we cannot add more inputs and still we did not aggregate the required amount for the transaction */
-                                return Promise.reject({
-                                    error: 'transaction_input_max_error',
-                                    data : {amount_max: transactionAmount - remainingAmount}
-                                });
-                            }
-
-                            let output                               = outputs[i];
-                            remainingAmount -= output.amount;
-                            const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
-                            const privateKeyBuf                      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
-                            privateKeyMap[output.address_base]       = privateKeyBuf.toString('hex');
-                            addressAttributeMap[output.address_base] = output.address_attribute;
-                            outputsToUse.push(output);
-                        }
-
-                        if (remainingAmount > 0) {
-                            return Promise.reject({
-                                error: 'insufficient_balance',
-                                data : {balance_stable: transactionAmount - remainingAmount}
-                            });
-                        }
-                        let keyMap      = {
-                            'transaction_id'  : 'output_transaction_id',
-                            'transaction_date': 'output_transaction_date',
-                            'shard_id'        : 'output_shard_id'
-                        };
-                        const srcInputs = _.map(outputsToUse, o => _.mapKeys(_.pick(o, [
-                            'transaction_id',
-                            'output_position',
-                            'transaction_date',
-                            'shard_id',
-                            'address_base',
-                            'address_version',
-                            'address_key_identifier'
-                        ]), (v, k) => keyMap[k] ? keyMap[k] : k));
-
-                        srcInputs.forEach(input => transactionOutputIDSpent.add(input.transaction_id));
-
-                        let amountSent     = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
-                        let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
-                        let change         = totalUsedCoins - amountSent;
-                        if (change > 0) {
-                            let addressChange = outputs[outputs.length - 1];
-                            dstOutputs.push({
-                                address_base          : addressChange.address_base,
-                                address_version       : addressChange.address_version,
-                                address_key_identifier: addressChange.address_key_identifier,
-                                amount                : change
-                            });
-                        }
-                        return this.signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION);
-                    })
+                return transactionFunction()
                     .then(transactionList => {
                         transactionList.forEach(transaction => peer.transactionSend(transaction));
                         return transactionList;
                     })
                     .then((transactionList) => {
                         this._transactionSendInterrupt = false;
-                        resolve(transactionList);
-                        //wait 1 second then start the validation process
-                        setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
                         unlock();
+                        resolve(transactionList);
                     })
                     .catch((e) => {
                         this._transactionSendInterrupt = false;
-
-                        if (e === 'transaction_proxy_rejected') {
-                            this.resetTransactionValidationRejected();
-                        }
-
-                        reject({error: e});
                         unlock();
+                        reject(e);
+                        if (e.error === 'transaction_proxy_rejected' && e.data.cause === 'transaction_double_spend') {
+                            if (e?.transaction_list?.length > 1) {
+                                const transactions       = _.slice(e.transaction_list, 0, e.transaction_list.length - 1);
+                                const shardID            = _.last(e.transaction_list).shard_id;
+                                const transactionsIDList = _.flatten(_.map(transactions, transaction => _.map(transaction.transaction_input_list, input => input.output_transaction_id)));
+                                this.resetValidation(transactionsIDList, shardID)
+                                    .then(_ => _);
+                                this._doWalletUpdate();
+                            }
+                        }
                     });
             });
+        });
+    }
+
+    aggregateOutputs() {
+        return this.processTransaction(() => {
+            return database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
+                                                                             .then(outputs => outputs.length ? resolve(outputs) : reject()));
+            }).then((outputs) => {
+                return this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)));
+            }).then((outputs) => {
+                if (!outputs || outputs.length === 0) {
+                    return Promise.reject({
+                        error: 'insufficient_balance',
+                        data : {balance_stable: 0}
+                    });
+                }
+                outputs = _.orderBy(outputs, ['amount'], [config.WALLET_AGGREGATION_CONSUME_SMALLER_FIRST ? 'asc' : 'desc']);
+
+                const maxOutputsToUse     = config.WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT;
+                const outputsToUse        = [];
+                const privateKeyMap       = {};
+                const addressAttributeMap = {};
+                let totalAmount           = 0;
+                let lastAmount            = 0;
+                let i                     = 0;
+
+                for (; i < outputs.length && outputsToUse.length < maxOutputsToUse; i++) {
+                    let output                               = outputs[i];
+                    const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
+                    const privateKeyBuf                      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
+                    privateKeyMap[output.address_base]       = privateKeyBuf.toString('hex');
+                    addressAttributeMap[output.address_base] = output.address_attribute;
+                    totalAmount                              = totalAmount + output.amount;
+                    lastAmount                               = output.amount;
+                    outputsToUse.push(output);
+                }
+
+                if (totalAmount <= config.TRANSACTION_FEE_PROXY) {
+                    // we will replace the last output
+                    // search for an output that matches the required amount
+                    totalAmount          = totalAmount - lastAmount;
+                    const requiredAmount = config.TRANSACTION_FEE_PROXY - totalAmount + 1;
+                    for (; i < outputs.length; i++) {
+                        let output = outputs[i];
+                        if (output.amount < requiredAmount) {
+                            continue;
+                        }
+                        const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
+                        const privateKeyBuf                      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
+                        privateKeyMap[output.address_base]       = privateKeyBuf.toString('hex');
+                        addressAttributeMap[output.address_base] = output.address_attribute;
+                        totalAmount                              = totalAmount + output.amount;
+                        outputsToUse[outputsToUse.length - 1]    = output; /* replace the last output*/
+                    }
+                }
+
+                if (totalAmount <= config.TRANSACTION_FEE_DEFAULT) {
+                    return Promise.reject({error: 'aggregation_not_possible'});
+                }
+
+                let keyMap      = {
+                    'transaction_id'  : 'output_transaction_id',
+                    'transaction_date': 'output_transaction_date',
+                    'shard_id'        : 'output_shard_id'
+                };
+                const srcInputs = _.map(outputsToUse, o => _.mapKeys(_.pick(o, [
+                    'transaction_id',
+                    'output_position',
+                    'transaction_date',
+                    'shard_id',
+                    'address_base',
+                    'address_version',
+                    'address_key_identifier',
+                    'amount'
+                ]), (v, k) => keyMap[k] ? keyMap[k] : k));
+
+                const outputFee = {
+                    fee_type: 'transaction_fee_default'
+                };
+
+                return this.signAndStoreTransaction(srcInputs, [], outputFee, addressAttributeMap, privateKeyMap, config.WALLET_TRANSACTION_DEFAULT_VERSION, true);
+            });
+        });
+    }
+
+    addTransaction(dstOutputs, outputFee, srcOutputs, transactionVersion) {
+        return this.processTransaction(() => {
+            return new Promise(resolve => {
+                if (!srcOutputs) {
+                    return database.applyShards((shardID) => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
+                                                                                     .then(outputs => outputs.length ? resolve(outputs) : reject()));
+                    }).then(resolve);
+                }
+                else {
+                    resolve(srcOutputs);
+                }
+            }).then((outputs) => this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`))))
+              .then((outputs) => {
+                  if (!outputs || outputs.length === 0) {
+                      return Promise.reject({
+                          error: 'insufficient_balance',
+                          data : {balance_stable: 0}
+                      });
+                  }
+                  outputs = _.orderBy(outputs, ['amount'], ['asc']);
+
+                  const transactionAmount   = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
+                  let remainingAmount       = transactionAmount;
+                  const outputsToUse        = [];
+                  const privateKeyMap       = {};
+                  const addressAttributeMap = {};
+
+                  for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
+
+                      if (i === config.TRANSACTION_INPUT_MAX) { /* we cannot add more inputs and still we did not aggregate the required amount for the transaction */
+                          return Promise.reject({
+                              error: 'transaction_input_max_error',
+                              data : {amount_max: transactionAmount - remainingAmount}
+                          });
+                      }
+
+                      let output                               = outputs[i];
+                      remainingAmount -= output.amount;
+                      const extendedPrivateKey                 = this.getActiveWalletKey(this.getDefaultActiveWallet());
+                      const privateKeyBuf                      = walletUtils.derivePrivateKey(extendedPrivateKey, 0, output.address_position);
+                      privateKeyMap[output.address_base]       = privateKeyBuf.toString('hex');
+                      addressAttributeMap[output.address_base] = output.address_attribute;
+                      outputsToUse.push(output);
+                  }
+
+                  if (remainingAmount > 0) {
+                      return Promise.reject({
+                          error: 'insufficient_balance',
+                          data : {balance_stable: transactionAmount - remainingAmount}
+                      });
+                  }
+                  let keyMap      = {
+                      'transaction_id'  : 'output_transaction_id',
+                      'transaction_date': 'output_transaction_date',
+                      'shard_id'        : 'output_shard_id'
+                  };
+                  const srcInputs = _.map(outputsToUse, o => _.mapKeys(_.pick(o, [
+                      'transaction_id',
+                      'output_position',
+                      'transaction_date',
+                      'shard_id',
+                      'address_base',
+                      'address_version',
+                      'address_key_identifier',
+                      'amount'
+                  ]), (v, k) => keyMap[k] ? keyMap[k] : k));
+
+                  let amountSent     = _.sum(_.map(dstOutputs, o => o.amount)) + outputFee.amount;
+                  let totalUsedCoins = _.sum(_.map(outputsToUse, o => o.amount));
+                  let change         = totalUsedCoins - amountSent;
+                  if (change > 0) {
+                      let addressChange = outputs[outputs.length - 1];
+                      dstOutputs.push({
+                          address_base          : addressChange.address_base,
+                          address_version       : addressChange.address_version,
+                          address_key_identifier: addressChange.address_key_identifier,
+                          amount                : change
+                      });
+                  }
+                  return this.signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion || config.WALLET_TRANSACTION_DEFAULT_VERSION);
+              });
         });
     }
 
@@ -447,6 +533,7 @@ class Wallet {
         }
 
         cache.setCacheItem('wallet', 'is_wallet_transaction_synced', true, 300000); /* do sync again on a new connection after 5min */
+        this.walletSyncTimeoutHandler = setTimeout(() => cache.removeCacheItem('wallet', 'is_wallet_transaction_synced'), 60000); /* 60 second timeout then request sync from another peer*/
 
         return new Promise(resolve => {
             mutex.lock(['sync-wallet-balance-request'], unlock => {
@@ -498,11 +585,15 @@ class Wallet {
 
     _checkIfWalletUpdate(addressesKeyIdentifierSet) {
         if (addressesKeyIdentifierSet.has(this.defaultKeyIdentifier)) {
-            eventBus.emit('wallet_update');
-            // start consensus in 1s
-            setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
-            statsApi.clearCacheItem('wallet_balance');
+            this._doWalletUpdate();
         }
+    }
+
+    _doWalletUpdate() {
+        eventBus.emit('wallet_update');
+        // start consensus in 1s
+        setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 1000);
+        statsApi.clearCacheItem('wallet_balance');
     }
 
     getAllTransactions() {
@@ -874,60 +965,62 @@ class Wallet {
 
                                                                                                                       walletSync.clearTransactionSync(transaction.transaction_id);
 
-                                                                                                                      this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
+                                                                                                                      if (config.MODE_NODE_SYNC_FULL || hasKeyIdentifier) {
+                                                                                                                          this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
+                                                                                                                          walletSync.syncTransactionSpendingOutputs(transaction);
 
-                                                                                                                      walletSync.syncTransactionSpendingOutputs(transaction);
+                                                                                                                          if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
+                                                                                                                              _.each(transaction.transaction_input_list, inputTransaction => {
+                                                                                                                                  if (!this._transactionReceivedFromNetwork[inputTransaction.output_transaction_id]) {
+                                                                                                                                      database.firstShards((shardID) => {
+                                                                                                                                          const transactionRepository = database.getRepository('transaction', shardID);
+                                                                                                                                          return new Promise((resolve, reject) => transactionRepository.hasTransaction(inputTransaction.output_transaction_id)
+                                                                                                                                                                                                       .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
+                                                                                                                                      }).then(hasTransaction => {
+                                                                                                                                          if (!hasTransaction) {
+                                                                                                                                              console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
+                                                                                                                                              let options = {};
+                                                                                                                                              // only flag transactions that don't have the key identifier and are from a wallet funding lineage, or transactions that are not from a funding lineage and have the key identifier
+                                                                                                                                              if (isFundingWallet || hasKeyIdentifier) {
+                                                                                                                                                  this._transactionFundingActiveWallet[inputTransaction.output_transaction_id] = Date.now();
 
-                                                                                                                      if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
-                                                                                                                          _.each(transaction.transaction_input_list, inputTransaction => {
-                                                                                                                              if (!this._transactionReceivedFromNetwork[inputTransaction.output_transaction_id]) {
-                                                                                                                                  database.firstShards((shardID) => {
-                                                                                                                                      const transactionRepository = database.getRepository('transaction', shardID);
-                                                                                                                                      return new Promise((resolve, reject) => transactionRepository.hasTransaction(inputTransaction.output_transaction_id)
-                                                                                                                                                                                                   .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
-                                                                                                                                  }).then(hasTransaction => {
-                                                                                                                                      if (!hasTransaction) {
-                                                                                                                                          console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
-                                                                                                                                          let options = {};
-                                                                                                                                          // only flag transactions that don't have the key identifier and are from a wallet funding lineage, or transactions that are not from a funding lineage and have the key identifier
-                                                                                                                                          if (isFundingWallet || hasKeyIdentifier) {
-                                                                                                                                              this._transactionFundingActiveWallet[inputTransaction.output_transaction_id] = Date.now();
-
-                                                                                                                                              options = {
-                                                                                                                                                  dispatch_request  : true,
-                                                                                                                                                  force_request_sync: true
-                                                                                                                                              };
+                                                                                                                                                  options = {
+                                                                                                                                                      dispatch_request  : true,
+                                                                                                                                                      force_request_sync: true
+                                                                                                                                                  };
+                                                                                                                                              }
+                                                                                                                                              this._transactionRequested[inputTransaction.output_transaction_id] = Date.now();
+                                                                                                                                              peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority, ...options})
+                                                                                                                                                  .catch(_ => _);
                                                                                                                                           }
-                                                                                                                                          this._transactionRequested[inputTransaction.output_transaction_id] = Date.now();
-                                                                                                                                          peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority, ...options})
-                                                                                                                                              .catch(_ => _);
-                                                                                                                                      }
-                                                                                                                                  });
-                                                                                                                              }
-                                                                                                                          });
-                                                                                                                          _.each(transaction.transaction_parent_list, parentTransactionID => {
-                                                                                                                              if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
-                                                                                                                                  database.firstShards((shardID) => {
-                                                                                                                                      const transactionRepository = database.getRepository('transaction', shardID);
-                                                                                                                                      return new Promise((resolve, reject) => transactionRepository.hasTransaction(parentTransactionID)
-                                                                                                                                                                                                   .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
-                                                                                                                                  }).then(hasTransaction => {
-                                                                                                                                      if (!hasTransaction) {
-                                                                                                                                          console.log('[Wallet] request sync parent transaction ', parentTransactionID);
-                                                                                                                                          this._transactionRequested[parentTransactionID] = Date.now();
-                                                                                                                                          peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
-                                                                                                                                              .catch(_ => _);
-                                                                                                                                      }
-                                                                                                                                  });
-                                                                                                                              }
-                                                                                                                          });
+                                                                                                                                      });
+                                                                                                                                  }
+                                                                                                                              });
+                                                                                                                              _.each(transaction.transaction_parent_list, parentTransactionID => {
+                                                                                                                                  if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
+                                                                                                                                      database.firstShards((shardID) => {
+                                                                                                                                          const transactionRepository = database.getRepository('transaction', shardID);
+                                                                                                                                          return new Promise((resolve, reject) => transactionRepository.hasTransaction(parentTransactionID)
+                                                                                                                                                                                                       .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
+                                                                                                                                      }).then(hasTransaction => {
+                                                                                                                                          if (!hasTransaction) {
+                                                                                                                                              console.log('[Wallet] request sync parent transaction ', parentTransactionID);
+                                                                                                                                              this._transactionRequested[parentTransactionID] = Date.now();
+                                                                                                                                              peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
+                                                                                                                                                  .catch(_ => _);
+                                                                                                                                          }
+                                                                                                                                      });
+                                                                                                                                  }
+                                                                                                                              });
+                                                                                                                          }
                                                                                                                       }
+
                                                                                                                       if (!isRequestedBySync || hasKeyIdentifier) {
                                                                                                                           let ws = network.getWebSocketByID(connectionID);
                                                                                                                           peer.transactionSend(data.transaction, ws);
                                                                                                                       }
 
-                                                                                                                      if (hasTransaction) {
+                                                                                                                      if (hasKeyIdentifier) {
                                                                                                                           setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 0);
                                                                                                                       }
 
@@ -1108,6 +1201,7 @@ class Wallet {
     }
 
     _onSyncWalletBalanceResponse(data, ws) {
+        clearTimeout(this.walletSyncTimeoutHandler);
         mutex.lock(['sync-wallet-balance-response'], unlock => {
             const transactions = data.transaction_id_list || [];
             async.eachSeries(transactions, (transactionID, callback) => {
@@ -1447,7 +1541,7 @@ class Wallet {
                     transaction_proxy_success: false
                 }, network.getWebSocketByID(connectionID));
             }
-            else if (transaction.transaction_date >= (now + 60)) { //clock skew: 1 minute ahead
+            else if (transaction.transaction_date >= (now + config.TRANSACTION_CLOCK_SKEW_TOLERANCE)) { //clock skew: 10 seconds ahead
                 return peer.transactionProxyResult({
                     cause                    : 'invalid transaction date',
                     transaction_proxy_fail   : 'invalid_transaction',
@@ -1488,7 +1582,7 @@ class Wallet {
             if (err.cause === 'consensus_timeout') {
                 return;
             }
-            else if (err.cause === 'transaction_not_found') {
+            else if (err.cause === 'transaction_not_found' && config.MODE_NODE_SYNC_FULL) {
                 ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
                 this.requestTransactionFromNetwork(err.transaction_id_fail);
             }
@@ -1596,7 +1690,7 @@ class Wallet {
         });
     }
 
-    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
+    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, isAggregationTransaction = false) {
         const addressRepository = database.getRepository('address');
         const time              = ntp.now();
 
@@ -1615,104 +1709,128 @@ class Wallet {
                 address_key_identifier: addressKeyIdentifier
             }
         ];
-        return walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
-                          .then(transactionList => ([
-                              transactionList,
-                              proxyCandidateData
-                          ]))
-                          .then(([transactionList, proxyCandidateData]) => {
-                              if (this._transactionSendInterrupt) {
-                                  return Promise.reject('transaction_send_interrupt');
-                              }
-                              return peer.transactionProxyRequest(transactionList, proxyCandidateData);
-                          })
-                          .then(([transactionList, proxyResponse, proxyWS]) => {
-                              const chainFromProxy = proxyResponse.transaction_input_chain;
-                              if (this._transactionSendInterrupt) {
-                                  return Promise.reject('transaction_send_interrupt');
-                              }
-                              else if (chainFromProxy.length === 0) {
-                                  return Promise.reject('invalid_proxy_transaction_chain');
-                              }
-                              return propagateTransaction ? peer.transactionProxy(transactionList, config.TRANSACTION_TIME_LIMIT_PROXY, proxyWS) : transactionList;
-                          })
-                          .then(transactionList => {
-                              let pipeline = new Promise(resolve => resolve(true));
-                              transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
-                              return pipeline.then(isValid => !isValid ? Promise.reject('tried to sign and store and invalid transaction') : transactionList);
-                          });
+        return (!isAggregationTransaction ? walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
+                                          : walletUtils.signAggregationTransaction(srcInputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, config.WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT, config.WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT, config.WALLET_AGGREGATION_TRANSACTION_MAX))
+            .catch(e => Promise.reject({error: e}))
+            .then((transactionList) => {
+                if (this._transactionSendInterrupt) {
+                    return Promise.reject({error: 'transaction_send_interrupt'});
+                }
+                return peer.transactionProxyRequest(transactionList, proxyCandidateData);
+            })
+            .then(([transactionList, proxyResponse, proxyWS]) => {
+                const chainFromProxy = proxyResponse.transaction_input_chain;
+                if (this._transactionSendInterrupt) {
+                    return Promise.reject({error: 'transaction_send_interrupt'});
+                }
+                else if (chainFromProxy.length === 0) {
+                    return Promise.reject({error: 'invalid_proxy_transaction_chain'});
+                }
+
+                if (propagateTransaction) {
+                    return peer.transactionProxy(transactionList, config.TRANSACTION_TIME_LIMIT_PROXY, proxyWS)
+                               .catch(e => {
+                                   if (e.error === 'transaction_proxy_rejected') {
+                                       return Promise.reject({
+                                           ...e,
+                                           transaction_list: transactionList
+                                       });
+                                   }
+                                   else {
+                                       return Promise.reject(e);
+                                   }
+                               });
+                }
+                else {
+                    return transactionList;
+                }
+            })
+            .then(transactionList => {
+                let pipeline = new Promise(resolve => resolve(true));
+                transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
+                return pipeline.then(isValid => !isValid ? Promise.reject({
+                    error: 'transaction_invalid',
+                    cause: 'tried to sign and store and invalid transaction'
+                }) : transactionList);
+            });
     };
 
-    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true) {
+    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, isAggregationTransaction = false) {
         const transactionRepository = database.getRepository('transaction');
         const proxyErrorList        = [
             'proxy_network_error',
             'proxy_timeout',
             'invalid_proxy_transaction_chain',
             'proxy_connection_state_invalid',
-            'transaction_proxy_rejected',
             'proxy_time_limit_exceed'
         ];
         return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
-                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction)
-                                                    .then(transaction => callback({
-                                                        error: false,
-                                                        transaction
-                                                    }))
-                                                    .catch(e => typeof e === 'string' && !proxyErrorList.includes(e) ? callback({
-                                                        error  : true,
-                                                        message: e
-                                                    }) : callback());
+                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction, isAggregationTransaction)
+                                                    .then(transaction => callback({transaction}))
+                                                    .catch(e => {
+                                                        if (!e
+                                                            || (e.data && e.error === 'transaction_proxy_rejected' && e.data.cause !== 'transaction_double_spend')
+                                                            || proxyErrorList.includes(e.error)) {
+                                                            callback();
+                                                        }
+                                                        else {
+                                                            callback(e);
+                                                        }
+                                                    });
                                             }, data => {
-                                                if (data && data.error && typeof data.message === 'string' && !proxyErrorList.includes(data.message)) {
-                                                    reject(data.message);
+                                                if (data && data.error && !proxyErrorList.includes(data.error)) {
+                                                    reject(data);
                                                 }
                                                 else if (data && data.transaction) {
                                                     resolve(data.transaction);
                                                 }
                                                 else {
-                                                    if (data && data.error && typeof data.message === 'string' && data.message === 'transaction_proxy_rejected') {
-                                                        reject('transaction_proxy_rejected');
-                                                    }
-                                                    else {
-                                                        reject('proxy_not_found');
-                                                    }
+                                                    reject({error: 'proxy_not_found'});
                                                 }
                                             });
                                         });
                                     });
     }
 
-    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion) {
+    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, isAggregationTransaction = false) {
         const transactionRepository = database.getRepository('transaction');
-        return this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true)
-                   .then(transactionList => {
-                       // store the transaction
-                       let pipeline = Promise.resolve();
-                       transactionList.forEach(transaction => {
-                           transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
-                           const dbTransaction            = _.cloneDeep(transaction);
-                           dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                           pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)));
-                       });
-                       return pipeline.then(() => transactionList);
-                   })
-                   .then(transactionList => {
-                       // register first
-                       // address to the
-                       // dht for receiving
-                       // proxy fees
-                       const address = _.pick(srcInputs[0], [
-                           'address_base',
-                           'address_version',
-                           'address_key_identifier'
-                       ]);
-                       network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
-                       return transactionList;
-                   });
+        return new Promise((resolve, reject) => {
+            this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, isAggregationTransaction)
+                .catch(e => {
+                    reject(e);
+                    return Promise.reject(e);
+                })
+                .then(transactionList => {
+                    resolve(transactionList); /* the transaction was propagated. we can return success (resume function call) and then store it into the db.*/
+                    // store the transaction
+                    let pipeline = Promise.resolve();
+                    transactionList.forEach(transaction => {
+                        transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
+                        const dbTransaction            = _.cloneDeep(transaction);
+                        dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
+                        pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)));
+                    });
+                    return pipeline.then(() => transactionList);
+                })
+                .then(transactionList => {
+                    this._doWalletUpdate();
+                    // register first
+                    // address to the
+                    // dht for receiving
+                    // proxy fees
+                    const address = _.pick(srcInputs[0], [
+                        'address_base',
+                        'address_version',
+                        'address_key_identifier'
+                    ]);
+                    network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
+                    return transactionList;
+                })
+                .catch(e => console.log('[wallet] error on sign and store transaction', e));
+        });
     }
 
     updateDefaultAddressAttribute() {

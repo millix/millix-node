@@ -14,8 +14,9 @@ export const NODE_NAT_PMP                                      = true;
 export const NODE_NAT_PMP_CHECK                                = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
-export const NODE_PUBLIC                                       = false;
-export const MODE_NODE_FULL                                    = false;
+export const NODE_PUBLIC                                       = true;
+export const MODE_NODE_VALIDATION_FULL                         = true;
+export const MODE_NODE_SYNC_FULL                               = true;
 export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
@@ -733,6 +734,7 @@ export const TRANSACTION_INPUT_MAX                             = 128;
 export const TRANSACTION_OUTPUT_MAX                            = 128;
 export const TRANSACTION_PARENT_MAX                            = 16;
 export const TRANSACTION_SIGNATURE_MAX                         = 128;
+export const TRANSACTION_CLOCK_SKEW_TOLERANCE                  = 10;
 export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 60;
 export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 10;
 export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
@@ -768,13 +770,17 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX                 = 1000;
 export const WALLET_TRANSACTION_QUEUE_SIZE_NORMAL              = 250;
+export const WALLET_AGGREGATION_TRANSACTION_MAX                = 1;
+export const WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT       = 1;
+export const WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT        = 120;
+export const WALLET_AGGREGATION_CONSUME_SMALLER_FIRST          = true;
 export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1640009160;
-export const NODE_MILLIX_VERSION                               = '1.12.7';
+export const NODE_MILLIX_BUILD_DATE                            = 1649083382;
+export const NODE_MILLIX_VERSION                               = '1.17.0';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -824,7 +830,8 @@ if (DATABASE_ENGINE === 'sqlite') {
 
 export default {
     MODE_DEBUG,
-    MODE_NODE_FULL,
+    MODE_NODE_SYNC_FULL,
+    MODE_NODE_VALIDATION_FULL,
     FORCE_QUEUE_UPDATE,
     MODE_TEST_NETWORK,
     NODE_PORT,
@@ -877,12 +884,17 @@ export default {
     TRANSACTION_PARENT_MAX,
     TRANSACTION_SIGNATURE_MAX,
     TRANSACTION_RETRY_SYNC_MAX,
+    TRANSACTION_CLOCK_SKEW_TOLERANCE,
     TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN,
     TRANSACTION_OUTPUT_REFRESH_OLDER_THAN,
     TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN,
     NETWORK_LONG_TIME_WAIT_MAX,
     NETWORK_SHORT_TIME_WAIT_MAX,
     WALLET_TRANSACTION_QUEUE_SIZE_MAX,
+    WALLET_AGGREGATION_TRANSACTION_MAX,
+    WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT,
+    WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT,
+    WALLET_AGGREGATION_CONSUME_SMALLER_FIRST,
     WALLET_TRANSACTION_QUEUE_SIZE_NORMAL,
     WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT,
     WALLET_TRANSACTION_SUPPORTED_VERSION,

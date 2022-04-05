@@ -84,7 +84,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                     return Promise.reject('proxy_unavailable');
                 }
 
-                let spentTime     = Date.now() - startTime;
+                let spentTime               = Date.now() - startTime;
                 let remainingProxyTimeLimit = proxyTimeLimit - spentTime;
 
                 if (remainingProxyTimeLimit <= 0) {
@@ -94,7 +94,9 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                 console.log(`[api ${this.endpoint}] transaction sent to proxy ${proxyWS.nodeID} Tx: ${transactionList.map(t => t.transaction_id).join(',')} | proxy_time_limit: ${remainingProxyTimeLimit}`);
                 return peer.transactionProxy(transactionList, remainingProxyTimeLimit, proxyWS)
                            .then(transactionList => {
-                               // we already have the result, so we should send the result here before the proxy time limit is exceeded.
+                               // we already have the result, so we should send
+                               // the result here before the proxy time limit
+                               // is exceeded.
                                res.send({api_status: 'success'});
 
                                // store the transaction
@@ -152,7 +154,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                 console.log(`[api ${this.endpoint}] error: ${e}`);
                 res.send({
                     api_status : 'fail',
-                    api_message: e
+                    api_message: e?.error || e
                 });
             });
         }
