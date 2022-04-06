@@ -10,6 +10,7 @@ import database from '../../database/database';
 import wallet from './wallet';
 import async from 'async';
 import _ from 'lodash';
+import eventBus from '../event-bus';
 
 
 export class WalletSync {
@@ -151,8 +152,9 @@ export class WalletSync {
                 const transactionOutputToQueue = [];
                 async.eachSeries(transactionOutputToSyncList, (transactionOutput, callback) => {
                     peer.transactionOutputSpendRequest(transactionOutput.transaction_id, transactionOutput.output_position)
-                        .then(_ => callback())
-                        .catch(() => {
+                        .then(data => _.each(data.transaction_list, transaction => eventBus.emit('transaction_new', transaction)))
+                        .catch(_ => _)
+                        .then(() => {
                             transactionOutputToQueue.push({
                                 transaction_output_id: transactionOutput.transaction_output_id
                             });
