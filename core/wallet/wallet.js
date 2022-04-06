@@ -964,9 +964,7 @@ class Wallet {
                                                                                                                       walletSync.clearTransactionSync(transaction.transaction_id);
 
                                                                                                                       walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
-                                                                                                                      if (config.MODE_NODE_SYNC_FULL) {
-                                                                                                                          this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
-
+                                                                                                                      if (config.MODE_NODE_SYNC_FULL || hasKeyIdentifier) {
                                                                                                                           if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
                                                                                                                               _.each(transaction.transaction_input_list, inputTransaction => {
                                                                                                                                   if (!this._transactionReceivedFromNetwork[inputTransaction.output_transaction_id]) {
@@ -995,7 +993,10 @@ class Wallet {
                                                                                                                                   }
                                                                                                                               });
                                                                                                                           }
+                                                                                                                      }
 
+                                                                                                                      if (config.MODE_NODE_SYNC_FULL) {
+                                                                                                                          this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
                                                                                                                           _.each(transaction.transaction_parent_list, parentTransactionID => {
                                                                                                                               if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
                                                                                                                                   database.firstShards((shardID) => {
