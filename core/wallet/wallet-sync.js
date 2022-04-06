@@ -309,7 +309,7 @@ export class WalletSync {
         }).then(() => this.updateSyncTransactionSpend());
     }
 
-    syncTransactionSpendingOutputs(transaction) {
+    syncTransactionSpendingOutputs(transaction, isModeFullSync) {
         const walletKeyIdentifierSet = new Set([
             wallet.getKeyIdentifier(),
             ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
@@ -321,7 +321,7 @@ export class WalletSync {
                     transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
                 });
             }
-            else {
+            else if (isModeFullSync) {
                 this.transactionSpendQueue.push({
                     transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
                 });
