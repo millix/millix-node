@@ -1208,7 +1208,10 @@ class Wallet {
                                                                                  .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
                 }).then(hasTransaction => {
                     if (!hasTransaction) {
-                        peer.transactionSyncRequest(transactionID, {priority: 1})
+                        peer.transactionSyncRequest(transactionID, {
+                            priority        : 1,
+                            dispatch_request: true
+                        })
                             .then(_ => _)
                             .catch(_ => _);
                     }
