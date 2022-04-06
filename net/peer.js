@@ -71,58 +71,66 @@ class Peer {
     }
 
     sendNodeList(ws) {
-        return database.getRepository('node')
-                       .listNodes()
-                       .then(nodes => {
-                           nodes = _.map(nodes, node => _.pick(node, [
-                               'node_prefix',
-                               'node_address',
-                               'node_port_api',
-                               'node_port',
-                               'node_id'
-                           ]));
+        return new Promise(resolve => {
+            const nodes = [];
+            _.each(network.registeredClients, nodeWS => {
+                const node = {
+                    ..._.pick(network.nodeList[nodeWS.node], [
+                        'node_prefix',
+                        'node_address',
+                        'node_port_api',
+                        'node_port',
+                        'node_id'
+                    ]),
+                    node_online: true
+                };
+                if (node) {
+                    nodes.push(node);
+                }
+            });
 
-                           nodes.push({
-                               node_prefix  : config.WEBSOCKET_PROTOCOL,
-                               node_address : network.nodePublicIp,
-                               node_port_api: config.NODE_PORT_API,
-                               node_port    : config.NODE_PORT,
-                               node_id      : network.nodeID
-                           }); // add self
+            if (nodes.length === 0) {
+                return;
+            }
 
-                           if (nodes.length === 0) {
-                               return;
-                           }
+            nodes.push({
+                node_prefix  : config.WEBSOCKET_PROTOCOL,
+                node_address : network.nodePublicIp,
+                node_port_api: config.NODE_PORT_API,
+                node_port    : config.NODE_PORT,
+                node_id      : network.nodeID,
+                node_online  : true
+            }); // add self
 
-                           let payload = {
-                               type   : 'node_list',
-                               content: nodes
-                           };
+            let payload = {
+                type   : 'node_list',
+                content: nodes
+            };
 
-                           eventBus.emit('node_event_log', payload);
+            eventBus.emit('node_event_log', payload);
 
-                           let data = JSON.stringify(payload);
-                           if (ws) { // send to a single node
-                               try {
-                                   ws.nodeConnectionReady && ws.send(data);
-                               }
-                               catch (e) {
-                                   console.log('[WARN]: try to send data over a closed connection.');
-                                   ws && ws.close();
-                               }
-                           }
-                           else {
-                               network.registeredClients.forEach(ws => {
-                                   try {
-                                       ws.nodeConnectionReady && ws.send(data);
-                                   }
-                                   catch (e) {
-                                       console.log('[WARN]: try to send data over a closed connection.');
-                                       ws && ws.close();
-                                   }
-                               });
-                           }
-                       });
+            let data = JSON.stringify(payload);
+            if (ws) { // send to a single node
+                try {
+                    ws.nodeConnectionReady && ws.send(data);
+                }
+                catch (e) {
+                    console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
+                }
+            }
+            else {
+                network.registeredClients.forEach(ws => {
+                    try {
+                        ws.nodeConnectionReady && ws.send(data);
+                    }
+                    catch (e) {
+                        console.log('[WARN]: try to send data over a closed connection.');
+                        ws && ws.close();
+                    }
+                });
+            }
+        });
     }
 
     propagateTransactionList(transactions) {
@@ -270,7 +278,7 @@ class Peer {
                             console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID, 'cause:', response.cause);
                             reject({
                                 error: 'transaction_proxy_rejected',
-                                data   : response
+                                data : response
                             });
                         }
                         clearTimeout(timeoutHandler);
