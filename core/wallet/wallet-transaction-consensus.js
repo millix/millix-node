@@ -806,9 +806,9 @@ export class WalletTransactionConsensus {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     transactionRepository.getTransactionObject(data.transaction_id_fail)
                                          .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject());
-                }).then(transaction => peer.transactionSendToNode(transaction, ws));
+                });
             }).then(transaction => {
-                if (!transaction) {
+                if (!transaction && config.MODE_NODE_SYNC_FULL) {
                     peer.transactionSyncRequest(data.transaction_id_fail, {dispatch_request: true}).then(_ => _).catch(_ => _);
                     return;
                 }

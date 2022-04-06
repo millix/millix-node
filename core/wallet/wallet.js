@@ -842,9 +842,7 @@ class Wallet {
 
     _onNewTransaction(data, ws, isRequestedBySync) {
 
-        let node         = ws.node;
-        let connectionID = ws.connectionID;
-
+        let node        = ws.node;
         let transaction = _.cloneDeep(data.transaction);
 
         if (data.routing && data.routing_request_node_id !== network.nodeID) {
@@ -965,9 +963,9 @@ class Wallet {
 
                                                                                                                       walletSync.clearTransactionSync(transaction.transaction_id);
 
-                                                                                                                      if (config.MODE_NODE_SYNC_FULL || hasKeyIdentifier) {
+                                                                                                                      walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
+                                                                                                                      if (config.MODE_NODE_SYNC_FULL) {
                                                                                                                           this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
-                                                                                                                          walletSync.syncTransactionSpendingOutputs(transaction);
 
                                                                                                                           if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
                                                                                                                               _.each(transaction.transaction_input_list, inputTransaction => {
@@ -996,28 +994,24 @@ class Wallet {
                                                                                                                                       });
                                                                                                                                   }
                                                                                                                               });
-                                                                                                                              _.each(transaction.transaction_parent_list, parentTransactionID => {
-                                                                                                                                  if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
-                                                                                                                                      database.firstShards((shardID) => {
-                                                                                                                                          const transactionRepository = database.getRepository('transaction', shardID);
-                                                                                                                                          return new Promise((resolve, reject) => transactionRepository.hasTransaction(parentTransactionID)
-                                                                                                                                                                                                       .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
-                                                                                                                                      }).then(hasTransaction => {
-                                                                                                                                          if (!hasTransaction) {
-                                                                                                                                              console.log('[Wallet] request sync parent transaction ', parentTransactionID);
-                                                                                                                                              this._transactionRequested[parentTransactionID] = Date.now();
-                                                                                                                                              peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
-                                                                                                                                                  .catch(_ => _);
-                                                                                                                                          }
-                                                                                                                                      });
-                                                                                                                                  }
-                                                                                                                              });
                                                                                                                           }
-                                                                                                                      }
 
-                                                                                                                      if (!isRequestedBySync || hasKeyIdentifier) {
-                                                                                                                          let ws = network.getWebSocketByID(connectionID);
-                                                                                                                          peer.transactionSend(data.transaction, ws);
+                                                                                                                          _.each(transaction.transaction_parent_list, parentTransactionID => {
+                                                                                                                              if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
+                                                                                                                                  database.firstShards((shardID) => {
+                                                                                                                                      const transactionRepository = database.getRepository('transaction', shardID);
+                                                                                                                                      return new Promise((resolve, reject) => transactionRepository.hasTransaction(parentTransactionID)
+                                                                                                                                                                                                   .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
+                                                                                                                                  }).then(hasTransaction => {
+                                                                                                                                      if (!hasTransaction) {
+                                                                                                                                          console.log('[Wallet] request sync parent transaction ', parentTransactionID);
+                                                                                                                                          this._transactionRequested[parentTransactionID] = Date.now();
+                                                                                                                                          peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
+                                                                                                                                              .catch(_ => _);
+                                                                                                                                      }
+                                                                                                                                  });
+                                                                                                                              }
+                                                                                                                          });
                                                                                                                       }
 
                                                                                                                       if (hasKeyIdentifier) {
@@ -1116,7 +1110,7 @@ class Wallet {
                         }, ws);
                     }
                 }
-                else {
+                else if (config.MODE_NODE_SYNC_FULL) {
                     console.log(`[wallet] sending transaction ${data.transaction_id} not found to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                     peer.transactionSyncResponse({
                         transaction            : {transaction_id: data.transaction_id},
