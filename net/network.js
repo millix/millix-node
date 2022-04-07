@@ -27,29 +27,29 @@ const WebSocketServer = Server;
 
 class Network {
     constructor() {
-        this._nodeListOnline                      = {};
-        this._nodeList                            = {};
-        this._connectionRegistry                  = {};
-        this._nodeRegistry                        = {};
-        this._inboundRegistry                     = {};
-        this._outboundRegistry                    = {};
-        this._bidirectionaOutboundConnectionCount = 0;
-        this._bidirectionaInboundConnectionCount  = 0;
-        this._wss                                 = null;
-        this.networkInterfaceAddresses            = [];
-        this.nodeID                               = null;
-        this.nodeIsPublic                         = undefined;
-        this.certificatePem                       = null;
-        this.certificatePrivateKeyPem             = null;
-        this.nodeConnectionID                     = this.generateNewID();
-        this._selfConnectionNode                  = new Set();
-        this._allowedMessageInOutboudConnection   = new Set([
+        this._nodeListOnline                       = {};
+        this._nodeList                             = {};
+        this._connectionRegistry                   = {};
+        this._nodeRegistry                         = {};
+        this._inboundRegistry                      = {};
+        this._outboundRegistry                     = {};
+        this._bidirectionalOutboundConnectionCount = 0;
+        this._bidirectionalInboundConnectionCount  = 0;
+        this._wss                                  = null;
+        this.networkInterfaceAddresses             = [];
+        this.nodeID                                = null;
+        this.nodeIsPublic                          = undefined;
+        this.certificatePem                        = null;
+        this.certificatePrivateKeyPem              = null;
+        this.nodeConnectionID                      = this.generateNewID();
+        this._selfConnectionNode                   = new Set();
+        this._allowedMessageInOutboudConnection    = new Set([
             'node_attribute_request',
             'wallet_transaction_sync'
         ]);
-        this.initialized                          = false;
-        this.dht                                  = null;
-        this.noop                                 = () => {
+        this.initialized                           = false;
+        this.dht                                   = null;
+        this.noop                                  = () => {
         };
     }
 
@@ -515,7 +515,7 @@ class Network {
 
                         if (ws.inBound && this.hasOutboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(peerNodeID))) {
                             ws.reservedOutboundSlot = true;
-                            this._bidirectionaInboundConnectionCount++;
+                            this._bidirectionalInboundConnectionCount++;
                             extra['enable_inbound_stream'] = true;
                         }
 
@@ -642,11 +642,11 @@ class Network {
     }
 
     hasInboundConnectionsSlotAvailable() {
-        return (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) < config.NODE_CONNECTION_INBOUND_MAX || this._hasToDropPublicNodeConnection();
+        return (_.keys(this._inboundRegistry).length < config.NODE_CONNECTION_INBOUND_MAX) || this._hasToDropPublicNodeConnection();
     }
 
     _hasToDropPublicNodeConnection() {
-        const totalInboundConnections = (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount);
+        const totalInboundConnections = _.keys(this._inboundRegistry).length;
         const count                   = this._countPublicNodesOnInboundSlots();
         return count >= Math.floor(config.NODE_CONNECTION_PUBLIC_PERCENT * config.NODE_CONNECTION_INBOUND_MAX) && totalInboundConnections >= config.NODE_CONNECTION_INBOUND_MAX;
     }
@@ -669,7 +669,7 @@ class Network {
     }
 
     hasOutboundConnectionsSlotAvailable() {
-        return (_.keys(this._outboundRegistry).length + this._bidirectionaInboundConnectionCount) < config.NODE_CONNECTION_OUTBOUND_MAX;
+        return _.keys(this._outboundRegistry).length < config.NODE_CONNECTION_OUTBOUND_MAX;
     }
 
     _registerWebsocketToNodeID(ws) {
@@ -782,10 +782,10 @@ class Network {
         // update bidirectional stream slots
         if (ws.bidirectional || ws.reservedOutboundSlot) {
             if (ws.inBound) {
-                this._bidirectionaInboundConnectionCount--;
+                this._bidirectionalInboundConnectionCount--;
             }
             else {
-                this._bidirectionaOutboundConnectionCount--;
+                this._bidirectionalOutboundConnectionCount--;
             }
         }
 
@@ -869,7 +869,7 @@ class Network {
             if (content && content.enable_inbound_stream === true) {
                 if (ws.outBound && this.hasInboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(ws.nodeID))) {
                     ws.bidirectional = true;
-                    this._bidirectionaOutboundConnectionCount++;
+                    this._bidirectionalOutboundConnectionCount++;
                     peer.replyInboundStreamRequest(true, ws);
                 }
                 else {
@@ -887,7 +887,7 @@ class Network {
             }
             else {
                 ws.bidirectional = false;
-                this._bidirectionaInboundConnectionCount--;
+                this._bidirectionalInboundConnectionCount--;
             }
             ws.reservedOutboundSlot = false;
         }
