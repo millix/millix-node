@@ -406,6 +406,15 @@
       "enable": true
     },
     {
+      "id": "FC8ylC617zzn1Gaa",
+      "name": "get_unspent_output_summary",
+      "description": "returns the unspent output stat summary",
+      "method": "GET",
+      "version_released": "1.16.1",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "RLOk0Wji0lQVjynT",
       "name": "get_os_info",
       "description": "get the node os info",
@@ -420,6 +429,15 @@
       "description": "submits a new transaction from the active wallet, specifying the outputs and amounts to the node. this API builds the tx payload and submits it",
       "method": "GET",
       "version_released": "1.10.2",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "kC5N9Tz06b2rA4Pg",
+      "name": "send_aggregation_transaction_from_wallet",
+      "description": "submits a new aggregation transaction from the active wallet which optimizes the funds and allows spending more funds in fewer transactions. this API builds the tx payload and submits it",
+      "method": "GET",
+      "version_released": "1.16.0",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
@@ -511,6 +529,15 @@
       "method": "GET",
       "version_released": "1.11.5",
       "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "P2LMh8NsUTkpWAH3",
+      "name": "reset_validation_transaction_by_guid",
+      "description": "reset transaction validation by transaction guid",
+      "method": "POST",
+      "version_released": "1.11.5",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     }
   ]

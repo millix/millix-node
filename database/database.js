@@ -45,7 +45,8 @@ export class Database {
         if (where) {
             _.each(_.keys(where), key => {
                 if (where[key] === undefined ||
-                    ((key.endsWith('_begin') || key.endsWith('_min') || key.endsWith('_end') || key.endsWith('_max')) && !where[key])) {
+                    ((key.endsWith('_begin') || key.endsWith('_min') || key.endsWith('_end') || key.endsWith('_max')) && !where[key]) ||
+                    (key.endsWith('_in') && !(where[key] instanceof Array))) {
                     return;
                 }
 
@@ -61,6 +62,13 @@ export class Database {
                 }
                 else if (key.endsWith('_end') || key.endsWith('_max')) {
                     sql += `${key.substring(0, key.lastIndexOf('_'))} <= ?`;
+                }
+                else if (key.endsWith('_in')) {
+                    sql += `${key.substring(0, key.lastIndexOf('_'))} IN (${where[key].map(() => '?').join(',')})`;
+                    for (let parameter of where[key]) {
+                        parameters.push(parameter);
+                    }
+                    return;
                 }
                 else {
                     sql += `${key}= ?`;
@@ -160,32 +168,32 @@ export class Database {
             console.log(`[database] trace performance => ${sql} : ${time}ms`);
         });
         /*const dbAll  = database.all.bind(database);
-        database.all = (function(sql, parameters, callback) {
-            console.log(`[database] query all start: ${sql}`);
-            if (typeof (parameters) === 'function') {
-                callback = parameters;
-            }
-            const startTime = Date.now();
-            dbAll(sql, parameters, (err, data) => {
-                const timeElapsed = Date.now() - startTime;
-                console.log(`[database] query all (run time ${timeElapsed}ms) : ${sql} : ${err}`);
-                callback(err, data);
-            });
-        }).bind(database);
+         database.all = (function(sql, parameters, callback) {
+         console.log(`[database] query all start: ${sql}`);
+         if (typeof (parameters) === 'function') {
+         callback = parameters;
+         }
+         const startTime = Date.now();
+         dbAll(sql, parameters, (err, data) => {
+         const timeElapsed = Date.now() - startTime;
+         console.log(`[database] query all (run time ${timeElapsed}ms) : ${sql} : ${err}`);
+         callback(err, data);
+         });
+         }).bind(database);
 
-        const dbGet  = database.get.bind(database);
-        database.get = (function(sql, parameters, callback) {
-            console.log(`[database] query get start: ${sql}`);
-            if (typeof (parameters) === 'function') {
-                callback = parameters;
-            }
-            const startTime = Date.now();
-            dbGet(sql, parameters, (err, data) => {
-                const timeElapsed = Date.now() - startTime;
-                console.log(`[database] query get (run time ${timeElapsed}ms): ${sql} : ${err}`);
-                callback(err, data);
-            });
-        }).bind(database);*/
+         const dbGet  = database.get.bind(database);
+         database.get = (function(sql, parameters, callback) {
+         console.log(`[database] query get start: ${sql}`);
+         if (typeof (parameters) === 'function') {
+         callback = parameters;
+         }
+         const startTime = Date.now();
+         dbGet(sql, parameters, (err, data) => {
+         const timeElapsed = Date.now() - startTime;
+         console.log(`[database] query get (run time ${timeElapsed}ms): ${sql} : ${err}`);
+         callback(err, data);
+         });
+         }).bind(database);*/
     }
 
     _initializeMillixSqlite3() {
@@ -513,11 +521,21 @@ export class Database {
         });
     }
 
-    runWallCheckpoint() {
+    runWallCheckpointAll() {
+        return new Promise(resolve => {
+            async.eachSeries(_.keys(this.shards), (shardID, callback) => {
+                Database.runWallCheckpoint(this.shards[shardID].database)
+                        .then(callback)
+                        .catch(callback);
+            }, () => resolve());
+        });
+    }
+
+    static runWallCheckpoint(db) {
         return new Promise(resolve => {
             mutex.lock(['transaction'], (unlock) => {
                 console.log('[database] locking for wal checkpoint');
-                this.databaseMillix.run('PRAGMA wal_checkpoint(TRUNCATE)', function(err) {
+                db.run('PRAGMA wal_checkpoint(TRUNCATE)', function(err) {
                     if (err) {
                         console.log('[database] wal checkpoint error', err);
                     }
@@ -531,11 +549,21 @@ export class Database {
         });
     }
 
-    runVacuum() {
+    runVacuumAll() {
+        return new Promise(resolve => {
+            async.eachSeries(_.keys(this.shards), (shardID, callback) => {
+                Database.runVacuum(this.shards[shardID].database)
+                        .then(callback)
+                        .catch(callback);
+            }, () => resolve());
+        });
+    }
+
+    static runVacuum(db) {
         return new Promise(resolve => {
             mutex.lock(['transaction'], (unlock) => {
                 console.log('[database] locking for vacuum');
-                this.databaseMillix.run('VACUUM; PRAGMA wal_checkpoint(TRUNCATE);', function(err) {
+                db.run('VACUUM; PRAGMA wal_checkpoint(TRUNCATE);', function(err) {
                     if (err) {
                         console.log('[database] vacuum error', err);
                     }
@@ -599,9 +627,23 @@ export class Database {
                               is_sticky: true,
                               timestamp: Date.now()
                           });
+                          if (err.message && err.message.startsWith('SQLITE_CORRUPT')) {
+                              const dbFile = path.join(this.databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_MILLIX);
+                              return Database.deleteCorruptedDatabase(dbFile)
+                                             .then(() => this._initializeMillixSqlite3())
+                                             .then(() => this._migrateTables());
+                          }
                           throw Error('[database] migration ' + err.message);
                       }
                   });
+        });
+    }
+
+    static deleteCorruptedDatabase(databaseFile) {
+        return new Promise(resolve => {
+            fs.unlink(databaseFile, err => {
+                resolve();
+            });
         });
     }
 
@@ -612,7 +654,8 @@ export class Database {
                        .then(() => this._initializeJobEngineSqlite3())
                        .then(() => this._migrateTables())
                        .then(() => this._initializeShards())
-                       .then(() => this._initializeTables());
+                       .then(() => this._initializeTables())
+                       .then(() => this.runWallCheckpointAll());
         }
         return Promise.resolve();
     }

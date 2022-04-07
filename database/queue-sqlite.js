@@ -9,6 +9,7 @@ function SqliteStore(opts) {
     self._path = opts.path || ':memory:';
     self._tableName = opts.tableName || 'task';
     self.setImmediate = opts.setImmediate || setImmediate;
+    self.clearDB = opts.clear;
 }
 
 SqliteStore.prototype.connect = function (cb) {
@@ -18,6 +19,7 @@ SqliteStore.prototype.connect = function (cb) {
         self._db.exec(`
       CREATE TABLE IF NOT EXISTS ${self._tableName} (id TEXT UNIQUE, lock TEXT, task TEXT, priority NUMERIC, added INTEGER PRIMARY KEY AUTOINCREMENT);
       CREATE INDEX IF NOT EXISTS priorityIndex ON ${self._tableName} (lock, priority desc, added);
+      ${ self.clearDB ? `DELETE FROM ${self._tableName};` : ""}
       PRAGMA synchronous=OFF;
       PRAGMA journal_mode=MEMORY;
       PRAGMA temp_store=MEMORY;
@@ -129,11 +131,15 @@ SqliteStore.prototype.getRunningTasks = function (cb) {
             });
         }
 
-        if (err) return cb(err);
+        if (err) {
+            return cb(err);
+        }
         const tasks = {};
-        rows.forEach(function (row) {
-            if (!row.lock) return;
-            tasks[row.lock] = tasks[row.lock] || [];
+        rows.forEach(function(row) {
+            if (!row.lock) {
+                return;
+            }
+            tasks[row.lock]         = tasks[row.lock] || [];
             tasks[row.lock][row.id] = JSON.parse(row.task);
         });
         cb(null, tasks);

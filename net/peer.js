@@ -1,6 +1,6 @@
 import network from './network';
 import eventBus from '../core/event-bus';
-import config from '../core/config/config';
+import config, {TRANSACTION_TIME_LIMIT_PROXY} from '../core/config/config';
 import crypto from 'crypto';
 import _ from 'lodash';
 import database from '../database/database';
@@ -146,6 +146,10 @@ class Peer {
     }
 
     transactionSend(transaction, excludeWS) {
+        if (!transaction) {
+            return;
+        }
+
         let payload = {
             type   : 'transaction_new',
             content: {transaction}
@@ -170,6 +174,10 @@ class Peer {
     }
 
     transactionSendToNode(transaction, ws) {
+        if (!transaction) {
+            return;
+        }
+
         let payload = {
             type   : 'transaction_new',
             content: {transaction}
@@ -256,11 +264,14 @@ class Peer {
                         }
                         else if (response.cause === 'proxy_time_limit_exceed') {
                             console.log('[peer] transaction proxy timeout on ', nodeID, 'for transaction', transactionID);
-                            reject('proxy_time_limit_exceed');
+                            reject({error: 'proxy_time_limit_exceed'});
                         }
                         else {
                             console.log('[peer] transaction proxy rejected by ', nodeID, 'for transaction', transactionID, 'cause:', response.cause);
-                            reject('transaction_proxy_rejected');
+                            reject({
+                                error: 'transaction_proxy_rejected',
+                                data   : response
+                            });
                         }
                         clearTimeout(timeoutHandler);
                     }
@@ -270,7 +281,7 @@ class Peer {
                     timeLimitTriggered = true;
                     if (!responseProcessed) {
                         console.log('[peer] self-triggered transaction proxy timeout on for transaction', transactionID);
-                        reject('proxy_time_limit_exceed');
+                        reject({error: 'proxy_time_limit_exceed'});
                     }
                 }, proxyTimeLimit + config.NETWORK_SHORT_TIME_WAIT_MAX);
                 ws.nodeConnectionReady && ws.send(data);
@@ -278,7 +289,7 @@ class Peer {
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
                 ws && ws.close();
-                reject('proxy_network_error');
+                reject({error: 'proxy_network_error'});
             }
         });
     }
@@ -287,6 +298,7 @@ class Peer {
         const transaction = transactionList[0];
         const feeOutput   = transactionList[transactionList.length - 1].transaction_output_list[0];
         return network._connectTo(proxyData.node_prefix, proxyData.node_host, proxyData.node_port, proxyData.node_port_api, proxyData.node_id)
+                      .catch(() => Promise.reject({error: 'proxy_network_error'}))
                       .then(ws => {
                           return new Promise((resolve, reject) => {
                               let payload = {
@@ -331,19 +343,19 @@ class Peer {
                                           if (!callbackCalled) {
                                               callbackCalled = true;
                                               eventBus.removeAllListeners(`transaction_new_proxy:${nodeID}:${transactionID}`);
-                                              reject('proxy_timeout');
+                                              reject({error: 'proxy_timeout'});
                                           }
-                                      }, config.NETWORK_LONG_TIME_WAIT_MAX * 15);
+                                      }, config.TRANSACTION_TIME_LIMIT_PROXY * 2);
 
                                   }
                                   else {
-                                      return reject('proxy_connection_state_invalid');
+                                      return reject({error: 'proxy_connection_state_invalid'});
                                   }
                               }
                               catch (e) {
                                   console.log('[WARN]: try to send data over a closed connection.');
                                   ws && ws.close();
-                                  return reject('proxy_network_error');
+                                  return reject({error: 'proxy_network_error'});
                               }
                           });
                       });
@@ -479,7 +491,7 @@ class Peer {
 
     }
 
-    transactionOutputSpendRequest(transactionID, outputPosition) {
+    transactionOutputSpendRequest(transactionID, outputPosition, tryOnce = false) {
         const transactionOutputID = `${transactionID}_${outputPosition}`;
         if (this.pendingTransactionOutputSpendSync[transactionOutputID]) {
             return Promise.reject();
@@ -503,6 +515,10 @@ class Peer {
 
             let nodesWS = _.shuffle(network.registeredClients);
 
+            if (tryOnce) {
+                nodesWS = [nodesWS[0]];
+            }
+
             async.eachSeries(nodesWS, (ws, callback) => {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
@@ -515,7 +531,7 @@ class Peer {
 
                             if (!callbackCalled) {
                                 callbackCalled = true;
-                                if (!eventData || !eventData.transaction_list || eventData.transaction_list.length === 0) {
+                                if (!eventData || _.isEmpty(_.filter(eventData.transaction_list, i => !_.isNil(i)))) {
                                     callback();
                                 }
                                 else {
@@ -978,75 +994,6 @@ class Peer {
                     });
                 });
             });
-    }
-
-    transactionSyncByDateResponse(transactionList, ws) {
-        if (ws.outBound && !ws.bidirectional) {
-            return;
-        }
-
-        let payload = {
-            type   : 'transaction_sync_by_date_response:' + network.nodeID,
-            content: {transaction_id_list: transactionList}
-        };
-
-        eventBus.emit('node_event_log', payload);
-
-        let data = JSON.stringify(payload);
-        try {
-            ws.nodeConnectionReady && ws.send(data);
-        }
-        catch (e) {
-            console.log('[WARN]: try to send data over a closed connection.');
-            ws && ws.close();
-        }
-    }
-
-    transactionSyncByDate(beginTimestamp, endTimestamp, excludeTransactionList, ws) {
-        return new Promise((resolve, reject) => {
-
-            let start  = Date.now();
-            let nodeID = ws.nodeID;
-
-            console.log(`[peer] requesting transaction sync by date from ${new Date(beginTimestamp * 1000)} to ${new Date(endTimestamp * 1000)} : node ${nodeID}`);
-            let payload = {
-                type   : 'transaction_sync_by_date',
-                content: {
-                    exclude_transaction_id_list: excludeTransactionList,
-                    begin_timestamp            : beginTimestamp,
-                    end_timestamp              : endTimestamp
-                }
-            };
-
-            eventBus.emit('node_event_log', payload);
-
-            let data = JSON.stringify(payload);
-
-            try {
-                if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
-                    eventBus.removeAllListeners('transaction_sync_by_date_response:' + nodeID);
-                    eventBus.once('transaction_sync_by_date_response:' + nodeID, function(data) {
-                        console.log(`[peer] transaction sync by date received from node ${nodeID} (${Date.now() - start}ms)`);
-                        resolve(data);
-                    });
-
-                    ws.send(data);
-                    setTimeout(() => {
-                        console.log(`[peer] timeout transaction sync by date from node ${nodeID} (${Date.now() - start}ms)`);
-                        eventBus.removeAllListeners('transaction_sync_by_date_response:' + nodeID);
-                        reject('sync_timeout');
-                    }, Math.round(config.NETWORK_LONG_TIME_WAIT_MAX));
-                }
-                else {
-                    reject('sync_not_allowed');
-                }
-            }
-            catch (e) {
-                console.log('[WARN]: try to send data over a closed connection.');
-                ws && ws.close();
-                reject('sync_error:' + e.message);
-            }
-        });
     }
 
     transactionSyncByWebSocket(transactionID, ws, currentDepth) {
