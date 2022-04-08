@@ -1334,6 +1334,11 @@ export default class Transaction {
                         and o2.is_double_spend = 0
                         )
                     where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
+                    update 'transaction'
+                    set status      = 3,
+                        is_stable   = 1,
+                        stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                    where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
                 `;
                 this.database.exec(sql, (err) => {
                     if (err) {
@@ -2219,6 +2224,9 @@ export default class Transaction {
                     o2.status != 3
                     and o2.is_double_spend = 0
                     )
+                WHERE transaction_id IN (SELECT output_transaction_id FROM transaction_input WHERE transaction_id = "${transactionID}");
+                UPDATE 'transaction' AS t
+                SET is_stable = 1, stable_date = CAST (strftime('%s', 'now') AS INTEGER)
                 WHERE transaction_id IN (SELECT output_transaction_id FROM transaction_input WHERE transaction_id = "${transactionID}");
             `, (err) => {
                 if (err) {

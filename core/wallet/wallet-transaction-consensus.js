@@ -13,6 +13,7 @@ import ntp from '../ntp';
 import console from '../console';
 import task from '../task';
 import cache from '../cache';
+import walletSync from './wallet-sync';
 
 
 export class WalletTransactionConsensus {
@@ -806,9 +807,9 @@ export class WalletTransactionConsensus {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     transactionRepository.getTransactionObject(data.transaction_id_fail)
                                          .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject());
-                }).then(transaction => peer.transactionSendToNode(transaction, ws));
+                });
             }).then(transaction => {
-                if (!transaction) {
+                if (!transaction && config.MODE_NODE_SYNC_FULL) {
                     peer.transactionSyncRequest(data.transaction_id_fail, {dispatch_request: true}).then(_ => _).catch(_ => _);
                     return;
                 }
@@ -1001,6 +1002,7 @@ export class WalletTransactionConsensus {
                 cache.removeCacheItem('validation', transactionID);
                 consensusData.active = false;
 
+                walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
                 console.log('[wallet-transaction-consensus] transaction object no present for tx id:', transactionID);
                 return database.applyShards(shardID => {
                     const transactionRepository = database.getRepository('transaction', shardID);
