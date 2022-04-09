@@ -88,12 +88,12 @@ class _ConfigLoader {
                               '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
                         update transaction_output
                         set is_stable   = 1,
-                            stable_date = strftime('%s', 'now'),
+                            stable_date = CAST(strftime('%s', 'now') AS INTEGER),
                             status      = 3
                         where transaction_id =
                               '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
                         update 'transaction'
-                        set is_stable = 1, stable_date = strftime('%s', 'now'), status = 3
+                        set is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), status = 3
                         where transaction_id = '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
                     `, err => {
                         if (err) {
