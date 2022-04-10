@@ -854,7 +854,7 @@ class Peer {
         let data = JSON.stringify(payload);
         if (ws) {
             try {
-                ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional) && ws.send(data);
+                ws.nodeConnectionReady && ws.send(data);
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
@@ -954,7 +954,7 @@ class Peer {
                         let nodeID         = ws.nodeID;
                         let startTimestamp = Date.now();
                         try {
-                            if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                            if (ws.nodeConnectionReady) {
                                 eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
                                 eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData) {
                                     clearTimeout(timeoutID);
@@ -1035,7 +1035,7 @@ class Peer {
                                  let data = JSON.stringify(payload);
 
                                  try {
-                                     if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
+                                     if (ws.nodeConnectionReady) {
                                          eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
                                          eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
