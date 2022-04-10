@@ -45,7 +45,8 @@ class Network {
         this._selfConnectionNode                   = new Set();
         this._allowedMessageInOutboudConnection    = new Set([
             'node_attribute_request',
-            'wallet_transaction_sync'
+            'wallet_transaction_sync',
+            'transaction_sync'
         ]);
         this.initialized                           = false;
         this.dht                                   = null;
