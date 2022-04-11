@@ -7,9 +7,9 @@ import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
 import database from '../../database/database';
-import fileManager from '../files/file-manager';
-import fileExchange from '../files/file-exchange';
-import sender from '../files/sender';
+import fileManager from '../storage/file-manager';
+import fileExchange from '../storage/file-exchange';
+import sender from '../storage/sender';
 import cache from '../cache';
 
 
