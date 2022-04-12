@@ -715,9 +715,9 @@ class WalletUtils {
             'version'
         ];
 
-        const versionType = version.charAt(1);
+        const versionType = transaction.version.charAt(1);
         if (!((versionType === 'a' || versionType === 'b') &&
-              parseInt(version.substring(2), version.length - 1) >= 3)) {
+              parseInt(transaction.version.substring(2), transaction.version.length - 1) >= 3)) {
             omitFields.push('transaction_output_attribute');
         }
 
