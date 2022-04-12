@@ -21,6 +21,7 @@ import console from '../console';
 import base58 from 'bs58';
 import task from '../task';
 import cache from '../cache';
+import fileExchange from '../storage/file-exchange';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -1010,6 +1011,14 @@ class Wallet {
 
                                                                                                                       if (hasKeyIdentifier) {
                                                                                                                           setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 0);
+                                                                                                                      }
+
+
+                                                                                                                      const versionType = transaction.version.charAt(1);
+                                                                                                                      if ((versionType === 'a' || versionType === 'b') &&
+                                                                                                                          parseInt(transaction.version.substring(2), transaction.version.length - 1) >= 3 &&
+                                                                                                                          transaction.transaction_output_attribute.transaction_output_metadata?.files?.length > 0) {
+                                                                                                                          fileExchange.syncFilesFromTransaction(transaction);
                                                                                                                       }
 
                                                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];

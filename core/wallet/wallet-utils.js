@@ -773,7 +773,7 @@ class WalletUtils {
         return true;
     }
 
-    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes={}) {
+    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes = {}) {
         if (feeOutputList.length < 1 || !feeOutputList[0].node_id_proxy) {
             // there should be at least one output entry for the proxy (fees).
             return Promise.reject('proxy/output fee information is required');
@@ -940,13 +940,36 @@ class WalletUtils {
                   transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = hasRefreshTransaction && i === 0 ? idx : idx - feeOutputList.length);
                   transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
                   transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
-                  transaction['payload_hash']            = objectHash.getCHash288(transaction);
-                  transaction['transaction_date']        = Math.floor(timeNow.getTime() / 1000);
-                  transaction['node_id_origin']          = network.nodeID;
-                  transaction['node_id_proxy']           = nodeIDProxy;
-                  transaction['shard_id']                = genesisConfig.genesis_shard_id; // TODO:activate random shard _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
-                  transaction['version']                 = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
-                  const tempAddressSignatures            = {};
+
+                  let hasSignedOutputAttribute = false;
+                  let version                  = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
+                  const versionType            = version.charAt(1);
+                  if ((versionType === 'a' || versionType === 'b') &&
+                      parseInt(version.substring(2), version.length - 1) >= 3) {
+                      // transaction output attribute
+                      const transactionFeeList                    = feeOutputList.length > 0 ?
+                                                                    _.map(feeOutputList, o => _.pick(o, [
+                                                                        'node_id_proxy',
+                                                                        'fee_type'
+                                                                    ])) : undefined;
+                      transaction['transaction_output_attribute'] = {
+                          transaction_fee            : transactionFeeList,
+                          transaction_output_metadata: outputAttributes
+                      };
+
+                      if (transaction.transaction_output_attribute.transaction_fee) {
+                          transaction.transaction_output_attribute.transaction_fee.forEach((outputAttribute, idx) => outputAttribute['output_position'] = idx - feeOutputList.length);
+                      }
+                      hasSignedOutputAttribute = true;
+                  }
+
+                  transaction['payload_hash']     = objectHash.getCHash288(transaction);
+                  transaction['transaction_date'] = Math.floor(timeNow.getTime() / 1000);
+                  transaction['node_id_origin']   = network.nodeID;
+                  transaction['node_id_proxy']    = nodeIDProxy;
+                  transaction['shard_id']         = genesisConfig.genesis_shard_id; // TODO:activate random shard _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
+                  transaction['version']          = version;
+                  const tempAddressSignatures     = {};
                   for (let transactionSignature of transaction.transaction_signature_list) {
                       const privateKeyHex = privateKeyMap[transactionSignature.address_base];
                       if (!privateKeyHex) {
@@ -965,14 +988,14 @@ class WalletUtils {
                       transactionSignature['signature'] = tempAddressSignatures[transactionSignature.address_base];
                   }
                   transaction['transaction_id'] = objectHash.getCHash288(transaction);
-                  if ((hasRefreshTransaction && i === 1 || !hasRefreshTransaction) && feeOutputList.length > 0) {
+                  if (!hasSignedOutputAttribute && (hasRefreshTransaction && i === 1 || !hasRefreshTransaction) && feeOutputList.length > 0) {
                       // transaction output attribute: fee
                       transaction['transaction_output_attribute'] = {
-                          transaction_fee: _.map(feeOutputList, o => _.pick(o, [
+                          transaction_fee            : _.map(feeOutputList, o => _.pick(o, [
                               'node_id_proxy',
                               'fee_type'
                           ])),
-                          transaction_output_metadata:outputAttributes
+                          transaction_output_metadata: outputAttributes
                       };
                       transaction.transaction_output_attribute.transaction_fee.forEach((outputAttribute, idx) => outputAttribute['output_position'] = idx - feeOutputList.length);
                   }
