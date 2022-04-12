@@ -47,8 +47,7 @@ class Queue {
     _buildEntryForSender(entry) {
         return entry.nodeId + ';' +
                entry.transactionId + ';' +
-               entry.fileHash + ';' +
-               entry.nodePublicKey + '\n';
+               entry.fileHash + '\n';
     }
 
     _buildEntryForReceiver(entry) {
@@ -97,13 +96,12 @@ class Queue {
         return this.countActiveSendInstances > 0;
     }
 
-    addNewFileToSender(nodeId, transactionId, fileHash, nodePublicKey) {
+    addNewFileToSender(nodeId, transactionId, fileHash) {
         return new Promise((resolve, reject) => {
             let newEntry = this._buildEntry({
                 nodeId,
                 transactionId,
-                fileHash,
-                nodePublicKey
+                fileHash
             }, Queue.SENDER);
             mutex.lock(['update-sender-file-log'], (unlock) => {
                 fs.appendFile(this.senderLogFile, newEntry, (err) => {
@@ -116,8 +114,7 @@ class Queue {
                         this.senderLog.append({
                             nodeId       : nodeId,
                             transactionId: transactionId,
-                            fileHash     : fileHash,
-                            nodePublicKey: nodePublicKey
+                            fileHash     : fileHash
                         });
                         unlock();
                         resolve();
@@ -173,8 +170,7 @@ class Queue {
                         this.senderLog.append({
                             nodeId       : elements[0],
                             transactionId: elements[1],
-                            fileHash     : elements[2],
-                            nodePublicKey: elements[3]
+                            fileHash     : elements[2]
                         });
                     });
 
