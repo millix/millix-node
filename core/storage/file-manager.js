@@ -14,7 +14,7 @@ class FileManager {
     static DECRYPT = 'DECRYPT';
 
     constructor() {
-        this.filesRootFolder = path.join(os.homedir(), config.FILES_CONNECTION.FOLDER);
+        this.filesRootFolder = path.join(os.homedir(), config.STORAGE_CONNECTION.FOLDER);
     }
 
     getFileLocation(addressKeyIdentifier, transactionId, fileHash) {
