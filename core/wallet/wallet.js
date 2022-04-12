@@ -1015,7 +1015,7 @@ class Wallet {
 
 
                                                                                                                       const versionType = transaction.version.charAt(1);
-                                                                                                                      if ((versionType === 'a' || versionType === 'b') &&
+                                                                                                                      if (config.MODE_STORAGE_SYNC && (versionType === 'a' || versionType === 'b') &&
                                                                                                                           parseInt(transaction.version.substring(2), transaction.version.length - 1) >= 3 &&
                                                                                                                           transaction.transaction_output_attribute.transaction_output_metadata?.files?.length > 0) {
                                                                                                                           fileExchange.syncFilesFromTransaction(transaction);

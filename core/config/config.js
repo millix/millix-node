@@ -17,6 +17,7 @@ export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = true;
 export const MODE_NODE_VALIDATION_FULL                         = true;
 export const MODE_NODE_SYNC_FULL                               = true;
+export const MODE_STORAGE_SYNC                                 = true;
 export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
@@ -841,6 +842,7 @@ STORAGE_CONNECTION.PENDING_TO_RECEIVE = DATA_BASE_DIR + '/storage/receiving.log'
 
 export default {
     MODE_DEBUG,
+    MODE_STORAGE_SYNC,
     MODE_NODE_SYNC_FULL,
     MODE_NODE_VALIDATION_FULL,
     FORCE_QUEUE_UPDATE,
