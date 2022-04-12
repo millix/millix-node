@@ -8,6 +8,7 @@ class _ConfigLoader {
     constructor() {
         this.reservedConfigNameList = new Set([
             'DATABASE_CONNECTION',
+            'STORAGE_CONNECTION',
             'NODE_MILLIX_VERSION',
             'TRANSACTION_INPUT_MAX',
             'TRANSACTION_OUTPUT_MAX',
