@@ -13,12 +13,24 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
     /**
      * returns a latest millix version
      * @param app
-     * @param req
-     * @param res
+     * @param req (p0: account<require>)
+     * * @param res
      */
     handler(app, req, res) {
+        let account;
+
+        if (!req.query.p0) {
+            return res.status(400).send({
+                api_status : 'fail',
+                api_message: 'p0<account> is required'
+            });
+        }
+        else {
+            account = req.query.p0;
+        }
+
         const options = {
-            hostname: 'millix.org',
+            hostname: `${account}.org`,
             port: 443,
             path: '/latest.php',
             method: 'GET'
