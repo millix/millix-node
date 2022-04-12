@@ -552,9 +552,11 @@ class WalletUtils {
                 '0b0',
                 '0b10',
                 '0b20',
+                '0b30',
                 'lb0l',
                 'lb1l',
-                'lb2l'
+                'lb2l',
+                'lb3l'
             ].includes(transaction.version)) {
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 if (!(isValidRefresh)) {
