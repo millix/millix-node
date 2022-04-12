@@ -12,16 +12,16 @@ class Queue {
     static RECEIVER = 'RECEIVER';
 
     constructor() {
-        this.senderLogFile            = path.join(os.homedir(), config.STORAGE_CONNECTION.PENDING_TO_SEND);
         this.senderLog                = [];
         this.countActiveSendInstances = 0;
 
-        this.receiverFileLog             = path.join(os.homedir(), config.STORAGE_CONNECTION.PENDING_TO_RECEIVE);
         this.receiverLog                 = [];
         this.countActiveReceiveInstances = 0;
     }
 
     initializeSender() {
+        this.senderLogFile   = path.join(os.homedir(), config.STORAGE_CONNECTION.PENDING_TO_SEND);
+
         if (!fs.existsSync(this.senderLogFile)) {
             fs.closeSync(fs.openSync(this.senderLogFile, 'w'));
         }
@@ -29,6 +29,8 @@ class Queue {
     }
 
     initializeReceiver() {
+        this.receiverFileLog = path.join(os.homedir(), config.STORAGE_CONNECTION.PENDING_TO_RECEIVE);
+        
         if (!fs.existsSync(this.receiverFileLog)) {
             fs.closeSync(fs.openSync(this.receiverFileLog, 'w'));
         }
