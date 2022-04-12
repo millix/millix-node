@@ -24,7 +24,30 @@ class Peer {
         this.nodeAttributeCache                = {};
     }
 
-    requestTransactionFileSync(addressKeyIdentifier, transactionID, transactionFileList, ws) {
+    transactionFileSyncResponse(data, ws) {
+        return new Promise((resolve, reject) => {
+            if (!ws) {
+                return reject();
+            }
+            let payload = {
+                type   : `transaction_file_response:${ws.nodeID}:${data.transaction_id}`,
+                content: data
+            };
+            eventBus.emit('node_event_log', payload);
+            data = JSON.stringify(payload);
+            try {
+                ws.nodeConnectionReady && ws.send(data);
+                resolve();
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+                reject();
+            }
+        });
+    }
+
+    transactionFileSyncRequest(addressKeyIdentifier, transactionID, transactionFileList, ws) {
         let payload = {
             type   : 'transaction_file_request',
             content: {
@@ -75,7 +98,7 @@ class Peer {
         });
     }
 
-    requestTransactionFileChunk(addressKeyIdentifier, transactionId, fileHash, nodePublicKey, ws) {
+    transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, fileHash, ws) {
         return new Promise((resolve, reject) => {
             if (!ws) {
                 return reject();
@@ -84,9 +107,9 @@ class Peer {
                 type   : 'transaction_file_chunk_request',
                 content: {
                     address_key_identifier: addressKeyIdentifier,
+                    receiver_endpoint     : serverEndpoint,
                     transaction_id        : transactionId,
-                    file_hash             : fileHash,
-                    node_public_key       : nodePublicKey
+                    file_hash             : fileHash
                 }
             };
             eventBus.emit('node_event_log', payload);
@@ -1360,7 +1383,7 @@ class Peer {
                 'node_port',
                 'node_id'
             ]),
-            node_online  : true
+            node_online: true
         };
 
         let payload = {
