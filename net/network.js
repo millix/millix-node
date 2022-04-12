@@ -523,7 +523,7 @@ class Network {
                         peer.sendConnectionReady(extra, ws);
 
                         // request peer attributes
-                        this._requestAllNodeAttribute(peerNodeID, ws);
+                        this._requestAllNodeAttribute(ws);
                         // send peer list to the new node
                         peer.sendNodeList(ws).then(_ => _);
 
@@ -808,7 +808,8 @@ class Network {
         }
     }
 
-    _requestAllNodeAttribute(nodeID, ws) {
+    _requestAllNodeAttribute(ws) {
+        const nodeID = ws.nodeID;
         const attributeNameList = _.filter([
             'shard_protocol',
             'transaction_count',
@@ -844,7 +845,7 @@ class Network {
                 ws.nodeConnectionReady = true;
 
                 // request node attributes
-                this._requestAllNodeAttribute(ws.nodeID, ws);
+                this._requestAllNodeAttribute(ws);
 
                 // send peer list to the new node
                 peer.sendNodeList(ws).then(_ => _);
