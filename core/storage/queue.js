@@ -111,7 +111,7 @@ class Queue {
                         return reject(err);
                     }
                     else {
-                        this.senderLog.append({
+                        this.senderLog.push({
                             nodeId       : nodeId,
                             transactionId: transactionId,
                             fileHash     : fileHash
@@ -167,7 +167,7 @@ class Queue {
 
                     content.split(/\r?\n/).forEach(line => {
                         let elements = line.split(';');
-                        this.senderLog.append({
+                        this.senderLog.push({
                             nodeId       : elements[0],
                             transactionId: elements[1],
                             fileHash     : elements[2]
@@ -215,7 +215,7 @@ class Queue {
                         return reject(err);
                     }
 
-                    this.receiverLog.append({
+                    this.receiverLog.push({
                         nodeId        : nodeId,
                         transactionId : transactionId,
                         fileHash      : fileHash,
@@ -273,7 +273,7 @@ class Queue {
 
                     content.split(/\r?\n/).forEach(line => {
                         let elements = line.split(';');
-                        this.receiverLog.append({
+                        this.receiverLog.push({
                             nodeId        : elements[0],
                             transactionId : elements[1],
                             fileHash      : elements[2],
