@@ -705,9 +705,7 @@ class WalletUtils {
             transaction['transaction_parent_list'] = [];
         }
 
-        // verify signature
-        let vTransaction = _.cloneDeep(_.omit(transaction, [
-            'transaction_output_attribute',
+        const omitFields = [
             'payload_hash',
             'transaction_id',
             'transaction_date',
@@ -715,7 +713,16 @@ class WalletUtils {
             'node_id_proxy',
             'shard_id',
             'version'
-        ]));
+        ];
+
+        const versionType = version.charAt(1);
+        if (!((versionType === 'a' || versionType === 'b') &&
+              parseInt(version.substring(2), version.length - 1) >= 3)) {
+            omitFields.push('transaction_output_attribute');
+        }
+
+        // verify signature
+        let vTransaction = _.cloneDeep(_.omit(transaction, omitFields));
 
         const addressSignatureList = [];
         for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
