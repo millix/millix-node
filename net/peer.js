@@ -9,6 +9,7 @@ import walletSync from '../core/wallet/wallet-sync';
 import peerRotation from './peer-rotation';
 import statistics from '../core/statistics';
 import wallet from '../core/wallet/wallet';
+import cache from '../core/cache';
 
 
 class Peer {
@@ -23,7 +24,30 @@ class Peer {
         this.nodeAttributeCache                = {};
     }
 
-    requestTransactionFileSync(addressKeyIdentifier, transactionID, transactionFileList, ws) {
+    transactionFileSyncResponse(data, ws) {
+        return new Promise((resolve, reject) => {
+            if (!ws) {
+                return reject();
+            }
+            let payload = {
+                type   : `transaction_file_response:${ws.nodeID}:${data.transaction_id}`,
+                content: data
+            };
+            eventBus.emit('node_event_log', payload);
+            data = JSON.stringify(payload);
+            try {
+                ws.nodeConnectionReady && ws.send(data);
+                resolve();
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+                reject();
+            }
+        });
+    }
+
+    transactionFileSyncRequest(addressKeyIdentifier, transactionID, transactionFileList, ws) {
         let payload = {
             type   : 'transaction_file_request',
             content: {
@@ -74,7 +98,7 @@ class Peer {
         });
     }
 
-    requestTransactionFileChunk(addressKeyIdentifier, transactionId, fileHash, nodePublicKey, ws) {
+    transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, fileHash, ws) {
         return new Promise((resolve, reject) => {
             if (!ws) {
                 return reject();
@@ -83,9 +107,9 @@ class Peer {
                 type   : 'transaction_file_chunk_request',
                 content: {
                     address_key_identifier: addressKeyIdentifier,
+                    receiver_endpoint     : serverEndpoint,
                     transaction_id        : transactionId,
-                    file_hash             : fileHash,
-                    node_public_key       : nodePublicKey
+                    file_hash             : fileHash
                 }
             };
             eventBus.emit('node_event_log', payload);
@@ -156,58 +180,66 @@ class Peer {
     }
 
     sendNodeList(ws) {
-        return database.getRepository('node')
-                       .listNodes()
-                       .then(nodes => {
-                           nodes = _.map(nodes, node => _.pick(node, [
-                               'node_prefix',
-                               'node_address',
-                               'node_port_api',
-                               'node_port',
-                               'node_id'
-                           ]));
+        return new Promise(resolve => {
+            const nodes = [];
+            _.each(network.registeredClients, nodeWS => {
+                const node = {
+                    ..._.pick(network.nodeList[nodeWS.node], [
+                        'node_prefix',
+                        'node_address',
+                        'node_port_api',
+                        'node_port',
+                        'node_id'
+                    ]),
+                    node_online: true
+                };
+                if (node) {
+                    nodes.push(node);
+                }
+            });
 
-                           nodes.push({
-                               node_prefix  : config.WEBSOCKET_PROTOCOL,
-                               node_address : network.nodePublicIp,
-                               node_port_api: config.NODE_PORT_API,
-                               node_port    : config.NODE_PORT,
-                               node_id      : network.nodeID
-                           }); // add self
+            if (nodes.length === 0) {
+                return;
+            }
 
-                           if (nodes.length === 0) {
-                               return;
-                           }
+            nodes.push({
+                node_prefix  : config.WEBSOCKET_PROTOCOL,
+                node_address : network.nodePublicIp,
+                node_port_api: config.NODE_PORT_API,
+                node_port    : config.NODE_PORT,
+                node_id      : network.nodeID,
+                node_online  : true
+            }); // add self
 
-                           let payload = {
-                               type   : 'node_list',
-                               content: nodes
-                           };
+            let payload = {
+                type   : 'node_list',
+                content: nodes
+            };
 
-                           eventBus.emit('node_event_log', payload);
+            eventBus.emit('node_event_log', payload);
 
-                           let data = JSON.stringify(payload);
-                           if (ws) { // send to a single node
-                               try {
-                                   ws.nodeConnectionReady && ws.send(data);
-                               }
-                               catch (e) {
-                                   console.log('[WARN]: try to send data over a closed connection.');
-                                   ws && ws.close();
-                               }
-                           }
-                           else {
-                               network.registeredClients.forEach(ws => {
-                                   try {
-                                       ws.nodeConnectionReady && ws.send(data);
-                                   }
-                                   catch (e) {
-                                       console.log('[WARN]: try to send data over a closed connection.');
-                                       ws && ws.close();
-                                   }
-                               });
-                           }
-                       });
+            let data = JSON.stringify(payload);
+            if (ws) { // send to a single node
+                try {
+                    ws.nodeConnectionReady && ws.send(data);
+                }
+                catch (e) {
+                    console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
+                }
+            }
+            else {
+                network.registeredClients.forEach(ws => {
+                    try {
+                        ws.nodeConnectionReady && ws.send(data);
+                    }
+                    catch (e) {
+                        console.log('[WARN]: try to send data over a closed connection.');
+                        ws && ws.close();
+                    }
+                });
+            }
+        });
     }
 
     propagateTransactionList(transactions) {
@@ -930,7 +962,7 @@ class Peer {
         let data = JSON.stringify(payload);
         if (ws) {
             try {
-                ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional) && ws.send(data);
+                ws.nodeConnectionReady && ws.send(data);
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
@@ -1030,7 +1062,7 @@ class Peer {
                         let nodeID         = ws.nodeID;
                         let startTimestamp = Date.now();
                         try {
-                            if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                            if (ws.nodeConnectionReady) {
                                 eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
                                 eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData) {
                                     clearTimeout(timeoutID);
@@ -1111,7 +1143,7 @@ class Peer {
                                  let data = JSON.stringify(payload);
 
                                  try {
-                                     if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
+                                     if (ws.nodeConnectionReady) {
                                          eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
                                          eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
@@ -1140,6 +1172,16 @@ class Peer {
                          });
     }
 
+    _onNewPeer(node, ws) {
+        eventBus.emit('node_event_log', {
+            type   : 'peer_new',
+            content: node,
+            from   : ws.node
+        });
+        node.node_port_api = node.node_port_api || config.NODE_PORT_API;
+        network.addNode(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id, node.node_online);
+    }
+
     _onNodeList(nodes, ws) {
         eventBus.emit('node_event_log', {
             type   : 'node_list',
@@ -1149,12 +1191,7 @@ class Peer {
         const nodeRepository = database.getRepository('node');
         async.eachSeries(nodes, (data, callback) => {
             data.node_port_api = data.node_port_api || config.NODE_PORT_API;
-
-            if (network.nodeList[`${data.node_prefix}${data.node_address}:${data.node_port}`]) {
-                return callback();
-            }
-
-            network.addNode(data.node_prefix, data.node_address, data.node_port, data.node_port_api, data.node_id);
+            network.addNode(data.node_prefix, data.node_address, data.node_port, data.node_port_api, data.node_id, data.node_online);
             callback();
         }, () => {
             nodeRepository.addNodeAttribute(ws.nodeID, 'peer_count', nodes.length)
@@ -1337,14 +1374,56 @@ class Peer {
         return peerRotation.doPeerRotation();
     }
 
+    _onNewPeerConnection(newWS) {
+        const node = {
+            ..._.pick(network.nodeList[newWS.node], [
+                'node_prefix',
+                'node_address',
+                'node_port_api',
+                'node_port',
+                'node_id'
+            ]),
+            node_online: true
+        };
+
+        let payload = {
+            type   : 'peer_new',
+            content: node
+        };
+
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+
+        network.registeredClients.forEach(ws => {
+            const cacheKey = `peer_new_notified_${newWS.nodeID !== ws.nodeID}_${ws.nodeID}`;
+            if (newWS !== ws && newWS.nodeID !== ws.nodeID && !cache.getCacheItem('peer', cacheKey)) {
+                cache.setCacheItem('peer', cacheKey, true, 600000);
+                try {
+                    ws.nodeConnectionReady && ws.send(data);
+                }
+                catch (e) {
+                    console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
+                }
+            }
+        });
+    }
+
     initialize() {
         eventBus.on('node_list', this._onNodeList.bind(this));
+        eventBus.on('peer_new', this._onNewPeer.bind(this));
         eventBus.on('node_attribute_request', this._onNodeAttributeRequest.bind(this));
         eventBus.on('node_attribute_response', this._onNodeAttributeResponse.bind(this));
+        eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
     }
 
     stop() {
         eventBus.removeAllListeners('node_list');
+        eventBus.removeAllListeners('peer_new');
+        eventBus.removeAllListeners('node_attribute_request');
+        eventBus.removeAllListeners('node_attribute_response');
+        eventBus.removeAllListeners('peer_connection_new');
     }
 }
 

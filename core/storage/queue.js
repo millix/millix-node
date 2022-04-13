@@ -12,16 +12,16 @@ class Queue {
     static RECEIVER = 'RECEIVER';
 
     constructor() {
-        this.senderLogFile            = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_SEND);
         this.senderLog                = [];
         this.countActiveSendInstances = 0;
 
-        this.receiverFileLog             = path.join(os.homedir(), config.FILES_CONNECTION.PENDING_TO_RECEIVE);
         this.receiverLog                 = [];
         this.countActiveReceiveInstances = 0;
     }
 
     initializeSender() {
+        this.senderLogFile   = path.join(os.homedir(), config.STORAGE_CONNECTION.PENDING_TO_SEND);
+
         if (!fs.existsSync(this.senderLogFile)) {
             fs.closeSync(fs.openSync(this.senderLogFile, 'w'));
         }
@@ -29,6 +29,8 @@ class Queue {
     }
 
     initializeReceiver() {
+        this.receiverFileLog = path.join(os.homedir(), config.STORAGE_CONNECTION.PENDING_TO_RECEIVE);
+        
         if (!fs.existsSync(this.receiverFileLog)) {
             fs.closeSync(fs.openSync(this.receiverFileLog, 'w'));
         }
@@ -47,8 +49,7 @@ class Queue {
     _buildEntryForSender(entry) {
         return entry.nodeId + ';' +
                entry.transactionId + ';' +
-               entry.fileHash + ';' +
-               entry.nodePublicKey + '\n';
+               entry.fileHash + '\n';
     }
 
     _buildEntryForReceiver(entry) {
@@ -97,13 +98,12 @@ class Queue {
         return this.countActiveSendInstances > 0;
     }
 
-    addNewFileToSender(nodeId, transactionId, fileHash, nodePublicKey) {
+    addNewFileToSender(nodeId, transactionId, fileHash) {
         return new Promise((resolve, reject) => {
             let newEntry = this._buildEntry({
                 nodeId,
                 transactionId,
-                fileHash,
-                nodePublicKey
+                fileHash
             }, Queue.SENDER);
             mutex.lock(['update-sender-file-log'], (unlock) => {
                 fs.appendFile(this.senderLogFile, newEntry, (err) => {
@@ -113,11 +113,10 @@ class Queue {
                         return reject(err);
                     }
                     else {
-                        this.senderLog.append({
+                        this.senderLog.push({
                             nodeId       : nodeId,
                             transactionId: transactionId,
-                            fileHash     : fileHash,
-                            nodePublicKey: nodePublicKey
+                            fileHash     : fileHash
                         });
                         unlock();
                         resolve();
@@ -170,11 +169,10 @@ class Queue {
 
                     content.split(/\r?\n/).forEach(line => {
                         let elements = line.split(';');
-                        this.senderLog.append({
+                        this.senderLog.push({
                             nodeId       : elements[0],
                             transactionId: elements[1],
-                            fileHash     : elements[2],
-                            nodePublicKey: elements[3]
+                            fileHash     : elements[2]
                         });
                     });
 
@@ -219,7 +217,7 @@ class Queue {
                         return reject(err);
                     }
 
-                    this.receiverLog.append({
+                    this.receiverLog.push({
                         nodeId        : nodeId,
                         transactionId : transactionId,
                         fileHash      : fileHash,
@@ -277,7 +275,7 @@ class Queue {
 
                     content.split(/\r?\n/).forEach(line => {
                         let elements = line.split(';');
-                        this.receiverLog.append({
+                        this.receiverLog.push({
                             nodeId        : elements[0],
                             transactionId : elements[1],
                             fileHash      : elements[2],

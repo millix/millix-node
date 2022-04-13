@@ -9,6 +9,9 @@ import queue from './queue';
 import request from 'request';
 import eventBus from '../event-bus';
 import network from '../../net/network';
+import fileManager from './file-manager';
+import peer from '../../net/peer';
+import _ from 'lodash';
 
 
 class Sender {
@@ -30,16 +33,8 @@ class Sender {
                                   ecdhCurve: 'prime256v1'
                               };
                               this._defineServerOperations();
-                          }).then(() => queue.initializeSender());
-    }
-
-    _onTransactionFileChunkRequest(data) {
-        this.sendChunk(data.receiver_endpoint, network.nodeID, data.address_key_identifier, data.transaction_id, data.file_hash, data.chunk_number)
-            .then(_ => _);
-    }
-
-    _registerEventListener() {
-        eventBus.on('transaction_file_chunk_request', this._onTransactionFileChunkRequest.bind(this));
+                          })
+                          .then(() => queue.initializeSender());
     }
 
     _defineServerOperations() {
@@ -95,16 +90,19 @@ class Sender {
         return this.httpsServer;
     }
 
-    serveFile(nodeId, addressKeyIdentifier, transactionId, fileHash, nodePublicKey) {
-        return queue.addNewFileToSender(nodeId, transactionId, fileHash, nodePublicKey)
-                    .then(() => chunkUtils.getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash));
+    getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash) {
+        return chunkUtils.getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash);
     }
 
-    sendChunk(receiverEndpoint, nodeId, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
+    serveFile(nodeId, addressKeyIdentifier, transactionId, fileHash) {
+        return queue.addNewFileToSender(nodeId, transactionId, fileHash);
+    }
+
+    sendChunk(receiverEndpoint, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
         return chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
             let payload = {
                 url : receiverEndpoint.concat('/file/')
-                                      .concat(nodeId).concat('/')
+                                      .concat(network.nodeID).concat('/')
                                       .concat(addressKeyIdentifier).concat('/')
                                       .concat(transactionId).concat('/')
                                       .concat(fileHash).concat('/')

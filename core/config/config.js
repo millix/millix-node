@@ -14,8 +14,10 @@ export const NODE_NAT_PMP                                      = true;
 export const NODE_NAT_PMP_CHECK                                = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
-export const NODE_PUBLIC                                       = false;
-export const MODE_NODE_FULL                                    = false;
+export const NODE_PUBLIC                                       = true;
+export const MODE_NODE_VALIDATION_FULL                         = true;
+export const MODE_NODE_SYNC_FULL                               = true;
+export const MODE_STORAGE_SYNC                                 = true;
 export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
@@ -744,11 +746,11 @@ export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
 export const WALLET_LOG_SIZE_MAX                               = 1000;
-export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a20';
-export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la2l';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a30';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la3l';
 export const WALLET_TRANSACTION_DEFAULT_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK : WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK;
-export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b20';
-export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb2l';
+export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b30';
+export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb3l';
 export const WALLET_TRANSACTION_REFRESH_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK : WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a0',
@@ -756,7 +758,9 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a10',
     '0b10',
     '0a20',
-    '0b20'
+    '0b20',
+    '0a30',
+    '0b30'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la0l',
@@ -764,7 +768,9 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la1l',
     'lb1l',
     'la2l',
-    'lb2l'
+    'lb2l',
+    'la3l',
+    'lb3l'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX                 = 1000;
@@ -777,10 +783,10 @@ export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
-export const FILES_CONNECTION                                  = {};
+export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1648494468;
-export const NODE_MILLIX_VERSION                               = '1.16.3';
+export const NODE_MILLIX_BUILD_DATE                            = 1649441792;
+export const NODE_MILLIX_VERSION                               = '1.17.6';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -830,13 +836,15 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCHEMA_VERSION                          = '19';
 }
 
-FILES_CONNECTION.FOLDER                                         = DATA_BASE_DIR + '/files/';
-FILES_CONNECTION.PENDING_TO_SEND                                = DATA_BASE_DIR + '/files/sending.log';
-FILES_CONNECTION.PENDING_TO_RECEIVE                             = DATA_BASE_DIR + '/files/receiving.log';
+STORAGE_CONNECTION.FOLDER             = DATA_BASE_DIR + '/storage/';
+STORAGE_CONNECTION.PENDING_TO_SEND    = DATA_BASE_DIR + '/storage/sending.log';
+STORAGE_CONNECTION.PENDING_TO_RECEIVE = DATA_BASE_DIR + '/storage/receiving.log';
 
 export default {
     MODE_DEBUG,
-    MODE_NODE_FULL,
+    MODE_STORAGE_SYNC,
+    MODE_NODE_SYNC_FULL,
+    MODE_NODE_VALIDATION_FULL,
     FORCE_QUEUE_UPDATE,
     MODE_TEST_NETWORK,
     NODE_PORT,
@@ -862,7 +870,7 @@ export default {
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
-    FILES_CONNECTION,
+    STORAGE_CONNECTION,
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
     CONSENSUS_VALIDATION_DEPTH_MAX,

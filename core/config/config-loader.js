@@ -8,11 +8,19 @@ class _ConfigLoader {
     constructor() {
         this.reservedConfigNameList = new Set([
             'DATABASE_CONNECTION',
+            'STORAGE_CONNECTION',
             'NODE_MILLIX_VERSION',
             'TRANSACTION_INPUT_MAX',
             'TRANSACTION_OUTPUT_MAX',
             'TRANSACTION_PARENT_MAX',
             'TRANSACTION_SIGNATURE_MAX',
+            'DEBUG_LOG_FILTER',
+            'FORCE_QUEUE_UPDATE',
+            'MODE_NODE_VALIDATION_FULL',
+            'NETWORK_LONG_TIME_WAIT_MAX',
+            'NETWORK_SHORT_TIME_WAIT_MAX',
+            'TRANSACTION_TIME_LIMIT_PROXY',
+            'TRANSACTION_CLOCK_SKEW_TOLERANCE',
             'TRANSACTION_OUTPUT_REFRESH_OLDER_THAN',
             'TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN',
             'WALLET_TRANSACTION_DEFAULT_VERSION',
@@ -32,6 +40,93 @@ class _ConfigLoader {
                  .deleteAll();
     }
 
+    _onMillixVersionUpgrade(oldVersion, newVersion) {
+        return new Promise(resolve => {
+            const re = new RegExp('(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)');
+            let major, minor, patch;
+            if (oldVersion) {
+                const match = re.exec(oldVersion);
+                if (match && match.groups &&
+                    match.groups.major && match.groups.minor && match.groups.patch) {
+                    major = parseInt(match.groups.major);
+                    minor = parseInt(match.groups.minor);
+                    patch = parseInt(match.groups.patch);
+                }
+            }
+
+            if (!oldVersion || (major === 1 && minor <= 17 && patch <= 5)) {
+                /* apply to all version <= 1.17.5 */
+                async.eachSeries(db.shards, (shard, callback) => {
+                    shard.database.exec(`
+                        update transaction_input
+                        set status = 1
+                        where transaction_id in (select transaction_id from 'transaction'
+                        where status = 3
+                          and create_date
+                            > strftime('%s'
+                            , 'now'
+                            , '-90 days'));
+                        update transaction_output
+                        set is_stable   = 0,
+                            stable_date = NULL,
+                            status      = 1
+                        where transaction_id in (select transaction_id from 'transaction'
+                        where status = 3
+                          and create_date
+                            > strftime('%s'
+                            , 'now'
+                            , '-90 days'));
+                        update 'transaction'
+                        set is_stable = 0, stable_date = NULL, status = 1
+                        where transaction_id in (select transaction_id from 'transaction' where status = 3
+                          and create_date
+                            > strftime('%s'
+                            , 'now'
+                            , '-90 days'));
+                        update transaction_input
+                        set status = 3
+                        where transaction_id =
+                              '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
+                        update transaction_output
+                        set is_stable   = 1,
+                            stable_date = CAST(strftime('%s', 'now') AS INTEGER),
+                            status      = 3
+                        where transaction_id =
+                              '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
+                        update 'transaction'
+                        set is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), status = 3
+                        where transaction_id = '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
+                    `, err => {
+                        if (err) {
+                            console.log('[config-loader] could not apply database patch on version update', err);
+                        }
+                        callback();
+                    });
+                }, () => resolve());
+            }
+            else {
+                resolve();
+            }
+        });
+    }
+
+    updateMillixVersion(version) {
+        return db.getRepository('config')
+                 .getConfig('NODE_MILLIX_VERSION')
+                 .then(data => {
+                     const oldVersion = data?.value;
+                     if (!data || oldVersion !== version) {
+                         return this._onMillixVersionUpgrade(oldVersion, version)
+                                    .then(() => {
+                                        const configRepository = db.getRepository('config');
+                                        return configRepository.addConfig('NODE_MILLIX_VERSION', version, 'string')
+                                                               .catch(() => configRepository.updateConfig('NODE_MILLIX_VERSION', version, 'string'));
+                                    });
+                     }
+                 })
+                 .catch(() => Promise.resolve());
+    }
+
     load(overwriteDefaultConfigsFromDatabase = true) {
         return new Promise(resolve => {
             let dbConfigs = {
@@ -42,6 +137,12 @@ class _ConfigLoader {
                 if (configName === 'default' || this.reservedConfigNameList.has(configName)) {
                     dbConfigs.config[configName] = config[configName];
                     dbConfigs.type[configName]   = 'object';
+
+                    if (configName === 'NODE_MILLIX_VERSION') {
+                        return this.updateMillixVersion(config['NODE_MILLIX_VERSION'])
+                                   .then(() => callback());
+                    }
+
                     callback();
                 }
                 else {

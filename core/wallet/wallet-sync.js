@@ -10,6 +10,7 @@ import database from '../../database/database';
 import wallet from './wallet';
 import async from 'async';
 import _ from 'lodash';
+import eventBus from '../event-bus';
 
 
 export class WalletSync {
@@ -151,8 +152,9 @@ export class WalletSync {
                 const transactionOutputToQueue = [];
                 async.eachSeries(transactionOutputToSyncList, (transactionOutput, callback) => {
                     peer.transactionOutputSpendRequest(transactionOutput.transaction_id, transactionOutput.output_position)
-                        .then(_ => callback())
-                        .catch(() => {
+                        .then(data => _.each(data.transaction_list, transaction => eventBus.emit('transaction_new', transaction)))
+                        .catch(_ => _)
+                        .then(() => {
                             transactionOutputToQueue.push({
                                 transaction_output_id: transactionOutput.transaction_output_id
                             });
@@ -309,7 +311,7 @@ export class WalletSync {
         }).then(() => this.updateSyncTransactionSpend());
     }
 
-    syncTransactionSpendingOutputs(transaction) {
+    syncTransactionSpendingOutputs(transaction, isModeFullSync) {
         const walletKeyIdentifierSet = new Set([
             wallet.getKeyIdentifier(),
             ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
@@ -321,7 +323,7 @@ export class WalletSync {
                     transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
                 });
             }
-            else {
+            else if (isModeFullSync) {
                 this.transactionSpendQueue.push({
                     transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
                 });
@@ -492,41 +494,64 @@ export class WalletSync {
         });
     }
 
+    updateSyncWalletTransactionSpend() {
+        return database.applyShards(shardID => {
+            // add all unspent outputs to transaction
+            // spend sync
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.listTransactionOutput({
+                address_key_identifier        : wallet.defaultKeyIdentifier,
+                is_spent                      : 0,
+                is_double_spend               : 0,
+                'transaction_output.is_stable': 1,
+                '`transaction`.status!'       : 3
+            }, 'transaction_date')
+                                        .then(transactionOutputList => {
+                                            transactionOutputList.forEach(transactionOutput => {
+                                                this.transactionSpendWalletQueue.push({transaction_output_id: `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`});
+                                            });
+                                        });
+        });
+    }
+
     updateSyncTransactionSpend() {
-        if (!this.transactionSpendWalletQueue || !this.transactionSpendQueue || !config.FORCE_QUEUE_UPDATE) {
+        if (!this.transactionSpendWalletQueue || !this.transactionSpendQueue) {
             return Promise.resolve();
         }
+
+        if (!config.FORCE_QUEUE_UPDATE) {
+            return this.updateSyncWalletTransactionSpend(); /* only update walllet transactions */
+        }
+
         const walletKeyIdentifierSet = new Set([
             wallet.getKeyIdentifier(),
             ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
         ]);
 
-        return new Promise(resolve => {
-            database.applyShards(shardID => {
-                // add all unspent outputs to transaction
-                // spend sync
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.listTransactionOutput({
-                    is_spent               : 0,
-                    is_double_spend        : 0,
-                    '`transaction`.status!': 3
-                }, 'transaction_date')
-                                            .then(transactionOutputList => {
-                                                transactionOutputList.forEach(transactionOutput => {
-                                                    const transactionOutputID = `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`;
-                                                    if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
-                                                        this.transactionSpendWalletQueue.push({
-                                                            transaction_output_id: transactionOutputID
-                                                        });
-                                                    }
-                                                    else {
-                                                        this.transactionSpendQueue.push({
-                                                            transaction_output_id: transactionOutputID
-                                                        });
-                                                    }
-                                                });
+        return database.applyShards(shardID => {
+            // add all unspent outputs to transaction
+            // spend sync
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.listTransactionOutput({
+                is_spent               : 0,
+                is_double_spend        : 0,
+                '`transaction`.status!': 3
+            }, 'transaction_date')
+                                        .then(transactionOutputList => {
+                                            transactionOutputList.forEach(transactionOutput => {
+                                                const transactionOutputID = `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`;
+                                                if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
+                                                    this.transactionSpendWalletQueue.push({
+                                                        transaction_output_id: transactionOutputID
+                                                    });
+                                                }
+                                                else {
+                                                    this.transactionSpendQueue.push({
+                                                        transaction_output_id: transactionOutputID
+                                                    });
+                                                }
                                             });
-            }).then(() => resolve());
+                                        });
         });
     }
 

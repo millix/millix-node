@@ -94,7 +94,7 @@ class Receiver {
         return queue.addChunkToReceiver(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk);
     }
 
-    unregisterFileChunkUpload(nodeId, transactionId, fileHash, nodePublicKey, requestedChunk) {
+    unregisterFileChunkUpload(nodeId, transactionId, fileHash, requestedChunk) {
         return queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk);
     }
 
@@ -169,20 +169,20 @@ class Receiver {
         });
     }
 
-    requestFileListUpload(fileData, ws) {
+    requestFileListUpload(addressKeyIdentifier, transactionId, fileList, ws) {
         const server = this.newReceiverInstance();
+        const serverEndpoint = `https://${network.nodePublicIp}:${server.address().port}/`
         return new Promise((resolve, reject) => {
             const filesReceived = new Set();
             mutex.lock(['file-receiver'], unlock => {
-                const addressKeyIdentifier          = fileData.addressKeyIdentifier;
-                const transactionId                 = fileData.transactionId;
-                const promisesToReceiveFileByChunks = fileData.files.map(file => new Promise((resolve, reject) => {
-                    async.times(file.chunks, (chunkNumber, callback) => {
-                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.name, network.nodePublicKey, file.chunks, chunkNumber)
-                            .then(() => peer.requestTransactionFileChunk(addressKeyIdentifier, transactionId, file.name, network.nodePublicKey, ws))
+                const promisesToReceiveFileByChunks = fileList.map(file => new Promise((resolve, reject) => {
+                    async.times(file.chunk_count, (chunkNumber, callback) => {
+                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.name, file.chunk_count, chunkNumber)
+                            .then(() => peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.name, ws))
                             .then(() => {
                                 eventBus.once(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.name}`, () => {
                                     callback();
+                                    return this.unregisterFileChunkUpload(ws.nodeID, transactionId, file.name, chunkNumber);
                                 });
                                 setTimeout(() => {
                                     eventBus.removeAllListeners(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.name}`);
