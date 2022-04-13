@@ -46,6 +46,7 @@ class Service {
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => database.checkup())
+                         .then(() => fileManager.initialize())
                          .then(() => fileExchange.initialize())
                          .catch(e => {
                              console.log(`[services] ${e.message}`);
