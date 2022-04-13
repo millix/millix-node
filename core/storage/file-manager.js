@@ -8,6 +8,7 @@ import mutex from '../mutex';
 import {decrypt, encrypt} from 'eciesjs';
 import walletUtils from '../wallet/wallet-utils';
 import async from 'async';
+import stream from 'stream';
 
 
 class FileManager {
@@ -86,6 +87,22 @@ class FileManager {
         });
     }
 
+    /**
+     *
+     * @param fileList  [
+     {
+                        path: <string|optional>,
+                        buffer: <Buffer|optional>,
+                        name  : <string>,
+                        size  : <int>,
+                        type  : <string>,
+                        public: <boolean>
+                },...
+     ];
+     * @param dstOutputs
+     * @param outputFee
+     * @return {Promise<{file_list: *, transaction_list: *}>}
+     */
     createTransactionWithFileList(fileList, dstOutputs, outputFee) {
         //Create directory for my files (if not exist)
         const walletKeyIdentifier  = dstOutputs[0].address_key_identifier;
@@ -101,11 +118,11 @@ class FileManager {
 
         return this._createEncryptedFiles(fileList, transactionTempDirectory)
                    .then(data => {
-                       return this._createTransaction(dstOutputs, outputFee, data.transaction_output_attribute)
-                                  .then(transactionList => ({
-                                      ...data,
-                                      transaction_list: transactionList
-                                  }));
+                       return wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a3l', data.transaction_output_attribute)
+                                    .then(transactionList => ({
+                                        ...data,
+                                        transaction_list: transactionList
+                                    }));
                    })
                    .then(data => {
                        const transactionList    = data.transaction_list;
@@ -126,25 +143,13 @@ class FileManager {
                    })
                    .catch((err) => {
                        console.log('[file-manager] error, ', err);
-                       return Promise.reject(err);
+                       return Promise.reject(err.error ? err : {
+                           error: 'transaction_data_error',
+                           data : {
+                               message: err.message
+                           }
+                       });
                    });
-    }
-
-    _createTransaction(dstOutputs, outputFee, transactionOutputAttribute) {
-        return new Promise((resolve, reject) => {
-            mutex.lock(['submit_transaction'], (unlock) => {
-                wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a3l', transactionOutputAttribute)
-                      .then(transactionList => {
-                          unlock();
-                          resolve(transactionList);
-                      })
-                      .catch(error => {
-                          console.log('[file-manager] error creating transaction', error);
-                          unlock();
-                          reject();
-                      });
-            });
-        });
     }
 
     _writeTransactionAttributeJSONFile(transactionOutputAttribute, transactionFolder) {
@@ -158,23 +163,25 @@ class FileManager {
                         return reject(error);
                     }
                     jsonWriteStream.close();
+                    resolve();
                 });
         });
     }
 
     _moveEncryptedFiles(fileList, destinationFolder) {
-        const movePromiseList = fileList.map(file => () => new Promise((resolve, reject) => {
-            let newPath = path.join(destinationFolder, file.name);
-            fs.rename(file.path, newPath, (err) => {
-                if (err) {
-                    return reject(err);
-                }
-                file.path = newPath;
-                resolve();
-            });
-        }));
-        return Promise.all(movePromiseList)
-                      .then(() => fileList);
+        const moveFiles = () => new Promise((resolve, reject) => {
+            async.eachSeries(fileList, (file, callback) => {
+                let newPath = path.join(destinationFolder, file.hash);
+                fs.rename(file.path, newPath, (err) => {
+                    if (err) {
+                        return callback(err);
+                    }
+                    file.path = newPath;
+                    callback();
+                });
+            }, err => err ? reject(err) : resolve());
+        });
+        return moveFiles().then(() => fileList);
     }
 
     _createEncryptedFiles(fileList, destinationFolder) {
@@ -186,7 +193,18 @@ class FileManager {
 
         const encryptAndWriteFile = () => new Promise((resolve, reject) => {
             async.eachSeries(fileList, (file, callback) => {
-                const input = fs.createReadStream(file.path);
+                if (!file.path && !file.buffer) {
+                    return callback(true);
+                }
+                let input;
+                if (file.path) {
+                    input = fs.createReadStream(file.path);
+                }
+                else {
+                    input = new stream.Readable();
+                    input.push(file.buffer);
+                    input.push(null);
+                }
                 let outPath = path.join(destinationFolder, file.name);
                 //update file path
                 file.path   = outPath;
@@ -257,6 +275,10 @@ class FileManager {
             .then(() => ({
                 file_list                   : fileList,
                 transaction_output_attribute: transactionOutputAttribute
+            }))
+            .catch(err => Promise.reject({
+                error: 'transaction_data_error',
+                data : {message: err.message}
             }));
     }
 
