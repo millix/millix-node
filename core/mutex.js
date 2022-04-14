@@ -31,15 +31,19 @@ class Mutex {
     }
 
     getBacklogData() {
-        let backlogData = [];
-        Object.values(this.arrQueuedJobs).forEach((element) => {
-            Object.values(element).forEach((el) => {
-                el['datetime'] = new Date(el['timestamp']).toISOString().split('.')[0].replace('T', ' ');
-                el['type'] = el.arrKeys.join(', ');
+        return new Promise(resolve => {
+            let backlogData = [];
+
+            Object.values(this.arrQueuedJobs).forEach((element) => {
+                Object.values(element).forEach((el) => {
+                    el['datetime'] = new Date(el['timestamp']).toISOString().split('.')[0].replace('T', ' ');
+                    el['type'] = el.arrKeys.join(', ');
+                });
+                backlogData.push(...element);
             });
-            backlogData.push(...element);
+
+            resolve(backlogData);
         });
-        return backlogData;
     }
 
     deleteBacklogData() {

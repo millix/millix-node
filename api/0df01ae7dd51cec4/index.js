@@ -17,18 +17,12 @@ class _0df01ae7dd51cec4 extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        try {
-            let data = mutex.getBacklogData()
+        mutex.getBacklogData().then(data => {
             res.send({
                 api_status: 'success',
                 api_message: data
             });
-        } catch (e) {
-            res.send({
-                api_status: 'fail',
-                api_message: `unexpected generic api error: (${e})`
-            });
-        }
+        });
     }
 }
 
