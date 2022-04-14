@@ -83,8 +83,8 @@ class Sender {
 
     newSenderInstance() {
         if (!queue.isSenderServerActive()) {
-            this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
-            console.log('[file-sender] Server listening on port ' + this.httpsServer.address().port);
+            this.httpsServer = https.createServer(this.serverOptions, this.app).listen(config.NODE_PORT_STORAGE_PROVIDER, config.NODE_BIND_IP);
+            console.log('[file-sender] Server listening on port ' + config.NODE_PORT_STORAGE_PROVIDER);
         }
         queue.incrementServerInstancesInSender();
         return this.httpsServer;

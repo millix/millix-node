@@ -41,8 +41,8 @@ class Receiver {
 
     newReceiverInstance() {
         if (!queue.isReceiverServerActive()) {
-            this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
-            console.log('[file-receiver] Server listening on port ' + this.httpsServer.address().port);
+            this.httpsServer = https.createServer(this.serverOptions, this.app).listen(config.NODE_PORT_STORAGE_RECEIVER, config.NODE_BIND_IP);
+            console.log('[file-receiver] Server listening on port ' + config.NODE_PORT_STORAGE_RECEIVER);
         }
         queue.incrementServerInstancesInReceiver();
         return this.httpsServer;

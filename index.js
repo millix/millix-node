@@ -48,6 +48,14 @@ if (argv.apiPort) {
     config.NODE_PORT_API = argv.apiPort;
 }
 
+if (argv.storageProviderPort) {
+    config.NODE_PORT_STORAGE_PROVIDER = argv.storageProviderPort;
+}
+
+if (argv.storageReceiverPort) {
+    config.NODE_PORT_STORAGE_RECEIVER = argv.storageReceiverPort;
+}
+
 if (argv.host) {
     config.NODE_HOST = argv.host;
 }
