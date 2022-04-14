@@ -17,7 +17,10 @@ class _PZ7x3HVHVstLNYf0 extends Endpoint {
      */
     handler(app, req, res) {
         const limit = parseInt(req.query.p0) || 1000;
-        res.send(logManager.getLog(limit))
+        res.send({
+            api_status: 'success',
+            event_log_list: logManager.getLog(limit)
+        });
     }
 }
 
