@@ -89,11 +89,15 @@ class LogManager {
         });
     }
 
-    getLog(limit = 1000) {
+    getLog(limit) {
+        let log;
         if(this.log.length <= limit) {
-            return this.log;
+            log = this.log;
+        } else {
+            log = this.log.slice(Math.max(this.log.length - limit, 0))
         }
-        return this.log.slice(Math.max(this.log.length - limit, 0))
+
+        return log;
     }
 }
 
