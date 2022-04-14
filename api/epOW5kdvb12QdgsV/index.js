@@ -17,18 +17,11 @@ class _epOW5kdvb12QdgsV extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        try {
-            mutex.deleteBacklogData()
-            res.send({
-                api_status: 'success',
-                api_message: `ok`
-            });
-        } catch (e) {
-            res.send({
-                api_status: 'fail',
-                api_message: `unexpected generic api error: (${e})`
-            });
-        }
+        mutex.deleteBacklogData();
+
+        res.send({
+            api_status: 'success'
+        });
     }
 }
 
