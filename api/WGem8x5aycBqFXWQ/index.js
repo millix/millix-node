@@ -1,4 +1,5 @@
 import Endpoint from '../endpoint';
+import config from "../../core/config/config";
 
 const https = require('https')
 
@@ -13,21 +14,11 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
     /**
      * returns a latest millix version
      * @param app
-     * @param req (p0: account<require>)
+     * @param req
      * * @param res
      */
     handler(app, req, res) {
-        let account;
-
-        if (!req.query.p0) {
-            return res.status(400).send({
-                api_status : 'fail',
-                api_message: 'p0<account> is required'
-            });
-        }
-        else {
-            account = req.query.p0;
-        }
+        let account = config.NODE_MILLIX_VERSION.includes('tangled') ? 'tangled' : 'millix';
 
         const options = {
             hostname: `${account}.org`,
