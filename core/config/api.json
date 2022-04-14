@@ -20,10 +20,10 @@
     },
     {
       "id": "WGem8x5aycBqFXWQ",
-      "name": "get_latest_millix_version",
-      "description": "returns a last millix version",
+      "name": "get_available_version",
+      "description": "returns a available client/browser version",
       "method": "GET",
-      "version_released": "1.2.0",
+      "version_released": "1.17.6",
       "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
     },
