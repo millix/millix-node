@@ -29,11 +29,10 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
         }
 
         const options = {
-            hostname          : hostname,
-            port              : 443,
-            path              : '/latest.php',
-            method            : 'GET',
-            rejectUnauthorized: false // todo: remove when cert issue https://404publishing.atlassian.net/browse/TB-59 is fixed
+            hostname: hostname,
+            port    : 443,
+            path    : '/latest.php',
+            method  : 'GET'
         };
 
         const request = https.request(options, result => {
