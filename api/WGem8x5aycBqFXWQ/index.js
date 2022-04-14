@@ -18,10 +18,10 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
      * * @param res
      */
     handler(app, req, res) {
-        let account = config.NODE_MILLIX_VERSION.includes('tangled') ? 'tangled' : 'millix';
+        let hostname = config.NODE_MILLIX_VERSION.includes('tangled') ? 'tangled.com' : 'millix.org';
 
         const options = {
-            hostname: `${account}.org`,
+            hostname: hostname,
             port: 443,
             path: '/latest.php',
             method: 'GET'
