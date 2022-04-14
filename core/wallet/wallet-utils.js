@@ -719,7 +719,7 @@ class WalletUtils {
 
         const versionType = transaction.version.charAt(1);
         if (!((versionType === 'a' || versionType === 'b') &&
-              parseInt(transaction.version.substring(2), transaction.version.length - 1) >= 3)) {
+              parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3)) {
             omitFields.push('transaction_output_attribute');
         }
 
@@ -954,7 +954,7 @@ class WalletUtils {
                   let version                  = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
                   const versionType            = version.charAt(1);
                   if ((versionType === 'a' || versionType === 'b') &&
-                      parseInt(version.substring(2), version.length - 1) >= 3) {
+                      parseInt(version.substring(2, version.length - 1)) >= 3) {
                       // transaction output attribute
                       const transactionFeeList                    = feeOutputList.length > 0 ?
                                                                     _.map(feeOutputList, o => _.pick(o, [

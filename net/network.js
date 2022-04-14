@@ -809,7 +809,7 @@ class Network {
     }
 
     _requestAllNodeAttribute(ws) {
-        const nodeID = ws.nodeID;
+        const nodeID            = ws.nodeID;
         const attributeNameList = _.filter([
             'shard_protocol',
             'transaction_count',
@@ -971,6 +971,18 @@ class Network {
                 privatePort: config.NODE_PORT_DISCOVERY,
                 protocol   : 'UDP',
                 description: 'millix discovery'
+            }))
+            .then(() => portMapper({
+                publicPort : config.NODE_PORT_STORAGE_PROVIDER,
+                privatePort: config.NODE_PORT_STORAGE_PROVIDER,
+                protocol   : 'TCP',
+                description: 'millix storage provider'
+            }))
+            .then(() => portMapper({
+                publicPort : config.NODE_PORT_STORAGE_RECEIVER,
+                privatePort: config.NODE_PORT_STORAGE_RECEIVER,
+                protocol   : 'TCP',
+                description: 'millix storage receiver'
             }));
     }
 
@@ -980,11 +992,10 @@ class Network {
         console.log('node id : ', this.nodeID);
         this.natAPI = new NatAPI();
         this.doPortMapping()
-            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem))
             .catch((e) => {
                 console.log(`[network] error in nat-pmp ${e}`);
-                return this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem);
-            });
+            })
+            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem));
 
         this.connectToNodes();
         this.initialized = true;
