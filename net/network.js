@@ -216,15 +216,7 @@ class Network {
 
         statistics.newEvent(messageType);
 
-        if (ws.outBound && !ws.bidirectional && this.shouldBlockMessage(messageType)) {
-            return;
-        }
-
         eventBus.emit(jsonMessage.type, content, ws);
-    }
-
-    shouldBlockMessage(messageType) {
-        return !this._allowedMessageInOutboudConnection.has(messageType) && !!/.*_(request|sync|allocate)$/g.exec(messageType);
     }
 
     getHostByNode(node) {
