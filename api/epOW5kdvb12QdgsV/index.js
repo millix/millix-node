@@ -17,7 +17,7 @@ class _epOW5kdvb12QdgsV extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        mutex.deleteBacklogData();
+        mutex.resetBacklog();
 
         res.send({
             api_status: 'success'

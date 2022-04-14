@@ -46,7 +46,7 @@ class Mutex {
         });
     }
 
-    deleteBacklogData() {
+    resetBacklog() {
         this.arrQueuedJobs.transaction = [];
     }
 
