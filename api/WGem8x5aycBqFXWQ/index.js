@@ -1,10 +1,11 @@
 import Endpoint from '../endpoint';
-import config from "../../core/config/config";
+import config from '../../core/config/config';
 
-const https = require('https')
+const https = require('https');
+
 
 /**
- * api get_latest_millix_version
+ * api get_available_version
  */
 class _WGem8x5aycBqFXWQ extends Endpoint {
     constructor() {
@@ -12,39 +13,55 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
     }
 
     /**
-     * returns a latest millix version
+     * returns a available version
      * @param app
      * @param req
-     * * @param res
+     * @param res
      */
     handler(app, req, res) {
-        let hostname = config.NODE_MILLIX_VERSION.includes('tangled') ? 'tangled.com' : 'millix.org';
+        const node_millix_version = config.NODE_MILLIX_VERSION;
+
+        let hostname    = 'millix.org';
+        let application = 'client';
+        if (node_millix_version.includes('tangled')) {
+            hostname    = 'tangled.com';
+            application = 'browser';
+        }
 
         const options = {
-            hostname: hostname,
-            port: 443,
-            path: '/latest.php',
-            method: 'GET'
-        }
+            hostname          : hostname,
+            port              : 443,
+            path              : '/latest.php',
+            method            : 'GET',
+            rejectUnauthorized: false // todo: remove when cert issue https://404publishing.atlassian.net/browse/TB-59 is fixed
+        };
 
         const request = https.request(options, result => {
             result.on('data', d => {
-                const buf = Buffer.from(d, 'utf8');
+                const buf             = Buffer.from(d, 'utf8');
+                let version_available = buf.toString().replace(/(\n)/gm, '');
+
+                if (application === 'browser') {
+                    version_available += '-tangled';
+                }
+
                 res.send({
-                    api_status: 'success',
-                    api_message: buf.toString().replace(/(\n)/gm, "")
-                })
-            })
-        })
+                    api_status         : 'success',
+                    version_available  : version_available,
+                    application        : application,
+                    node_millix_version: node_millix_version
+                });
+            });
+        });
 
         request.on('error', error => {
             res.send({
-                api_status: 'fail',
+                api_status : 'fail',
                 api_message: error
-            })
-        })
+            });
+        });
 
-        request.end()
+        request.end();
     }
 }
 
