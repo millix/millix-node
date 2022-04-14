@@ -38,7 +38,7 @@ class Network {
         this._wss                                  = null;
         this.networkInterfaceAddresses             = [];
         this.nodeID                                = null;
-        this.nodeIsPublic                          = undefined;
+        this.nodeIsPublic                          = config.NODE_PUBLIC;
         this.certificatePem                        = null;
         this.certificatePrivateKeyPem              = null;
         this.nodeConnectionID                      = this.generateNewID();
