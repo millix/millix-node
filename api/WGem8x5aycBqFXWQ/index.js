@@ -1,4 +1,5 @@
 import Endpoint from '../endpoint';
+import config from "../../core/config/config";
 
 const https = require('https')
 
@@ -14,11 +15,13 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
      * returns a latest millix version
      * @param app
      * @param req
-     * @param res
+     * * @param res
      */
     handler(app, req, res) {
+        let account = config.NODE_MILLIX_VERSION.includes('tangled') ? 'tangled' : 'millix';
+
         const options = {
-            hostname: 'millix.org',
+            hostname: `${account}.org`,
             port: 443,
             path: '/latest.php',
             method: 'GET'
