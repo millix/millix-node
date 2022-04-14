@@ -1018,7 +1018,7 @@ class Wallet {
                                                                                                                       if (config.MODE_STORAGE_SYNC && (versionType === 'a' || versionType === 'b') &&
                                                                                                                           parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3 &&
                                                                                                                           transaction.transaction_output_attribute.transaction_output_metadata?.file_list?.length > 0) {
-                                                                                                                          fileExchange.syncFilesFromTransaction(transaction);
+                                                                                                                          fileExchange.addTransactionToSyncQueue(transaction);
                                                                                                                       }
 
                                                                                                                       delete this._transactionReceivedFromNetwork[transaction.transaction_id];

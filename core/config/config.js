@@ -842,9 +842,10 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCHEMA_VERSION                          = '19';
 }
 
-STORAGE_CONNECTION.FOLDER             = DATA_BASE_DIR + '/storage/';
-STORAGE_CONNECTION.PENDING_TO_SEND    = DATA_BASE_DIR + '/storage/sending.log';
-STORAGE_CONNECTION.PENDING_TO_RECEIVE = DATA_BASE_DIR + '/storage/receiving.log';
+STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
+STORAGE_CONNECTION.PENDING_TO_SEND        = DATA_BASE_DIR + '/storage/sending.log';
+STORAGE_CONNECTION.PENDING_TO_RECEIVE     = DATA_BASE_DIR + '/storage/receiving.log';
+STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE = 'millix_storage_queue.sqlite';
 
 export default {
     MODE_DEBUG,

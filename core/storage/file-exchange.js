@@ -5,6 +5,7 @@ import config from '../config/config';
 import sender from './sender';
 import receiver from './receiver';
 import fileManager from './file-manager';
+import fileSync from './file-sync';
 import _ from 'lodash';
 import async from 'async';
 import peer from '../../net/peer';
@@ -24,6 +25,7 @@ class FileExchange {
         }
         return sender.initialize()
                      .then(() => receiver.initialize())
+                     .then(() => fileSync.initialize())
                      .then(() => {
                          this._registerEventListeners();
                      });
@@ -96,78 +98,87 @@ class FileExchange {
         eventBus.on('transaction_file_request', this._onTransactionFileSyncRequest.bind(this));
     }
 
-    syncFilesFromTransaction(transaction) {
-        const transactionId        = transaction.transaction_id,
-              addressKeyIdentifier = transaction.transaction_input_list[0].address_key_identifier,
-              fileList             = transaction.transaction_output_attribute.transaction_output_metadata.file_list;
+    addTransactionToSyncQueue(transaction) {
+        fileSync.add(transaction);
+    }
 
-        if (!transactionId || !addressKeyIdentifier || !fileList ||
-            this.activeTransactionSync.has(transactionId)) {
-            return;
-        }
+    syncFilesFromTransaction(transactionId, addressKeyIdentifier, fileList) {
+        return new Promise((resolve, reject) => {
+            if (!transactionId || !addressKeyIdentifier || !fileList) {
+                return reject('transaction_file_sync_invalid');
+            }
+            else if (this.activeTransactionSync.has(transactionId)) {
+                return resolve('transaction_file_sync_in_progress');
+            }
+            this.activeTransactionSync.add(transactionId);
 
-        this.activeTransactionSync.add(transactionId);
+            const fileListToRequest = [];
+            async.eachSeries(fileList, (file, callback) => {
+                fileManager.hasFile(addressKeyIdentifier, transactionId, file.name)
+                           .then(hasFile => {
+                               if (hasFile) {
+                                   return callback();
+                               }
+                               fileListToRequest.push(file);
+                               callback();
+                           });
+            }, () => {
+                if (fileListToRequest.length > 0) {
+                    let nodesWS = _.shuffle(network.registeredClients);
+                    async.eachSeries(nodesWS, (ws, callback) => {
+                        peer.transactionFileSyncRequest(addressKeyIdentifier, transactionId, fileListToRequest.map(file => file.hash), ws)
+                            .then((data) => {
+                                let serverEndpoint = data.server_endpoint;
+                                if (serverEndpoint) {
+                                    receiver.downloadFileList(serverEndpoint, data.transaction_file_list)
+                                            .then(() => callback(true))
+                                            .catch(({files_downloaded: filesDownloaded}) => {
+                                                if (filesDownloaded.length > 0) {
+                                                    _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
+                                                }
 
-        const fileListToRequest = [];
-        async.eachSeries(fileList, (file, callback) => {
-            fileManager.hasFile(addressKeyIdentifier, transactionId, file.name)
-                       .then(hasFile => {
-                           if (hasFile) {
-                               return callback();
-                           }
-                           fileListToRequest.push(file);
-                           callback();
-                       });
-        }, () => {
-            if (fileListToRequest.length > 0) {
-                let nodesWS = _.shuffle(network.registeredClients);
-                async.eachSeries(nodesWS, (ws, callback) => {
-                    peer.transactionFileSyncRequest(addressKeyIdentifier, transactionId, fileListToRequest.map(file => file.hash), ws)
-                        .then((data) => {
-                            let serverEndpoint = data.server_endpoint;
-                            if (serverEndpoint) {
-                                receiver.downloadFileList(serverEndpoint, data.transaction_file_list)
-                                        .then(() => callback(true))
-                                        .catch(({files_downloaded: filesDownloaded}) => {
-                                            if (filesDownloaded.length > 0) {
-                                                _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
-                                            }
+                                                if (fileListToRequest.length === 0) { // no more files to request
+                                                    return callback(true);
+                                                }
 
-                                            if (fileListToRequest.length === 0) { // no more files to request
-                                                return callback(true);
-                                            }
-
-                                            callback();
-                                        });
-                            }
-                            else {
-                                if (!network.nodeIsPublic) {
-                                    return callback();
+                                                callback();
+                                            });
                                 }
+                                else {
+                                    if (!network.nodeIsPublic) {
+                                        return callback();
+                                    }
 
-                                receiver.requestFileListUpload(serverEndpoint, addressKeyIdentifier, transactionId, data.transaction_file_list, ws)
-                                        .then(() => callback(true))
-                                        .catch(({files_received: filesReceived}) => {
-                                            if (filesReceived.length > 0) {
-                                                _.remove(fileListToRequest, file => filesReceived.has(file.name));
-                                            }
+                                    receiver.requestFileListUpload(serverEndpoint, addressKeyIdentifier, transactionId, data.transaction_file_list, ws)
+                                            .then(() => callback(true))
+                                            .catch(({files_received: filesReceived}) => {
+                                                if (filesReceived.length > 0) {
+                                                    _.remove(fileListToRequest, file => filesReceived.has(file.name));
+                                                }
 
-                                            if (fileListToRequest.length === 0) { //no more files to request
-                                                return callback(true);
-                                            }
+                                                if (fileListToRequest.length === 0) { //no more files to request
+                                                    return callback(true);
+                                                }
 
-                                            callback();
-                                        });
-                            }
-                        }).catch(() => callback());
-                }, () => {
+                                                callback();
+                                            });
+                                }
+                            }).catch(() => callback());
+                    }, () => {
+                        this.activeTransactionSync.delete(transactionId);
+                    });
+                    resolve('transaction_file_sync_started');
+                }
+                else {
                     this.activeTransactionSync.delete(transactionId);
-                });
-            }
-            else {
-                this.activeTransactionSync.delete(transactionId);
-            }
+                    resolve('transaction_file_sync_completed');
+                }
+            });
         });
+    }
+
+    close() {
+        fileSync.close().then(_ => _);
     }
 
 }

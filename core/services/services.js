@@ -70,6 +70,7 @@ class Service {
         peerRotation.stop();
         logManager.stop();
         jobEngine.stop();
+        fileExchange.close();
     }
 }
 
