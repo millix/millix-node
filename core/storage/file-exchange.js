@@ -122,7 +122,7 @@ class FileExchange {
             if (fileListToRequest.length > 0) {
                 let nodesWS = _.shuffle(network.registeredClients);
                 async.eachSeries(nodesWS, (ws, callback) => {
-                    peer.transactionFileSyncRequest(addressKeyIdentifier, transactionId, fileListToRequest, ws)
+                    peer.transactionFileSyncRequest(addressKeyIdentifier, transactionId, fileListToRequest.map(file => file.hash), ws)
                         .then((data) => {
                             let serverEndpoint = data.server_endpoint;
                             if (serverEndpoint) {

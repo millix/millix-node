@@ -30,7 +30,7 @@ class Peer {
                 return reject();
             }
             let payload = {
-                type   : `transaction_file_response:${ws.nodeID}:${data.transaction_id}`,
+                type   : `transaction_file_response:${network.nodeID}:${data.transaction_id}`,
                 content: data
             };
             eventBus.emit('node_event_log', payload);
@@ -62,37 +62,41 @@ class Peer {
 
         let data = JSON.stringify(payload);
         return new Promise((resolve, reject) => {
-            try {
-                eventBus.removeAllListeners(`transaction_file_response:${nodeID}:${transactionID}`);
-                let timeLimitTriggered = false;
-                let responseProcessed  = false;
-                let timeoutHandler     = undefined;
-                eventBus.once(`transaction_file_response:${nodeID}:${transactionID}`, (response) => {
-                    responseProcessed = true;
-                    if (!timeLimitTriggered) {
-                        if (response.transaction_file_not_found) {
+            if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                try {
+                    eventBus.removeAllListeners(`transaction_file_response:${nodeID}:${transactionID}`);
+                    let timeLimitTriggered = false;
+                    let responseProcessed  = false;
+                    let timeoutHandler     = undefined;
+                    eventBus.once(`transaction_file_response:${nodeID}:${transactionID}`, (response) => {
+                        responseProcessed = true;
+                        if (!timeLimitTriggered) {
+                            if (response.transaction_file_not_found) {
+                                reject();
+                            }
+                            else {
+                                resolve(response);
+                            }
+                            clearTimeout(timeoutHandler);
+                        }
+                    });
+
+                    timeoutHandler = setTimeout(() => {
+                        timeLimitTriggered = true;
+                        if (!responseProcessed) {
+                            console.log('[peer] self-triggered transaction file request timeout for transaction', transactionID);
                             reject();
                         }
-                        else {
-                            resolve(response);
-                        }
-                        clearTimeout(timeoutHandler);
-                    }
-                });
+                    }, config.NETWORK_LONG_TIME_WAIT_MAX);
 
-                timeoutHandler = setTimeout(() => {
-                    timeLimitTriggered = true;
-                    if (!responseProcessed) {
-                        console.log('[peer] self-triggered transaction file request timeout for transaction', transactionID);
-                        reject();
-                    }
-                }, config.NETWORK_LONG_TIME_WAIT_MAX);
-
-                ws.nodeConnectionReady && ws.send(data);
-            }
-            catch (e) {
-                console.log('[WARN]: try to send data over a closed connection.');
-                ws && ws.close();
+                    ws.nodeConnectionReady && ws.send(data);
+                }
+                catch (e) {
+                    console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
+                    reject();
+                }
+            } else {
                 reject();
             }
         });
