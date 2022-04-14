@@ -99,7 +99,7 @@ class FileExchange {
     syncFilesFromTransaction(transaction) {
         const transactionId        = transaction.transaction_id,
               addressKeyIdentifier = transaction.transaction_input_list[0].address_key_identifier,
-              fileList             = transaction.transaction_output_attribute.transaction_output_metadata.files;
+              fileList             = transaction.transaction_output_attribute.transaction_output_metadata.file_list;
 
         if (!transactionId || !addressKeyIdentifier || !fileList ||
             this.activeTransactionSync.has(transactionId)) {
