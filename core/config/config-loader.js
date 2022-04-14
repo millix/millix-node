@@ -30,6 +30,7 @@ class _ConfigLoader {
             'WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT',
             'WALLET_AGGREGATION_CONSUME_SMALLER_FIRST',
             'JOB_CONFIG_VERSION',
+            'NODE_PUBLIC',
             'SHARD_ZERO_NAME'
         ]);
     }
