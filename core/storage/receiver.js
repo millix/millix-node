@@ -150,7 +150,9 @@ class Receiver {
                            const url = serverEndpoint.concat('/ack/')
                                                      .concat(network.nodeID).concat('/')
                                                      .concat(transactionId).concat('/');
-                           request.post(url, {}, (err, response, body) => {
+                           request.post(url, {
+                               strictSSL: false
+                           }, (err, response, body) => {
                                unlock();
                                if (err) {
                                    console.log('[file-receiver] error, ', err);

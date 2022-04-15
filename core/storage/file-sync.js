@@ -5,7 +5,6 @@ import path from 'path';
 import Queue from 'better-queue';
 import network from '../../net/network';
 import SqliteStore from '../../database/queue-sqlite';
-import async from 'async';
 import fileExchange from './file-exchange';
 
 
@@ -21,7 +20,7 @@ export class FileSync {
         }
 
         this.queue = new Queue((data, done) => {
-            fileExchange.syncFilesFromTransaction(data.transaction_id, data.address_key_identifier, data.file_list)
+            fileExchange.syncFilesFromTransaction(data.transaction_id, data.address_key_identifier, data.transaction_output_metadata)
                         .catch(_ => _)
                         .then(status => {
                             setTimeout(() => {
@@ -61,10 +60,10 @@ export class FileSync {
 
     add(transaction) {
         this.queue.push({
-            transaction_id        : transaction.transaction_id,
-            address_key_identifier: transaction.transaction_input_list[0].address_key_identifier,
-            file_list             : transaction.transaction_output_attribute.transaction_output_metadata.file_list,
-            timestamp             : Date.now()
+            transaction_id             : transaction.transaction_id,
+            address_key_identifier     : transaction.transaction_input_list[0].address_key_identifier,
+            transaction_output_metadata: transaction.transaction_output_attribute.transaction_output_metadata,
+            timestamp                  : Date.now()
         });
     }
 

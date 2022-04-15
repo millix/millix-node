@@ -36,16 +36,28 @@ class FileManager {
         });
     }
 
+    createAndGetFolderLocation(folderList, rootFolder=null) {
+        if(!rootFolder){
+            rootFolder = this.filesRootFolder;
+        }
+        let location = rootFolder;
+
+        if (!fs.existsSync(location)) {
+            fs.mkdirSync(location);
+        }
+
+        folderList.forEach(folder => {
+            location = path.join(location, folder);
+            if (!fs.existsSync(location)) {
+                fs.mkdirSync(location);
+            }
+        })
+
+        return location;
+    }
 
     createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash) {
-        let location = path.join(this.filesRootFolder, addressKeyIdentifier);
-        if (!fs.existsSync(location)) {
-            fs.mkdirSync(location);
-        }
-        location = path.join(location, transactionId);
-        if (!fs.existsSync(location)) {
-            fs.mkdirSync(location);
-        }
+        let location = this.createAndGetFolderLocation([addressKeyIdentifier, transactionId]);
         return path.join(location, fileHash);
     }
 
@@ -133,7 +145,7 @@ class FileManager {
                            fs.mkdirSync(path.join(transactionDirectory));
                        }
 
-                       return this._writeTransactionAttributeJSONFile(data.transaction_output_attribute, transactionDirectory)
+                       return this.writeTransactionAttributeJSONFile(data.transaction_output_attribute, transactionDirectory)
                                   .then(() => this._moveEncryptedFiles(data.file_list, transactionDirectory))
                                   .then(fileList => ({
                                       file_list       : fileList,
@@ -152,8 +164,8 @@ class FileManager {
                    });
     }
 
-    _writeTransactionAttributeJSONFile(transactionOutputAttribute, transactionFolder) {
-        let jsonOutPath     = path.join(transactionFolder, 'transaction_output_attribute_list.json');
+    writeTransactionAttributeJSONFile(transactionOutputAttribute, transactionFolder) {
+        let jsonOutPath     = path.join(transactionFolder, 'transaction_output_metadata.json');
         let jsonWriteStream = fs.createWriteStream(jsonOutPath);
         return new Promise((resolve, reject) => {
             jsonWriteStream.write(JSON.stringify(transactionOutputAttribute, null, '\t'),

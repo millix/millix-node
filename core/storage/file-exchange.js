@@ -102,9 +102,10 @@ class FileExchange {
         fileSync.add(transaction);
     }
 
-    syncFilesFromTransaction(transactionId, addressKeyIdentifier, fileList) {
+    syncFilesFromTransaction(transactionId, addressKeyIdentifier, transactionOutputAttribute) {
         return new Promise((resolve, reject) => {
-            if (!transactionId || !addressKeyIdentifier || !fileList) {
+            const fileList = transactionOutputAttribute?.file_list;
+            if (!transactionId || !addressKeyIdentifier || !transactionOutputAttribute || !fileList) {
                 return reject('transaction_file_sync_invalid');
             }
             else if (this.activeTransactionSync.has(transactionId)) {
@@ -131,7 +132,10 @@ class FileExchange {
                                 let serverEndpoint = data.server_endpoint;
                                 if (serverEndpoint) {
                                     receiver.downloadFileList(serverEndpoint, addressKeyIdentifier, transactionId, data.transaction_file_list)
-                                            .then(() => callback(true))
+                                            .then(() => {
+                                                _.pull(fileListToRequest, ...fileListToRequest); // empty list
+                                                callback(true);
+                                            })
                                             .catch(({files_downloaded: filesDownloaded}) => {
                                                 if (filesDownloaded.size() > 0) {
                                                     _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
@@ -166,6 +170,13 @@ class FileExchange {
                             }).catch(() => callback());
                     }, () => {
                         this.activeTransactionSync.delete(transactionId);
+                        if (fileListToRequest.length === 0) {
+                            const metadataFilePath = fileManager.createAndGetFolderLocation([
+                                addressKeyIdentifier,
+                                transactionId
+                            ]);
+                            fileManager.writeTransactionAttributeJSONFile(transactionOutputAttribute, metadataFilePath).then(_ => _);
+                        }
                     });
                     resolve('transaction_file_sync_started');
                 }
