@@ -9,6 +9,9 @@ import {decrypt, encrypt} from 'eciesjs';
 import walletUtils from '../wallet/wallet-utils';
 import async from 'async';
 import stream from 'stream';
+import database from '../../database/database';
+import base58 from 'bs58';
+import _ from 'lodash';
 
 
 class FileManager {
@@ -24,6 +27,9 @@ class FileManager {
     }
 
     getFileLocation(addressKeyIdentifier, transactionId, fileHash) {
+        if (!this.filesRootFolder) {
+            return null;
+        }
         return path.join(this.filesRootFolder, addressKeyIdentifier, transactionId, fileHash);
     }
 
@@ -36,8 +42,8 @@ class FileManager {
         });
     }
 
-    createAndGetFolderLocation(folderList, rootFolder=null) {
-        if(!rootFolder){
+    createAndGetFolderLocation(folderList, rootFolder = null) {
+        if (!rootFolder) {
             rootFolder = this.filesRootFolder;
         }
         let location = rootFolder;
@@ -51,13 +57,16 @@ class FileManager {
             if (!fs.existsSync(location)) {
                 fs.mkdirSync(location);
             }
-        })
+        });
 
         return location;
     }
 
     createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash) {
-        let location = this.createAndGetFolderLocation([addressKeyIdentifier, transactionId]);
+        let location = this.createAndGetFolderLocation([
+            addressKeyIdentifier,
+            transactionId
+        ]);
         return path.join(location, fileHash);
     }
 
@@ -75,28 +84,50 @@ class FileManager {
         });
     }
 
-    decryptFile(addressKeyIdentifier, transactionId, fileHash, key, publicFile) {
-        return new Promise((resolve, reject) => {
-            let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
-            fs.readFile(fileLocation, (err, file) => {
-                if (err) {
-                    return reject(err);
-                }
-                let sha256sum    = crypto.createHash('sha256');
-                let fileHashRead = sha256sum.update(file).digest('hex');
-                if (fileHash !== fileHashRead) {
-                    return reject();
-                }
-                let keyForFile = key;
-                if (!publicFile) {
-                    keyForFile = this._keyCipher(key, FileManager.DECRYPT);
-                }
-                const cipher = crypto.createCipher('aes-256-cbc', keyForFile);
+    decryptFile(addressKeyIdentifier, transactionId, fileHash, key, isKeyDecrypted) {
+        let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+        if (!fileLocation) {
+            return Promise.reject('transaction_file_not_found');
+        }
 
-                //where i stored the decrypted file?
-
-            });
+        const checkHash = () => new Promise((resolve, reject) => {
+            const sha256sum = crypto.createHash('sha256').setEncoding('hex');
+            fs.createReadStream(fileLocation)
+              .on('error', err => reject(err))
+              .pipe(sha256sum)
+              .on('finish', () => {
+                  const hash = sha256sum.read();
+                  if (hash !== fileHash) {
+                      return reject('transaction_file_hash_error');
+                  }
+                  resolve();
+              });
         });
+
+        const decryptAndReadFile = () => new Promise((resolve, reject) => {
+            if (!isKeyDecrypted) {
+                const extendedPrivateKey = wallet.getActiveWalletKey(wallet.getDefaultActiveWallet());
+                const privateKeyBuffer   = walletUtils.derivePrivateKey(extendedPrivateKey, 0, 0);
+                key                      = this._keyCipher(Buffer.from(key, 'hex'), privateKeyBuffer, FileManager.DECRYPT);
+            }
+
+            const decipher = crypto.createDecipher('aes-256-cbc', key);
+
+            const buffers = [];
+            fs.createReadStream(fileLocation)
+              .on('error', (err) => {
+                  reject(err);
+              })
+              .on('data', data => {
+                  buffers.push(decipher.update(data));
+              })
+              .on('end', () => {
+                  buffers.push(decipher.final());
+                  resolve(Buffer.concat(buffers));
+              });
+        });
+
+        return checkHash().then(() => decryptAndReadFile());
     }
 
     /**
@@ -128,7 +159,8 @@ class FileManager {
             fs.mkdirSync(path.join(transactionTempDirectory));
         }
 
-        return this._createEncryptedFiles(fileList, transactionTempDirectory)
+        return this._getPublicKeyMap(dstOutputs)
+                   .then((publicKeyBufferMap) => this._createEncryptedFiles(fileList, transactionTempDirectory, publicKeyBufferMap))
                    .then(data => {
                        return wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a3l', data.transaction_output_attribute)
                                     .then(transactionList => ({
@@ -164,6 +196,32 @@ class FileManager {
                    });
     }
 
+    _getPublicKeyMap(dstOutputs) {
+        return new Promise((resolve, reject) => {
+            const addressRepository    = database.getRepository('address');
+            const addressKeyIdentifier = wallet.defaultKeyIdentifier;
+            const extendedPrivateKey   = wallet.getActiveWalletKey(wallet.getDefaultActiveWallet());
+            const publicKeyBufferMap   = {
+                [addressKeyIdentifier]: walletUtils.derivePublicKey(extendedPrivateKey, 0, 0)
+            };
+            async.eachSeries(dstOutputs, (output, callback) => {
+                if (publicKeyBufferMap[output.address_key_identifier]) {
+                    return callback();
+                }
+
+                addressRepository.getAddressBaseAttribute(output.address_key_identifier, 'key_public')
+                                 .then(publicKey => {
+                                     if (!publicKey) {
+                                         return reject('public_key_not_found');
+                                     }
+                                     const publicKeyBuffer                             = base58.decode(publicKey);
+                                     publicKeyBufferMap[output.address_key_identifier] = publicKeyBuffer;
+                                     callback();
+                                 });
+            }, err => err ? reject(err) : resolve(publicKeyBufferMap));
+        });
+    }
+
     writeTransactionAttributeJSONFile(transactionOutputAttribute, transactionFolder) {
         let jsonOutPath     = path.join(transactionFolder, 'transaction_output_metadata.json');
         let jsonWriteStream = fs.createWriteStream(jsonOutPath);
@@ -196,7 +254,7 @@ class FileManager {
         return moveFiles().then(() => fileList);
     }
 
-    _createEncryptedFiles(fileList, destinationFolder) {
+    _createEncryptedFiles(fileList, destinationFolder, publicKeyBufferMap) {
 
         //init ciphers and attributes
         const keySet          = {};
@@ -273,8 +331,10 @@ class FileManager {
                           }
                       }
                       else {
-                          const encryptedFileKey = this._keyCipher(keySet[file.name], FileManager.ENCRYPT);
-                          fileAttribute['key']   = encryptedFileKey;
+                          _.each(publicKeyBufferMap, (publicKeyBuffer, addressKeyIdentifier) => {
+                              const encryptedFileKey              = this._keyCipher(keySet[file.name], publicKeyBuffer, FileManager.ENCRYPT).toString('hex');
+                              fileAttribute[addressKeyIdentifier] = {key: encryptedFileKey};
+                          });
                       }
                       transactionOutputAttribute.file_list.push(fileAttribute);
                       callback();
@@ -294,18 +354,13 @@ class FileManager {
             }));
     }
 
-    _keyCipher(rawKey, mode) {
-        let key;
-        const extendedPrivateKey = wallet.getActiveWalletKey(wallet.getDefaultActiveWallet());
+    _keyCipher(rawKey, keyBuffer, mode) {
         if (mode === FileManager.ENCRYPT) {
-            const keyBuffer = walletUtils.derivePublicKey(extendedPrivateKey, 0, 0);
-            key             = encrypt(keyBuffer, rawKey);
+            return encrypt(keyBuffer, rawKey);
         }
         else if (mode === FileManager.DECRYPT) {
-            const keyBuffer = walletUtils.derivePrivateKey(extendedPrivateKey, 0, 0);
-            key             = decrypt(keyBuffer, rawKey);
+            return decrypt(keyBuffer, rawKey);
         }
-        return key.toString('hex');
     }
 }
 

@@ -2679,6 +2679,26 @@ export default class Transaction {
         });
     }
 
+    listTransactionOutputAttributes(where) {
+        return new Promise((resolve, reject) => {
+            let {
+                    sql,
+                    parameters
+                } = Database.buildQuery('SELECT * FROM `transaction_output_attribute`', where);
+            this.database.all(
+                sql,
+                parameters, (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
     hasTransaction(transactionID) {
         return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_exists_' + transactionID, () => new Promise((resolve, reject) => {
             this.database.get('SELECT EXISTS(select transaction_id from `transaction` where transaction_id = ?) as transaction_exists',
