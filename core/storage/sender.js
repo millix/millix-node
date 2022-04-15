@@ -7,11 +7,8 @@ import https from 'https';
 import walletUtils from '../wallet/wallet-utils';
 import queue from './queue';
 import request from 'request';
-import eventBus from '../event-bus';
 import network from '../../net/network';
-import fileManager from './file-manager';
-import peer from '../../net/peer';
-import _ from 'lodash';
+import config from '../config/config';
 
 
 class Sender {
@@ -52,11 +49,9 @@ class Sender {
 
             if (queue.hasFileToSend(nodeId, transactionId, fileHash)) {
                 chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
-                    res.writeHead(200);
-                    res(data);
-                }).catch(() => {
-                    res.writeHead(403);
-                    res.end('Requested file cannot be sent!');
+                    res.send(data);
+                }).catch((err) => {
+                    console.log('[file-sender] error', err);
                 });
             }
             else {
@@ -83,8 +78,14 @@ class Sender {
 
     newSenderInstance() {
         if (!queue.isSenderServerActive()) {
-            this.httpsServer = https.createServer(this.serverOptions, this.app).listen(config.NODE_PORT_STORAGE_PROVIDER, config.NODE_BIND_IP);
-            console.log('[file-sender] Server listening on port ' + config.NODE_PORT_STORAGE_PROVIDER);
+            this.httpsServer = https.createServer(this.serverOptions, this.app);
+            this.httpsServer.listen(config.NODE_PORT_STORAGE_PROVIDER, config.NODE_BIND_IP, (err) => {
+                if (err) {
+                    console.log('[file-sender] error ', err);
+                    return;
+                }
+                console.log('[file-sender] Server listening on port ' + config.NODE_PORT_STORAGE_PROVIDER);
+            });
         }
         queue.incrementServerInstancesInSender();
         return this.httpsServer;

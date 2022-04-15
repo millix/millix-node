@@ -98,21 +98,22 @@ class Receiver {
         return queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk);
     }
 
-    downloadFileList(serverEndpoint, fileData) {
+    downloadFileList(serverEndpoint, addressKeyIdentifier, transactionId, fileList) {
         return new Promise((resolve, reject) => {
             const filesDownloaded = new Set();
             mutex.lock(['file-downloader'], unlock => {
-                const addressKeyIdentifier           = fileData.addressKeyIdentifier;
-                const transactionId                  = fileData.transactionId;
-                const promisesToDownloadFileByChunks = fileData.files.map(file => new Promise((resolve, reject) => {
-                    async.times(file.chunks, (chunkNumber, callback) => {
+                const promisesToDownloadFileByChunks = fileList.map(file => new Promise((resolve, reject) => {
+                    async.times(file.chunk_count, (chunkNumber, callback) => {
                         const url = serverEndpoint.concat('/file/')
                                                   .concat(this.nodeId).concat('/')
                                                   .concat(addressKeyIdentifier).concat('/')
                                                   .concat(transactionId).concat('/')
-                                                  .concat(file.name).concat('/')
+                                                  .concat(file.file_hash).concat('/')
                                                   .concat(chunkNumber);
-                        request.get(url, {}, (err, response, body) => {
+                        request.get(url, {
+                            strictSSL: false,
+                            encoding: null
+                        }, (err, response, body) => {
                             if (err) {
                                 console.log('[file-receiver] error, ', err);
                                 return callback({
@@ -121,7 +122,7 @@ class Receiver {
                                     file
                                 });
                             }
-                            chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, file.name, body).then(() => {
+                            chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, file.file_hash, body).then(() => {
                                 callback();
                             }).catch((err) => {
                                 return callback({
@@ -139,7 +140,7 @@ class Receiver {
                             });
                         }
 
-                        filesDownloaded.push(file.name);
+                        filesDownloaded.add(file.file_hash);
                         return resolve();
                     });
                 }));
@@ -147,7 +148,7 @@ class Receiver {
                 Promise.all(promisesToDownloadFileByChunks)
                        .then(() => {
                            const url = serverEndpoint.concat('/ack/')
-                                                     .concat(self.nodeId).concat('/')
+                                                     .concat(network.nodeID).concat('/')
                                                      .concat(transactionId).concat('/');
                            request.post(url, {}, (err, response, body) => {
                                unlock();
@@ -170,8 +171,8 @@ class Receiver {
     }
 
     requestFileListUpload(addressKeyIdentifier, transactionId, fileList, ws) {
-        const server = this.newReceiverInstance();
-        const serverEndpoint = `https://${network.nodePublicIp}:${server.address().port}/`
+        const server         = this.newReceiverInstance();
+        const serverEndpoint = `https://${network.nodePublicIp}:${server.address().port}/`;
         return new Promise((resolve, reject) => {
             const filesReceived = new Set();
             mutex.lock(['file-receiver'], unlock => {

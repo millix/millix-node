@@ -45,7 +45,7 @@ class FileExchange {
                                return sender.getNumberOfChunks(addressKeyIdentifier, transactionID, fileHash)
                                             .then(totalChunks => {
                                                 fileAvailableList.push({
-                                                    name       : fileHash,
+                                                    file_hash  : fileHash,
                                                     chunk_count: totalChunks
                                                 });
                                                 callback();
@@ -66,7 +66,7 @@ class FileExchange {
 
             if (network.nodeIsPublic) {
                 const server            = sender.newSenderInstance();
-                data['server_endpoint'] = `https://${network.nodePublicIp}:${server.address().port}/`;
+                data['server_endpoint'] = `https://${network.nodePublicIp}:${server.address().port}`;
                 const filesToRemove     = [];
 
                 async.eachSeries(fileAvailableList, (file, callback) => { // serve files via https server
@@ -114,7 +114,7 @@ class FileExchange {
 
             const fileListToRequest = [];
             async.eachSeries(fileList, (file, callback) => {
-                fileManager.hasFile(addressKeyIdentifier, transactionId, file.name)
+                fileManager.hasFile(addressKeyIdentifier, transactionId, file.hash)
                            .then(hasFile => {
                                if (hasFile) {
                                    return callback();
@@ -130,10 +130,10 @@ class FileExchange {
                             .then((data) => {
                                 let serverEndpoint = data.server_endpoint;
                                 if (serverEndpoint) {
-                                    receiver.downloadFileList(serverEndpoint, data.transaction_file_list)
+                                    receiver.downloadFileList(serverEndpoint, addressKeyIdentifier, transactionId, data.transaction_file_list)
                                             .then(() => callback(true))
                                             .catch(({files_downloaded: filesDownloaded}) => {
-                                                if (filesDownloaded.length > 0) {
+                                                if (filesDownloaded.size() > 0) {
                                                     _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
                                                 }
 
