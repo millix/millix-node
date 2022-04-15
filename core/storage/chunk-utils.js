@@ -39,7 +39,7 @@ class ChunkUtils {
                             return reject(err);
                         }
 
-                        resolve(buffer);
+                        resolve(buffer.slice(0, bytes));
                     });
                 });
             });
