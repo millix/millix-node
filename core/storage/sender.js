@@ -77,18 +77,24 @@ class Sender {
     }
 
     newSenderInstance() {
-        if (!queue.isSenderServerActive()) {
-            this.httpsServer = https.createServer(this.serverOptions, this.app);
-            this.httpsServer.listen(config.NODE_PORT_STORAGE_PROVIDER, config.NODE_BIND_IP, (err) => {
-                if (err) {
-                    console.log('[file-sender] error ', err);
-                    return;
-                }
-                console.log('[file-sender] Server listening on port ' + config.NODE_PORT_STORAGE_PROVIDER);
-            });
-        }
-        queue.incrementServerInstancesInSender();
-        return this.httpsServer;
+        return new Promise((resolve, reject) => {
+            if (!queue.isSenderServerActive()) {
+                queue.incrementServerInstancesInSender();
+                this.httpsServer = https.createServer(this.serverOptions, this.app);
+                this.httpsServer.listen(config.NODE_PORT_STORAGE_PROVIDER, config.NODE_BIND_IP, (err) => {
+                    if (err) {
+                        console.log('[file-sender] error ', err);
+                        return reject(err);
+                    }
+                    console.log('[file-sender] Server listening on port ' + config.NODE_PORT_STORAGE_PROVIDER);
+                    resolve();
+                });
+            }
+            else {
+                queue.incrementServerInstancesInSender();
+                resolve();
+            }
+        });
     }
 
     getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash) {
@@ -103,14 +109,16 @@ class Sender {
         return chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
             return new Promise((resolve, reject) => {
                 request.post({
-                    url : receiverEndpoint.concat('/file/')
-                                          .concat(network.nodeID).concat('/')
-                                          .concat(addressKeyIdentifier).concat('/')
-                                          .concat(transactionId).concat('/')
-                                          .concat(fileHash).concat('/')
-                                          .concat(chunkNumber),
-                    body: data
-                }, {
+                    url      : receiverEndpoint.concat('/file/')
+                                               .concat(network.nodeID).concat('/')
+                                               .concat(addressKeyIdentifier).concat('/')
+                                               .concat(transactionId).concat('/')
+                                               .concat(fileHash).concat('/')
+                                               .concat(chunkNumber),
+                    body     : data,
+                    headers  : {
+                        'Content-Type': 'application/octet-stream'
+                    },
                     strictSSL: false
                 }, (err, response, body) => {
                     if (err) {
