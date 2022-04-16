@@ -42,8 +42,14 @@ class Receiver {
 
     newReceiverInstance() {
         if (!queue.isReceiverServerActive()) {
-            this.httpsServer = https.createServer(this.serverOptions, this.app).listen(config.NODE_PORT_STORAGE_RECEIVER, config.NODE_BIND_IP);
-            console.log('[file-receiver] Server listening on port ' + config.NODE_PORT_STORAGE_RECEIVER);
+            this.httpsServer = https.createServer(this.serverOptions, this.app);
+            this.httpsServer.listen(config.NODE_PORT_STORAGE_RECEIVER, config.NODE_BIND_IP, (err) => {
+                if (err) {
+                    console.log('[file-sender] error ', err);
+                    return;
+                }
+                console.log('[file-receiver] Server listening on port ' + config.NODE_PORT_STORAGE_RECEIVER);
+            });
         }
         queue.incrementServerInstancesInReceiver();
         return this.httpsServer;
