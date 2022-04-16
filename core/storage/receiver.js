@@ -13,6 +13,7 @@ import eventBus from '../event-bus';
 import mutex from '../mutex';
 import peer from '../../net/peer';
 import config from '../config/config';
+import sender from './sender';
 
 
 class Receiver {
@@ -71,16 +72,12 @@ class Receiver {
             let chunkNumber          = req.params.chunkNumber;
 
             if (queue.hasChunkToReceive(nodeId, transactionId, fileHash, chunkNumber)) {
-                let chunk = req.body.chunk;
+                const chunk = req.body;
                 chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, fileHash, chunk)
                           .then(() => {
-                              if (queue.isLastChunk(nodeId, transactionId, fileHash, chunkNumber)) {
-                                  queue.decrementServerInstancesInReceiver();
-                              }
                               queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, chunkNumber).then(_ => _);
                               eventBus.emit(`transaction_file_chunk_response:${nodeId}:${transactionId}:${fileHash}`, req.params);
-                              res.writeHead(200);
-                              res.end('ok');
+                              res.send('ok');
                           });
             }
             else {
@@ -136,7 +133,7 @@ class Receiver {
                         if (err) {
                             return reject({
                                 ...err,
-                                files_downloaded: filesDownloaded
+                                files_received: filesDownloaded
                             });
                         }
 
@@ -158,7 +155,7 @@ class Receiver {
                                    console.log('[file-receiver] error, ', err);
                                    return reject({
                                        error           : 'ack_error',
-                                       files_downloaded: filesDownloaded
+                                       files_received: filesDownloaded
                                    });
                                }
                                resolve();
@@ -174,21 +171,21 @@ class Receiver {
 
     requestFileListUpload(addressKeyIdentifier, transactionId, fileList, ws) {
         const server         = this.newReceiverInstance();
-        const serverEndpoint = `https://${network.nodePublicIp}:${server.address().port}/`;
+        const serverEndpoint = `https://${network.nodePublicIp}:${server.address().port}`;
         return new Promise((resolve, reject) => {
             const filesReceived = new Set();
             mutex.lock(['file-receiver'], unlock => {
                 const promisesToReceiveFileByChunks = fileList.map(file => new Promise((resolve, reject) => {
                     async.times(file.chunk_count, (chunkNumber, callback) => {
-                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.name, file.chunk_count, chunkNumber)
-                            .then(() => peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.name, ws))
+                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.file_hash, file.chunk_count, chunkNumber)
+                            .then(() => peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.file_hash, ws))
                             .then(() => {
-                                eventBus.once(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.name}`, () => {
+                                eventBus.once(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.file_hash}`, () => {
                                     callback();
-                                    return this.unregisterFileChunkUpload(ws.nodeID, transactionId, file.name, chunkNumber);
+                                    return this.unregisterFileChunkUpload(ws.nodeID, transactionId, file.file_hash, chunkNumber);
                                 });
                                 setTimeout(() => {
-                                    eventBus.removeAllListeners(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.name}`);
+                                    eventBus.removeAllListeners(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.file_hash}`);
                                     return callback({
                                         error       : 'chunk_request_timeout',
                                         chunk_number: chunkNumber,
@@ -207,30 +204,18 @@ class Receiver {
                         if (err) {
                             return reject({
                                 ...err,
-                                files_downloaded: filesReceived
+                                files_received: filesReceived
                             });
                         }
-                        filesReceived.push(file.name);
+                        filesReceived.push(file.file_hash);
                         return resolve();
                     });
                 }));
 
                 Promise.all(promisesToReceiveFileByChunks)
                        .then(() => {
-                           const url = serverEndpoint.concat('/ack/')
-                                                     .concat(self.nodeId).concat('/')
-                                                     .concat(transactionId).concat('/');
-                           request.post(url, {}, (err, response, body) => {
-                               unlock();
-                               if (err) {
-                                   console.log('[file-receiver] error, ', err);
-                                   return reject({
-                                       error           : 'ack_error',
-                                       files_downloaded: filesReceived
-                                   });
-                               }
-                               resolve();
-                           });
+                           unlock();
+                           resolve();
                        })
                        .catch(err => {
                            unlock();

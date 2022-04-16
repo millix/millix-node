@@ -136,7 +136,7 @@ class FileExchange {
                                                 _.pull(fileListToRequest, ...fileListToRequest); // empty list
                                                 callback(true);
                                             })
-                                            .catch(({files_downloaded: filesDownloaded}) => {
+                                            .catch(({files_received: filesDownloaded}) => {
                                                 if (filesDownloaded.size() > 0) {
                                                     _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
                                                 }
@@ -154,13 +154,16 @@ class FileExchange {
                                     }
 
                                     receiver.requestFileListUpload(serverEndpoint, addressKeyIdentifier, transactionId, data.transaction_file_list, ws)
-                                            .then(() => callback(true))
-                                            .catch(({files_received: filesReceived}) => {
-                                                if (filesReceived.length > 0) {
-                                                    _.remove(fileListToRequest, file => filesReceived.has(file.name));
+                                            .then(() => {
+                                                _.pull(fileListToRequest, ...fileListToRequest); // empty list
+                                                callback(true);
+                                            })
+                                            .catch(({files_received: filesDownloaded}) => {
+                                                if (filesDownloaded.size() > 0) {
+                                                    _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
                                                 }
 
-                                                if (fileListToRequest.length === 0) { //no more files to request
+                                                if (fileListToRequest.length === 0) { // no more files to request
                                                     return callback(true);
                                                 }
 

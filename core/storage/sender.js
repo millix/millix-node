@@ -101,19 +101,18 @@ class Sender {
 
     sendChunk(receiverEndpoint, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
         return chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
-            let payload = {
-                url : receiverEndpoint.concat('/file/')
-                                      .concat(network.nodeID).concat('/')
-                                      .concat(addressKeyIdentifier).concat('/')
-                                      .concat(transactionId).concat('/')
-                                      .concat(fileHash).concat('/')
-                                      .concat(chunkNumber),
-                body: {
-                    chunk: data
-                }
-            };
             return new Promise((resolve, reject) => {
-                request.post(payload, {}, (err, response, body) => {
+                request.post({
+                    url : receiverEndpoint.concat('/file/')
+                                          .concat(network.nodeID).concat('/')
+                                          .concat(addressKeyIdentifier).concat('/')
+                                          .concat(transactionId).concat('/')
+                                          .concat(fileHash).concat('/')
+                                          .concat(chunkNumber),
+                    body: data
+                }, {
+                    strictSSL: false
+                }, (err, response, body) => {
                     if (err) {
                         console.log('[file-sender] error, ', err);
                         return reject(err);
