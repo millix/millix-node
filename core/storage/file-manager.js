@@ -148,8 +148,7 @@ class FileManager {
      */
     createTransactionWithFileList(fileList, dstOutputs, outputFee) {
         //Create directory for my files (if not exist)
-        const walletKeyIdentifier  = dstOutputs[0].address_key_identifier;
-        const destinationDirectory = path.join(this.filesRootFolder, walletKeyIdentifier);
+        const destinationDirectory = path.join(this.filesRootFolder, wallet.defaultKeyIdentifier);
         if (!fs.existsSync(destinationDirectory)) {
             fs.mkdirSync(path.join(destinationDirectory));
         }

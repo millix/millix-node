@@ -307,6 +307,24 @@
       "enable": true
     },
     {
+      "id": "F7APEv5JfCY1siyz",
+      "name": "list_transaction_output_attribute_sent",
+      "description": "returns sent transactions attribute records from table transaction_output_attribute that match the provided parameters.  it returns the newest records by default",
+      "method": "GET",
+      "version_released": "1.18.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "Mu7VpxzfYyQimf3V",
+      "name": "list_transaction_output_attribute_received",
+      "description": "returns received transactions attribute records from table transaction_output_attribute that match the provided parameters.  it returns the newest records by default",
+      "method": "GET",
+      "version_released": "1.18.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "GktuwZlVP39gty6v",
       "name": "new_session_with_phrase",
       "description": "uses the passphrase and 24 word mnemonic phrase to set the active wallet used in the session by the node",
