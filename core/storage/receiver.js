@@ -184,7 +184,7 @@ class Receiver {
                 const promisesToReceiveFileByChunks = fileList.map(file => new Promise((resolve, reject) => {
                     async.times(file.chunk_count, (chunkNumber, callback) => {
                         this.registerFileChunkForUpload(ws.nodeID, transactionId, file.file_hash, file.chunk_count, chunkNumber)
-                            .then(() => peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.file_hash, ws))
+                            .then(() => peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.file_hash, chunkNumber, ws))
                             .then(() => {
                                 eventBus.once(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.file_hash}`, () => {
                                     callback();

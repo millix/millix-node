@@ -102,7 +102,7 @@ class Peer {
         });
     }
 
-    transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, fileHash, ws) {
+    transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, fileHash, chunkNumber, ws) {
         return new Promise((resolve, reject) => {
             if (!ws) {
                 return reject();
@@ -113,6 +113,7 @@ class Peer {
                     address_key_identifier: addressKeyIdentifier,
                     receiver_endpoint     : serverEndpoint,
                     transaction_id        : transactionId,
+                    chunk_number          : chunkNumber,
                     file_hash             : fileHash
                 }
             };
