@@ -153,7 +153,7 @@ class FileExchange {
                                         return callback();
                                     }
 
-                                    receiver.requestFileListUpload(serverEndpoint, addressKeyIdentifier, transactionId, data.transaction_file_list, ws)
+                                    receiver.requestFileListUpload(addressKeyIdentifier, transactionId, data.transaction_file_list, ws)
                                             .then(() => {
                                                 _.pull(fileListToRequest, ...fileListToRequest); // empty list
                                                 callback(true);
