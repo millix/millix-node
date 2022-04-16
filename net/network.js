@@ -245,6 +245,8 @@ class Network {
 
         wss.on('connection', (ws, req) => {
 
+            this.nodeIsPublic = true;
+
             let ip;
             if (req.connection.remoteAddress) {
                 ip = req.connection.remoteAddress.replace('::ffff:', '');
@@ -889,7 +891,7 @@ class Network {
 
     _onNATCheckResponse(content, ws) {
         console.log('[network] on natcheck response', content);
-        this.nodeIsPublic = content.is_valid_nat;
+        this.nodeIsPublic = this.nodeIsPublic || content.is_valid_nat;
     }
 
     _natCheckTryConnect(url) {
