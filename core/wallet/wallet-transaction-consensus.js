@@ -819,8 +819,8 @@ export class WalletTransactionConsensus {
             not_found   : 0
         };
 
-        let responseCount               = 0;
-        const invalidResponseNodeIDList = [];
+        let responseCount                = 0;
+        const invalidResponseNodeIDList  = [];
         const notFoundResponseNodeIDList = [];
         for (let [nodeID, {response}] of Object.entries(consensusResponseData)) {
             if (!response) {
@@ -855,10 +855,13 @@ export class WalletTransactionConsensus {
                 consensusData.requestPeerValidation && consensusData.requestPeerValidation();
             });
             return;
-        } else if (counter.not_found > 0 && (counter.double_spend > 0
-                                      || counter.valid > 0
-                                      || consensusData.consensus_round_validation_count > 0
-                                      || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not invalid we reset the invalid ones
+        }
+        else if (counter.not_found > 0 && (counter.invalid > 0
+                                           || counter.double_spend > 0
+                                           || counter.valid > 0
+                                           || consensusData.consensus_round_invalid_count > 0
+                                           || consensusData.consensus_round_validation_count > 0
+                                           || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not invalid we reset the invalid ones
             notFoundResponseNodeIDList.forEach(nodeID => {
                 delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
                 consensusData.consensus_round_node_discard.add(nodeID);
