@@ -1280,10 +1280,11 @@ class Wallet {
                 from   : node
             });
             let transactionID = data.transaction_id;
-            database.applyShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getSpendTransactions(transactionID);
-            }).then(transactions => {
+            this._syncTransactionIfMissing(transactionID)
+                .then(() => database.applyShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return transactionRepository.getSpendTransactions(transactionID);
+                })).then(transactions => {
                 if (transactions && transactions.length > 0) {
                     transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
                 }
@@ -1297,6 +1298,24 @@ class Wallet {
                 unlock();
             }).catch(() => unlock());
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
+    }
+
+    _syncTransactionIfMissing(transactionID) {
+        if (!config.MODE_NODE_SYNC_FULL) {
+            return Promise.resolve();
+        }
+
+        return database.firstShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.hasTransaction(transactionID);
+        }).then(hasTransaction => {
+            if (!hasTransaction) {
+                this.requestTransactionFromNetwork(transactionID, {
+                    priority        : 1,
+                    dispatch_request: true
+                });
+            }
+        });
     }
 
     _onSyncOutputSpendTransaction(data, ws) { //TODO: check this
@@ -1318,13 +1337,14 @@ class Wallet {
             const transactionID             = data.transaction_id;
             const transactionOutputPosition = data.output_position;
 
-            database.applyShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.listTransactionInput({
-                    output_transaction_id: transactionID,
-                    output_position      : transactionOutputPosition
-                });
-            }).then(spendingTransactions => {
+            this._syncTransactionIfMissing(transactionID)
+                .then(() => database.applyShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return transactionRepository.listTransactionInput({
+                        output_transaction_id: transactionID,
+                        output_position      : transactionOutputPosition
+                    });
+                })).then(spendingTransactions => {
                 // get transaction objects
                 async.mapSeries(spendingTransactions, (spendingTransaction, callback) => {
                     database.firstShardZeroORShardRepository('transaction', spendingTransaction.shard_id, transactionRepository => {
