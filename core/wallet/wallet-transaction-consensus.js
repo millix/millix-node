@@ -807,11 +807,6 @@ export class WalletTransactionConsensus {
             consensusData.requestPeerValidation && consensusData.requestPeerValidation();
             return;
         }
-        else if (data.cause === 'transaction_not_found') {
-            delete consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID];
-            consensusData.consensus_round_node_discard.add(ws.nodeID);
-            consensusData.requestPeerValidation && consensusData.requestPeerValidation();
-        }
 
         const consensusResponseData      = this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count];
         consensusResponseData[ws.nodeID] = {response: data};
@@ -826,6 +821,7 @@ export class WalletTransactionConsensus {
 
         let responseCount               = 0;
         const invalidResponseNodeIDList = [];
+        const notFoundResponseNodeIDList = [];
         for (let [nodeID, {response}] of Object.entries(consensusResponseData)) {
             if (!response) {
                 continue;
@@ -841,6 +837,7 @@ export class WalletTransactionConsensus {
             }
             else if (response.cause === 'transaction_not_found') {
                 counter.not_found++;
+                notFoundResponseNodeIDList.push(nodeID);
             }
             else { /* 'transaction_invalid', 'transaction_invalid_amount' */
                 counter.invalid++;
@@ -853,6 +850,16 @@ export class WalletTransactionConsensus {
                                     || consensusData.consensus_round_validation_count > 0
                                     || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not invalid we reset the invalid ones
             invalidResponseNodeIDList.forEach(nodeID => {
+                delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
+                consensusData.consensus_round_node_discard.add(nodeID);
+                consensusData.requestPeerValidation && consensusData.requestPeerValidation();
+            });
+            return;
+        } else if (counter.not_found > 0 && (counter.double_spend > 0
+                                      || counter.valid > 0
+                                      || consensusData.consensus_round_validation_count > 0
+                                      || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not invalid we reset the invalid ones
+            notFoundResponseNodeIDList.forEach(nodeID => {
                 delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
                 consensusData.consensus_round_node_discard.add(nodeID);
                 consensusData.requestPeerValidation && consensusData.requestPeerValidation();
