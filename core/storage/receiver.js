@@ -18,7 +18,6 @@ import sender from './sender';
 
 class Receiver {
     constructor() {
-        this.serverOptions = {};
         this.httpsServer   = null;
         this.app           = null;
         this.nodeId        = null;
@@ -30,34 +29,28 @@ class Receiver {
                                      certificate_private_key_pem: certificatePrivateKeyPem,
                                      certificate_pem            : certificatePem
                                  }) => {
-                              this.serverOptions = {
+                              const serverOptions = {
                                   key      : certificatePrivateKeyPem,
                                   cert     : certificatePem,
                                   ecdhCurve: 'prime256v1'
                               };
-                              this.nodeId        = network.nodeID;
+                              this.nodeId         = network.nodeID;
                               this._defineServerOperations();
+                              return this._startReceiverServer(serverOptions);
                           }).then(() => queue.initializeReceiver());
     }
 
-    newReceiverInstance() {
+    _startReceiverServer(serverOptions) {
         return new Promise((resolve, reject) => {
-            if (!queue.isReceiverServerActive()) {
-                queue.incrementServerInstancesInReceiver();
-                this.httpsServer = https.createServer(this.serverOptions, this.app);
-                this.httpsServer.listen(config.NODE_PORT_STORAGE_RECEIVER, config.NODE_BIND_IP, (err) => {
-                    if (err) {
-                        console.log('[file-sender] error ', err);
-                        return reject(err);
-                    }
-                    console.log('[file-receiver] Server listening on port ' + config.NODE_PORT_STORAGE_RECEIVER);
-                    resolve();
-                });
-            }
-            else {
-                queue.incrementServerInstancesInReceiver();
+            this.httpsServer = https.createServer(serverOptions, this.app);
+            this.httpsServer.listen(config.NODE_PORT_STORAGE_RECEIVER, config.NODE_BIND_IP, (err) => {
+                if (err) {
+                    console.log('[file-sender] error ', err);
+                    return reject(err);
+                }
+                console.log('[file-receiver] Server listening on port ' + config.NODE_PORT_STORAGE_RECEIVER);
                 resolve();
-            }
+            });
         });
     }
 
@@ -189,71 +182,69 @@ class Receiver {
     }
 
     requestFileListUpload(addressKeyIdentifier, transactionId, fileList, ws) {
-        return this.newReceiverInstance().then(() => {
-            const serverEndpoint = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_RECEIVER}`;
-            return new Promise((resolve, reject) => {
-                const filesReceived = new Set();
-                mutex.lock(['file-receiver'], unlock => {
-                    const promisesToReceiveFileByChunks = fileList.map(file => new Promise((resolve, reject) => {
-                        async.times(file.chunk_count, (chunkNumber, callback) => {
-                            this.registerFileChunkForUpload(ws.nodeID, transactionId, file.file_hash, file.chunk_count, chunkNumber)
-                                .then(() => peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.file_hash, chunkNumber, ws))
-                                .then(() => {
-                                    let timeoutHandlerID;
-                                    let isTimeout = false;
-                                    eventBus.once(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.file_hash}`, () => {
-                                        if (isTimeout) {
-                                            return;
-                                        }
-                                        clearTimeout(timeoutHandlerID);
-                                        this.unregisterFileChunkUpload(ws.nodeID, transactionId, file.file_hash, chunkNumber).then(_ => _);
-                                        callback();
-                                    });
-                                    timeoutHandlerID = setTimeout(() => {
-                                        isTimeout = true;
-                                        eventBus.removeAllListeners(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.file_hash}`);
-                                        return callback({
-                                            error       : 'chunk_request_timeout',
-                                            chunk_number: chunkNumber,
-                                            file
-                                        });
-                                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 20);
-                                })
-                                .catch(err => {
+        const serverEndpoint = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_RECEIVER}`;
+        return new Promise((resolve, reject) => {
+            const filesReceived = new Set();
+            mutex.lock(['file-receiver'], unlock => {
+                const promisesToReceiveFileByChunks = fileList.map(file => new Promise((resolve, reject) => {
+                    async.times(file.chunk_count, (chunkNumber, callback) => {
+                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.file_hash, file.chunk_count, chunkNumber)
+                            .then(() => peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.file_hash, chunkNumber, ws))
+                            .then(() => {
+                                let timeoutHandlerID;
+                                let isTimeout = false;
+                                eventBus.once(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.file_hash}`, () => {
+                                    if (isTimeout) {
+                                        return;
+                                    }
+                                    clearTimeout(timeoutHandlerID);
+                                    this.unregisterFileChunkUpload(ws.nodeID, transactionId, file.file_hash, chunkNumber).then(_ => _);
+                                    callback();
+                                });
+                                timeoutHandlerID = setTimeout(() => {
+                                    isTimeout = true;
+                                    eventBus.removeAllListeners(`transaction_file_chunk_response:${ws.nodeID}:${transactionId}:${file.file_hash}`);
                                     return callback({
-                                        error       : err,
+                                        error       : 'chunk_request_timeout',
                                         chunk_number: chunkNumber,
                                         file
                                     });
+                                }, config.NETWORK_LONG_TIME_WAIT_MAX * 20);
+                            })
+                            .catch(err => {
+                                return callback({
+                                    error       : err,
+                                    chunk_number: chunkNumber,
+                                    file
                                 });
-                        }, (err) => {
-                            if (err) {
-                                return reject({
-                                    ...err,
-                                    files_received: filesReceived
-                                });
-                            }
-                            filesReceived.add(file.file_hash);
-                            return resolve();
-                        });
-                    }));
+                            });
+                    }, (err) => {
+                        if (err) {
+                            return reject({
+                                ...err,
+                                files_received: filesReceived
+                            });
+                        }
+                        filesReceived.add(file.file_hash);
+                        return resolve();
+                    });
+                }));
 
-                    Promise.all(promisesToReceiveFileByChunks)
-                           .then(() => {
-                               unlock();
-                               resolve();
-                           })
-                           .catch(err => {
-                               unlock();
-                               reject(err);
-                           });
-                });
-            }).then(() => {
-                this.releaseReceiverInstance();
-            }).catch(err => {
-                this.releaseReceiverInstance();
-                return Promise.reject(err);
+                Promise.all(promisesToReceiveFileByChunks)
+                       .then(() => {
+                           unlock();
+                           resolve();
+                       })
+                       .catch(err => {
+                           unlock();
+                           reject(err);
+                       });
             });
+        }).then(() => {
+            this.releaseReceiverInstance();
+        }).catch(err => {
+            this.releaseReceiverInstance();
+            return Promise.reject(err);
         });
     }
 
