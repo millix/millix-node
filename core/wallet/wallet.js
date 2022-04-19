@@ -1289,10 +1289,11 @@ class Wallet {
                 from   : node
             });
             let transactionID = data.transaction_id;
-            database.applyShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getSpendTransactions(transactionID);
-            }).then(transactions => {
+            this._syncTransactionIfMissing(transactionID)
+                .then(() => database.applyShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return transactionRepository.getSpendTransactions(transactionID);
+                })).then(transactions => {
                 if (transactions && transactions.length > 0) {
                     transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
                 }
