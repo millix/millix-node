@@ -13,7 +13,6 @@ import config from '../config/config';
 
 class Sender {
     constructor() {
-        this.serverOptions = {};
         this.httpsServer   = null;
         this.app           = null;
     }
@@ -24,12 +23,13 @@ class Sender {
                                      certificate_private_key_pem: certificatePrivateKeyPem,
                                      certificate_pem            : certificatePem
                                  }) => {
-                              this.serverOptions = {
+                              const serverOptions = {
                                   key      : certificatePrivateKeyPem,
                                   cert     : certificatePem,
                                   ecdhCurve: 'prime256v1'
                               };
                               this._defineServerOperations();
+                              return this._startSenderServer(serverOptions)
                           })
                           .then(() => queue.initializeSender());
     }
@@ -76,24 +76,17 @@ class Sender {
         });
     }
 
-    newSenderInstance() {
+    _startSenderServer(serverOptions) {
         return new Promise((resolve, reject) => {
-            if (!queue.isSenderServerActive()) {
-                queue.incrementServerInstancesInSender();
-                this.httpsServer = https.createServer(this.serverOptions, this.app);
-                this.httpsServer.listen(config.NODE_PORT_STORAGE_PROVIDER, config.NODE_BIND_IP, (err) => {
-                    if (err) {
-                        console.log('[file-sender] error ', err);
-                        return reject(err);
-                    }
-                    console.log('[file-sender] Server listening on port ' + config.NODE_PORT_STORAGE_PROVIDER);
-                    resolve();
-                });
-            }
-            else {
-                queue.incrementServerInstancesInSender();
+            this.httpsServer = https.createServer(serverOptions, this.app);
+            this.httpsServer.listen(config.NODE_PORT_STORAGE_PROVIDER, config.NODE_BIND_IP, (err) => {
+                if (err) {
+                    console.log('[file-sender] error ', err);
+                    return reject(err);
+                }
+                console.log('[file-sender] Server listening on port ' + config.NODE_PORT_STORAGE_PROVIDER);
                 resolve();
-            }
+            });
         });
     }
 

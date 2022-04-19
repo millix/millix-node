@@ -65,24 +65,21 @@ class FileExchange {
             };
 
             if (network.nodeIsPublic) {
-                return sender.newSenderInstance()
-                             .then(() => {
-                                 return new Promise(resolve => {
-                                     data['server_endpoint'] = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`;
-                                     const filesToRemove     = [];
-                                     async.eachSeries(fileAvailableList, (file, callback) => { // serve files via https server
-                                         sender.serveFile(ws.nodeID, addressKeyIdentifier, transactionID, file.file_hash)
-                                               .then(() => callback())
-                                               .catch(() => {
-                                                   filesToRemove.push(file);
-                                                   callback();
-                                               });
-                                     }, () => {
-                                         _.pull(fileAvailableList, filesToRemove);
-                                         return resolve();
-                                     });
-                                 }).then(() => peer.transactionFileSyncResponse(data, ws));
-                             });
+                return new Promise(resolve => {
+                    data['server_endpoint'] = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`;
+                    const filesToRemove     = [];
+                    async.eachSeries(fileAvailableList, (file, callback) => { // serve files via https server
+                        sender.serveFile(ws.nodeID, addressKeyIdentifier, transactionID, file.file_hash)
+                              .then(() => callback())
+                              .catch(() => {
+                                  filesToRemove.push(file);
+                                  callback();
+                              });
+                    }, () => {
+                        _.pull(fileAvailableList, filesToRemove);
+                        return resolve();
+                    });
+                }).then(() => peer.transactionFileSyncResponse(data, ws));
             }
             else {
                 return peer.transactionFileSyncResponse(data, ws); /* node not public:  no server  endpoint */
