@@ -5,7 +5,7 @@ import cors from 'cors';
 import chunkUtils from './chunk-utils';
 import https from 'https';
 import walletUtils from '../wallet/wallet-utils';
-import queue from './queue';
+import storageAcl from './storage-acl';
 import request from 'request';
 import async from 'async';
 import network from '../../net/network';
@@ -13,14 +13,13 @@ import eventBus from '../event-bus';
 import mutex from '../mutex';
 import peer from '../../net/peer';
 import config from '../config/config';
-import sender from './sender';
 
 
 class Receiver {
     constructor() {
-        this.httpsServer   = null;
-        this.app           = null;
-        this.nodeId        = null;
+        this.httpsServer = null;
+        this.app         = null;
+        this.nodeId      = null;
     }
 
     initialize() {
@@ -37,7 +36,7 @@ class Receiver {
                               this.nodeId         = network.nodeID;
                               this._defineServerOperations();
                               return this._startReceiverServer(serverOptions);
-                          }).then(() => queue.initializeReceiver());
+                          });
     }
 
     _startReceiverServer(serverOptions) {
@@ -54,15 +53,6 @@ class Receiver {
         });
     }
 
-    releaseReceiverInstance() {
-        queue.decrementServerInstancesInReceiver();
-        if (!queue.isReceiverServerActive()) {
-            this.httpsServer._server && this.httpsServer._server.close();
-            this.httpsServer.close();
-            this.httpsServer = undefined;
-        }
-    }
-
     _defineServerOperations() {
         this.app = express();
         this.app.use(helmet());
@@ -76,7 +66,7 @@ class Receiver {
             let fileHash             = req.params.fileHash;
             let chunkNumber          = parseInt(req.params.chunkNumber);
 
-            if (queue.hasChunkToReceive(nodeId, transactionId, fileHash, chunkNumber)) {
+            if (storageAcl.hasChunkToReceive(nodeId, transactionId, fileHash, chunkNumber)) {
                 const buffers = [];
                 req.on('data', function(chunk) {
                     buffers.push(chunk);
@@ -86,7 +76,7 @@ class Receiver {
                     const chunk = Buffer.concat(buffers);
                     chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, fileHash, chunk)
                               .then(() => {
-                                  queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, chunkNumber).then(_ => _);
+                                  storageAcl.removeChunkFromReceiver(nodeId, transactionId, fileHash, chunkNumber);
                                   eventBus.emit(`transaction_file_chunk_response:${nodeId}:${transactionId}:${fileHash}`, req.params);
                                   res.send('ok');
                               });
@@ -99,12 +89,12 @@ class Receiver {
         });
     }
 
-    registerFileChunkForUpload(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk) {
-        return queue.addChunkToReceiver(nodeId, transactionId, fileHash, numberOfChunks, requestedChunk);
+    registerFileChunkForUpload(nodeId, transactionId, fileHash, requestedChunk) {
+        storageAcl.addChunkToReceiver(nodeId, transactionId, fileHash, requestedChunk);
     }
 
     unregisterFileChunkUpload(nodeId, transactionId, fileHash, requestedChunk) {
-        return queue.removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk);
+        storageAcl.removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk);
     }
 
     downloadFileList(serverEndpoint, addressKeyIdentifier, transactionId, fileList) {
@@ -161,7 +151,7 @@ class Receiver {
                                                      .concat(transactionId).concat('/');
                            request.post(url, {
                                strictSSL: false
-                           }, (err, response, body) => {
+                           }, (err) => {
                                unlock();
                                if (err) {
                                    console.log('[file-receiver] error, ', err);
@@ -188,8 +178,8 @@ class Receiver {
             mutex.lock(['file-receiver'], unlock => {
                 const promisesToReceiveFileByChunks = fileList.map(file => new Promise((resolve, reject) => {
                     async.times(file.chunk_count, (chunkNumber, callback) => {
-                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.file_hash, file.chunk_count, chunkNumber)
-                            .then(() => peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.file_hash, chunkNumber, ws))
+                        this.registerFileChunkForUpload(ws.nodeID, transactionId, file.file_hash, chunkNumber);
+                        peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.file_hash, chunkNumber, ws)
                             .then(() => {
                                 let timeoutHandlerID;
                                 let isTimeout = false;
@@ -198,7 +188,7 @@ class Receiver {
                                         return;
                                     }
                                     clearTimeout(timeoutHandlerID);
-                                    this.unregisterFileChunkUpload(ws.nodeID, transactionId, file.file_hash, chunkNumber).then(_ => _);
+                                    this.unregisterFileChunkUpload(ws.nodeID, transactionId, file.file_hash, chunkNumber);
                                     callback();
                                 });
                                 timeoutHandlerID = setTimeout(() => {
@@ -240,11 +230,6 @@ class Receiver {
                            reject(err);
                        });
             });
-        }).then(() => {
-            this.releaseReceiverInstance();
-        }).catch(err => {
-            this.releaseReceiverInstance();
-            return Promise.reject(err);
         });
     }
 

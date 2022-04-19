@@ -5,7 +5,7 @@ import cors from 'cors';
 import chunkUtils from './chunk-utils';
 import https from 'https';
 import walletUtils from '../wallet/wallet-utils';
-import queue from './queue';
+import storageAcl from './storage-acl';
 import request from 'request';
 import network from '../../net/network';
 import config from '../config/config';
@@ -13,8 +13,8 @@ import config from '../config/config';
 
 class Sender {
     constructor() {
-        this.httpsServer   = null;
-        this.app           = null;
+        this.httpsServer = null;
+        this.app         = null;
     }
 
     initialize() {
@@ -29,9 +29,8 @@ class Sender {
                                   ecdhCurve: 'prime256v1'
                               };
                               this._defineServerOperations();
-                              return this._startSenderServer(serverOptions)
-                          })
-                          .then(() => queue.initializeSender());
+                              return this._startSenderServer(serverOptions);
+                          });
     }
 
     _defineServerOperations() {
@@ -47,7 +46,7 @@ class Sender {
             let fileHash             = req.params.fileHash;
             let chunkNumber          = req.params.chunkNumber;
 
-            if (queue.hasFileToSend(nodeId, transactionId, fileHash)) {
+            if (storageAcl.hasFileToSend(nodeId, transactionId, fileHash)) {
                 chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
                     res.send(data);
                 }).catch((err) => {
@@ -63,9 +62,8 @@ class Sender {
         this.app.post('/ack/:nodeId/:transactionId', function(req, res) {
             let nodeId        = req.params.nodeId;
             let transactionId = req.params.transactionId;
-            if (queue.hasTransactionRequest(nodeId, transactionId)) {
-                queue.decrementServerInstancesInSender();
-                queue.removeEntryFromSender(nodeId, transactionId).then(_ => _);
+            if (storageAcl.hasTransactionRequest(nodeId, transactionId)) {
+                storageAcl.removeEntryFromSender(nodeId, transactionId);
                 res.writeHead(200);
                 res.end('ok');
             }
@@ -95,7 +93,7 @@ class Sender {
     }
 
     serveFile(nodeId, addressKeyIdentifier, transactionId, fileHash) {
-        return queue.addNewFileToSender(nodeId, transactionId, fileHash);
+        return storageAcl.addNewFileToSender(nodeId, transactionId, fileHash);
     }
 
     sendChunk(receiverEndpoint, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
@@ -113,7 +111,7 @@ class Sender {
                         'Content-Type': 'application/octet-stream'
                     },
                     strictSSL: false
-                }, (err, response, body) => {
+                }, (err) => {
                     if (err) {
                         console.log('[file-sender] error, ', err);
                         return reject(err);

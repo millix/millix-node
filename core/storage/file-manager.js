@@ -4,7 +4,6 @@ import config from '../config/config';
 import fs from 'fs';
 import crypto from 'crypto';
 import wallet from '../wallet/wallet';
-import mutex from '../mutex';
 import {decrypt, encrypt} from 'eciesjs';
 import walletUtils from '../wallet/wallet-utils';
 import async from 'async';

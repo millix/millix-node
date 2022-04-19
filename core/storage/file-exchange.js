@@ -11,6 +11,7 @@ import async from 'async';
 import peer from '../../net/peer';
 import network from '../../net/network';
 import eventBus from '../event-bus';
+import storageAcl from './storage-acl';
 
 
 class FileExchange {
@@ -65,25 +66,13 @@ class FileExchange {
             };
 
             if (network.nodeIsPublic) {
-                return new Promise(resolve => {
-                    data['server_endpoint'] = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`;
-                    const filesToRemove     = [];
-                    async.eachSeries(fileAvailableList, (file, callback) => { // serve files via https server
-                        sender.serveFile(ws.nodeID, addressKeyIdentifier, transactionID, file.file_hash)
-                              .then(() => callback())
-                              .catch(() => {
-                                  filesToRemove.push(file);
-                                  callback();
-                              });
-                    }, () => {
-                        _.pull(fileAvailableList, filesToRemove);
-                        return resolve();
-                    });
-                }).then(() => peer.transactionFileSyncResponse(data, ws));
+                data['server_endpoint'] = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`;
+                _.each(fileAvailableList, (file) => { // serve files via https server
+                    sender.serveFile(ws.nodeID, addressKeyIdentifier, transactionID, file.file_hash);
+                });
             }
-            else {
-                return peer.transactionFileSyncResponse(data, ws); /* node not public:  no server  endpoint */
-            }
+
+            return peer.transactionFileSyncResponse(data, ws);
         });
 
     }
@@ -156,6 +145,7 @@ class FileExchange {
                                     receiver.requestFileListUpload(addressKeyIdentifier, transactionId, data.transaction_file_list, ws)
                                             .then(() => {
                                                 _.pull(fileListToRequest, ...fileListToRequest); // empty list
+                                                storageAcl.removeFileFromReceiver(ws.nodeID, transactionId);
                                                 callback(true);
                                             })
                                             .catch(({files_received: filesDownloaded}) => {
