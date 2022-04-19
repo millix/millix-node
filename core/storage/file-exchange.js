@@ -183,6 +183,8 @@ class FileExchange {
 
     close() {
         fileSync.close().then(_ => _);
+        sender.stop();
+        receiver.stop();
     }
 
 }

@@ -39,6 +39,13 @@ class Receiver {
                           });
     }
 
+    stop() {
+        if (this.httpsServer) {
+            this.httpsServer.close();
+            this.httpsServer = null;
+        }
+    }
+
     _startReceiverServer(serverOptions) {
         return new Promise((resolve, reject) => {
             this.httpsServer = https.createServer(serverOptions, this.app);

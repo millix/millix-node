@@ -33,6 +33,13 @@ class Sender {
                           });
     }
 
+    stop() {
+        if (this.httpsServer) {
+            this.httpsServer.close();
+            this.httpsServer = null;
+        }
+    }
+
     _defineServerOperations() {
         this.app = express();
         this.app.use(helmet());
