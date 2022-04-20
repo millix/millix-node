@@ -58,6 +58,10 @@ export class FileSync {
         return Promise.resolve();
     }
 
+    pushToQueue(data) {
+        this.queue.push(data);
+    }
+
 
     add(transaction) {
         this.queue.push({

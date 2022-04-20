@@ -13,6 +13,7 @@ import eventBus from '../event-bus';
 import mutex from '../mutex';
 import peer from '../../net/peer';
 import config from '../config/config';
+import fileManager from './file-manager';
 
 
 class Receiver {
@@ -148,8 +149,20 @@ class Receiver {
                             });
                         }
 
-                        filesDownloaded.add(file.file_hash);
-                        return resolve();
+                        fileManager.checkFile(addressKeyIdentifier, transactionDate, transactionId, file.file_hash)
+                                   .catch(() => false)
+                                   .then(isValid => {
+                                       if (isValid) {
+                                           filesDownloaded.add(file.file_hash);
+                                           return resolve();
+                                       }
+                                       else {
+                                           return reject({
+                                               error         : 'invalid_file_checksum',
+                                               files_received: filesDownloaded
+                                           });
+                                       }
+                                   });
                     });
                 }));
 
@@ -224,8 +237,20 @@ class Receiver {
                                 files_received: filesReceived
                             });
                         }
-                        filesReceived.add(file.file_hash);
-                        return resolve();
+                        fileManager.checkFile(addressKeyIdentifier, transactionDate, transactionId, file.file_hash)
+                                   .catch(() => false)
+                                   .then(isValid => {
+                                       if (isValid) {
+                                           filesReceived.add(file.file_hash);
+                                           return resolve();
+                                       }
+                                       else {
+                                           return reject({
+                                               error         : 'invalid_file_checksum',
+                                               files_received: filesReceived
+                                           });
+                                       }
+                                   });
                     });
                 }));
 

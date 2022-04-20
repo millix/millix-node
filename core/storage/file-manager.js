@@ -11,6 +11,11 @@ import stream from 'stream';
 import database from '../../database/database';
 import base58 from 'bs58';
 import _ from 'lodash';
+import {promisify} from 'util';
+
+const readdir = promisify(fs.readdir);
+const rmdir   = promisify(fs.rmdir);
+const unlink  = promisify(fs.unlink);
 
 
 class FileManager {
@@ -73,18 +78,22 @@ class FileManager {
         ]);
     }
 
+    removeDirectory(dir) {
+        return readdir(dir, {withFileTypes: true})
+            .then(entries => Promise.all(entries.map(entry => {
+                let fullPath = path.join(dir, entry.name);
+                return entry.isDirectory() ? this.removeDirectory(fullPath) : unlink(fullPath);
+            })))
+            .then(() => rmdir(dir));
+    }
+
     createAndGetFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
         const folderLocation = this.createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionId);
         return path.join(folderLocation, fileHash);
     }
 
-    decryptFile(addressKeyIdentifier, transactionDate, transactionId, fileHash, key, isKeyDecrypted) {
-        let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
-        if (!fileLocation) {
-            return Promise.reject('transaction_file_not_found');
-        }
-
-        const checkHash = () => new Promise((resolve, reject) => {
+    _checkFileHash(fileLocation, fileHash) {
+        return new Promise((resolve, reject) => {
             const sha256sum = crypto.createHash('sha256').setEncoding('hex');
             fs.createReadStream(fileLocation)
               .on('error', err => reject(err))
@@ -97,6 +106,21 @@ class FileManager {
                   resolve();
               });
         });
+    }
+
+    checkFile(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
+        let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
+        if (!fileLocation) {
+            return Promise.reject('transaction_file_not_found');
+        }
+        return this._checkFileHash(fileLocation, fileHash);
+    }
+
+    decryptFile(addressKeyIdentifier, transactionDate, transactionId, fileHash, key, isKeyDecrypted) {
+        let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
+        if (!fileLocation) {
+            return Promise.reject('transaction_file_not_found');
+        }
 
         const decryptAndReadFile = () => new Promise((resolve, reject) => {
             if (!isKeyDecrypted) {
@@ -121,7 +145,7 @@ class FileManager {
               });
         });
 
-        return checkHash().then(() => decryptAndReadFile());
+        return this._checkFileHash(fileLocation, fileHash).then(() => decryptAndReadFile());
     }
 
     /**
@@ -220,6 +244,17 @@ class FileManager {
                     jsonWriteStream.close();
                     resolve();
                 });
+        });
+    }
+
+    readTransactionAttributeJSONFile(transactionFolder) {
+        return new Promise((resolve, reject) => {
+            fs.readFile(path.join(transactionFolder, 'transaction_output_metadata.json'), 'utf8', (err, data) => {
+                if (err) {
+                    return reject('transaction_output_attribute_file_invalid');
+                }
+                resolve(JSON.parse(data));
+            });
         });
     }
 

@@ -38,20 +38,49 @@ class FileExchange {
                   transaction_id        : transactionID,
                   transaction_date      : transactionDate,
                   transaction_file_list : transactionFileList
-              }                 = data;
+              } = data;
+
+        // if the node is receiving the file it is not yet available to serve it
+        if (this.activeTransactionSync.has(transactionID)) {
+            return peer.transactionFileSyncResponse(transactionID, {transaction_file_not_found: true}, ws);
+        }
+
         const fileAvailableList = [];
         async.eachSeries(transactionFileList, (fileHash, callback) => {
             fileManager.hasFile(addressKeyIdentifier, transactionDate, transactionID, fileHash)
                        .then(exists => {
                            if (exists) {
-                               return sender.getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionID, fileHash)
-                                            .then(totalChunks => {
-                                                fileAvailableList.push({
-                                                    file_hash  : fileHash,
-                                                    chunk_count: totalChunks
-                                                });
-                                                callback();
-                                            }).catch(() => callback());
+                               return fileManager.checkFile(addressKeyIdentifier, transactionDate, transactionID, fileHash)
+                                                 .catch(() => false)
+                                                 .then(isValid => {
+                                                     if (!isValid) {
+                                                         const transactionFolder = fileManager.createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionID);
+                                                         fileManager.readTransactionAttributeJSONFile(transactionFolder)
+                                                                    .then((transactionOutputAttribute) => {
+                                                                        return fileManager.removeDirectory(transactionFolder).then(() => {
+                                                                            fileSync.pushToQueue({
+                                                                                transaction_id             : transactionID,
+                                                                                address_key_identifier     : addressKeyIdentifier,
+                                                                                transaction_output_metadata: transactionOutputAttribute,
+                                                                                transaction_date           : transactionDate,
+                                                                                timestamp                  : Date.now()
+                                                                            });
+                                                                        });
+                                                                    })
+                                                                    .catch(_ => _)
+                                                                    .then(() => callback());
+                                                         return;
+                                                     }
+
+                                                     return sender.getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionID, fileHash)
+                                                                  .then(totalChunks => {
+                                                                      fileAvailableList.push({
+                                                                          file_hash  : fileHash,
+                                                                          chunk_count: totalChunks
+                                                                      });
+                                                                      callback();
+                                                                  }).catch(() => callback());
+                                                 });
                            }
                            callback();
                        });
