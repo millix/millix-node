@@ -62,7 +62,7 @@ export default class Address {
 
     addAddressVersion(version, isMainNetwork, regexPattern, isDefault) {
         return new Promise(resolveUpdate => {
-            if (isDefault === 0) {
+            if (isDefault === false) {
                 return resolveUpdate();
             }
 
