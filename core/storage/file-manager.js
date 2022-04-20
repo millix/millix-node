@@ -26,7 +26,7 @@ class FileManager {
     }
 
     _normalizeDateFolder(transactionDate) {
-        return transactionDate - (transactionDate % 86400);
+        return (transactionDate - (transactionDate % 86400)).toString();
     }
 
     getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash) {

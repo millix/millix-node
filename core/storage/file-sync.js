@@ -63,7 +63,7 @@ export class FileSync {
             transaction_id             : transaction.transaction_id,
             address_key_identifier     : transaction.transaction_input_list[0].address_key_identifier,
             transaction_output_metadata: transaction.transaction_output_attribute.transaction_output_metadata,
-            transaction_date           : transaction.transaction_date,
+            transaction_date           : Math.floor(new Date(transaction.transaction_date).getTime() / 1000),
             timestamp                  : Date.now()
         });
     }
