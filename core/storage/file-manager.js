@@ -25,23 +25,27 @@ class FileManager {
         return Promise.resolve();
     }
 
-    getFileLocation(addressKeyIdentifier, transactionId, fileHash) {
+    _normalizeDateFolder(transactionDate) {
+        return transactionDate - (transactionDate % 86400);
+    }
+
+    getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
         if (!this.filesRootFolder) {
             return null;
         }
-        return path.join(this.filesRootFolder, addressKeyIdentifier, transactionId, fileHash);
+        return path.join(this.filesRootFolder, addressKeyIdentifier, this._normalizeDateFolder(transactionDate), transactionId, fileHash);
     }
 
-    hasFile(addressKeyIdentifier, transactionId, fileHash) {
+    hasFile(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
         return new Promise((resolve) => {
-            const filePath = this.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            const filePath = this.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
             fs.exists(filePath, (exists) => {
                 return resolve(exists);
             });
         });
     }
 
-    createAndGetFolderLocation(folderList, rootFolder = null) {
+    _createAndGetFolderLocation(folderList, rootFolder = null) {
         if (!rootFolder) {
             rootFolder = this.filesRootFolder;
         }
@@ -61,30 +65,21 @@ class FileManager {
         return location;
     }
 
-    createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash) {
-        let location = this.createAndGetFolderLocation([
+    createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionId) {
+        return this._createAndGetFolderLocation([
             addressKeyIdentifier,
+            this._normalizeDateFolder(transactionDate),
             transactionId
         ]);
-        return path.join(location, fileHash);
     }
 
-    checkReceivedFiles(addressKeyIdentifier, transactionId) {
-        let directory = path.join(this.filesRootFolder, addressKeyIdentifier, transactionId);
-        fs.readdir(directory, (err, files) => {
-            if (err) {
-                console.log('[file-manager] , ', err);
-                return false;
-            }
-            files.forEach((file) => {
-                //verify hash of each file received
-            });
-            return true;
-        });
+    createAndGetFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
+        const folderLocation = this.createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionId);
+        return path.join(folderLocation, fileHash);
     }
 
-    decryptFile(addressKeyIdentifier, transactionId, fileHash, key, isKeyDecrypted) {
-        let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+    decryptFile(addressKeyIdentifier, transactionDate, transactionId, fileHash, key, isKeyDecrypted) {
+        let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
         if (!fileLocation) {
             return Promise.reject('transaction_file_not_found');
         }
@@ -147,15 +142,10 @@ class FileManager {
      */
     createTransactionWithFileList(fileList, dstOutputs, outputFee) {
         //Create directory for my files (if not exist)
-        const destinationDirectory = path.join(this.filesRootFolder, wallet.defaultKeyIdentifier);
-        if (!fs.existsSync(destinationDirectory)) {
-            fs.mkdirSync(path.join(destinationDirectory));
-        }
-
-        let transactionTempDirectory = path.join(destinationDirectory, 'tmp');
-        if (!fs.existsSync(transactionTempDirectory)) {
-            fs.mkdirSync(path.join(transactionTempDirectory));
-        }
+        const transactionTempDirectory = this._createAndGetFolderLocation([
+            wallet.defaultKeyIdentifier,
+            'tmp'
+        ]);
 
         return this._getPublicKeyMap(dstOutputs)
                    .then((publicKeyBufferMap) => this._createEncryptedFiles(fileList, transactionTempDirectory, publicKeyBufferMap))
@@ -170,10 +160,7 @@ class FileManager {
                        const transactionList    = data.transaction_list;
                        const transaction        = transactionList[transactionList.length - 1];
                        //Create transaction directory to write file
-                       let transactionDirectory = path.join(destinationDirectory, transaction.transaction_id);
-                       if (!fs.existsSync(transactionDirectory)) {
-                           fs.mkdirSync(path.join(transactionDirectory));
-                       }
+                       let transactionDirectory = this.createAndGetFolderLocation(wallet.defaultKeyIdentifier, transaction.transaction_date, transaction.transaction_id);
 
                        return this.writeTransactionAttributeJSONFile(data.transaction_output_attribute, transactionDirectory)
                                   .then(() => this._moveEncryptedFiles(data.file_list, transactionDirectory))

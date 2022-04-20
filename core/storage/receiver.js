@@ -66,12 +66,13 @@ class Receiver {
         this.app.use(bodyParser.json({limit: '50mb'}));
         this.app.use(cors());
 
-        this.app.post('/file/:nodeId/:addressKeyIdentifier/:transactionId/:fileHash/:chunkNumber', (req, res) => {
-            let nodeId               = req.params.nodeId;
-            let addressKeyIdentifier = req.params.addressKeyIdentifier;
-            let transactionId        = req.params.transactionId;
-            let fileHash             = req.params.fileHash;
-            let chunkNumber          = parseInt(req.params.chunkNumber);
+        this.app.post('/file/:nodeId/:addressKeyIdentifier/:transactionDate/:transactionId/:fileHash/:chunkNumber', (req, res) => {
+            const nodeId               = req.params.nodeId;
+            const addressKeyIdentifier = req.params.addressKeyIdentifier;
+            const transactionDate      = req.params.transactionDate;
+            const transactionId        = req.params.transactionId;
+            const fileHash             = req.params.fileHash;
+            const chunkNumber          = parseInt(req.params.chunkNumber);
 
             if (storageAcl.hasChunkToReceive(nodeId, transactionId, fileHash, chunkNumber)) {
                 const buffers = [];
@@ -81,7 +82,7 @@ class Receiver {
 
                 req.on('end', () => {
                     const chunk = Buffer.concat(buffers);
-                    chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, fileHash, chunk)
+                    chunkUtils.writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunk)
                               .then(() => {
                                   storageAcl.removeChunkFromReceiver(nodeId, transactionId, fileHash, chunkNumber);
                                   eventBus.emit(`transaction_file_chunk_response:${nodeId}:${transactionId}:${fileHash}`, req.params);
@@ -104,7 +105,7 @@ class Receiver {
         storageAcl.removeChunkFromReceiver(nodeId, transactionId, fileHash, requestedChunk);
     }
 
-    downloadFileList(serverEndpoint, addressKeyIdentifier, transactionId, fileList) {
+    downloadFileList(serverEndpoint, addressKeyIdentifier, transactionDate, transactionId, fileList) {
         return new Promise((resolve, reject) => {
             const filesDownloaded = new Set();
             mutex.lock(['file-downloader'], unlock => {
@@ -113,6 +114,7 @@ class Receiver {
                         const url = serverEndpoint.concat('/file/')
                                                   .concat(this.nodeId).concat('/')
                                                   .concat(addressKeyIdentifier).concat('/')
+                                                  .concat(transactionDate).concat('/')
                                                   .concat(transactionId).concat('/')
                                                   .concat(file.file_hash).concat('/')
                                                   .concat(chunkNumber);
@@ -128,7 +130,7 @@ class Receiver {
                                     file
                                 });
                             }
-                            chunkUtils.writeFileChunk(addressKeyIdentifier, transactionId, file.file_hash, body).then(() => {
+                            chunkUtils.writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, file.file_hash, body).then(() => {
                                 callback();
                             }).catch((err) => {
                                 return callback({
@@ -178,7 +180,7 @@ class Receiver {
         });
     }
 
-    requestFileListUpload(addressKeyIdentifier, transactionId, fileList, ws) {
+    requestFileListUpload(addressKeyIdentifier, transactionDate, transactionId, fileList, ws) {
         const serverEndpoint = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_RECEIVER}`;
         return new Promise((resolve, reject) => {
             const filesReceived = new Set();
@@ -186,7 +188,7 @@ class Receiver {
                 const promisesToReceiveFileByChunks = fileList.map(file => new Promise((resolve, reject) => {
                     async.times(file.chunk_count, (chunkNumber, callback) => {
                         this.registerFileChunkForUpload(ws.nodeID, transactionId, file.file_hash, chunkNumber);
-                        peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, file.file_hash, chunkNumber, ws)
+                        peer.transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionDate, transactionId, file.file_hash, chunkNumber, ws)
                             .then(() => {
                                 let timeoutHandlerID;
                                 let isTimeout = false;

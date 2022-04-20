@@ -47,11 +47,12 @@ class Peer {
         });
     }
 
-    transactionFileSyncRequest(addressKeyIdentifier, transactionID, transactionFileList, ws) {
+    transactionFileSyncRequest(addressKeyIdentifier, transactionDate, transactionID, transactionFileList, ws) {
         let payload = {
             type   : 'transaction_file_request',
             content: {
                 address_key_identifier: addressKeyIdentifier,
+                transaction_date      : transactionDate,
                 transaction_id        : transactionID,
                 transaction_file_list : transactionFileList
             }
@@ -96,13 +97,14 @@ class Peer {
                     ws && ws.close();
                     reject();
                 }
-            } else {
+            }
+            else {
                 reject();
             }
         });
     }
 
-    transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionId, fileHash, chunkNumber, ws) {
+    transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionDate, transactionId, fileHash, chunkNumber, ws) {
         return new Promise((resolve, reject) => {
             if (!ws) {
                 return reject();
@@ -113,6 +115,7 @@ class Peer {
                     address_key_identifier: addressKeyIdentifier,
                     receiver_endpoint     : serverEndpoint,
                     transaction_id        : transactionId,
+                    transaction_date      : transactionDate,
                     chunk_number          : chunkNumber,
                     file_hash             : fileHash
                 }

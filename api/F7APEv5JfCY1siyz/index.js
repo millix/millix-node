@@ -95,7 +95,7 @@ class _F7APEv5JfCY1siyz extends Endpoint {
                                         if (!key) {
                                             return fileReadCallback();
                                         }
-                                        fileManager.decryptFile(transaction.address_key_identifier_from, transaction.transaction_id, file.hash, key, file.public)
+                                        fileManager.decryptFile(transaction.address_key_identifier_from, transaction.transaction_date, transaction.transaction_id, file.hash, key, file.public)
                                                    .then(fileData => {
                                                        attribute.value.file_data[file.hash] = JSON.parse(fileData.toString());
                                                        fileReadCallback();

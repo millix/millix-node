@@ -36,14 +36,15 @@ class FileExchange {
         const {
                   address_key_identifier: addressKeyIdentifier,
                   transaction_id        : transactionID,
+                  transaction_date      : transactionDate,
                   transaction_file_list : transactionFileList
               }                 = data;
         const fileAvailableList = [];
         async.eachSeries(transactionFileList, (fileHash, callback) => {
-            fileManager.hasFile(addressKeyIdentifier, transactionID, fileHash)
+            fileManager.hasFile(addressKeyIdentifier, transactionDate, transactionID, fileHash)
                        .then(exists => {
                            if (exists) {
-                               return sender.getNumberOfChunks(addressKeyIdentifier, transactionID, fileHash)
+                               return sender.getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionID, fileHash)
                                             .then(totalChunks => {
                                                 fileAvailableList.push({
                                                     file_hash  : fileHash,
@@ -78,7 +79,7 @@ class FileExchange {
     }
 
     _onTransactionFileChunkRequest(data) {
-        return sender.sendChunk(data.receiver_endpoint, data.address_key_identifier, data.transaction_id, data.file_hash, data.chunk_number);
+        return sender.sendChunk(data.receiver_endpoint, data.address_key_identifier, data.transaction_date, data.transaction_id, data.file_hash, data.chunk_number);
     }
 
     _registerEventListeners() {
@@ -91,10 +92,10 @@ class FileExchange {
         fileSync.add(transaction);
     }
 
-    syncFilesFromTransaction(transactionId, addressKeyIdentifier, transactionOutputAttribute) {
+    syncFilesFromTransaction(transactionId, addressKeyIdentifier, transactionOutputAttribute, transactionDate) {
         return new Promise((resolve, reject) => {
             const fileList = transactionOutputAttribute?.file_list;
-            if (!transactionId || !addressKeyIdentifier || !transactionOutputAttribute || !fileList) {
+            if (!transactionId || !transactionDate || !addressKeyIdentifier || !transactionOutputAttribute || !fileList) {
                 return reject('transaction_file_sync_invalid');
             }
             else if (this.activeTransactionSync.has(transactionId)) {
@@ -104,7 +105,7 @@ class FileExchange {
 
             const fileListToRequest = [];
             async.eachSeries(fileList, (file, callback) => {
-                fileManager.hasFile(addressKeyIdentifier, transactionId, file.hash)
+                fileManager.hasFile(addressKeyIdentifier, transactionDate, transactionId, file.hash)
                            .then(hasFile => {
                                if (hasFile) {
                                    return callback();
@@ -116,11 +117,11 @@ class FileExchange {
                 if (fileListToRequest.length > 0) {
                     let nodesWS = _.shuffle(network.registeredClients);
                     async.eachSeries(nodesWS, (ws, callback) => {
-                        peer.transactionFileSyncRequest(addressKeyIdentifier, transactionId, fileListToRequest.map(file => file.hash), ws)
+                        peer.transactionFileSyncRequest(addressKeyIdentifier, transactionDate, transactionId, fileListToRequest.map(file => file.hash), ws)
                             .then((data) => {
                                 let serverEndpoint = data.server_endpoint;
                                 if (serverEndpoint) {
-                                    receiver.downloadFileList(serverEndpoint, addressKeyIdentifier, transactionId, data.transaction_file_list)
+                                    receiver.downloadFileList(serverEndpoint, addressKeyIdentifier, transactionDate, transactionId, data.transaction_file_list)
                                             .then(() => {
                                                 _.pull(fileListToRequest, ...fileListToRequest); // empty list
                                                 callback(true);
@@ -142,7 +143,7 @@ class FileExchange {
                                         return callback();
                                     }
 
-                                    receiver.requestFileListUpload(addressKeyIdentifier, transactionId, data.transaction_file_list, ws)
+                                    receiver.requestFileListUpload(addressKeyIdentifier, transactionDate, transactionId, data.transaction_file_list, ws)
                                             .then(() => {
                                                 _.pull(fileListToRequest, ...fileListToRequest); // empty list
                                                 storageAcl.removeFileFromReceiver(ws.nodeID, transactionId);
@@ -164,10 +165,7 @@ class FileExchange {
                     }, () => {
                         this.activeTransactionSync.delete(transactionId);
                         if (fileListToRequest.length === 0) {
-                            const metadataFilePath = fileManager.createAndGetFolderLocation([
-                                addressKeyIdentifier,
-                                transactionId
-                            ]);
+                            const metadataFilePath = fileManager.createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionId);
                             fileManager.writeTransactionAttributeJSONFile(transactionOutputAttribute, metadataFilePath).then(_ => _);
                         }
                     });

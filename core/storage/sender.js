@@ -46,15 +46,16 @@ class Sender {
         this.app.use(bodyParser.json({limit: '50mb'}));
         this.app.use(cors());
 
-        this.app.get('/file/:nodeId/:addressKeyIdentifier/:transactionId/:fileHash/:chunkNumber', (req, res) => {
-            let nodeId               = req.params.nodeId;
-            let addressKeyIdentifier = req.params.addressKeyIdentifier;
-            let transactionId        = req.params.transactionId;
-            let fileHash             = req.params.fileHash;
-            let chunkNumber          = req.params.chunkNumber;
+        this.app.get('/file/:nodeId/:addressKeyIdentifier/:transactionDate/:transactionId/:fileHash/:chunkNumber', (req, res) => {
+            const nodeId               = req.params.nodeId;
+            const addressKeyIdentifier = req.params.addressKeyIdentifier;
+            const transactionDate      = req.params.transactionDate;
+            const transactionId        = req.params.transactionId;
+            const fileHash             = req.params.fileHash;
+            const chunkNumber          = req.params.chunkNumber;
 
             if (storageAcl.hasFileToSend(nodeId, transactionId, fileHash)) {
-                chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
+                chunkUtils.getChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunkNumber).then((data) => {
                     res.send(data);
                 }).catch((err) => {
                     console.log('[file-sender] error', err);
@@ -95,21 +96,22 @@ class Sender {
         });
     }
 
-    getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash) {
-        return chunkUtils.getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash);
+    getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
+        return chunkUtils.getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionId, fileHash);
     }
 
     serveFile(nodeId, addressKeyIdentifier, transactionId, fileHash) {
         return storageAcl.addNewFileToSender(nodeId, transactionId, fileHash);
     }
 
-    sendChunk(receiverEndpoint, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
-        return chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
+    sendChunk(receiverEndpoint, addressKeyIdentifier, transactionDate, transactionId, fileHash, chunkNumber) {
+        return chunkUtils.getChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunkNumber).then((data) => {
             return new Promise((resolve, reject) => {
                 request.post({
                     url      : receiverEndpoint.concat('/file/')
                                                .concat(network.nodeID).concat('/')
                                                .concat(addressKeyIdentifier).concat('/')
+                                               .concat(transactionDate).concat('/')
                                                .concat(transactionId).concat('/')
                                                .concat(fileHash).concat('/')
                                                .concat(chunkNumber),

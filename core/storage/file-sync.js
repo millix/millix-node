@@ -20,7 +20,7 @@ export class FileSync {
         }
 
         this.queue = new Queue((data, done) => {
-            fileExchange.syncFilesFromTransaction(data.transaction_id, data.address_key_identifier, data.transaction_output_metadata)
+            fileExchange.syncFilesFromTransaction(data.transaction_id, data.address_key_identifier, data.transaction_output_metadata, data.transaction_date)
                         .catch(_ => _)
                         .then(status => {
                             setTimeout(() => {
@@ -63,6 +63,7 @@ export class FileSync {
             transaction_id             : transaction.transaction_id,
             address_key_identifier     : transaction.transaction_input_list[0].address_key_identifier,
             transaction_output_metadata: transaction.transaction_output_attribute.transaction_output_metadata,
+            transaction_date           : transaction.transaction_date,
             timestamp                  : Date.now()
         });
     }
