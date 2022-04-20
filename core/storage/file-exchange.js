@@ -115,7 +115,7 @@ class FileExchange {
                            });
             }, () => {
                 if (fileListToRequest.length > 0) {
-                    let nodesWS = _.shuffle(network.registeredClients);
+                    let nodesWS = _.shuffle(_.filter(network.registeredClients, ws => ws.featureSet.has('storage')));
                     async.eachSeries(nodesWS, (ws, callback) => {
                         peer.transactionFileSyncRequest(addressKeyIdentifier, transactionDate, transactionId, fileListToRequest.map(file => file.hash), ws)
                             .then((data) => {
