@@ -23,11 +23,12 @@ export class FileSync {
             fileExchange.syncFilesFromTransaction(data.transaction_id, data.address_key_identifier, data.transaction_output_metadata, data.transaction_date)
                         .catch(_ => _)
                         .then(status => {
+                            if (status === 'transaction_file_sync_completed') {
+                                return done();
+                            }
                             setTimeout(() => {
                                 done();
-                                if (status !== 'transaction_file_sync_completed') {
-                                    this.queue.push(data);
-                                }
+                                this.queue.push(data);
                             }, 10000);
                         });
         }, {
