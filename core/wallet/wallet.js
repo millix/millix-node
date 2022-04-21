@@ -901,19 +901,12 @@ class Wallet {
                                                                                   .then(validTransaction => {
 
                                                                                       if (!validTransaction) {
-                                                                                          console.log('Invalid transaction received from network. Set all children as invalid');
-
-                                                                                          database.applyShards((shardID) => {
-                                                                                              return database.getRepository('transaction', shardID)
-                                                                                                             .invalidateTransaction(transaction.transaction_id);
-                                                                                          }).then(_ => _).catch(err => console.log(`Failed to find and set spenders as invalid. Error: ${err}`));
-
-                                                                                          eventBus.emit('badTransaction:' + transaction.transaction_id);
+                                                                                          console.log('[wallet] invalid transaction received from network');
                                                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                                                           delete this._transactionRequested[transaction.transaction_id];
                                                                                           delete this._transactionFundingActiveWallet[transaction.transaction_id];
                                                                                           walletSync.removeTransactionSync(transaction.transaction_id);
-                                                                                          // return false;
+                                                                                          return null;
                                                                                       }
 
                                                                                       const isFundingWallet = !!this._transactionFundingActiveWallet[transaction.transaction_id];
@@ -1097,6 +1090,13 @@ class Wallet {
                             }
                             else {
                                 console.log('[wallet] it is not possible to normalize the transaction', data.transaction_id);
+                                database.applyShards(shardID => {
+                                    const transactionRepository = database.getRepository('transaction', shardID);
+                                    return transactionRepository.deleteTransaction(transaction.transaction_id);
+                                }).then(_ => this.requestTransactionFromNetwork(transaction.transaction_id, {
+                                    priority        : 1,
+                                    dispatch_request: true
+                                }));
                             }
                         }
                         catch (e) {
@@ -1280,10 +1280,11 @@ class Wallet {
                 from   : node
             });
             let transactionID = data.transaction_id;
-            database.applyShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getSpendTransactions(transactionID);
-            }).then(transactions => {
+            this._syncTransactionIfMissing(transactionID)
+                .then(() => database.applyShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return transactionRepository.getSpendTransactions(transactionID);
+                })).then(transactions => {
                 if (transactions && transactions.length > 0) {
                     transactions = _.uniq(_.map(transactions, transaction => transaction.transaction_id));
                 }
@@ -1297,6 +1298,24 @@ class Wallet {
                 unlock();
             }).catch(() => unlock());
         }, undefined, Date.now() + config.NETWORK_LONG_TIME_WAIT_MAX);
+    }
+
+    _syncTransactionIfMissing(transactionID) {
+        if (!config.MODE_NODE_SYNC_FULL) {
+            return Promise.resolve();
+        }
+
+        return database.firstShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.hasTransaction(transactionID);
+        }).then(hasTransaction => {
+            if (!hasTransaction) {
+                this.requestTransactionFromNetwork(transactionID, {
+                    priority        : 1,
+                    dispatch_request: true
+                });
+            }
+        });
     }
 
     _onSyncOutputSpendTransaction(data, ws) { //TODO: check this
@@ -1318,21 +1337,36 @@ class Wallet {
             const transactionID             = data.transaction_id;
             const transactionOutputPosition = data.output_position;
 
-            database.applyShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.listTransactionInput({
-                    output_transaction_id: transactionID,
-                    output_position      : transactionOutputPosition
-                });
-            }).then(spendingTransactions => {
+            this._syncTransactionIfMissing(transactionID)
+                .then(() => database.applyShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return transactionRepository.listTransactionInput({
+                        output_transaction_id: transactionID,
+                        output_position      : transactionOutputPosition
+                    });
+                })).then(spendingTransactions => {
                 // get transaction objects
                 async.mapSeries(spendingTransactions, (spendingTransaction, callback) => {
                     database.firstShardZeroORShardRepository('transaction', spendingTransaction.shard_id, transactionRepository => {
-                        return new Promise((resolve, reject) => {
-                            transactionRepository.getTransactionObject(spendingTransaction.transaction_id)
-                                                 .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject())
-                                                 .catch(() => reject());
-                        });
+                        return transactionRepository.getTransactionObject(spendingTransaction.transaction_id)
+                                                    .then(transaction => {
+                                                        if (!transaction) {
+                                                            return Promise.reject();
+                                                        }
+
+                                                        transaction = transactionRepository.normalizeTransactionObject(transaction);
+                                                        if (!transaction) {
+                                                            return database.applyShards(shardID => {
+                                                                const transactionRepository = database.getRepository('transaction', shardID);
+                                                                return transactionRepository.deleteTransaction(spendingTransaction.transaction_id);
+                                                            }).then(_ => this.requestTransactionFromNetwork(spendingTransaction.transaction_id, {
+                                                                priority        : 1,
+                                                                dispatch_request: true
+                                                            })).then(() => Promise.reject());
+                                                        }
+
+                                                        return transaction;
+                                                    });
                     }).then(transaction => callback(null, transaction));
                 }, (err, transactions) => {
                     // get peers' current web socket

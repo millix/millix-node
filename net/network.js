@@ -38,14 +38,15 @@ class Network {
         this._wss                                  = null;
         this.networkInterfaceAddresses             = [];
         this.nodeID                                = null;
-        this.nodeIsPublic                          = undefined;
+        this.nodeIsPublic                          = config.NODE_PUBLIC;
         this.certificatePem                        = null;
         this.certificatePrivateKeyPem              = null;
         this.nodeConnectionID                      = this.generateNewID();
         this._selfConnectionNode                   = new Set();
         this._allowedMessageInOutboudConnection    = new Set([
             'node_attribute_request',
-            'wallet_transaction_sync'
+            'wallet_transaction_sync',
+            'transaction_sync'
         ]);
         this.initialized                           = false;
         this.dht                                   = null;
@@ -215,15 +216,7 @@ class Network {
 
         statistics.newEvent(messageType);
 
-        if (ws.outBound && !ws.bidirectional && this.shouldBlockMessage(messageType)) {
-            return;
-        }
-
         eventBus.emit(jsonMessage.type, content, ws);
-    }
-
-    shouldBlockMessage(messageType) {
-        return !this._allowedMessageInOutboudConnection.has(messageType) && !!/.*_(request|sync|allocate)$/g.exec(messageType);
     }
 
     getHostByNode(node) {
@@ -251,6 +244,8 @@ class Network {
         this.setWebSocket(wss);
 
         wss.on('connection', (ws, req) => {
+
+            this.nodeIsPublic = true;
 
             let ip;
             if (req.connection.remoteAddress) {
@@ -522,7 +517,7 @@ class Network {
                         peer.sendConnectionReady(extra, ws);
 
                         // request peer attributes
-                        this._requestAllNodeAttribute(peerNodeID, ws);
+                        this._requestAllNodeAttribute(ws);
                         // send peer list to the new node
                         peer.sendNodeList(ws).then(_ => _);
 
@@ -807,7 +802,8 @@ class Network {
         }
     }
 
-    _requestAllNodeAttribute(nodeID, ws) {
+    _requestAllNodeAttribute(ws) {
+        const nodeID = ws.nodeID;
         const attributeNameList = _.filter([
             'shard_protocol',
             'transaction_count',
@@ -843,7 +839,7 @@ class Network {
                 ws.nodeConnectionReady = true;
 
                 // request node attributes
-                this._requestAllNodeAttribute(ws.nodeID, ws);
+                this._requestAllNodeAttribute(ws);
 
                 // send peer list to the new node
                 peer.sendNodeList(ws).then(_ => _);
@@ -895,7 +891,7 @@ class Network {
 
     _onNATCheckResponse(content, ws) {
         console.log('[network] on natcheck response', content);
-        this.nodeIsPublic = content.is_valid_nat;
+        this.nodeIsPublic = this.nodeIsPublic || content.is_valid_nat;
     }
 
     _natCheckTryConnect(url) {

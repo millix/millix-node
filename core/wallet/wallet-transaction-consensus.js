@@ -211,10 +211,19 @@ export class WalletTransactionConsensus {
 
                 if (transaction && transaction.is_stable !== undefined) { // transaction object needs to be normalized
                     transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
+                    if (!transaction) {
+                        database.applyShards(shardID => {
+                            const transactionRepository = database.getRepository('transaction', shardID);
+                            return transactionRepository.deleteTransaction(transactionID);
+                        }).then(_ => wallet.requestTransactionFromNetwork(transactionID, {
+                            priority        : 1,
+                            dispatch_request: true
+                        }));
+                    }
                 }
 
                 if (!transaction) {
-                    if(config.MODE_NODE_SYNC_FULL) {
+                    if (config.MODE_NODE_SYNC_FULL) {
                         wallet.requestTransactionFromNetwork(transactionID, {
                             priority        : 1,
                             dispatch_request: true
@@ -354,7 +363,7 @@ export class WalletTransactionConsensus {
                                        }).then(output => {
                                            if (!output) {
 
-                                               if(config.MODE_NODE_SYNC_FULL) {
+                                               if (config.MODE_NODE_SYNC_FULL) {
                                                    wallet.requestTransactionFromNetwork(input.output_transaction_id, {
                                                        priority        : 1,
                                                        dispatch_request: true
@@ -515,7 +524,7 @@ export class WalletTransactionConsensus {
                     return;
                 }
                 else if (err.cause === 'transaction_not_found') {
-                    if(config.MODE_NODE_SYNC_FULL) {
+                    if (config.MODE_NODE_SYNC_FULL) {
                         ws && peer.transactionSyncByWebSocket(err.transaction_id_fail, ws).then(_ => _);
                         wallet.requestTransactionFromNetwork(err.transaction_id_fail);
                     }
@@ -565,7 +574,13 @@ export class WalletTransactionConsensus {
                            if (!transaction) { // transaction data not found
                                console.log('[wallet-transaction-consensus] transaction not found. unexpected behaviour.');
                                this._transactionValidationRejected.add(transactionID);
-                               return Promise.reject();
+                               return database.applyShards(shardID => {
+                                   const transactionRepository = database.getRepository('transaction', shardID);
+                                   return transactionRepository.deleteTransaction(transactionID);
+                               }).then(_ => wallet.requestTransactionFromNetwork(transactionID, {
+                                   priority        : 1,
+                                   dispatch_request: true
+                               })).then(() => Promise.reject());
                            }
 
                            console.log('[wallet-transaction-consensus]', transactionID, ' is ready for consensus round');
@@ -792,30 +807,6 @@ export class WalletTransactionConsensus {
             consensusData.requestPeerValidation && consensusData.requestPeerValidation();
             return;
         }
-        else if (data.cause === 'transaction_not_found') {
-            delete consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID];
-            consensusData.consensus_round_node_discard.add(ws.nodeID);
-            consensusData.requestPeerValidation && consensusData.requestPeerValidation();
-            setTimeout(() => {
-                const consensusData = this._consensusRoundState[transactionID];
-                if (consensusData) {
-                    consensusData.consensus_round_node_discard.delete(ws.nodeID);
-                }
-            }, 5000);
-            return database.firstShards((shardID) => {
-                return new Promise((resolve, reject) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    transactionRepository.getTransactionObject(data.transaction_id_fail)
-                                         .then(transaction => transaction ? resolve(transactionRepository.normalizeTransactionObject(transaction)) : reject());
-                });
-            }).then(transaction => {
-                if (!transaction && config.MODE_NODE_SYNC_FULL) {
-                    peer.transactionSyncRequest(data.transaction_id_fail, {dispatch_request: true}).then(_ => _).catch(_ => _);
-                    return;
-                }
-                peer.transactionSendToNode(transaction, ws);
-            });
-        }
 
         const consensusResponseData      = this._consensusRoundState[transactionID].consensus_round_response[consensusData.consensus_round_count];
         consensusResponseData[ws.nodeID] = {response: data};
@@ -828,8 +819,9 @@ export class WalletTransactionConsensus {
             not_found   : 0
         };
 
-        let responseCount               = 0;
-        const invalidResponseNodeIDList = [];
+        let responseCount                = 0;
+        const invalidResponseNodeIDList  = [];
+        const notFoundResponseNodeIDList = [];
         for (let [nodeID, {response}] of Object.entries(consensusResponseData)) {
             if (!response) {
                 continue;
@@ -845,6 +837,7 @@ export class WalletTransactionConsensus {
             }
             else if (response.cause === 'transaction_not_found') {
                 counter.not_found++;
+                notFoundResponseNodeIDList.push(nodeID);
             }
             else { /* 'transaction_invalid', 'transaction_invalid_amount' */
                 counter.invalid++;
@@ -852,8 +845,24 @@ export class WalletTransactionConsensus {
             }
         }
 
-        if (counter.invalid > 0 && (counter.double_spend > 0 || counter.valid > 0)) { // if there is any response that is not invalid we reset the invalid ones
+        if (counter.invalid > 0 && (counter.double_spend > 0
+                                    || counter.valid > 0
+                                    || consensusData.consensus_round_validation_count > 0
+                                    || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not invalid we reset the invalid ones
             invalidResponseNodeIDList.forEach(nodeID => {
+                delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
+                consensusData.consensus_round_node_discard.add(nodeID);
+                consensusData.requestPeerValidation && consensusData.requestPeerValidation();
+            });
+            return;
+        }
+        else if (counter.not_found > 0 && (counter.invalid > 0
+                                           || counter.double_spend > 0
+                                           || counter.valid > 0
+                                           || consensusData.consensus_round_invalid_count > 0
+                                           || consensusData.consensus_round_validation_count > 0
+                                           || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not invalid we reset the invalid ones
+            notFoundResponseNodeIDList.forEach(nodeID => {
                 delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
                 consensusData.consensus_round_node_discard.add(nodeID);
                 consensusData.requestPeerValidation && consensusData.requestPeerValidation();

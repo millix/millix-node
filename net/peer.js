@@ -324,7 +324,7 @@ class Peer {
 
                               let data = JSON.stringify(payload);
                               try {
-                                  if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                                  if (ws.nodeConnectionReady) {
                                       const transactionID = transaction.transaction_id;
                                       const nodeID        = ws.nodeID;
                                       let callbackCalled  = false;
@@ -397,7 +397,7 @@ class Peer {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
                 try {
-                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                    if (ws.nodeConnectionReady) {
 
                         eventBus.removeAllListeners('transaction_include_path_response:' + transactionID);
                         eventBus.once('transaction_include_path_response:' + transactionID, function(eventData, eventWS) {
@@ -451,10 +451,6 @@ class Peer {
     }
 
     transactionSpendResponse(transactionID, transactions, ws) {
-        if (ws.outBound && !ws.bidirectional) {
-            return;
-        }
-
         let payload = {
             type   : 'transaction_spend_response:' + transactionID,
             content: {transaction_id_list: transactions}
@@ -474,10 +470,6 @@ class Peer {
     }
 
     transactionOutputSpendResponse(transactionID, outputPosition, transactions, ws) {
-        if (ws.outBound && !ws.bidirectional) {
-            return;
-        }
-
         let payload = {
             type   : 'transaction_output_spend_response',
             content: {
@@ -532,7 +524,7 @@ class Peer {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
                 try {
-                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                    if (ws.nodeConnectionReady) {
 
                         eventBus.removeAllListeners(`transaction_output_spend_response:${transactionOutputID}`);
                         eventBus.once(`transaction_output_spend_response:${transactionOutputID}`, function(eventData) {
@@ -611,7 +603,7 @@ class Peer {
                 let callbackCalled = false;
                 let nodeID         = ws.nodeID;
                 try {
-                    if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                    if (ws.nodeConnectionReady) {
 
                         eventBus.removeAllListeners('transaction_spend_response:' + transactionID);
                         eventBus.once('transaction_spend_response:' + transactionID, function(eventData) {
@@ -667,10 +659,6 @@ class Peer {
     }
 
     transactionIncludePathResponse(message, ws) {
-        if (ws.outBound && !ws.bidirectional) {
-            return message;
-        }
-
         let payload = {
             type   : 'transaction_include_path_response:' + message.transaction_id,
             content: message
@@ -854,7 +842,7 @@ class Peer {
         let data = JSON.stringify(payload);
         if (ws) {
             try {
-                ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional) && ws.send(data);
+                ws.nodeConnectionReady && ws.send(data);
             }
             catch (e) {
                 console.log('[WARN]: try to send data over a closed connection.');
@@ -864,10 +852,6 @@ class Peer {
     }
 
     transactionSyncResponse(content, ws) {
-        if (ws.outBound && !ws.bidirectional) {
-            return content;
-        }
-
         let payload = {
             type: 'transaction_sync_response',
             content
@@ -954,7 +938,7 @@ class Peer {
                         let nodeID         = ws.nodeID;
                         let startTimestamp = Date.now();
                         try {
-                            if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                            if (ws.nodeConnectionReady) {
                                 eventBus.removeAllListeners(`transaction_sync_response:${transactionID}`);
                                 eventBus.once(`transaction_sync_response:${transactionID}`, function(eventData) {
                                     clearTimeout(timeoutID);
@@ -1035,7 +1019,7 @@ class Peer {
                                  let data = JSON.stringify(payload);
 
                                  try {
-                                     if (ws.nodeConnectionReady && !(ws.outBound && !ws.bidirectional)) {
+                                     if (ws.nodeConnectionReady) {
                                          eventBus.removeAllListeners('transaction_sync_response:' + transactionID);
 
                                          eventBus.once('transaction_sync_response:' + transactionID, function(data, eventWS) {
