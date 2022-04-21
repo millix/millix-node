@@ -475,13 +475,16 @@ class WalletUtils {
                     return reject('couldn\'t read node key');
                 }
 
-                data = JSON.parse(data);
-                if (data.key) {
-                    return resolve(new Bitcore.HDPrivateKey(data.key));
+                try {
+                    data = JSON.parse(data);
+                    if (data.key) {
+                        return resolve(new Bitcore.HDPrivateKey(data.key));
+                    }
                 }
-                else {
-                    return reject('couldn\'t read node key');
+                catch (e) {
                 }
+
+                return reject('couldn\'t read node key');
             });
         });
     }
