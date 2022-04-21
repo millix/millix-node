@@ -19,6 +19,15 @@
       "enable": true
     },
     {
+      "id": "WGem8x5aycBqFXWQ",
+      "name": "get_available_version",
+      "description": "returns a available client/browser version",
+      "method": "GET",
+      "version_released": "1.17.6",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "vM27tlHkqbRej6tP",
       "name": "list_node_memory_extended",
       "description": "returns a list of all peer nodes (node table and memory list) known by the host.  it returns the newest records by default",

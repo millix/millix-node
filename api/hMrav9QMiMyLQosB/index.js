@@ -33,7 +33,7 @@ class _hMrav9QMiMyLQosB extends Endpoint {
         }
 
         const addressRepository = database.getRepository('address');
-        addressRepository.addAddressVersion(version, !!isMainNetwork, regexPattern, !!isDefault)
+        addressRepository.addAddressVersion(version, !!parseInt(isMainNetwork), regexPattern, !!parseInt(isDefault))
                          .then(() => res.send({api_status: 'success'}))
                          .catch(e => res.send({
                              api_status : 'fail',
