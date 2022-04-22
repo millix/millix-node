@@ -123,7 +123,7 @@ class Receiver {
                             strictSSL: false,
                             encoding : null
                         }, (err, response, body) => {
-                            if (err) {
+                            if (err || response.statusCode !== 200) {
                                 console.log('[file-receiver] error, ', err);
                                 return callback({
                                     error       : err,
