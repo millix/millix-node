@@ -103,7 +103,7 @@ class FileManager {
                   if (hash !== fileHash) {
                       return reject('transaction_file_hash_error');
                   }
-                  resolve();
+                  resolve(true);
               });
         });
     }
