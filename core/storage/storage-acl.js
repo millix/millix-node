@@ -1,6 +1,7 @@
 import cache from '../cache';
 import _ from 'lodash';
 
+
 class StorageAcl {
 
     constructor() {
@@ -12,7 +13,12 @@ class StorageAcl {
      ***********************/
 
     addNewFileToSender(nodeId, transactionId, fileHash) {
-        const cachedData = cache.getCachedIfPresent('storage-acl-sender', nodeId, () => Promise.resolve({}), 1800000); //30min cache
+        let cachedData = cache.getCacheItem('storage-acl-sender', nodeId);
+        if (!cachedData) {
+            cachedData = {};
+            cache.setCacheItem('storage-acl-sender', nodeId, cachedData, 1800000); //30min cache
+        }
+
         if (!cachedData[transactionId]) {
             cachedData[transactionId] = {};
         }
@@ -51,7 +57,11 @@ class StorageAcl {
      ***********************/
 
     addChunkToReceiver(nodeId, transactionId, fileHash, requestedChunk) {
-        const cachedData = cache.getCachedIfPresent('storage-acl-receiver', nodeId, () => Promise.resolve({}), 1800000); //30min cache
+        let cachedData = cache.getCacheItem('storage-acl-receiver', nodeId);
+        if (!cachedData) {
+            cachedData = {};
+            cache.setCacheItem('storage-acl-sender', nodeId, cachedData, 1800000); //30min cache
+        }
         if (!cachedData[transactionId]) {
             cachedData[transactionId] = {};
         }
