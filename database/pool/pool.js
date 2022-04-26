@@ -67,6 +67,33 @@ export class Pool {
         }
     }
 
+    _execOnAllWorkers(type, sql, ...data) {
+        const {
+                  callback,
+                  parameters
+              } = this._getParameterAndCallback(...data);
+
+        if (this.initialized === false || this.closed === true) {
+            return callback({
+                error  : 'database_closed',
+                message: 'database closed'
+            });
+        }
+
+        if (type !== 'run' && type !== 'exec') {
+            return callback({error: 'invalid_execution_type'});
+        }
+
+        async.eachSeries(this.workerList, (worker, eachCallback) => {
+            this._sendJobToWorker(worker, type, {
+                sql,
+                parameters
+            })
+                .then((result) => eachCallback())
+                .catch(err => eachCallback(err));
+        }, err => callback(err));
+    }
+
     _execSQL(type, sql, ...data) {
         const {
                   callback,
@@ -94,11 +121,21 @@ export class Pool {
     }
 
     run(sql, ...parameters) {
-        this._execSQL('run', sql, ...parameters);
+        if (sql.toUpperCase().startsWith('ATTACH')) {
+            this._execOnAllWorkers('run', sql, ...parameters);
+        }
+        else {
+            this._execSQL('run', sql, ...parameters);
+        }
     }
 
     exec(sql, ...parameters) {
-        this._execSQL('exec', sql, ...parameters);
+        if (sql.toUpperCase().startsWith('ATTACH')) {
+            this._execOnAllWorkers('exec', sql, ...parameters);
+        }
+        else {
+            this._execSQL('exec', sql, ...parameters);
+        }
     }
 
     serialize(callback) {
