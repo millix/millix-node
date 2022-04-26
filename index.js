@@ -83,13 +83,16 @@ if (!argv.natPmp) {
 
 process.title = 'millix-node';
 
-process.on('SIGINT', function() {
-    console.log('\nGracefully shutting down from  SIGINT (Crtl-C)');
-    process.exit(0);
-});
-
-process.on('exit', async() => {
-    await db.close();
+let shutdown = false;
+process.on('SIGINT', async function() {
+    if (!shutdown) {
+        shutdown = true;
+        console.log('\n[main] gracefully shutting down from SIGINT (Crtl-C)');
+        console.log('[main] closing all db connections');
+        await db.close();
+        console.log('[main] all db connections closed');
+        process.exit(0);
+    }
 });
 
 console.log('starting millix-core');
