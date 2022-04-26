@@ -1011,7 +1011,12 @@ export class WalletTransactionConsensus {
                 cache.removeCacheItem('validation', transactionID);
                 consensusData.active = false;
 
-                walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
+                if(transaction) {
+                    walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
+                } else {
+                    console.log('[wallet-transaction-consensus] unexpected null transaction object detected');
+                }
+
                 console.log('[wallet-transaction-consensus] transaction object no present for tx id:', transactionID);
                 return database.applyShards(shardID => {
                     const transactionRepository = database.getRepository('transaction', shardID);
