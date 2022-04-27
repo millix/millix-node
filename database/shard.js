@@ -8,6 +8,7 @@ import eventBus from '../core/event-bus';
 import os from 'os';
 import async from 'async';
 import _ from 'lodash';
+import {Pool} from './pool/pool';
 
 export default class Shard {
     constructor(databaseFile, shardID) {
@@ -19,8 +20,8 @@ export default class Shard {
     initialize() {
         if (config.DATABASE_ENGINE === 'sqlite') {
             return this._initializeMillixShardSqlite3()
-                       .then(() => this._attachShardZero())
                        .then(() => this._migrateTables())
+                       .then(() => this._attachShardZero())
                        .then(() => this._initializeTables());
         }
         return Promise.resolve();
@@ -73,6 +74,13 @@ export default class Shard {
                           is_sticky: true,
                           timestamp: Date.now()
                       });
+
+                      if (err.message && err.message.startsWith('SQLITE_CORRUPT')) {
+                          return Database.deleteCorruptedDatabase(this.databaseFile)
+                                         .then(() => this._initializeMillixShardSqlite3())
+                                         .then(() => this._migrateTables());
+                      }
+
                       throw Error('[shard] migration ' + err.message);
                   });
         });
@@ -92,59 +100,9 @@ export default class Shard {
     }
 
     _initializeMillixShardSqlite3() {
-        return new Promise(resolve => {
-            const sqlite3                       = require('sqlite3');
-            sqlite3.Database.prototype.runAsync = function(sql, ...params) {
-                return new Promise((resolve, reject) => {
-                    this.run(sql, params, function(err) {
-                        if (err) {
-                            return reject(err);
-                        }
-                        resolve(this);
-                    });
-                });
-            };
-
-            let shardFolder = path.dirname(this.databaseFile);
-            if (!fs.existsSync(shardFolder)) {
-                fs.mkdirSync(shardFolder);
-            }
-
-            let doInitialize = false;
-            if (!fs.existsSync(this.databaseFile)) {
-                doInitialize = true;
-            }
-
-            this.database = new sqlite3.Database(this.databaseFile, (err) => {
-                if (err) {
-                    throw Error(err.message);
-                }
-
-                console.log('[shard] connected to the shard database: ', this.shardID);
-
-                config.MODE_DEBUG && Database.enableDebugger(this.database);
-
-                if (doInitialize) {
-                    console.log('[shard] initializing database');
-                    fs.readFile(config.DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_SHARD, 'utf8', (err, data) => {
-                        if (err) {
-                            throw Error(err.message);
-                        }
-                        this.database.exec(data, (err) => {
-                            if (err) {
-                                throw Error(err.message);
-                            }
-                            console.log('[shard] database initialized');
-                            this.database.shardID = this.shardID;
-                            this.database.run('PRAGMA journal_mode = WAL', () => this.database.run('PRAGMA synchronous = NORMAL', () => resolve()));
-                        });
-                    });
-                }
-                else {
-                    this.database.run('PRAGMA journal_mode = WAL', () => this.database.run('PRAGMA synchronous = NORMAL', () => resolve()));
-                }
-            });
-        });
+        this.database         = new Pool(path.dirname(this.databaseFile), path.basename(this.databaseFile), config.DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_SHARD);
+        this.database.shardID = this.shardID;
+        return this.database.initialize();
     }
 
     checkup() {
@@ -157,6 +115,18 @@ export default class Shard {
                     callback();
                 }
             }, () => resolve());
+        });
+    }
+
+    close() {
+        return new Promise(resolve => {
+            this.database.close(err => {
+                if (err) {
+                    console.error(err.message);
+                }
+                console.log('[shard] the database connection was closed.');
+                resolve();
+            });
         });
     }
 

@@ -22,7 +22,8 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
         try {
             proxyTimeLimit = parseInt(value);
             return proxyTimeLimit > 0 ? proxyTimeLimit : 30000;
-        }catch (e) {
+        }
+        catch (e) {
         }
         return 30000;
     }
@@ -33,12 +34,14 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
      * in conjunction with the output from API RVBqKlGdk9aEhi5J
      * (sign_transaction)
      * @param app
-     * @param req (p0: transaction_payload_signed<require>, p1:proxy_time_limit<default 30000ms>)
+     * @param req (p0: transaction_payload_signed<require>,
+     *     p1:proxy_time_limit<default 30000ms>)
      * @param res
      * @returns {*}
      */
     handler(app, req, res) {
         let transactionList, proxyTimeLimit;
+        const startTime = Date.now();
         console.log(`[api ${this.endpoint}] request to send transaction`);
         if (req.method === 'GET') {
             if (!req.query.p0) {
@@ -68,7 +71,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
 
 
         try {
-            console.log(`[api ${this.endpoint}] request to send Tx: ${transactionList.map(t=>t.transaction_id).join(",")}`);
+            console.log(`[api ${this.endpoint}] request to send Tx: ${transactionList.map(t => t.transaction_id).join(',')}`);
             const transactionRepository = database.getRepository('transaction');
             let pipeline                = Promise.resolve(true);
             transactionList.forEach(transaction => pipeline = pipeline.then(valid => valid ? walletUtils.verifyTransaction(transaction) : false));
@@ -81,9 +84,21 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                     return Promise.reject('proxy_unavailable');
                 }
 
-                console.log(`[api ${this.endpoint}] transaction sent to proxy ${proxyWS.nodeID} Tx: ${transactionList.map(t=>t.transaction_id).join(",")} | proxy_time_limit: ${proxyTimeLimit}`);
-                return peer.transactionProxy(transactionList, proxyTimeLimit, proxyWS)
+                let spentTime               = Date.now() - startTime;
+                let remainingProxyTimeLimit = proxyTimeLimit - spentTime;
+
+                if (remainingProxyTimeLimit <= 0) {
+                    return Promise.reject('proxy_time_limit_exceed');
+                }
+
+                console.log(`[api ${this.endpoint}] transaction sent to proxy ${proxyWS.nodeID} Tx: ${transactionList.map(t => t.transaction_id).join(',')} | proxy_time_limit: ${remainingProxyTimeLimit}`);
+                return peer.transactionProxy(transactionList, remainingProxyTimeLimit, proxyWS)
                            .then(transactionList => {
+                               // we already have the result, so we should send
+                               // the result here before the proxy time limit
+                               // is exceeded.
+                               res.send({api_status: 'success'});
+
                                // store the transaction
                                let pipeline = Promise.resolve();
                                transactionList.forEach(transaction => {
@@ -134,13 +149,12 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                                    peer.transactionSend(transaction);
                                });
                                setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 5000);
-                               res.send({api_status: 'success'});
                            });
             }).catch(e => {
                 console.log(`[api ${this.endpoint}] error: ${e}`);
                 res.send({
                     api_status : 'fail',
-                    api_message: e
+                    api_message: e?.error || e
                 });
             });
         }
