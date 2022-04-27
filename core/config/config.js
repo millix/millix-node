@@ -1,5 +1,5 @@
 export const MODE_DEBUG                                        = true;
-export const MODE_TEST_NETWORK                                 = true;
+export const MODE_TEST_NETWORK                                 = false;
 export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
@@ -909,8 +909,3 @@ export default {
     JOB_CONFIG_VERSION,
     DEBUG_LOG_FILTER
 };
-
-// dev branch should be running in the test-network
-if (!MODE_TEST_NETWORK) {
-    throw Error('develop branch should be running in the test-network');
-}
