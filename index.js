@@ -1,4 +1,5 @@
 import console from './core/console';
+import logger from './core/logger';
 import db from './database/database';
 import eventBus from './core/event-bus';
 import config from './core/config/config';
@@ -94,28 +95,29 @@ process.on('SIGINT', async function() {
         process.exit(0);
     }
 });
-
-console.log('starting millix-core');
-db.initialize()
-  .then(() => configLoader.cleanConfigsFromDatabase())
-  .then(() => configLoader.load(false))
-  .then(() => services.initialize())
-  .then(() => {
-      logManager.logSize = 1000;
-      if (config.MODE_TEST) {
-          request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
-              {
-                  json: true,
-                  body: {
-                      ip_address: config.NODE_HOST,
-                      api_port  : config.NODE_PORT_API,
-                      port      : config.NODE_PORT,
-                      prefix    : config.WEBSOCKET_PROTOCOL
-                  }
-              },
-              (err, res, data) => {
-                  genesisConfig.genesis_transaction = data.genesis;
-                  console.log('registered new genesis: ', genesisConfig.genesis_transaction);
-              });
-      }
-  });
+logger.initialize().then(() => {
+    console.log('starting millix-core');
+    db.initialize()
+      .then(() => configLoader.cleanConfigsFromDatabase())
+      .then(() => configLoader.load(false))
+      .then(() => services.initialize())
+      .then(() => {
+          logManager.logSize = 1000;
+          if (config.MODE_TEST) {
+              request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
+                  {
+                      json: true,
+                      body: {
+                          ip_address: config.NODE_HOST,
+                          api_port  : config.NODE_PORT_API,
+                          port      : config.NODE_PORT,
+                          prefix    : config.WEBSOCKET_PROTOCOL
+                      }
+                  },
+                  (err, res, data) => {
+                      genesisConfig.genesis_transaction = data.genesis;
+                      console.log('registered new genesis: ', genesisConfig.genesis_transaction);
+                  });
+          }
+      });
+});
