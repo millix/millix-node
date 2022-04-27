@@ -8,10 +8,11 @@ import wallet from '../core/wallet/wallet';
 import console from '../core/console';
 import path from 'path';
 import async from 'async';
-import {Address, API, Config, Job, Keychain, Node, Schema, Shard as ShardRepository, Wallet, Normalization} from './repositories/repositories';
+import {Address, API, Config, Job, Keychain, Node, Normalization, Schema, Shard as ShardRepository, Wallet} from './repositories/repositories';
 import Shard from './shard';
 import _ from 'lodash';
 import eventBus from '../core/event-bus';
+import {Pool} from './pool/pool';
 
 
 export class Database {
@@ -197,108 +198,14 @@ export class Database {
     }
 
     _initializeMillixSqlite3() {
-        return new Promise(resolve => {
-            const sqlite3                       = require('sqlite3');
-            sqlite3.Database.prototype.runAsync = function(sql, ...params) {
-                return new Promise((resolve, reject) => {
-                    this.run(sql, params, function(err) {
-                        if (err) {
-                            return reject(err);
-                        }
-                        resolve(this);
-                    });
-                });
-            };
-
-            this.databaseRootFolder = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
-            if (!fs.existsSync(this.databaseRootFolder)) {
-                fs.mkdirSync(path.join(this.databaseRootFolder));
-            }
-
-            let dbFile = path.join(this.databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_MILLIX);
-
-            let doInitialize = false;
-            if (!fs.existsSync(dbFile)) {
-                doInitialize = true;
-            }
-
-            this.databaseMillix = new sqlite3.Database(dbFile, (err) => {
-                if (err) {
-                    throw Error(err.message);
-                }
-
-                console.log('Connected to the millix database.');
-
-                config.MODE_DEBUG && Database.enableDebugger(this.databaseMillix);
-
-                if (doInitialize) {
-                    console.log('Initializing database');
-                    fs.readFile(config.DATABASE_CONNECTION.SCRIPT_INIT_MILLIX, 'utf8', (err, data) => {
-                        if (err) {
-                            throw Error(err.message);
-                        }
-                        this.databaseMillix.exec(data, (err) => {
-                            if (err) {
-                                return console.log(err.message);
-                            }
-                            console.log('Database initialized');
-
-                            this.databaseMillix.run('PRAGMA journal_mode = WAL', () => this.databaseMillix.run('PRAGMA synchronous = NORMAL', () => resolve()));
-                        });
-                    });
-                }
-                else {
-                    this.databaseMillix.run('PRAGMA journal_mode = WAL', () => this.databaseMillix.run('PRAGMA synchronous = NORMAL', () => resolve()));
-                }
-
-            });
-        });
+        this.databaseRootFolder = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
+        this.databaseMillix     = new Pool(this.databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_MILLIX, config.DATABASE_CONNECTION.SCRIPT_INIT_MILLIX);
+        return this.databaseMillix.initialize();
     }
 
     _initializeJobEngineSqlite3() {
-        return new Promise(resolve => {
-            const sqlite3 = require('sqlite3');
-
-            if (!fs.existsSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER))) {
-                fs.mkdirSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER));
-            }
-
-            let dbFile = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_JOB_ENGINE);
-
-            let doInitialize = false;
-            if (!fs.existsSync(dbFile)) {
-                doInitialize = true;
-            }
-
-            this.databaseJobEngine = new sqlite3.Database(dbFile, (err) => {
-                if (err) {
-                    throw Error(err.message);
-                }
-
-                console.log('Connected to the job engine database.');
-
-                if (doInitialize) {
-                    console.log('Initializing database');
-                    fs.readFile(config.DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE, 'utf8', (err, data) => {
-                        if (err) {
-                            throw Error(err.message);
-                        }
-                        this.databaseJobEngine.exec(data, function(err) {
-                            if (err) {
-                                return console.log(err.message);
-                            }
-                            console.log('Database initialized');
-
-                            resolve();
-                        });
-                    });
-                }
-                else {
-                    resolve();
-                }
-
-            });
-        });
+        this.databaseJobEngine = new Pool(this.databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_JOB_ENGINE, config.DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE, 1);
+        return this.databaseJobEngine.initialize();
     }
 
     addShard(shard, updateTables) {
@@ -669,7 +576,7 @@ export class Database {
                             if (err) {
                                 console.error(err.message);
                             }
-                            console.log('Close the millix database connection.');
+                            console.log('[database] the millix database connection was closed.');
                             callback();
                         });
                     }
@@ -683,13 +590,25 @@ export class Database {
                             if (err) {
                                 console.error(err.message);
                             }
-                            console.log('Close the job engine database connection.');
+                            console.log('[database] job engine database connection was closed.');
                             callback();
                         });
                     }
                     else {
                         callback();
                     }
+                },
+                (callback) => {
+                    async.eachSeries(_.keys(this.shards), (shardID, callback) => {
+                        if (this.shards[shardID]) {
+                            this.shards[shardID].close().then(() => callback());
+                        }
+                        else {
+                            callback();
+                        }
+                    }, () => {
+                        callback();
+                    });
                 }
             ], () => resolve());
         });
