@@ -1011,9 +1011,10 @@ export class WalletTransactionConsensus {
                 cache.removeCacheItem('validation', transactionID);
                 consensusData.active = false;
 
-                if(transaction) {
+                if (transaction) {
                     walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
-                } else {
+                }
+                else {
                     console.log('[wallet-transaction-consensus] unexpected null transaction object detected');
                 }
 
@@ -1150,12 +1151,17 @@ export class WalletTransactionConsensus {
                 pendingTransaction = rejectedTransactions[0];
             }
 
+            const transactionID = pendingTransaction.transaction_id;
+
             if (!pendingTransaction) {
                 console.log('[wallet-transaction-consensus] no pending funds available for validation.');
                 return;
             }
+            else if (this._transactionRetryValidation[transactionID]) {
+                console.log('[wallet-transaction-consensus] already active for transaction ', transactionID);
+                return;
+            }
 
-            const transactionID = pendingTransaction.transaction_id;
             console.log('[wallet-transaction-consensus] starting consensus round for ', transactionID);
 
             this._transactionRetryValidation[transactionID] = Date.now();
