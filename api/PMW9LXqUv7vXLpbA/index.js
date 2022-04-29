@@ -47,16 +47,18 @@ class _PMW9LXqUv7vXLpbA extends Endpoint {
         eventBus.once('wallet_authentication_error', authenticationErrorHandler);
 
         authenticationSuccessHandler = () => {
-            const walletID = wallet.getDefaultActiveWallet();
-            database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
-                    .then(keyIdentifier => {
+            const walletID      = wallet.getDefaultActiveWallet();
+            const keyIdentifier = wallet.defaultKeyIdentifier;
+            database.getRepository('address').getAddressBaseAttribute(keyIdentifier, 'key_public')
+                    .then(publicKey => {
                         const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
                         res.send({
                             api_status: 'success',
                             wallet    : {
                                 id                    : walletID,
                                 address               : `${keyIdentifier}${addressVersion}${keyIdentifier}`,
-                                address_key_identifier: keyIdentifier
+                                address_key_identifier: keyIdentifier,
+                                address_public_key    : publicKey
                             }
                         });
                     });

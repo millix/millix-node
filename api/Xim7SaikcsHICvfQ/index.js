@@ -12,6 +12,19 @@ class _Xim7SaikcsHICvfQ extends Endpoint {
         this.addressRepository = database.getRepository('address');
     }
 
+    _isValid(addressBase, addressVersion, addressKeyIdentifier) {
+        if (!addressBase || !addressVersion || !addressKeyIdentifier) {
+            return false;
+        }
+        else if (addressVersion === this.addressRepository.getDefaultAddressVersion()) {
+            return walletUtils.isValidAddress(addressBase) && walletUtils.isValidAddress(addressKeyIdentifier);
+        }
+        else if (addressVersion.charAt(1) === 'b') { //using public key as address base
+            return walletUtils.isValidAddress(addressKeyIdentifier);
+        }
+        return false;
+    }
+
     /**
      * returns verifies if an address is valid
      * @param app
@@ -29,10 +42,11 @@ class _Xim7SaikcsHICvfQ extends Endpoint {
         try {
             const {
                       address   : addressBase,
-                      identifier: addressKeyIdentifier, version: addressVersion
+                      identifier: addressKeyIdentifier,
+                      version   : addressVersion
                   } = this.addressRepository.getAddressComponent(address);
             res.send({
-                is_valid              : walletUtils.isValidAddress(addressBase) && walletUtils.isValidAddress(addressKeyIdentifier),
+                is_valid              : this._isValid(addressBase, addressVersion, addressKeyIdentifier),
                 address_base          : addressBase,
                 address_version       : addressVersion,
                 address_key_identifier: addressKeyIdentifier
