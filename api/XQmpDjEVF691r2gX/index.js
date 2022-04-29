@@ -2,7 +2,9 @@ import Endpoint from '../endpoint';
 import mutex from '../../core/mutex';
 import _ from 'lodash';
 import fileManager from '../../core/storage/file-manager';
-import fs from 'fs';
+import database from '../../database/database';
+import walletUtils from '../../core/wallet/wallet-utils';
+import base58 from 'bs58';
 
 
 /**
@@ -11,11 +13,13 @@ import fs from 'fs';
 class _XQmpDjEVF691r2gX extends Endpoint {
     constructor() {
         super('XQmpDjEVF691r2gX');
+        this.addressRepository = database.getRepository('address');
     }
 
     /**
      * submits a new transaction with data on dag from the active wallet,
-     * specifying the outputs and amounts to the node. this API builds the tx payload and submits it
+     * specifying the outputs and amounts to the node. this API builds the tx
+     * payload and submits it
      * @param app
      * @param req (p0: transaction_output_payload<require>)
      * @param res
@@ -68,6 +72,17 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                         public: false
                     }
                 ];
+
+                transactionPartialPayload.transaction_output_list.forEach(output => {
+                    if (output.address_version.charAt(1) === 'b') {
+                        // use default address version
+                        output.address_version = this.addressRepository.getDefaultAddressVersion().version;
+                        // convert public key to address
+                        output.address_public_key = output.address_base;
+                        output.address_base = walletUtils.getAddressFromPublicKey(base58.decode(output.address_public_key))
+                    }
+                });
+
                 fileManager.createTransactionWithFileList(fileList, transactionPartialPayload.transaction_output_list, transactionPartialPayload.transaction_output_fee)
                            .then(transaction => {
                                unlock();

@@ -12,6 +12,7 @@ import database from '../../database/database';
 import base58 from 'bs58';
 import _ from 'lodash';
 import {promisify} from 'util';
+import utils from '../utils/utils';
 
 const readdir = promisify(fs.readdir);
 const rmdir   = promisify(fs.rmdir);
@@ -214,19 +215,20 @@ class FileManager {
                 [addressKeyIdentifier]: walletUtils.derivePublicKey(extendedPrivateKey, 0, 0)
             };
             async.eachSeries(dstOutputs, (output, callback) => {
+                const addressPublicKey = output.address_public_key;
+                delete output['address_public_key'];
                 if (publicKeyBufferMap[output.address_key_identifier]) {
                     return callback();
                 }
 
-                addressRepository.getAddressBaseAttribute(output.address_key_identifier, 'key_public')
-                                 .then(publicKey => {
-                                     if (!publicKey) {
-                                         return reject('public_key_not_found');
-                                     }
-                                     const publicKeyBuffer                             = base58.decode(publicKey);
-                                     publicKeyBufferMap[output.address_key_identifier] = publicKeyBuffer;
-                                     callback();
-                                 });
+                utils.orElsePromise(addressPublicKey, addressRepository.getAddressBaseAttribute(output.address_key_identifier, 'key_public'))
+                     .then(publicKey => {
+                         if (!publicKey) {
+                             return reject('public_key_not_found');
+                         }
+                         publicKeyBufferMap[output.address_key_identifier] = base58.decode(publicKey);
+                         callback();
+                     });
             }, err => err ? reject(err) : resolve(publicKeyBufferMap));
         });
     }
