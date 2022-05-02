@@ -60,7 +60,7 @@ class StorageAcl {
         let cachedData = cache.getCacheItem('storage-acl-receiver', nodeId);
         if (!cachedData) {
             cachedData = {};
-            cache.setCacheItem('storage-acl-sender', nodeId, cachedData, 1800000); //30min cache
+            cache.setCacheItem('storage-acl-receiver', nodeId, cachedData, 1800000); //30min cache
         }
         if (!cachedData[transactionId]) {
             cachedData[transactionId] = {};

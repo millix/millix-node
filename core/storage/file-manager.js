@@ -221,7 +221,7 @@ class FileManager {
                     return callback();
                 }
 
-                utils.orElsePromise(addressPublicKey, addressRepository.getAddressBaseAttribute(output.address_key_identifier, 'key_public'))
+                utils.orElsePromise(addressPublicKey, () => addressRepository.getAddressBaseAttribute(output.address_key_identifier, 'key_public'))
                      .then(publicKey => {
                          if (!publicKey) {
                              return reject('public_key_not_found');
