@@ -156,7 +156,7 @@ class FileExchange {
                                                 callback(true);
                                             })
                                             .catch(({files_received: filesDownloaded}) => {
-                                                if (filesDownloaded.size() > 0) {
+                                                if (filesDownloaded.size > 0) {
                                                     _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
                                                 }
 
@@ -179,7 +179,7 @@ class FileExchange {
                                                 callback(true);
                                             })
                                             .catch(({files_received: filesDownloaded}) => {
-                                                if (filesDownloaded.size() > 0) {
+                                                if (filesDownloaded.size > 0) {
                                                     _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
                                                 }
 
