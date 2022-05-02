@@ -962,31 +962,31 @@ class Network {
             privatePort: config.NODE_PORT,
             protocol   : 'TCP',
             description: 'millix network'
-        })
+        }).catch(_=>_)
             .then(() => portMapper({
                 publicPort : config.NODE_PORT_API,
                 privatePort: config.NODE_PORT_API,
                 protocol   : 'TCP',
                 description: 'millix api'
-            }))
+            }).catch(_=>_))
             .then(() => portMapper({
                 publicPort : config.NODE_PORT_DISCOVERY,
                 privatePort: config.NODE_PORT_DISCOVERY,
                 protocol   : 'UDP',
                 description: 'millix discovery'
-            }))
+            }).catch(_=>_))
             .then(() => portMapper({
                 publicPort : config.NODE_PORT_STORAGE_PROVIDER,
                 privatePort: config.NODE_PORT_STORAGE_PROVIDER,
                 protocol   : 'TCP',
                 description: 'millix storage provider'
-            }))
+            }).catch(_=>_))
             .then(() => portMapper({
                 publicPort : config.NODE_PORT_STORAGE_RECEIVER,
                 privatePort: config.NODE_PORT_STORAGE_RECEIVER,
                 protocol   : 'TCP',
                 description: 'millix storage receiver'
-            }));
+            }).catch(_=>_));
     }
 
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
