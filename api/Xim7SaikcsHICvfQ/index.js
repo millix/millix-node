@@ -16,13 +16,10 @@ class _Xim7SaikcsHICvfQ extends Endpoint {
         if (!addressBase || !addressVersion || !addressKeyIdentifier) {
             return false;
         }
-        else if (addressVersion === this.addressRepository.getDefaultAddressVersion()) {
-            return walletUtils.isValidAddress(addressBase) && walletUtils.isValidAddress(addressKeyIdentifier);
-        }
         else if (addressVersion.charAt(1) === 'b') { //using public key as address base
             return walletUtils.isValidAddress(addressKeyIdentifier);
         }
-        return false;
+        return walletUtils.isValidAddress(addressBase) && walletUtils.isValidAddress(addressKeyIdentifier);
     }
 
     /**

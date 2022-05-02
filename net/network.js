@@ -953,19 +953,19 @@ class Network {
             privatePort: config.NODE_PORT,
             protocol   : 'TCP',
             description: 'millix network'
-        })
+        }).catch(_=>_)
             .then(() => portMapper({
                 publicPort : config.NODE_PORT_API,
                 privatePort: config.NODE_PORT_API,
                 protocol   : 'TCP',
                 description: 'millix api'
-            }))
+            }).catch(_=>_))
             .then(() => portMapper({
                 publicPort : config.NODE_PORT_DISCOVERY,
                 privatePort: config.NODE_PORT_DISCOVERY,
                 protocol   : 'UDP',
                 description: 'millix discovery'
-            }));
+            }).catch(_=>_));
     }
 
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
