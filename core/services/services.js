@@ -7,6 +7,9 @@ import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
 import database from '../../database/database';
+import fileManager from '../storage/file-manager';
+import fileExchange from '../storage/file-exchange';
+import sender from '../storage/sender';
 import cache from '../cache';
 
 
@@ -43,6 +46,8 @@ class Service {
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => database.checkup())
+                         .then(() => fileManager.initialize())
+                         .then(() => fileExchange.initialize())
                          .catch(e => {
                              console.log(`[services] ${e.message}`);
                              this.initialized = false;
@@ -65,6 +70,7 @@ class Service {
         peerRotation.stop();
         logManager.stop();
         jobEngine.stop();
+        fileExchange.close();
     }
 }
 

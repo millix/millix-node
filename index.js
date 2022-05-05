@@ -49,6 +49,14 @@ if (argv.apiPort) {
     config.NODE_PORT_API = argv.apiPort;
 }
 
+if (argv.storageProviderPort) {
+    config.NODE_PORT_STORAGE_PROVIDER = argv.storageProviderPort;
+}
+
+if (argv.storageReceiverPort) {
+    config.NODE_PORT_STORAGE_RECEIVER = argv.storageReceiverPort;
+}
+
 if (argv.host) {
     config.NODE_HOST = argv.host;
 }
@@ -66,12 +74,15 @@ if (argv.testPort) {
 }
 
 if (argv.dataFolder) {
-    config.WALLET_KEY_PATH            = argv.dataFolder + 'millix_private_key.json';
-    config.NODE_KEY_PATH              = argv.dataFolder + 'node.json';
-    config.NODE_CERTIFICATE_KEY_PATH  = argv.dataFolder + 'node_certificate_key.pem';
-    config.NODE_CERTIFICATE_PATH      = argv.dataFolder + 'node_certificate.pem';
-    config.JOB_CONFIG_PATH            = argv.dataFolder + 'job.json';
-    config.DATABASE_CONNECTION.FOLDER = argv.dataFolder;
+    config.STORAGE_CONNECTION.FOLDER             = argv.dataFolder + '/storage/';
+    config.STORAGE_CONNECTION.PENDING_TO_SEND    = argv.dataFolder + '/storage/sending.log';
+    config.STORAGE_CONNECTION.PENDING_TO_RECEIVE = argv.dataFolder + '/storage/receiving.log';
+    config.WALLET_KEY_PATH                       = argv.dataFolder + 'millix_private_key.json';
+    config.NODE_KEY_PATH                         = argv.dataFolder + 'node.json';
+    config.NODE_CERTIFICATE_KEY_PATH             = argv.dataFolder + 'node_certificate_key.pem';
+    config.NODE_CERTIFICATE_PATH                 = argv.dataFolder + 'node_certificate.pem';
+    config.JOB_CONFIG_PATH                       = argv.dataFolder + 'job.json';
+    config.DATABASE_CONNECTION.FOLDER            = argv.dataFolder;
 }
 
 if (argv.debug === 'true') {

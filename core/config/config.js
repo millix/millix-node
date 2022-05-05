@@ -4,6 +4,12 @@ export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
 export const NODE_PORT_DISCOVERY_MAIN_NETWORK                  = 2000;
+export const NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK           = 6000;
+export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = 7000;
+export const NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK           = 6001;
+export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = 7001;
+export const NODE_PORT_STORAGE_RECEIVER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK : NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK;
+export const NODE_PORT_STORAGE_PROVIDER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK : NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK;
 export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
@@ -17,6 +23,7 @@ export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
 export const MODE_NODE_SYNC_FULL                               = true;
+export const MODE_STORAGE_SYNC                                 = false;
 export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
@@ -757,7 +764,9 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a10',
     '0b10',
     '0a20',
-    '0b20'
+    '0b20',
+    '0a30',
+    '0b30'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la0l',
@@ -765,7 +774,9 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la1l',
     'lb1l',
     'la2l',
-    'lb2l'
+    'lb2l',
+    'la3l',
+    'lb3l'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX                 = 1000;
@@ -778,6 +789,7 @@ export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
+export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
 export const NODE_MILLIX_BUILD_DATE                            = 1651110189;
 export const NODE_MILLIX_VERSION                               = '1.18.2';
@@ -792,6 +804,8 @@ export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR +
 export const JOB_CONFIG_VERSION                                = 7;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
 export const DEBUG_LOG_FILTER                                  = [];
+export const CHUNK_SIZE                                        = 50331648; //48MB
+export const MAX_STORAGE_RESERVED                              = 1073741824; //1GB
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
 export const PEER_ROTATION_MORE_THAN_ALL                       = 0.01;
@@ -825,15 +839,23 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '18';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '19';
 }
+
+STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
+STORAGE_CONNECTION.PENDING_TO_SEND        = DATA_BASE_DIR + '/storage/sending.log';
+STORAGE_CONNECTION.PENDING_TO_RECEIVE     = DATA_BASE_DIR + '/storage/receiving.log';
+STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE = 'millix_storage_queue.sqlite';
 
 export default {
     MODE_DEBUG,
+    MODE_STORAGE_SYNC,
     MODE_NODE_SYNC_FULL,
     MODE_NODE_VALIDATION_FULL,
     FORCE_QUEUE_UPDATE,
     MODE_TEST_NETWORK,
+    NODE_PORT_STORAGE_RECEIVER,
+    NODE_PORT_STORAGE_PROVIDER,
     NODE_PORT,
     NODE_PORT_DISCOVERY,
     NODE_HOST,
@@ -857,6 +879,7 @@ export default {
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
+    STORAGE_CONNECTION,
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
     CONSENSUS_VALIDATION_DEPTH_MAX,
@@ -907,5 +930,7 @@ export default {
     PEER_ROTATION_CONFIG,
     JOB_CONFIG_PATH,
     JOB_CONFIG_VERSION,
-    DEBUG_LOG_FILTER
+    DEBUG_LOG_FILTER,
+    CHUNK_SIZE,
+    MAX_STORAGE_RESERVED
 };
