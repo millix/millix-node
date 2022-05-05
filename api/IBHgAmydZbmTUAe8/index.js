@@ -40,6 +40,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 return data;
             }
 
+            // get parent information
             const parentSet = {};
             _.each(data, row => parentSet[row.transaction_id_parent] = null);
             const parentTransactionListID = Object.keys(parentSet);
@@ -53,6 +54,29 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                     }
                 });
                 _.each(data, transaction => transaction.shard_id_parent = parentSet[transaction.transaction_id_parent] || null);
+                return data;
+            });
+        }).then(data => {
+            if (!data || data.length === 0) {
+                return data;
+            }
+
+            // get public key information
+            const publicKeySet = {};
+            _.each(data, row => publicKeySet[row.address_base] = null);
+            const parentTransactionListID = Object.keys(publicKeySet);
+            const addressRepository       = database.getRepository('address');
+            const normalizationRepository = addressRepository.normalizationRepository;
+            return addressRepository.listAddressAttribute({
+                'address_base_in'          : parentTransactionListID,
+                'address_attribute_type_id': normalizationRepository.get('key_public')
+            }).then(addressPublicKeyList => {
+                _.each(addressPublicKeyList, addressPublicKey => {
+                    if (!publicKeySet[addressPublicKey.address_base]) {
+                        publicKeySet[addressPublicKey.address_base] = addressPublicKey.value;
+                    }
+                });
+                _.each(data, transaction => transaction.address_key_public = publicKeySet[transaction.address_base] || null);
                 return data;
             });
         }).then(data => {
@@ -107,6 +131,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 'output_create_date'            : 'create_date',
                 'output_attribute_status'       : 'status',
                 'output_attribute_create_date'  : 'create_date',
+                'address_key_public'            : 'key_public',
                 'transaction_parent_status'     : 'status',
                 'transaction_parent_create_date': 'create_date'
             };
@@ -116,7 +141,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
             data.forEach(row => {
                 if (!signatures.has(row.address_base)) {
                     signatures.add(row.address_base);
-                    transaction['transaction_signature_list'].push(_.mapKeys(_.pick(row, 'address_base', 'signature', 'signature_status', 'signature_create_date'), keyMapFunction));
+                    transaction['transaction_signature_list'].push(_.mapKeys(_.pick(row, 'address_base', 'signature', 'signature_status', 'signature_create_date', 'address_key_public'), keyMapFunction));
                 }
 
                 if (!inputs.has(row.input_position)) {
