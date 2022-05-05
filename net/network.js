@@ -975,13 +975,13 @@ class Network {
                 protocol   : 'UDP',
                 description: 'millix discovery'
             }).catch(_=>_))
-            .then(() => portMapper({
+            .then(() => config.MODE_STORAGE_SYNC && portMapper({
                 publicPort : config.NODE_PORT_STORAGE_PROVIDER,
                 privatePort: config.NODE_PORT_STORAGE_PROVIDER,
                 protocol   : 'TCP',
                 description: 'millix storage provider'
             }).catch(_=>_))
-            .then(() => portMapper({
+            .then(() => config.MODE_STORAGE_SYNC && portMapper({
                 publicPort : config.NODE_PORT_STORAGE_RECEIVER,
                 privatePort: config.NODE_PORT_STORAGE_RECEIVER,
                 protocol   : 'TCP',

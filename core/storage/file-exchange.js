@@ -20,6 +20,10 @@ class FileExchange {
     }
 
     initialize() {
+        if (!config.MODE_STORAGE_SYNC) {
+            return Promise.resolve();
+        }
+
         this.filesRootFolder = path.join(os.homedir(), config.STORAGE_CONNECTION.FOLDER);
         if (!fs.existsSync(this.filesRootFolder)) {
             fs.mkdirSync(path.join(this.filesRootFolder));
