@@ -7,9 +7,9 @@ class ChunkUtils {
     constructor() {
     }
 
-    writeFileChunk(addressKeyIdentifier, transactionId, fileHash, chunk) {
+    writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunk) {
         return new Promise((resolve, reject) => {
-            let fileLocation = fileManager.createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            let fileLocation = fileManager.createAndGetFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
             fs.appendFile(fileLocation, chunk, (err) => {
                 if (err) {
                     console.log(err);
@@ -20,11 +20,11 @@ class ChunkUtils {
         });
     }
 
-    getChunk(addressKeyIdentifier, transactionId, fileHash, position) {
+    getChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, position) {
         return new Promise((resolve, reject) => {
             let offset       = position * CHUNK_SIZE;
             let buffer       = new Buffer.alloc(CHUNK_SIZE);
-            let fileLocation = fileManager.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            let fileLocation = fileManager.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
             fs.open(fileLocation, 'r', (err, fd) => {
                 if (err) {
                     return reject(err);
@@ -39,16 +39,16 @@ class ChunkUtils {
                             return reject(err);
                         }
 
-                        resolve(buffer);
+                        resolve(buffer.slice(0, bytes));
                     });
                 });
             });
         });
     }
 
-    getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash) {
+    getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
         return new Promise((resolve, reject) => {
-            let fileLocation = fileManager.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            let fileLocation = fileManager.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
             fs.stat(fileLocation, (err, stats) => {
                 if (err) {
                     return reject(err);

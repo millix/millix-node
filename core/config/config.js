@@ -4,6 +4,12 @@ export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
 export const NODE_PORT_DISCOVERY_MAIN_NETWORK                  = 2000;
+export const NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK           = 6000;
+export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = 7000;
+export const NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK           = 6001;
+export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = 7001;
+export const NODE_PORT_STORAGE_RECEIVER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK : NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK;
+export const NODE_PORT_STORAGE_PROVIDER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK : NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK;
 export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
@@ -14,7 +20,7 @@ export const NODE_NAT_PMP                                      = true;
 export const NODE_NAT_PMP_CHECK                                = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
-export const NODE_PUBLIC                                       = true;
+export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
 export const MODE_NODE_SYNC_FULL                               = true;
 export const MODE_STORAGE_SYNC                                 = true;
@@ -746,11 +752,11 @@ export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
 export const WALLET_LOG_SIZE_MAX                               = 1000;
-export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a30';
-export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la3l';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK   = '0a20';
+export const WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK   = 'la2l';
 export const WALLET_TRANSACTION_DEFAULT_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_DEFAULT_VERSION_TEST_NETWORK : WALLET_TRANSACTION_DEFAULT_VERSION_MAIN_NETWORK;
-export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b30';
-export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb3l';
+export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b20';
+export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb2l';
 export const WALLET_TRANSACTION_REFRESH_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK : WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a0',
@@ -785,8 +791,8 @@ export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1649441792;
-export const NODE_MILLIX_VERSION                               = '1.17.6';
+export const NODE_MILLIX_BUILD_DATE                            = 1651110189;
+export const NODE_MILLIX_VERSION                               = '1.18.2';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -836,9 +842,10 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCHEMA_VERSION                          = '19';
 }
 
-STORAGE_CONNECTION.FOLDER             = DATA_BASE_DIR + '/storage/';
-STORAGE_CONNECTION.PENDING_TO_SEND    = DATA_BASE_DIR + '/storage/sending.log';
-STORAGE_CONNECTION.PENDING_TO_RECEIVE = DATA_BASE_DIR + '/storage/receiving.log';
+STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
+STORAGE_CONNECTION.PENDING_TO_SEND        = DATA_BASE_DIR + '/storage/sending.log';
+STORAGE_CONNECTION.PENDING_TO_RECEIVE     = DATA_BASE_DIR + '/storage/receiving.log';
+STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE = 'millix_storage_queue.sqlite';
 
 export default {
     MODE_DEBUG,
@@ -847,6 +854,8 @@ export default {
     MODE_NODE_VALIDATION_FULL,
     FORCE_QUEUE_UPDATE,
     MODE_TEST_NETWORK,
+    NODE_PORT_STORAGE_RECEIVER,
+    NODE_PORT_STORAGE_PROVIDER,
     NODE_PORT,
     NODE_PORT_DISCOVERY,
     NODE_HOST,

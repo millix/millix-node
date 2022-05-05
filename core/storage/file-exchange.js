@@ -5,11 +5,13 @@ import config from '../config/config';
 import sender from './sender';
 import receiver from './receiver';
 import fileManager from './file-manager';
+import fileSync from './file-sync';
 import _ from 'lodash';
 import async from 'async';
 import peer from '../../net/peer';
 import network from '../../net/network';
 import eventBus from '../event-bus';
+import storageAcl from './storage-acl';
 
 
 class FileExchange {
@@ -24,6 +26,7 @@ class FileExchange {
         }
         return sender.initialize()
                      .then(() => receiver.initialize())
+                     .then(() => fileSync.initialize())
                      .then(() => {
                          this._registerEventListeners();
                      });
@@ -33,21 +36,51 @@ class FileExchange {
         const {
                   address_key_identifier: addressKeyIdentifier,
                   transaction_id        : transactionID,
+                  transaction_date      : transactionDate,
                   transaction_file_list : transactionFileList
-              }                 = data;
+              } = data;
+
+        // if the node is receiving the file it is not yet available to serve it
+        if (this.activeTransactionSync.has(transactionID)) {
+            return peer.transactionFileSyncResponse(transactionID, {transaction_file_not_found: true}, ws);
+        }
+
         const fileAvailableList = [];
         async.eachSeries(transactionFileList, (fileHash, callback) => {
-            fileManager.hasFile(addressKeyIdentifier, transactionID, fileHash)
+            fileManager.hasFile(addressKeyIdentifier, transactionDate, transactionID, fileHash)
                        .then(exists => {
                            if (exists) {
-                               return sender.getNumberOfChunks(addressKeyIdentifier, transactionID, fileHash)
-                                            .then(totalChunks => {
-                                                fileAvailableList.push({
-                                                    name       : fileHash,
-                                                    chunk_count: totalChunks
-                                                });
-                                                callback();
-                                            }).catch(() => callback());
+                               return fileManager.checkFile(addressKeyIdentifier, transactionDate, transactionID, fileHash)
+                                                 .catch(() => false)
+                                                 .then(isValid => {
+                                                     if (!isValid) {
+                                                         const transactionFolder = fileManager.createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionID);
+                                                         fileManager.readTransactionAttributeJSONFile(transactionFolder)
+                                                                    .then((transactionOutputAttribute) => {
+                                                                        return fileManager.removeDirectory(transactionFolder).then(() => {
+                                                                            fileSync.pushToQueue({
+                                                                                transaction_id             : transactionID,
+                                                                                address_key_identifier     : addressKeyIdentifier,
+                                                                                transaction_output_metadata: transactionOutputAttribute,
+                                                                                transaction_date           : transactionDate,
+                                                                                timestamp                  : Date.now()
+                                                                            });
+                                                                        });
+                                                                    })
+                                                                    .catch(_ => _)
+                                                                    .then(() => callback());
+                                                         return;
+                                                     }
+
+                                                     return sender.getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionID, fileHash)
+                                                                  .then(totalChunks => {
+                                                                      fileAvailableList.push({
+                                                                          file_hash  : fileHash,
+                                                                          chunk_count: totalChunks
+                                                                      });
+                                                                      callback();
+                                                                  }).catch(() => callback());
+                                                 });
                            }
                            callback();
                        });
@@ -63,31 +96,19 @@ class FileExchange {
             };
 
             if (network.nodeIsPublic) {
-                const server            = sender.newSenderInstance();
-                data['server_endpoint'] = `https://${network.nodePublicIp}:${server.address().port}/`;
-                const filesToRemove     = [];
-
-                async.eachSeries(fileAvailableList, (file, callback) => { // serve files via https server
-                    sender.serveFile(ws.nodeID, addressKeyIdentifier, transactionID, file.file_hash)
-                          .then(() => callback())
-                          .catch(() => {
-                              filesToRemove.push(file);
-                              callback();
-                          });
-                }, () => {
-                    _.pull(fileAvailableList, filesToRemove);
-                    return peer.transactionFileSyncResponse(data, ws);
+                data['server_endpoint'] = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`;
+                _.each(fileAvailableList, (file) => { // serve files via https server
+                    sender.serveFile(ws.nodeID, addressKeyIdentifier, transactionID, file.file_hash);
                 });
             }
-            else {
-                return peer.transactionFileSyncResponse(data, ws); /* node not public:  no server  endpoint */
-            }
+
+            return peer.transactionFileSyncResponse(data, ws);
         });
 
     }
 
     _onTransactionFileChunkRequest(data) {
-        return sender.sendChunk(data.receiver_endpoint, data.address_key_identifier, data.transaction_id, data.file_hash, data.chunk_number);
+        return sender.sendChunk(data.receiver_endpoint, data.address_key_identifier, data.transaction_date, data.transaction_id, data.file_hash, data.chunk_number);
     }
 
     _registerEventListeners() {
@@ -96,78 +117,101 @@ class FileExchange {
         eventBus.on('transaction_file_request', this._onTransactionFileSyncRequest.bind(this));
     }
 
-    syncFilesFromTransaction(transaction) {
-        const transactionId        = transaction.transaction_id,
-              addressKeyIdentifier = transaction.transaction_input_list[0].address_key_identifier,
-              fileList             = transaction.transaction_output_attribute.transaction_output_metadata.files;
+    addTransactionToSyncQueue(transaction) {
+        fileSync.add(transaction);
+    }
 
-        if (!transactionId || !addressKeyIdentifier || !fileList ||
-            this.activeTransactionSync.has(transactionId)) {
-            return;
-        }
+    syncFilesFromTransaction(transactionId, addressKeyIdentifier, transactionOutputAttribute, transactionDate) {
+        return new Promise((resolve, reject) => {
+            const fileList = transactionOutputAttribute?.file_list;
+            if (!transactionId || !transactionDate || !addressKeyIdentifier || !transactionOutputAttribute || !fileList) {
+                return reject('transaction_file_sync_invalid');
+            }
+            else if (this.activeTransactionSync.has(transactionId)) {
+                return resolve('transaction_file_sync_in_progress');
+            }
+            this.activeTransactionSync.add(transactionId);
 
-        this.activeTransactionSync.add(transactionId);
+            const fileListToRequest = [];
+            async.eachSeries(fileList, (file, callback) => {
+                fileManager.hasFile(addressKeyIdentifier, transactionDate, transactionId, file.hash)
+                           .then(hasFile => {
+                               if (hasFile) {
+                                   return callback();
+                               }
+                               fileListToRequest.push(file);
+                               callback();
+                           });
+            }, () => {
+                if (fileListToRequest.length > 0) {
+                    let nodesWS = _.shuffle(_.filter(network.registeredClients, ws => ws.featureSet.has('storage')));
+                    async.eachSeries(nodesWS, (ws, callback) => {
+                        peer.transactionFileSyncRequest(addressKeyIdentifier, transactionDate, transactionId, fileListToRequest.map(file => file.hash), ws)
+                            .then((data) => {
+                                let serverEndpoint = data.server_endpoint;
+                                if (serverEndpoint) {
+                                    receiver.downloadFileList(serverEndpoint, addressKeyIdentifier, transactionDate, transactionId, data.transaction_file_list)
+                                            .then(() => {
+                                                _.pull(fileListToRequest, ...fileListToRequest); // empty list
+                                                callback(true);
+                                            })
+                                            .catch(({files_received: filesDownloaded}) => {
+                                                if (filesDownloaded.size > 0) {
+                                                    _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
+                                                }
 
-        const fileListToRequest = [];
-        async.eachSeries(fileList, (file, callback) => {
-            fileManager.hasFile(addressKeyIdentifier, transactionId, file.name)
-                       .then(hasFile => {
-                           if (hasFile) {
-                               return callback();
-                           }
-                           fileListToRequest.push(file);
-                           callback();
-                       });
-        }, () => {
-            if (fileListToRequest.length > 0) {
-                let nodesWS = _.shuffle(network.registeredClients);
-                async.eachSeries(nodesWS, (ws, callback) => {
-                    peer.transactionFileSyncRequest(addressKeyIdentifier, transactionId, fileListToRequest, ws)
-                        .then((data) => {
-                            let serverEndpoint = data.server_endpoint;
-                            if (serverEndpoint) {
-                                receiver.downloadFileList(serverEndpoint, data.transaction_file_list)
-                                        .then(() => callback(true))
-                                        .catch(({files_downloaded: filesDownloaded}) => {
-                                            if (filesDownloaded.length > 0) {
-                                                _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
-                                            }
+                                                if (fileListToRequest.length === 0) { // no more files to request
+                                                    return callback(true);
+                                                }
 
-                                            if (fileListToRequest.length === 0) { // no more files to request
-                                                return callback(true);
-                                            }
-
-                                            callback();
-                                        });
-                            }
-                            else {
-                                if (!network.nodeIsPublic) {
-                                    return callback();
+                                                callback();
+                                            });
                                 }
+                                else {
+                                    if (!network.nodeIsPublic) {
+                                        return callback();
+                                    }
 
-                                receiver.requestFileListUpload(serverEndpoint, addressKeyIdentifier, transactionId, data.transaction_file_list, ws)
-                                        .then(() => callback(true))
-                                        .catch(({files_received: filesReceived}) => {
-                                            if (filesReceived.length > 0) {
-                                                _.remove(fileListToRequest, file => filesReceived.has(file.name));
-                                            }
+                                    receiver.requestFileListUpload(addressKeyIdentifier, transactionDate, transactionId, data.transaction_file_list, ws)
+                                            .then(() => {
+                                                _.pull(fileListToRequest, ...fileListToRequest); // empty list
+                                                storageAcl.removeFileFromReceiver(ws.nodeID, transactionId);
+                                                callback(true);
+                                            })
+                                            .catch(({files_received: filesDownloaded}) => {
+                                                if (filesDownloaded.size > 0) {
+                                                    _.remove(fileListToRequest, file => filesDownloaded.has(file.name));
+                                                }
 
-                                            if (fileListToRequest.length === 0) { //no more files to request
-                                                return callback(true);
-                                            }
+                                                if (fileListToRequest.length === 0) { // no more files to request
+                                                    return callback(true);
+                                                }
 
-                                            callback();
-                                        });
-                            }
-                        }).catch(() => callback());
-                }, () => {
+                                                callback();
+                                            });
+                                }
+                            }).catch(() => callback());
+                    }, () => {
+                        this.activeTransactionSync.delete(transactionId);
+                        if (fileListToRequest.length === 0) {
+                            const metadataFilePath = fileManager.createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionId);
+                            fileManager.writeTransactionAttributeJSONFile(transactionOutputAttribute, metadataFilePath).then(_ => _);
+                        }
+                    });
+                    resolve('transaction_file_sync_started');
+                }
+                else {
                     this.activeTransactionSync.delete(transactionId);
-                });
-            }
-            else {
-                this.activeTransactionSync.delete(transactionId);
-            }
+                    resolve('transaction_file_sync_completed');
+                }
+            });
         });
+    }
+
+    close() {
+        fileSync.close().then(_ => _);
+        sender.stop();
+        receiver.stop();
     }
 
 }

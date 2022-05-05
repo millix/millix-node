@@ -16,6 +16,7 @@ import mutex from '../../core/mutex';
 class _rKclyiLtHx0dx55M extends Endpoint {
     constructor() {
         super('rKclyiLtHx0dx55M');
+        this.lastWalletId = "";
     }
 
     getCachedIfPresent(key, getter) {
@@ -41,6 +42,11 @@ class _rKclyiLtHx0dx55M extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
+        const walletID = wallet.getDefaultActiveWallet();
+        if(this.lastWalletId !== walletID) {
+            this.lastWalletId = walletID;
+            this.clearCache()
+        }
         database.getRepository('address');
         mutex.lock(['get_stat_summary'], unlock => {
             this.getCachedIfPresent('wallet_balance', () => database.applyShards((shardID) => {

@@ -1064,8 +1064,7 @@ export default class Transaction {
                                  });
                  })
                  .then(transaction => resolve(_.cloneDeep(transaction))) /*TODO: addTransactionFromObject is deleting address from output and input object. that is changing the cachedItem. we should not change the object. now we are creating a clone (refactor)*/
-                 .catch((e) => {
-                     console.log('[transaction-object] cannot get transaction with id', transactionID, 'err:', e);
+                 .catch(() => {
                      resolve(null);
                  });
         });
@@ -2679,6 +2678,26 @@ export default class Transaction {
         });
     }
 
+    listTransactionOutputAttributes(where) {
+        return new Promise((resolve, reject) => {
+            let {
+                    sql,
+                    parameters
+                } = Database.buildQuery('SELECT * FROM `transaction_output_attribute`', where);
+            this.database.all(
+                sql,
+                parameters, (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
     hasTransaction(transactionID) {
         return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_exists_' + transactionID, () => new Promise((resolve, reject) => {
             this.database.get('SELECT EXISTS(select transaction_id from `transaction` where transaction_id = ?) as transaction_exists',
@@ -2701,14 +2720,14 @@ export default class Transaction {
                     if (err) {
                         return reject();
                     }
-                    async.eachSeries(transactionList, (transaction, callback) => {
-                        if (transaction.shard_id === 'AyAC3kjLtjM4vktAJ5Xq6mbXKjzEqXoSsmGhhgjnkXUvjtF2M') { /* do not prune this special shard id. TODO: refactor and activate shard */
+                    async.eachSeries(transactionList, (data, callback) => {
+                        if (data.shard_id === 'AyAC3kjLtjM4vktAJ5Xq6mbXKjzEqXoSsmGhhgjnkXUvjtF2M') { /* do not prune this special shard id. TODO: refactor and activate shard */
                             return callback();
                         }
-                        this.getTransactionObject(transaction.transaction_id)
+                        this.getTransactionObject(data.transaction_id)
                             .then(transaction => {
                                 if (!transaction) {
-                                    return;
+                                    return this.deleteTransaction(data.transaction_id);
                                 }
 
                                 if (database.getShard(transaction.shard_id)) {

@@ -4,9 +4,19 @@ import config from '../config/config';
 import fs from 'fs';
 import crypto from 'crypto';
 import wallet from '../wallet/wallet';
-import mutex from '../mutex';
 import {decrypt, encrypt} from 'eciesjs';
 import walletUtils from '../wallet/wallet-utils';
+import async from 'async';
+import stream from 'stream';
+import database from '../../database/database';
+import base58 from 'bs58';
+import _ from 'lodash';
+import {promisify} from 'util';
+import utils from '../utils/utils';
+
+const readdir = promisify(fs.readdir);
+const rmdir   = promisify(fs.rmdir);
+const unlink  = promisify(fs.unlink);
 
 
 class FileManager {
@@ -14,227 +24,365 @@ class FileManager {
     static DECRYPT = 'DECRYPT';
 
     constructor() {
+    }
+
+    initialize() {
         this.filesRootFolder = path.join(os.homedir(), config.STORAGE_CONNECTION.FOLDER);
+        return Promise.resolve();
     }
 
-    getFileLocation(addressKeyIdentifier, transactionId, fileHash) {
-        return path.join(this.filesRootFolder, addressKeyIdentifier, transactionId, fileHash);
+    _normalizeDateFolder(transactionDate) {
+        return (transactionDate - (transactionDate % 86400)).toString();
     }
 
-    hasFile(addressKeyIdentifier, transactionId, fileHash) {
+    getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
+        if (!this.filesRootFolder) {
+            return null;
+        }
+        return path.join(this.filesRootFolder, addressKeyIdentifier, this._normalizeDateFolder(transactionDate), transactionId, fileHash);
+    }
+
+    hasFile(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
         return new Promise((resolve) => {
-            const filePath = this.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
+            const filePath = this.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
             fs.exists(filePath, (exists) => {
                 return resolve(exists);
             });
         });
     }
 
+    _createAndGetFolderLocation(folderList, rootFolder = null) {
+        if (!rootFolder) {
+            rootFolder = this.filesRootFolder;
+        }
+        let location = rootFolder;
 
-    createAndGetFileLocation(addressKeyIdentifier, transactionId, fileHash) {
-        let location = path.join(this.filesRootFolder, addressKeyIdentifier);
         if (!fs.existsSync(location)) {
             fs.mkdirSync(location);
         }
-        location = path.join(location, transactionId);
-        if (!fs.existsSync(location)) {
-            fs.mkdirSync(location);
+
+        folderList.forEach(folder => {
+            location = path.join(location, folder);
+            if (!fs.existsSync(location)) {
+                fs.mkdirSync(location);
+            }
+        });
+
+        return location;
+    }
+
+    createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionId) {
+        return this._createAndGetFolderLocation([
+            addressKeyIdentifier,
+            this._normalizeDateFolder(transactionDate),
+            transactionId
+        ]);
+    }
+
+    removeDirectory(dir) {
+        return readdir(dir, {withFileTypes: true})
+            .then(entries => Promise.all(entries.map(entry => {
+                let fullPath = path.join(dir, entry.name);
+                return entry.isDirectory() ? this.removeDirectory(fullPath) : unlink(fullPath);
+            })))
+            .then(() => rmdir(dir));
+    }
+
+    createAndGetFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
+        const folderLocation = this.createAndGetFolderLocation(addressKeyIdentifier, transactionDate, transactionId);
+        return path.join(folderLocation, fileHash);
+    }
+
+    _checkFileHash(fileLocation, fileHash) {
+        return new Promise((resolve, reject) => {
+            const sha256sum = crypto.createHash('sha256').setEncoding('hex');
+            fs.createReadStream(fileLocation)
+              .on('error', err => reject(err))
+              .pipe(sha256sum)
+              .on('finish', () => {
+                  const hash = sha256sum.read();
+                  if (hash !== fileHash) {
+                      return reject('transaction_file_hash_error');
+                  }
+                  resolve(true);
+              });
+        });
+    }
+
+    checkFile(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
+        let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
+        if (!fileLocation) {
+            return Promise.reject('transaction_file_not_found');
         }
-        return path.join(location, fileHash);
+        return this._checkFileHash(fileLocation, fileHash);
     }
 
-    checkReceivedFiles(addressKeyIdentifier, transactionId) {
-        let directory = path.join(this.filesRootFolder, addressKeyIdentifier, transactionId);
-        fs.readdir(directory, (err, files) => {
-            if (err) {
-                console.log('[file-manager] , ', err);
-                return false;
+    decryptFile(addressKeyIdentifier, transactionDate, transactionId, fileHash, key, isKeyDecrypted) {
+        let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
+        if (!fileLocation) {
+            return Promise.reject('transaction_file_not_found');
+        }
+
+        const decryptAndReadFile = () => new Promise((resolve, reject) => {
+            if (!isKeyDecrypted) {
+                const extendedPrivateKey = wallet.getActiveWalletKey(wallet.getDefaultActiveWallet());
+                const privateKeyBuffer   = walletUtils.derivePrivateKey(extendedPrivateKey, 0, 0);
+                key                      = this._keyCipher(Buffer.from(key, 'hex'), privateKeyBuffer, FileManager.DECRYPT);
             }
-            files.forEach((file) => {
-                //verify hash of each file received
-            });
-            return true;
+
+            const decipher = crypto.createDecipher('aes-256-cbc', key);
+
+            const buffers = [];
+            fs.createReadStream(fileLocation)
+              .on('error', (err) => {
+                  reject(err);
+              })
+              .on('data', data => {
+                  buffers.push(decipher.update(data));
+              })
+              .on('end', () => {
+                  buffers.push(decipher.final());
+                  resolve(Buffer.concat(buffers));
+              });
+        });
+
+        return this._checkFileHash(fileLocation, fileHash).then(() => decryptAndReadFile());
+    }
+
+    /**
+     *
+     * @param fileList  [
+     {
+                        path: <string|optional>,
+                        buffer: <Buffer|optional>,
+                        name  : <string>,
+                        size  : <int>,
+                        type  : <string>,
+                        public: <boolean>
+                },...
+     ];
+     * @param dstOutputs
+     * @param outputFee
+     * @return {Promise<{file_list: *, transaction_list: *}>}
+     */
+    createTransactionWithFileList(fileList, dstOutputs, outputFee) {
+        //Create directory for my files (if not exist)
+        const transactionTempDirectory = this._createAndGetFolderLocation([
+            wallet.defaultKeyIdentifier,
+            'tmp'
+        ]);
+
+        return this._getPublicKeyMap(dstOutputs)
+                   .then((publicKeyBufferMap) => this._createEncryptedFiles(fileList, transactionTempDirectory, publicKeyBufferMap))
+                   .then(data => {
+                       return wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a3l', data.transaction_output_attribute)
+                                    .then(transactionList => ({
+                                        ...data,
+                                        transaction_list: transactionList
+                                    }));
+                   })
+                   .then(data => {
+                       const transactionList    = data.transaction_list;
+                       const transaction        = transactionList[transactionList.length - 1];
+                       //Create transaction directory to write file
+                       let transactionDirectory = this.createAndGetFolderLocation(wallet.defaultKeyIdentifier, transaction.transaction_date, transaction.transaction_id);
+
+                       return this.writeTransactionAttributeJSONFile(data.transaction_output_attribute, transactionDirectory)
+                                  .then(() => this._moveEncryptedFiles(data.file_list, transactionDirectory))
+                                  .then(fileList => ({
+                                      file_list       : fileList,
+                                      transaction_list: transactionList
+                                  }));
+
+                   })
+                   .catch((err) => {
+                       console.log('[file-manager] error, ', err);
+                       return Promise.reject(err.error ? err : {
+                           error: 'transaction_data_error',
+                           data : {
+                               message: err.message
+                           }
+                       });
+                   });
+    }
+
+    _getPublicKeyMap(dstOutputs) {
+        return new Promise((resolve, reject) => {
+            const addressRepository    = database.getRepository('address');
+            const addressKeyIdentifier = wallet.defaultKeyIdentifier;
+            const extendedPrivateKey   = wallet.getActiveWalletKey(wallet.getDefaultActiveWallet());
+            const publicKeyBufferMap   = {
+                [addressKeyIdentifier]: walletUtils.derivePublicKey(extendedPrivateKey, 0, 0)
+            };
+            async.eachSeries(dstOutputs, (output, callback) => {
+                const addressPublicKey = output.address_public_key;
+                delete output['address_public_key'];
+                if (publicKeyBufferMap[output.address_key_identifier]) {
+                    return callback();
+                }
+
+                utils.orElsePromise(addressPublicKey, () => addressRepository.getAddressBaseAttribute(output.address_key_identifier, 'key_public'))
+                     .then(publicKey => {
+                         if (!publicKey) {
+                             return reject('public_key_not_found');
+                         }
+                         publicKeyBufferMap[output.address_key_identifier] = base58.decode(publicKey);
+                         callback();
+                     });
+            }, err => err ? reject(err) : resolve(publicKeyBufferMap));
         });
     }
 
-    decryptFile(addressKeyIdentifier, transactionId, fileHash, key, publicFile) {
+    writeTransactionAttributeJSONFile(transactionOutputAttribute, transactionFolder) {
+        let jsonOutPath     = path.join(transactionFolder, 'transaction_output_metadata.json');
+        let jsonWriteStream = fs.createWriteStream(jsonOutPath);
         return new Promise((resolve, reject) => {
-            let fileLocation = this.getFileLocation(addressKeyIdentifier, transactionId, fileHash);
-            fs.readFile(fileLocation, (err, file) => {
-                if (err) {
-                    return reject(err);
-                }
-                let sha256sum      = crypto.createHash('sha256');
-                let fileHashReaded = sha256sum.update(file).digest('hex');
-                if (fileHash !== fileHashReaded) {
-                    return reject();
-                }
-                let keyForFile = key;
-                if (!publicFile) {
-                    keyForFile = this._keyCipher(key, FileManager.DECRYPT);
-                }
-                const cipher = crypto.createCipher('aes-256-cbc', keyForFile);
-
-                //where i stored the decrypted file?
-
-            });
-        });
-    }
-
-    createTransactionWithFileList(fileList, fees, address) {
-        return new Promise((resolve, reject) => {
-            //Create directory for my files (if not exist)
-            let walletKeyIdentifier  = address.address_key_identifier;
-            let destinationDirectory = path.join(this.filesRootFolder, walletKeyIdentifier);
-            if (!fs.existsSync(destinationDirectory)) {
-                fs.mkdirSync(path.join(destinationDirectory));
-            }
-
-            //init ciphers and attributes
-            const keySet                        = {};
-            const sharedKeyBuffer               = crypto.randomBytes(32);
-            const sharedKey                     = crypto.createSecretKey(sharedKeyBuffer).export().toString('hex');
-            let transactionOutputAttribute      = {};
-            transactionOutputAttribute['files'] = [];
-
-            const promisesForTransaction = fileList.rows.map(file => new Promise((resolve, reject) => {
-                let filePath   = file.path;
-                let publicFile = file.public || false;
-                let sha256sum  = crypto.createHash('sha256');
-
-                //Read files to create transaction before writing them
-                fs.readFile(filePath, (err, file) => {
-                    if (err) {
-                        return reject(err);
+            jsonWriteStream.write(JSON.stringify(transactionOutputAttribute, null, '\t'),
+                error => {
+                    if (error) {
+                        console.log('[file-manager] error creating json attribute file', error);
+                        return reject(error);
                     }
-                    let fileHash      = sha256sum.update(file).digest('hex');
-                    let fileAttribute = {
-                        'public': publicFile,
-                        'hash'  : fileHash,
-                        'size'  : file.size,
-                        'type'  : file.type,
-                        'name'  : file.name
-                    };
-                    if (publicFile) {
-                        if (!transactionOutputAttribute['shared_key']) {
-                            const sharedKeyHex                       = Buffer.from(sharedKey).toString('hex');
-                            transactionOutputAttribute['shared_key'] = sharedKeyHex;
-                            keySet['shared_key']                     = sharedKeyHex;
-                        }
-                    }
-                    else {
-                        const fileKeyBuffer    = crypto.randomBytes(32);
-                        const fileKey          = crypto.createSecretKey(fileKeyBuffer).export().toString('hex');
-                        const encryptedFileKey = this._keyCipher(fileKey, FileManager.ENCRYPT);
-
-                        fileAttribute['key'] = encryptedFileKey;
-                        keySet[fileHash]     = fileKey;
-                    }
-                    transactionOutputAttribute['files'].push(fileAttribute);
+                    jsonWriteStream.close();
                     resolve();
                 });
-            }));
+        });
+    }
 
-            //After reading all files
-            Promise.all(promisesForTransaction)
-                   .then(() => {
-                       return new Promise((resolve, reject) => {
-                           this._createTransaction(resolve, reject, address, fees, transactionOutputAttribute);
-                       });
-                   })
-                   .then((transactionID) => {
-                       //Create transaction directory to write file
-                       let transactionDirectory = path.join(destinationDirectory, transactionID);
-                       if (!fs.existsSync(transactionDirectory)) {
-                           fs.mkdirSync(path.join(transactionDirectory));
-                       }
-
-                       this._writeTransactionAttributeJSONFile(transactionDirectory, transactionOutputAttribute);
-
-                       const promisesToWrite = this._writeFiles(fileList, transactionDirectory, keySet);
-                       return Promise.all(promisesToWrite);
-
-                   })
-                   .then(() => {
-                       resolve();
-                   }).catch((err) => {
-                console.log('[file-manager] error, ', err);
-                reject();
+    readTransactionAttributeJSONFile(transactionFolder) {
+        return new Promise((resolve, reject) => {
+            fs.readFile(path.join(transactionFolder, 'transaction_output_metadata.json'), 'utf8', (err, data) => {
+                if (err) {
+                    return reject('transaction_output_attribute_file_invalid');
+                }
+                resolve(JSON.parse(data));
             });
         });
     }
 
-    _createTransaction(resolve, reject, address, fees, transactionAttr) {
-        mutex.lock(['submit_transaction'], (unlock) => {
-            wallet.addTransaction([address], {
-                fee_type: 'transaction_fee_default',
-                amount  : fees
-            }, null, null, transactionAttr)
-                  .then(transactionList => {
-                      unlock();
-                      resolve(transactionList[transactionList.length - 1].transaction_id);
-                  })
-                  .catch(error => {
-                      console.log('[file-manager] error creating transaction', error);
-                      unlock();
-                      reject();
-                  });
+    _moveEncryptedFiles(fileList, destinationFolder) {
+        const moveFiles = () => new Promise((resolve, reject) => {
+            async.eachSeries(fileList, (file, callback) => {
+                let newPath = path.join(destinationFolder, file.hash);
+                fs.rename(file.path, newPath, (err) => {
+                    if (err) {
+                        return callback(err);
+                    }
+                    file.path = newPath;
+                    callback();
+                });
+            }, err => err ? reject(err) : resolve());
         });
+        return moveFiles().then(() => fileList);
     }
 
-    _writeTransactionAttributeJSONFile(transactionFolder, transactionOutputAttribute) {
-        let jsonOutPath     = path.join(transactionFolder, 'transaction_output_attribute_list.json');
-        let jsonWriteStream = fs.createWriteStream(jsonOutPath);
-        jsonWriteStream.on('error', err => console.log('[file-manager] error creating json attribute file', err));
-        jsonWriteStream.write(JSON.stringify(transactionOutputAttribute, null, '\t'));
-        jsonWriteStream.end();
-    }
+    _createEncryptedFiles(fileList, destinationFolder, publicKeyBufferMap) {
 
-    _writeFiles(fileList, transactionFolder, keySet) {
-        let sharedKeyCipher;
-        if (keySet['shared_key']) {
-            sharedKeyCipher = crypto.createCipher('aes-256-cbc', keySet['shared_key']);
-        }
+        //init ciphers and attributes
+        const keySet          = {};
+        keySet['shared_key']  = crypto.createSecretKey(crypto.randomBytes(32)).export().toString('hex');
+        const sharedKeyCipher = crypto.createCipher('aes-256-cbc', keySet['shared_key']);
 
-        return fileList.rows.map(file => new Promise((resolve, reject) => {
-            let filePath   = file.path;
-            let publicFile = file.public;
-            let sha256sum  = crypto.createHash('sha256');
-
-            const input = fs.createReadStream(filePath);
-            fs.readFile(filePath, function(err, data) {
-                if (err) {
-                    return reject(err);
+        const encryptAndWriteFile = () => new Promise((resolve, reject) => {
+            async.eachSeries(fileList, (file, callback) => {
+                if (!file.path && !file.buffer) {
+                    return callback(true);
                 }
-                let fileHash = sha256sum.update(data).digest('hex');
-                let outPath  = path.join(transactionFolder, fileHash);
-                const output = fs.createWriteStream(outPath);
-
-                if (publicFile) {
-                    input.pipe(sharedKeyCipher).pipe(output);
+                let input;
+                if (file.path) {
+                    input = fs.createReadStream(file.path);
                 }
                 else {
-                    const fileKey    = keySet[fileHash];
-                    const fileCipher = crypto.createCipher('aes-256-cbc', fileKey);
-                    input.pipe(fileCipher).pipe(output);
+                    input = new stream.Readable();
+                    input.push(file.buffer);
+                    input.push(null);
                 }
-                resolve();
-            });
-        }));
+                let outPath = path.join(destinationFolder, file.name);
+                //update file path
+                file.path   = outPath;
+
+                const output = fs.createWriteStream(outPath);
+
+                input.on('error', (err) => {
+                    callback(err);
+                });
+
+                if (file.public) {
+                    input.pipe(sharedKeyCipher)
+                         .pipe(output)
+                         .on('finish', () => {
+                             callback();
+                         });
+                }
+                else {
+                    keySet[file.name] = crypto.createSecretKey(crypto.randomBytes(32)).export().toString('hex');
+                    const fileCipher  = crypto.createCipher('aes-256-cbc', keySet[file.name]);
+                    input.pipe(fileCipher)
+                         .pipe(output)
+                         .on('finish', () => {
+                             callback();
+                         });
+                }
+            }, err => err ? reject(err) : resolve());
+        });
+
+        const transactionOutputAttribute = {
+            file_list: []
+        };
+
+        const computeFileHashCreateOutputAttribute = () => new Promise((resolve, reject) => {
+            async.eachSeries(fileList, (file, callback) => {
+                const sha256sum = crypto.createHash('sha256').setEncoding('hex');
+                fs.createReadStream(file.path)
+                  .on('error', err => callback(err))
+                  .pipe(sha256sum)
+                  .on('finish', () => {
+                      file.hash = sha256sum.read();
+
+                      const fileAttribute = {
+                          'public': file.public,
+                          'hash'  : file.hash,
+                          'size'  : file.size,
+                          'type'  : file.type,
+                          'name'  : file.name
+                      };
+
+                      if (file.public) {
+                          if (!transactionOutputAttribute['shared_key']) {
+                              transactionOutputAttribute['shared_key'] = keySet['shared_key'];
+                          }
+                      }
+                      else {
+                          _.each(publicKeyBufferMap, (publicKeyBuffer, addressKeyIdentifier) => {
+                              const encryptedFileKey              = this._keyCipher(keySet[file.name], publicKeyBuffer, FileManager.ENCRYPT).toString('hex');
+                              fileAttribute[addressKeyIdentifier] = {key: encryptedFileKey};
+                          });
+                      }
+                      transactionOutputAttribute.file_list.push(fileAttribute);
+                      callback();
+                  });
+            }, err => err ? reject(err) : resolve());
+        });
+
+        return encryptAndWriteFile()
+            .then(() => computeFileHashCreateOutputAttribute())
+            .then(() => ({
+                file_list                   : fileList,
+                transaction_output_attribute: transactionOutputAttribute
+            }))
+            .catch(err => Promise.reject({
+                error: 'transaction_data_error',
+                data : {message: err.message}
+            }));
     }
 
-    _keyCipher(rawKey, mode) {
-        let key;
-        const extendedPrivateKey = wallet.getActiveWalletKey(wallet.getDefaultActiveWallet());
+    _keyCipher(rawKey, keyBuffer, mode) {
         if (mode === FileManager.ENCRYPT) {
-            const keyBuffer = walletUtils.derivePublicKey(extendedPrivateKey, 0, 0);
-            key             = encrypt(keyBuffer.toHex(), rawKey);
+            return encrypt(keyBuffer, rawKey);
         }
         else if (mode === FileManager.DECRYPT) {
-            const keyBuffer = walletUtils.derivePrivateKey(extendedPrivateKey, 0, 0);
-            key             = decrypt(keyBuffer.toHex(), rawKey);
+            return decrypt(keyBuffer, rawKey);
         }
-        return key.toString('hex');
     }
 }
 

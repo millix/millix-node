@@ -5,20 +5,16 @@ import cors from 'cors';
 import chunkUtils from './chunk-utils';
 import https from 'https';
 import walletUtils from '../wallet/wallet-utils';
-import queue from './queue';
+import storageAcl from './storage-acl';
 import request from 'request';
-import eventBus from '../event-bus';
 import network from '../../net/network';
-import fileManager from './file-manager';
-import peer from '../../net/peer';
-import _ from 'lodash';
+import config from '../config/config';
 
 
 class Sender {
     constructor() {
-        this.serverOptions = {};
-        this.httpsServer   = null;
-        this.app           = null;
+        this.httpsServer = null;
+        this.app         = null;
     }
 
     initialize() {
@@ -27,14 +23,21 @@ class Sender {
                                      certificate_private_key_pem: certificatePrivateKeyPem,
                                      certificate_pem            : certificatePem
                                  }) => {
-                              this.serverOptions = {
+                              const serverOptions = {
                                   key      : certificatePrivateKeyPem,
                                   cert     : certificatePem,
                                   ecdhCurve: 'prime256v1'
                               };
                               this._defineServerOperations();
-                          })
-                          .then(() => queue.initializeSender());
+                              return this._startSenderServer(serverOptions);
+                          });
+    }
+
+    stop() {
+        if (this.httpsServer) {
+            this.httpsServer.close();
+            this.httpsServer = null;
+        }
     }
 
     _defineServerOperations() {
@@ -43,20 +46,19 @@ class Sender {
         this.app.use(bodyParser.json({limit: '50mb'}));
         this.app.use(cors());
 
-        this.app.get('/file/:nodeId/:addressKeyIdentifier/:transactionId/:fileHash/:chunkNumber', (req, res) => {
-            let nodeId               = req.params.nodeId;
-            let addressKeyIdentifier = req.params.addressKeyIdentifier;
-            let transactionId        = req.params.transactionId;
-            let fileHash             = req.params.fileHash;
-            let chunkNumber          = req.params.chunkNumber;
+        this.app.get('/file/:nodeId/:addressKeyIdentifier/:transactionDate/:transactionId/:fileHash/:chunkNumber', (req, res) => {
+            const nodeId               = req.params.nodeId;
+            const addressKeyIdentifier = req.params.addressKeyIdentifier;
+            const transactionDate      = req.params.transactionDate;
+            const transactionId        = req.params.transactionId;
+            const fileHash             = req.params.fileHash;
+            const chunkNumber          = req.params.chunkNumber;
 
-            if (queue.hasFileToSend(nodeId, transactionId, fileHash)) {
-                chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
-                    res.writeHead(200);
-                    res(data);
-                }).catch(() => {
-                    res.writeHead(403);
-                    res.end('Requested file cannot be sent!');
+            if (storageAcl.hasFileToSend(nodeId, transactionId, fileHash)) {
+                chunkUtils.getChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunkNumber).then((data) => {
+                    res.send(data);
+                }).catch((err) => {
+                    console.log('[file-sender] error', err);
                 });
             }
             else {
@@ -68,9 +70,8 @@ class Sender {
         this.app.post('/ack/:nodeId/:transactionId', function(req, res) {
             let nodeId        = req.params.nodeId;
             let transactionId = req.params.transactionId;
-            if (queue.hasTransactionRequest(nodeId, transactionId)) {
-                queue.decrementServerInstancesInSender();
-                queue.removeEntryFromSender(nodeId, transactionId).then(_ => _);
+            if (storageAcl.hasTransactionRequest(nodeId, transactionId)) {
+                storageAcl.removeEntryFromSender(nodeId, transactionId);
                 res.writeHead(200);
                 res.end('ok');
             }
@@ -81,38 +82,45 @@ class Sender {
         });
     }
 
-    newSenderInstance() {
-        if (!queue.isSenderServerActive()) {
-            this.httpsServer = https.createServer(this.serverOptions, this.app).listen(0);
-            console.log('[file-sender] Server listening on port ' + this.httpsServer.address().port);
-        }
-        queue.incrementServerInstancesInSender();
-        return this.httpsServer;
+    _startSenderServer(serverOptions) {
+        return new Promise((resolve, reject) => {
+            this.httpsServer = https.createServer(serverOptions, this.app);
+            this.httpsServer.listen(config.NODE_PORT_STORAGE_PROVIDER, config.NODE_BIND_IP, (err) => {
+                if (err) {
+                    console.log('[file-sender] error ', err);
+                    return reject(err);
+                }
+                console.log('[file-sender] Server listening on port ' + config.NODE_PORT_STORAGE_PROVIDER);
+                resolve();
+            });
+        });
     }
 
-    getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash) {
-        return chunkUtils.getNumberOfChunks(addressKeyIdentifier, transactionId, fileHash);
+    getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionId, fileHash) {
+        return chunkUtils.getNumberOfChunks(addressKeyIdentifier, transactionDate, transactionId, fileHash);
     }
 
     serveFile(nodeId, addressKeyIdentifier, transactionId, fileHash) {
-        return queue.addNewFileToSender(nodeId, transactionId, fileHash);
+        return storageAcl.addNewFileToSender(nodeId, transactionId, fileHash);
     }
 
-    sendChunk(receiverEndpoint, addressKeyIdentifier, transactionId, fileHash, chunkNumber) {
-        return chunkUtils.getChunk(addressKeyIdentifier, transactionId, fileHash, chunkNumber).then((data) => {
-            let payload = {
-                url : receiverEndpoint.concat('/file/')
-                                      .concat(network.nodeID).concat('/')
-                                      .concat(addressKeyIdentifier).concat('/')
-                                      .concat(transactionId).concat('/')
-                                      .concat(fileHash).concat('/')
-                                      .concat(chunkNumber),
-                body: {
-                    chunk: data
-                }
-            };
+    sendChunk(receiverEndpoint, addressKeyIdentifier, transactionDate, transactionId, fileHash, chunkNumber) {
+        return chunkUtils.getChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunkNumber).then((data) => {
             return new Promise((resolve, reject) => {
-                request.post(payload, {}, (err, response, body) => {
+                request.post({
+                    url      : receiverEndpoint.concat('/file/')
+                                               .concat(network.nodeID).concat('/')
+                                               .concat(addressKeyIdentifier).concat('/')
+                                               .concat(transactionDate).concat('/')
+                                               .concat(transactionId).concat('/')
+                                               .concat(fileHash).concat('/')
+                                               .concat(chunkNumber),
+                    body     : data,
+                    headers  : {
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    strictSSL: false
+                }, (err) => {
                     if (err) {
                         console.log('[file-sender] error, ', err);
                         return reject(err);

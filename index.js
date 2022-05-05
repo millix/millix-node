@@ -1,4 +1,5 @@
 import console from './core/console';
+import logger from './core/logger';
 import db from './database/database';
 import eventBus from './core/event-bus';
 import config from './core/config/config';
@@ -48,6 +49,14 @@ if (argv.apiPort) {
     config.NODE_PORT_API = argv.apiPort;
 }
 
+if (argv.storageProviderPort) {
+    config.NODE_PORT_STORAGE_PROVIDER = argv.storageProviderPort;
+}
+
+if (argv.storageReceiverPort) {
+    config.NODE_PORT_STORAGE_RECEIVER = argv.storageReceiverPort;
+}
+
 if (argv.host) {
     config.NODE_HOST = argv.host;
 }
@@ -86,36 +95,40 @@ if (!argv.natPmp) {
 
 process.title = 'millix-node';
 
-process.on('SIGINT', function() {
-    console.log('\nGracefully shutting down from  SIGINT (Crtl-C)');
-    process.exit(0);
+let shutdown = false;
+process.on('SIGINT', async function() {
+    if (!shutdown) {
+        shutdown = true;
+        console.log('\n[main] gracefully shutting down from SIGINT (Crtl-C)');
+        console.log('[main] closing all db connections');
+        await db.close();
+        console.log('[main] all db connections closed');
+        process.exit(0);
+    }
 });
-
-process.on('exit', async() => {
-    await db.close();
+logger.initialize().then(() => {
+    console.log('starting millix-core');
+    db.initialize()
+      .then(() => configLoader.cleanConfigsFromDatabase())
+      .then(() => configLoader.load(false))
+      .then(() => services.initialize())
+      .then(() => {
+          logManager.logSize = 1000;
+          if (config.MODE_TEST) {
+              request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
+                  {
+                      json: true,
+                      body: {
+                          ip_address: config.NODE_HOST,
+                          api_port  : config.NODE_PORT_API,
+                          port      : config.NODE_PORT,
+                          prefix    : config.WEBSOCKET_PROTOCOL
+                      }
+                  },
+                  (err, res, data) => {
+                      genesisConfig.genesis_transaction = data.genesis;
+                      console.log('registered new genesis: ', genesisConfig.genesis_transaction);
+                  });
+          }
+      });
 });
-
-console.log('starting millix-core');
-db.initialize()
-  .then(() => configLoader.cleanConfigsFromDatabase())
-  .then(() => configLoader.load(false))
-  .then(() => services.initialize())
-  .then(() => {
-      logManager.logSize = 1000;
-      if (config.MODE_TEST) {
-          request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
-              {
-                  json: true,
-                  body: {
-                      ip_address: config.NODE_HOST,
-                      api_port  : config.NODE_PORT_API,
-                      port      : config.NODE_PORT,
-                      prefix    : config.WEBSOCKET_PROTOCOL
-                  }
-              },
-              (err, res, data) => {
-                  genesisConfig.genesis_transaction = data.genesis;
-                  console.log('registered new genesis: ', genesisConfig.genesis_transaction);
-              });
-      }
-  });

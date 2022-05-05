@@ -23,7 +23,8 @@ class _PMW9LXqUv7vXLpbA extends Endpoint {
      * @returns {*}
      */
     handler(app, req, res) {
-        const {p0: passPhrase} = req.query;
+        let {p0: passPhrase} = req.query;
+
         if (!passPhrase) {
             return res.status(400).send({
                 api_status : 'fail',
@@ -49,15 +50,19 @@ class _PMW9LXqUv7vXLpbA extends Endpoint {
             const walletID = wallet.getDefaultActiveWallet();
             database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
                     .then(keyIdentifier => {
-                        const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
-                        res.send({
-                            api_status: 'success',
-                            wallet    : {
-                                id                    : walletID,
-                                address               : `${keyIdentifier}${addressVersion}${keyIdentifier}`,
-                                address_key_identifier: keyIdentifier
-                            }
-                        });
+                        database.getRepository('address').getAddressBaseAttribute(keyIdentifier, 'key_public')
+                                .then(publicKey => {
+                                    const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
+                                    res.send({
+                                        api_status: 'success',
+                                        wallet    : {
+                                            id                    : walletID,
+                                            address               : `${keyIdentifier}${addressVersion}${keyIdentifier}`,
+                                            address_key_identifier: keyIdentifier,
+                                            address_public_key    : publicKey
+                                        }
+                                    });
+                                });
                     });
             eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
         };
@@ -66,14 +71,15 @@ class _PMW9LXqUv7vXLpbA extends Endpoint {
         services.initialize({
             initialize_wallet_event: false,
             auto_create_wallet     : false
-        }).catch(e => {
-            eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
-            eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
-            res.send({
-                api_status : 'fail',
-                api_message: `unexpected generic api error: (${e})`
-            });
-        });
+        })
+                .catch(e => {
+                    eventBus.removeListener('wallet_authentication_error', authenticationErrorHandler);
+                    eventBus.removeListener('wallet_unlock', authenticationSuccessHandler);
+                    res.send({
+                        api_status : 'fail',
+                        api_message: `unexpected generic api error: (${e})`
+                    });
+                });
 
     }
 }
