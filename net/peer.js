@@ -24,6 +24,116 @@ class Peer {
         this.nodeAttributeCache                = {};
     }
 
+    transactionFileSyncResponse(data, ws) {
+        return new Promise((resolve, reject) => {
+            if (!ws) {
+                return reject();
+            }
+            let payload = {
+                type   : `transaction_file_response:${network.nodeID}:${data.transaction_id}`,
+                content: data
+            };
+            eventBus.emit('node_event_log', payload);
+            data = JSON.stringify(payload);
+            try {
+                ws.nodeConnectionReady && ws.send(data);
+                resolve();
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+                reject();
+            }
+        });
+    }
+
+    transactionFileSyncRequest(addressKeyIdentifier, transactionDate, transactionID, transactionFileList, ws) {
+        let payload = {
+            type   : 'transaction_file_request',
+            content: {
+                address_key_identifier: addressKeyIdentifier,
+                transaction_date      : transactionDate,
+                transaction_id        : transactionID,
+                transaction_file_list : transactionFileList
+            }
+        };
+
+        const nodeID = ws.nodeID;
+        eventBus.emit('node_event_log', payload);
+
+        let data = JSON.stringify(payload);
+        return new Promise((resolve, reject) => {
+            if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+                try {
+                    eventBus.removeAllListeners(`transaction_file_response:${nodeID}:${transactionID}`);
+                    let timeLimitTriggered = false;
+                    let responseProcessed  = false;
+                    let timeoutHandler     = undefined;
+                    eventBus.once(`transaction_file_response:${nodeID}:${transactionID}`, (response) => {
+                        responseProcessed = true;
+                        if (!timeLimitTriggered) {
+                            if (response.transaction_file_not_found) {
+                                reject();
+                            }
+                            else {
+                                resolve(response);
+                            }
+                            clearTimeout(timeoutHandler);
+                        }
+                    });
+
+                    timeoutHandler = setTimeout(() => {
+                        timeLimitTriggered = true;
+                        if (!responseProcessed) {
+                            console.log('[peer] self-triggered transaction file request timeout for transaction', transactionID);
+                            reject();
+                        }
+                    }, config.NETWORK_LONG_TIME_WAIT_MAX);
+
+                    ws.nodeConnectionReady && ws.send(data);
+                }
+                catch (e) {
+                    console.log('[WARN]: try to send data over a closed connection.');
+                    ws && ws.close();
+                    reject();
+                }
+            }
+            else {
+                reject();
+            }
+        });
+    }
+
+    transactionFileChunkRequest(serverEndpoint, addressKeyIdentifier, transactionDate, transactionId, fileHash, chunkNumber, ws) {
+        return new Promise((resolve, reject) => {
+            if (!ws) {
+                return reject();
+            }
+            let payload = {
+                type   : 'transaction_file_chunk_request',
+                content: {
+                    address_key_identifier: addressKeyIdentifier,
+                    receiver_endpoint     : serverEndpoint,
+                    transaction_id        : transactionId,
+                    transaction_date      : transactionDate,
+                    chunk_number          : chunkNumber,
+                    file_hash             : fileHash
+                }
+            };
+            eventBus.emit('node_event_log', payload);
+            let data = JSON.stringify(payload);
+            try {
+                ws.nodeConnectionReady && ws.send(data);
+                resolve();
+            }
+            catch (e) {
+                console.log('[WARN]: try to send data over a closed connection.');
+                ws && ws.close();
+                reject();
+            }
+        });
+    }
+
     sendNodeAddress(ipAddress, messageID, ws) {
         if (!ws) {
             return;
@@ -35,7 +145,13 @@ class Peer {
         };
         eventBus.emit('node_event_log', payload);
         let data = JSON.stringify(payload);
-        ws.nodeConnectionReady && ws.send(data);
+        try {
+            ws.nodeConnectionReady && ws.send(data);
+        }
+        catch (e) {
+            console.log('[WARN]: try to send data over a closed connection.');
+            ws && ws.close();
+        }
     }
 
     getNodeAddress() {
@@ -1259,7 +1375,7 @@ class Peer {
                 'node_port',
                 'node_id'
             ]),
-            node_online  : true
+            node_online: true
         };
 
         let payload = {

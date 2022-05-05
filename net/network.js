@@ -394,6 +394,9 @@ class Network {
 
             let url = config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT;
             node    = {
+                node_feature_set     : {
+                    storage: config.MODE_STORAGE_SYNC
+                },
                 node_prefix  : config.WEBSOCKET_PROTOCOL,
                 node_address : this.nodePublicIp,
                 node_port    : config.NODE_PORT,
@@ -548,7 +551,7 @@ class Network {
                         callbackCalled = true;
                         eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
                         ws.terminate();
-                        reject('handsharke_timeout');
+                        reject('handshake_timeout');
                     }
                 }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             });
@@ -561,6 +564,12 @@ class Network {
     _onNodeHandshake(registry, ws) {
         ws.nodeID       = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
+        ws.featureSet   = new Set();
+        _.each(_.keys(registry.node_feature_set), feature => {
+            if (registry.node_feature_set[feature]) {
+                ws.featureSet.add(feature);
+            }
+        });
 
         if (ws.nodeID === this.nodeID) {
             ws.duplicated = true;
@@ -803,7 +812,7 @@ class Network {
     }
 
     _requestAllNodeAttribute(ws) {
-        const nodeID = ws.nodeID;
+        const nodeID            = ws.nodeID;
         const attributeNameList = _.filter([
             'shard_protocol',
             'transaction_count',
@@ -965,6 +974,18 @@ class Network {
                 privatePort: config.NODE_PORT_DISCOVERY,
                 protocol   : 'UDP',
                 description: 'millix discovery'
+            }).catch(_=>_))
+            .then(() => portMapper({
+                publicPort : config.NODE_PORT_STORAGE_PROVIDER,
+                privatePort: config.NODE_PORT_STORAGE_PROVIDER,
+                protocol   : 'TCP',
+                description: 'millix storage provider'
+            }).catch(_=>_))
+            .then(() => portMapper({
+                publicPort : config.NODE_PORT_STORAGE_RECEIVER,
+                privatePort: config.NODE_PORT_STORAGE_RECEIVER,
+                protocol   : 'TCP',
+                description: 'millix storage receiver'
             }).catch(_=>_));
     }
 
@@ -974,11 +995,10 @@ class Network {
         console.log('node id : ', this.nodeID);
         this.natAPI = new NatAPI();
         this.doPortMapping()
-            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem))
             .catch((e) => {
                 console.log(`[network] error in nat-pmp ${e}`);
-                return this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem);
-            });
+            })
+            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem));
 
         this.connectToNodes();
         this.initialized = true;
