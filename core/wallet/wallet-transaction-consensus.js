@@ -751,7 +751,7 @@ export class WalletTransactionConsensus {
             consensusData.active = false;
             this._transactionValidationRejected.add(transactionID);
             this._transactionRetryValidation[transactionID] = Date.now();
-            consensusData.resolve();
+            consensusData.resolve && consensusData.resolve();
         }
         else {
             // clear node that did not respond
