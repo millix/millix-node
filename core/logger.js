@@ -77,7 +77,7 @@ class _Logger {
             levels     : _Logger.LEVELS,
             format     : this._getFormat(),
             transports,
-            exitOnError: true
+            exitOnError: false
         };
     }
 
