@@ -175,7 +175,7 @@ class FileManager {
         return this._getPublicKeyMap(dstOutputs)
                    .then((publicKeyBufferMap) => this._createEncryptedFiles(fileList, transactionTempDirectory, publicKeyBufferMap))
                    .then(data => {
-                       return wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a3l', data.transaction_output_attribute)
+                       return wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a30', data.transaction_output_attribute)
                                     .then(transactionList => ({
                                         ...data,
                                         transaction_list: transactionList
