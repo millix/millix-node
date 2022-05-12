@@ -751,7 +751,7 @@ export class WalletTransactionConsensus {
             consensusData.active = false;
             this._transactionValidationRejected.add(transactionID);
             this._transactionRetryValidation[transactionID] = Date.now();
-            consensusData.resolve();
+            consensusData.resolve && consensusData.resolve();
         }
         else {
             // clear node that did not respond
@@ -902,11 +902,22 @@ export class WalletTransactionConsensus {
                     consensusData.active = false;
                     this._transactionValidationRejected.add(transactionID);
                     console.log('[wallet-transaction-consensus] the transaction', transactionID, 'was not validated (due to double spend) during consensus round number', consensusData.consensus_round_count);
-                    return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
-                        return transactionRepository.updateTransactionAsDoubleSpend(transaction.transaction_id, data.transaction_input_double_spend /*double spend input*/)
+                    return database.applyShards(shardID => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.updateTransactionAsDoubleSpend(transactionID, data.transaction_input_double_spend /*double spend input*/)
                                                     .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
                     }).then(() => {
+                        if (transaction) {
+                            return transaction;
+                        }
+                        return database.firstShards(shardID => database.getRepository('transaction', shardID)
+                                                                       .getTransactionObject(transactionID));
+                    }).then(transaction => {
                         return new Promise(resolve => {
+                            if (!transaction) {
+                                return resolve();
+                            }
+
                             async.eachSeries(transaction.transaction_input_list, (input, callback) => {
 
                                 if (this._transactionValidationRejected[input.output_transaction_id]) {
@@ -951,15 +962,11 @@ export class WalletTransactionConsensus {
                                         callback();
                                     }
                                 });
-                            }, () => resolve());
+                            }, () => resolve(transaction));
                         });
-                    }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
-                                   .then(() => {
-                                       consensusData.resolve();
-                                   })
-                                   .catch(() => {
-                                       consensusData.resolve();
-                                   });
+                    }).then(transaction => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
+                                   .then(() => consensusData.resolve && consensusData.resolve())
+                                   .catch(() => consensusData.resolve && consensusData.resolve());
                 }
             }
             else if (isNotFound) {
@@ -971,11 +978,12 @@ export class WalletTransactionConsensus {
                     console.log('[wallet-transaction-consensus] the transaction', transactionID, 'was not validated (due to not found reply) during consensus round number', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
                     this._transactionRetryValidation[transactionID] = Date.now();
-                    return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => {
+                    return database.applyShards(shardID => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
                         return transactionRepository.timeoutTransaction(transactionID)
                                                     .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
                     }).then(() => {
-                        consensusData.resolve();
+                        consensusData.resolve && consensusData.resolve();
                     });
                 }
             }
@@ -993,12 +1001,12 @@ export class WalletTransactionConsensus {
                             const transactionRepository = database.getRepository('transaction', shardID);
                             return transactionRepository.invalidateTransaction(transactionID)
                                                         .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
-                        }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))))
-                                .then(() => consensusData.resolve())
-                                .catch(() => consensusData.resolve());
+                        }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
+                                .then(() => consensusData.resolve && consensusData.resolve())
+                                .catch(() => consensusData.resolve && consensusData.resolve());
                     }
                     else {
-                        consensusData.resolve();
+                        consensusData.resolve && consensusData.resolve();
                     }
                 }
             }
@@ -1011,20 +1019,27 @@ export class WalletTransactionConsensus {
                 cache.removeCacheItem('validation', transactionID);
                 consensusData.active = false;
 
-                if(transaction) {
-                    walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
-                } else {
-                    console.log('[wallet-transaction-consensus] unexpected null transaction object detected');
-                }
-
                 console.log('[wallet-transaction-consensus] transaction object no present for tx id:', transactionID);
-                return database.applyShards(shardID => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    return transactionRepository.updateTransactionAsStable(transactionID)
-                                                .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
-                }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
-                               .then(() => consensusData.resolve())
-                               .catch(() => consensusData.resolve());
+                return (() => {
+                    if (transaction) {
+                        return Promise.resolve(transaction);
+                    }
+                    return database.firstShards(shardID => database.getRepository('transaction', shardID)
+                                                                   .getTransactionObject(transactionID));
+                })().then(transaction => {
+                    if (transaction) {
+                        walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
+                    }
+                    else {
+                        console.log('[wallet-transaction-consensus] unexpected null transaction object detected');
+                    }
+                    return database.applyShards(shardID => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.updateTransactionAsStable(transactionID)
+                                                    .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
+                    }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))));
+                }).then(() => consensusData.resolve && consensusData.resolve())
+                    .catch(() => consensusData.resolve && consensusData.resolve());
             }
         }
         this._nextConsensusRound(transactionID);
@@ -1150,12 +1165,17 @@ export class WalletTransactionConsensus {
                 pendingTransaction = rejectedTransactions[0];
             }
 
+            const transactionID = pendingTransaction.transaction_id;
+
             if (!pendingTransaction) {
                 console.log('[wallet-transaction-consensus] no pending funds available for validation.');
                 return;
             }
+            else if (this._transactionRetryValidation[transactionID]) {
+                console.log('[wallet-transaction-consensus] already active for transaction ', transactionID);
+                return;
+            }
 
-            const transactionID = pendingTransaction.transaction_id;
             console.log('[wallet-transaction-consensus] starting consensus round for ', transactionID);
 
             this._transactionRetryValidation[transactionID] = Date.now();

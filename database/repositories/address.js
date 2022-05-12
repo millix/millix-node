@@ -237,4 +237,21 @@ export default class Address {
             );
         });
     }
+
+    listAddressAttribute(where, orderBy, limit) {
+        return new Promise((resolve, reject) => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM address_attribute', where, orderBy, limit);
+            this.database.all(
+                sql,
+                parameters,
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    resolve(rows);
+                }
+            );
+        });
+    }
 }

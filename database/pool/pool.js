@@ -4,6 +4,7 @@ import async from 'async';
 
 
 export class Pool {
+    static WORKER_MAX = 32;
 
     constructor(databaseFolder, databaseName, initScriptFile, size) {
         this.initialized    = false;
@@ -13,7 +14,7 @@ export class Pool {
         this.initScriptFile = initScriptFile;
         this.workerList     = [];
         this.queue          = [];
-        this.size           = size || os.cpus().length;
+        this.size           = size || Math.min(os.cpus().length, Pool.WORKER_MAX);
     }
 
     drainQueue() {
