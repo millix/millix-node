@@ -566,6 +566,15 @@
       "version_released": "1.11.5",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "DjwvDZ4bGUzKxOHW",
+      "name": "verify_dns_has_address_key_identifier",
+      "description": "check if the address key identifier is configure in the dns tx record",
+      "method": "GET",
+      "version_released": "1.18.4",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
     }
   ]
 }

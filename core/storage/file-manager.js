@@ -163,9 +163,10 @@ class FileManager {
      ];
      * @param dstOutputs
      * @param outputFee
+     * @param defaultTransactionOutputAttribute
      * @return {Promise<{file_list: *, transaction_list: *}>}
      */
-    createTransactionWithFileList(fileList, dstOutputs, outputFee) {
+    createTransactionWithFileList(fileList, dstOutputs, outputFee, defaultTransactionOutputAttribute = {}) {
         //Create directory for my files (if not exist)
         const transactionTempDirectory = this._createAndGetFolderLocation([
             wallet.defaultKeyIdentifier,
@@ -173,9 +174,9 @@ class FileManager {
         ]);
 
         return this._getPublicKeyMap(dstOutputs)
-                   .then((publicKeyBufferMap) => this._createEncryptedFiles(fileList, transactionTempDirectory, publicKeyBufferMap))
+                   .then((publicKeyBufferMap) => this._createEncryptedFiles(fileList, transactionTempDirectory, publicKeyBufferMap, defaultTransactionOutputAttribute))
                    .then(data => {
-                       return wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a3l', data.transaction_output_attribute)
+                       return wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a30', data.transaction_output_attribute)
                                     .then(transactionList => ({
                                         ...data,
                                         transaction_list: transactionList
@@ -276,7 +277,7 @@ class FileManager {
         return moveFiles().then(() => fileList);
     }
 
-    _createEncryptedFiles(fileList, destinationFolder, publicKeyBufferMap) {
+    _createEncryptedFiles(fileList, destinationFolder, publicKeyBufferMap, defaultTransactionOutputAttribute = {}) {
 
         //init ciphers and attributes
         const keySet          = {};
@@ -326,9 +327,19 @@ class FileManager {
             }, err => err ? reject(err) : resolve());
         });
 
-        const transactionOutputAttribute = {
+        let transactionOutputAttribute = {
+            ...defaultTransactionOutputAttribute,
             file_list: []
         };
+
+        // sort keys - important! if not sorted the signature verification might fail
+        transactionOutputAttribute = Object.keys(transactionOutputAttribute).sort().reduce(
+            (obj, key) => {
+                obj[key] = transactionOutputAttribute[key];
+                return obj;
+            },
+            {}
+        );
 
         const computeFileHashCreateOutputAttribute = () => new Promise((resolve, reject) => {
             async.eachSeries(fileList, (file, callback) => {
