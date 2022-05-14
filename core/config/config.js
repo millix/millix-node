@@ -1,13 +1,17 @@
 export const MODE_DEBUG                                        = true;
 export const MODE_TEST_NETWORK                                 = true;
+export const NODE_DNS_SERVER                                   = [
+    '1.1.1.1',
+    '8.8.8.8'
+];
 export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
 export const NODE_PORT_DISCOVERY_MAIN_NETWORK                  = 2000;
 export const NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK           = 6000;
-export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = 7000;
+export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = 8000;
 export const NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK           = 6001;
-export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = 7001;
+export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = 8001;
 export const NODE_PORT_STORAGE_RECEIVER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK : NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK;
 export const NODE_PORT_STORAGE_PROVIDER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK : NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK;
 export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
@@ -849,6 +853,7 @@ STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE = 'millix_storage_queue.sqlite';
 
 export default {
     MODE_DEBUG,
+    NODE_DNS_SERVER,
     MODE_STORAGE_SYNC,
     MODE_NODE_SYNC_FULL,
     MODE_NODE_VALIDATION_FULL,
