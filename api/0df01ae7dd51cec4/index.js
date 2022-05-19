@@ -1,9 +1,9 @@
 import Endpoint from '../endpoint';
-import mutex from "../../core/mutex";
+import mutex from '../../core/mutex';
 
 
 /**
- * api list_backlog_records
+ * api get_backlog_list
  */
 class _0df01ae7dd51cec4 extends Endpoint {
     constructor() {
@@ -11,16 +11,16 @@ class _0df01ae7dd51cec4 extends Endpoint {
     }
 
     /**
-     * returns a list of backlog transaction.
+     * returns a backlog list.
      * @param app
      * @param req
      * @param res
      */
     handler(app, req, res) {
-        mutex.getBacklogData().then(data => {
+        mutex.getBacklogList().then(backlog_list => {
             res.send({
-                api_status: 'success',
-                backlog_list: data
+                api_status  : 'success',
+                backlog_list: backlog_list
             });
         });
     }

@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import util from 'util';
-import console from "./console";
+import console from './console';
 
 
 class Mutex {
@@ -30,24 +30,27 @@ class Mutex {
         }
     }
 
-    getBacklogData() {
+    getBacklogList() {
         return new Promise(resolve => {
-            let backlogData = [];
+            let backlog_list = [];
 
-            Object.values(this.arrQueuedJobs).forEach((element) => {
-                Object.values(element).forEach((el) => {
-                    el['datetime'] = new Date(el['timestamp']).toISOString().split('.')[0].replace('T', ' ');
-                    el['type'] = el.arrKeys.join(', ');
+            Object.keys(this.arrQueuedJobs).forEach(job_group_name => {
+                const job_group = this.arrQueuedJobs[job_group_name];
+
+                job_group.forEach((item_job) => {
+                    item_job['datetime']       = new Date(item_job['timestamp']).toISOString().split('.')[0].replace('T', ' ');
+                    item_job['arr_keys']       = item_job.arrKeys.join(', ');
+                    item_job['job_group_name'] = job_group_name;
                 });
-                backlogData.push(...element);
+                backlog_list.push(...job_group);
             });
 
-            resolve(backlogData);
+            resolve(backlog_list);
         });
     }
 
     resetBacklog() {
-        this.arrQueuedJobs.transaction = [];
+        this.arrQueuedJobs = {};
     }
 
     getCountOfLocks() {

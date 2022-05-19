@@ -155,8 +155,8 @@
     },
     {
       "id": "0df01ae7dd51cec4",
-      "name": "list_backlog_records",
-      "description": "return records from backlog",
+      "name": "get_backlog_list",
+      "description": "return backlog list",
       "method": "GET",
       "version_released": "1.2.0",
       "permission": "{\"require_identity\": true, \"private\": false}",
@@ -164,8 +164,8 @@
     },
     {
       "id": "epOW5kdvb12QdgsV",
-      "name": "delete_backlog_records",
-      "description": "delete backlog from mutex",
+      "name": "reset_backlog",
+      "description": "reset backlog",
       "method": "POST",
       "version_released": "1.2.0",
       "permission": "{\"require_identity\": true, \"private\": false}",

@@ -1,9 +1,9 @@
 import Endpoint from '../endpoint';
-import mutex from "../../core/mutex";
+import mutex from '../../core/mutex';
 
 
 /**
- * api delete_backlog_records
+ * api reset_backlog
  */
 class _epOW5kdvb12QdgsV extends Endpoint {
     constructor() {
@@ -11,7 +11,7 @@ class _epOW5kdvb12QdgsV extends Endpoint {
     }
 
     /**
-     * delete backlog transaction from mutex queue
+     * reset backlog
      * @param app
      * @param req
      * @param res
