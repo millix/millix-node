@@ -63,7 +63,7 @@ class Peer {
 
         let data = JSON.stringify(payload);
         return new Promise((resolve, reject) => {
-            if (ws.nodeConnectionReady && !(ws.inBound && !ws.bidirectional)) {
+            if (ws.nodeConnectionReady) {
                 try {
                     eventBus.removeAllListeners(`transaction_file_response:${nodeID}:${transactionID}`);
                     let timeLimitTriggered = false;
