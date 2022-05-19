@@ -1,8 +1,9 @@
 import Endpoint from '../endpoint';
-import logManager from "../../core/log-manager";
+import logManager from '../../core/log-manager';
+
 
 /**
- * api list_event_logs
+ * api event_log_list
  */
 class _PZ7x3HVHVstLNYf0 extends Endpoint {
     constructor() {
@@ -10,7 +11,7 @@ class _PZ7x3HVHVstLNYf0 extends Endpoint {
     }
 
     /**
-     * returns a list of logs
+     * returns event log list
      * @param app
      * @param req (p0: log_limit=1000)
      * @param res
@@ -18,10 +19,11 @@ class _PZ7x3HVHVstLNYf0 extends Endpoint {
     handler(app, req, res) {
         const limit = parseInt(req.query.p0) || 1000;
         res.send({
-            api_status: 'success',
+            api_status    : 'success',
             event_log_list: logManager.getLog(limit)
         });
     }
 }
+
 
 export default new _PZ7x3HVHVstLNYf0();

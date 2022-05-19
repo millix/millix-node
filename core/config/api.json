@@ -29,8 +29,8 @@
     },
     {
       "id": "PZ7x3HVHVstLNYf0",
-      "name": "list_event_log",
-      "description": "returns a list of event logs",
+      "name": "event_log_list",
+      "description": "returns a event log list",
       "method": "GET",
       "version_released": "1.2.0",
       "permission": "{\"require_identity\": true, \"private\": false}",
