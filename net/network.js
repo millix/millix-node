@@ -20,30 +20,37 @@ import NatAPI from 'nat-api';
 import statistics from '../core/statistics';
 import console from '../core/console';
 import os from 'os';
+import task from '../core/task';
 
 const WebSocketServer = Server;
 
 
 class Network {
     constructor() {
-        this._nodeList                            = {};
-        this._connectionRegistry                  = {};
-        this._nodeRegistry                        = {};
-        this._inboundRegistry                     = {};
-        this._outboundRegistry                    = {};
-        this._bidirectionaOutboundConnectionCount = 0;
-        this._bidirectionaInboundConnectionCount  = 0;
-        this._wss                                 = null;
-        this.networkInterfaceAddresses            = [];
-        this.nodeID                               = null;
-        this.nodeIsPublic                         = undefined;
-        this.certificatePem                       = null;
-        this.certificatePrivateKeyPem             = null;
-        this.nodeConnectionID                     = this.generateNewID();
-        this._selfConnectionNode                  = new Set();
-        this.initialized                          = false;
-        this.dht                                  = null;
-        this.noop                                 = () => {
+        this._nodeListOnline                       = {};
+        this._nodeList                             = {};
+        this._connectionRegistry                   = {};
+        this._nodeRegistry                         = {};
+        this._inboundRegistry                      = {};
+        this._outboundRegistry                     = {};
+        this._bidirectionalOutboundConnectionCount = 0;
+        this._bidirectionalInboundConnectionCount  = 0;
+        this._wss                                  = null;
+        this.networkInterfaceAddresses             = [];
+        this.nodeID                                = null;
+        this.nodeIsPublic                          = config.NODE_PUBLIC;
+        this.certificatePem                        = null;
+        this.certificatePrivateKeyPem              = null;
+        this.nodeConnectionID                      = this.generateNewID();
+        this._selfConnectionNode                   = new Set();
+        this._allowedMessageInOutboudConnection    = new Set([
+            'node_attribute_request',
+            'wallet_transaction_sync',
+            'transaction_sync'
+        ]);
+        this.initialized                           = false;
+        this.dht                                   = null;
+        this.noop                                  = () => {
         };
     }
 
@@ -79,8 +86,13 @@ class Network {
         return this._wss;
     }
 
-    addNode(prefix, ip, port, portApi, id) {
-        let url = prefix + ip + ':' + port;
+    addNode(prefix, ip, port, portApi, id, isOnline = false) {
+        const url = `${prefix}${ip}:${port}`;
+
+        if (isOnline) {
+            this._nodeListOnline[url] = Date.now();
+        }
+
         if (!this._nodeList[url]) {
             const now           = Math.floor(Date.now() / 1000);
             this._nodeList[url] = {
@@ -107,8 +119,7 @@ class Network {
         else if (!prefix || !ipAddress || !port || portApi === undefined || id === this.nodeID) {
             return Promise.reject();
         }
-        else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && id && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id)) {
-            console.log('[network warn]: node id not in NODE_CONNECTION_OUTBOUND_WHITELIST');
+        else if (config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && (!id || !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(id))) {
             return Promise.reject();
         }
 
@@ -205,15 +216,7 @@ class Network {
 
         statistics.newEvent(messageType);
 
-        if (ws.outBound && !ws.bidirectional && this.shouldBlockMessage(messageType)) {
-            return;
-        }
-
         eventBus.emit(jsonMessage.type, content, ws);
-    }
-
-    shouldBlockMessage(messageType) {
-        return !!/.*_(request|sync|allocate)$/g.exec(messageType);
     }
 
     getHostByNode(node) {
@@ -241,6 +244,8 @@ class Network {
         this.setWebSocket(wss);
 
         wss.on('connection', (ws, req) => {
+
+            this.nodeIsPublic = true;
 
             let ip;
             if (req.connection.remoteAddress) {
@@ -321,6 +326,25 @@ class Network {
                 });
     }
 
+    retryConnectToOnlineNodes() {
+        return new Promise(resolve => {
+            async.eachLimit(_.shuffle(_.keys(this._nodeListOnline)), 4, (nodeURL, callback) => {
+                const node = this._nodeList[nodeURL];
+
+                if (this._nodeListOnline[nodeURL] < Date.now() - 600000) {
+                    delete this._nodeListOnline[nodeURL];
+                    return callback();
+                }
+                else if (this._nodeRegistry[node.node_id]) {
+                    return callback();
+                }
+
+                this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
+                    .then(() => setTimeout(callback, 1000))
+                    .catch(() => setTimeout(callback, 1000));
+            }, () => resolve());
+        });
+    }
 
     retryConnectToInactiveNodes() {
         if (!this.initialized) {
@@ -338,6 +362,9 @@ class Network {
 
         return new Promise(resolve => {
             async.eachLimit(_.shuffle(Array.from(inactiveClients)), 4, (node, callback) => {
+                if (this._nodeRegistry[node.node_id]) {
+                    return callback();
+                }
                 this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
                     .then(() => setTimeout(callback, 1000))
                     .catch(() => setTimeout(callback, 1000));
@@ -367,6 +394,9 @@ class Network {
 
             let url = config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT;
             node    = {
+                node_feature_set     : {
+                    storage: config.MODE_STORAGE_SYNC
+                },
                 node_prefix  : config.WEBSOCKET_PROTOCOL,
                 node_address : this.nodePublicIp,
                 node_port    : config.NODE_PORT,
@@ -483,14 +513,14 @@ class Network {
 
                         if (ws.inBound && this.hasOutboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_OUTBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_OUTBOUND_WHITELIST.includes(peerNodeID))) {
                             ws.reservedOutboundSlot = true;
-                            this._bidirectionaInboundConnectionCount++;
+                            this._bidirectionalInboundConnectionCount++;
                             extra['enable_inbound_stream'] = true;
                         }
 
                         peer.sendConnectionReady(extra, ws);
 
                         // request peer attributes
-                        this._requestAllNodeAttribute(peerNodeID, ws);
+                        this._requestAllNodeAttribute(ws);
                         // send peer list to the new node
                         peer.sendNodeList(ws).then(_ => _);
 
@@ -521,7 +551,7 @@ class Network {
                         callbackCalled = true;
                         eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
                         ws.terminate();
-                        reject('handsharke_timeout');
+                        reject('handshake_timeout');
                     }
                 }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
             });
@@ -534,6 +564,12 @@ class Network {
     _onNodeHandshake(registry, ws) {
         ws.nodeID       = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
+        ws.featureSet   = new Set();
+        _.each(_.keys(registry.node_feature_set), feature => {
+            if (registry.node_feature_set[feature]) {
+                ws.featureSet.add(feature);
+            }
+        });
 
         if (ws.nodeID === this.nodeID) {
             ws.duplicated = true;
@@ -610,11 +646,11 @@ class Network {
     }
 
     hasInboundConnectionsSlotAvailable() {
-        return (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount) < config.NODE_CONNECTION_INBOUND_MAX || this._hasToDropPublicNodeConnection();
+        return (_.keys(this._inboundRegistry).length < config.NODE_CONNECTION_INBOUND_MAX) || this._hasToDropPublicNodeConnection();
     }
 
     _hasToDropPublicNodeConnection() {
-        const totalInboundConnections = (_.keys(this._inboundRegistry).length + this._bidirectionaOutboundConnectionCount);
+        const totalInboundConnections = _.keys(this._inboundRegistry).length;
         const count                   = this._countPublicNodesOnInboundSlots();
         return count >= Math.floor(config.NODE_CONNECTION_PUBLIC_PERCENT * config.NODE_CONNECTION_INBOUND_MAX) && totalInboundConnections >= config.NODE_CONNECTION_INBOUND_MAX;
     }
@@ -637,7 +673,7 @@ class Network {
     }
 
     hasOutboundConnectionsSlotAvailable() {
-        return (_.keys(this._outboundRegistry).length + this._bidirectionaInboundConnectionCount) < config.NODE_CONNECTION_OUTBOUND_MAX;
+        return _.keys(this._outboundRegistry).length < config.NODE_CONNECTION_OUTBOUND_MAX;
     }
 
     _registerWebsocketToNodeID(ws) {
@@ -750,10 +786,10 @@ class Network {
         // update bidirectional stream slots
         if (ws.bidirectional || ws.reservedOutboundSlot) {
             if (ws.inBound) {
-                this._bidirectionaInboundConnectionCount--;
+                this._bidirectionalInboundConnectionCount--;
             }
             else {
-                this._bidirectionaOutboundConnectionCount--;
+                this._bidirectionalOutboundConnectionCount--;
             }
         }
 
@@ -775,7 +811,8 @@ class Network {
         }
     }
 
-    _requestAllNodeAttribute(nodeID, ws) {
+    _requestAllNodeAttribute(ws) {
+        const nodeID            = ws.nodeID;
         const attributeNameList = _.filter([
             'shard_protocol',
             'transaction_count',
@@ -811,10 +848,10 @@ class Network {
                 ws.nodeConnectionReady = true;
 
                 // request node attributes
-                this._requestAllNodeAttribute(ws.nodeID, ws);
+                this._requestAllNodeAttribute(ws);
 
                 // send peer list to the new node
-                peer.sendNodeList(ws);
+                peer.sendNodeList(ws).then(_ => _);
 
                 database.getRepository('node')
                         .addNode({
@@ -837,7 +874,7 @@ class Network {
             if (content && content.enable_inbound_stream === true) {
                 if (ws.outBound && this.hasInboundConnectionsSlotAvailable() && !(config.NODE_CONNECTION_INBOUND_WHITELIST.length > 0 && !config.NODE_CONNECTION_INBOUND_WHITELIST.includes(ws.nodeID))) {
                     ws.bidirectional = true;
-                    this._bidirectionaOutboundConnectionCount++;
+                    this._bidirectionalOutboundConnectionCount++;
                     peer.replyInboundStreamRequest(true, ws);
                 }
                 else {
@@ -855,7 +892,7 @@ class Network {
             }
             else {
                 ws.bidirectional = false;
-                this._bidirectionaInboundConnectionCount--;
+                this._bidirectionalInboundConnectionCount--;
             }
             ws.reservedOutboundSlot = false;
         }
@@ -863,7 +900,7 @@ class Network {
 
     _onNATCheckResponse(content, ws) {
         console.log('[network] on natcheck response', content);
-        this.nodeIsPublic = content.is_valid_nat;
+        this.nodeIsPublic = this.nodeIsPublic || content.is_valid_nat;
     }
 
     _natCheckTryConnect(url) {
@@ -925,19 +962,31 @@ class Network {
             privatePort: config.NODE_PORT,
             protocol   : 'TCP',
             description: 'millix network'
-        })
+        }).catch(_=>_)
             .then(() => portMapper({
                 publicPort : config.NODE_PORT_API,
                 privatePort: config.NODE_PORT_API,
                 protocol   : 'TCP',
                 description: 'millix api'
-            }))
+            }).catch(_=>_))
             .then(() => portMapper({
                 publicPort : config.NODE_PORT_DISCOVERY,
                 privatePort: config.NODE_PORT_DISCOVERY,
                 protocol   : 'UDP',
                 description: 'millix discovery'
-            }));
+            }).catch(_=>_))
+            .then(() => config.MODE_STORAGE_SYNC && portMapper({
+                publicPort : config.NODE_PORT_STORAGE_PROVIDER,
+                privatePort: config.NODE_PORT_STORAGE_PROVIDER,
+                protocol   : 'TCP',
+                description: 'millix storage provider'
+            }).catch(_=>_))
+            .then(() => config.MODE_STORAGE_SYNC && portMapper({
+                publicPort : config.NODE_PORT_STORAGE_RECEIVER,
+                privatePort: config.NODE_PORT_STORAGE_RECEIVER,
+                protocol   : 'TCP',
+                description: 'millix storage receiver'
+            }).catch(_=>_));
     }
 
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
@@ -946,11 +995,10 @@ class Network {
         console.log('node id : ', this.nodeID);
         this.natAPI = new NatAPI();
         this.doPortMapping()
-            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem))
             .catch((e) => {
                 console.log(`[network] error in nat-pmp ${e}`);
-                return this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem);
-            });
+            })
+            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem));
 
         this.connectToNodes();
         this.initialized = true;
@@ -960,6 +1008,7 @@ class Network {
         eventBus.on('inbound_stream_response', this._onInboundStreamResponse.bind(this));
         eventBus.on('nat_check', this._onNATCheck.bind(this));
         eventBus.on('nat_check_response', this._onNATCheckResponse.bind(this));
+        task.scheduleTask('retry_connect_online_node', this.retryConnectToOnlineNodes.bind(this), 10000, true);
     }
 
     loadNetworkInterfaceIpList() {
@@ -1127,14 +1176,17 @@ class Network {
         });
     }
 
-    disconnectWebSocket(ws) {
-        if (ws) {
-            if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-                this._unregisterWebsocket(ws);
-            }
-            else {
-                ws.close();
-            }
+    disconnectWebSocket(targetWS) {
+        if (targetWS) {
+            let wsList = this._nodeRegistry[targetWS.nodeID];
+            _.each([...wsList || [targetWS]], ws => { // clone the refs because the array will be mutated in the loop
+                if (!ws.close || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) { // unregister all websocket from this node that are in closed state
+                    this._unregisterWebsocket(ws);
+                }
+                else if (ws === targetWS) {
+                    ws.close();
+                }
+            });
         }
     }
 
@@ -1179,6 +1231,7 @@ class Network {
         eventBus.removeAllListeners('inbound_stream_response');
         eventBus.removeAllListeners('nat_check');
         eventBus.removeAllListeners('nat_check_response');
+        task.removeTask('retry_connect_online_node');
         this.stopWebSocket();
 
         // clean inbound and outbound registries

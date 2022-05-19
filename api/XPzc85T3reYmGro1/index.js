@@ -62,7 +62,7 @@ class _XPzc85T3reYmGro1 extends Endpoint {
                 });
             }
             mutex.lock(['submit_transaction'], (unlock) => {
-                wallet.addTransaction(transactionPartialPayload.transaction_output_list, transactionPartialPayload.transaction_output_fee)
+                wallet.addTransaction(transactionPartialPayload.transaction_output_list, transactionPartialPayload.transaction_output_fee, null, null, transactionPartialPayload.transaction_output_attribute)
                       .then(transaction => {
                           unlock();
                           res.send({
@@ -72,11 +72,11 @@ class _XPzc85T3reYmGro1 extends Endpoint {
                       })
                       .catch(e => {
                           console.log(`[api ${this.endpoint}] error: ${e}`);
+                          unlock();
                           res.send({
                               api_status : 'fail',
                               api_message: e
                           });
-                          unlock();
                       });
             });
         }

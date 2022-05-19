@@ -27,16 +27,18 @@ class _OBexeX0f0MsnL1S3 extends Endpoint {
             });
         }
 
-        const walletID = wallet.getDefaultActiveWallet();
-        database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
-                .then(keyIdentifier => {
+        const walletID      = wallet.getDefaultActiveWallet();
+        const keyIdentifier = wallet.defaultKeyIdentifier;
+        database.getRepository('address').getAddressBaseAttribute(keyIdentifier, 'key_public')
+                .then(publicKey => {
                     const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
                     res.send({
                         api_status: 'success',
                         wallet    : {
-                            id     : walletID,
-                            address: `${keyIdentifier}${addressVersion}${keyIdentifier}`,
-                            address_key_identifier: keyIdentifier
+                            id                    : walletID,
+                            address               : `${keyIdentifier}${addressVersion}${keyIdentifier}`,
+                            address_key_identifier: keyIdentifier,
+                            address_public_key    : publicKey
                         }
                     });
                 });

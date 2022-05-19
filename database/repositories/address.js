@@ -62,7 +62,7 @@ export default class Address {
 
     addAddressVersion(version, isMainNetwork, regexPattern, isDefault) {
         return new Promise(resolveUpdate => {
-            if (isDefault === 0) {
+            if (isDefault === false) {
                 return resolveUpdate();
             }
 
@@ -233,6 +233,23 @@ export default class Address {
                         }
                     });
                     resolve(_.values(addresses));
+                }
+            );
+        });
+    }
+
+    listAddressAttribute(where, orderBy, limit) {
+        return new Promise((resolve, reject) => {
+            let {sql, parameters} = Database.buildQuery('SELECT * FROM address_attribute', where, orderBy, limit);
+            this.database.all(
+                sql,
+                parameters,
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+                    resolve(rows);
                 }
             );
         });
