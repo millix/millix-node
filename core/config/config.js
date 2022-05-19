@@ -1,9 +1,15 @@
 export const MODE_DEBUG                                        = true;
-export const MODE_TEST_NETWORK                                 = true;
+export const MODE_TEST_NETWORK                                 = false;
 export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
 export const NODE_PORT_DISCOVERY_MAIN_NETWORK                  = 2000;
+export const NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK           = 6000;
+export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = 7000;
+export const NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK           = 6001;
+export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = 7001;
+export const NODE_PORT_STORAGE_RECEIVER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK : NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK;
+export const NODE_PORT_STORAGE_PROVIDER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK : NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK;
 export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
@@ -14,8 +20,11 @@ export const NODE_NAT_PMP                                      = true;
 export const NODE_NAT_PMP_CHECK                                = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
-export const NODE_PUBLIC                                       = false;
-export const MODE_NODE_FULL                                    = false;
+export const NODE_PUBLIC                                       = undefined;
+export const MODE_NODE_VALIDATION_FULL                         = true;
+export const MODE_NODE_SYNC_FULL                               = true;
+export const MODE_STORAGE_SYNC                                 = false;
+export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
@@ -709,18 +718,19 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT                        = 1;
-export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 2;
+export const CONSENSUS_ROUND_NODE_COUNT                        = 2;
+export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 1;
 export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
 export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
 export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 5;
 export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
-export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 10000;
+export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 100;
 export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
-export const TRANSACTION_TIME_LIMIT_PROXY                      = 45000;
+export const CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET      = true;
+export const TRANSACTION_TIME_LIMIT_PROXY                      = 5000;
 export const TRANSACTION_FEE_PROXY                             = 1000;
 export const TRANSACTION_FEE_DEFAULT                           = 1000;
 export const TRANSACTION_FEE_NETWORK                           = 0.0;
@@ -731,6 +741,7 @@ export const TRANSACTION_INPUT_MAX                             = 128;
 export const TRANSACTION_OUTPUT_MAX                            = 128;
 export const TRANSACTION_PARENT_MAX                            = 16;
 export const TRANSACTION_SIGNATURE_MAX                         = 128;
+export const TRANSACTION_CLOCK_SKEW_TOLERANCE                  = 10;
 export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 60;
 export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 10;
 export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
@@ -753,7 +764,9 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a10',
     '0b10',
     '0a20',
-    '0b20'
+    '0b20',
+    '0a30',
+    '0b30'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la0l',
@@ -761,18 +774,25 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la1l',
     'lb1l',
     'la2l',
-    'lb2l'
+    'lb2l',
+    'la3l',
+    'lb3l'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX                 = 1000;
 export const WALLET_TRANSACTION_QUEUE_SIZE_NORMAL              = 250;
+export const WALLET_AGGREGATION_TRANSACTION_MAX                = 1;
+export const WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT       = 1;
+export const WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT        = 120;
+export const WALLET_AGGREGATION_CONSUME_SMALLER_FIRST          = true;
 export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
+export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1640009160;
-export const NODE_MILLIX_VERSION                               = '1.12.7';
+export const NODE_MILLIX_BUILD_DATE                            = 1651849309;
+export const NODE_MILLIX_VERSION                               = '1.18.3';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -781,9 +801,11 @@ export const NODE_CERTIFICATE_KEY_PATH                         = DATA_BASE_DIR +
 export const NODE_CERTIFICATE_PATH                             = DATA_BASE_DIR + '/node_certificate.pem';
 export const WALLET_KEY_PATH                                   = DATA_BASE_DIR + '/millix_private_key.json';
 export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR + '/job.json';
-export const JOB_CONFIG_VERSION                                = 5;
+export const JOB_CONFIG_VERSION                                = 7;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
 export const DEBUG_LOG_FILTER                                  = [];
+export const CHUNK_SIZE                                        = 50331648; //48MB
+export const MAX_STORAGE_RESERVED                              = 1073741824; //1GB
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
 export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
 export const PEER_ROTATION_MORE_THAN_ALL                       = 0.01;
@@ -817,12 +839,23 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '17';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '19';
 }
+
+STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
+STORAGE_CONNECTION.PENDING_TO_SEND        = DATA_BASE_DIR + '/storage/sending.log';
+STORAGE_CONNECTION.PENDING_TO_RECEIVE     = DATA_BASE_DIR + '/storage/receiving.log';
+STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE = 'millix_storage_queue.sqlite';
 
 export default {
     MODE_DEBUG,
+    MODE_STORAGE_SYNC,
+    MODE_NODE_SYNC_FULL,
+    MODE_NODE_VALIDATION_FULL,
+    FORCE_QUEUE_UPDATE,
     MODE_TEST_NETWORK,
+    NODE_PORT_STORAGE_RECEIVER,
+    NODE_PORT_STORAGE_PROVIDER,
     NODE_PORT,
     NODE_PORT_DISCOVERY,
     NODE_HOST,
@@ -846,6 +879,7 @@ export default {
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
+    STORAGE_CONNECTION,
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
     CONSENSUS_VALIDATION_DEPTH_MAX,
@@ -859,6 +893,7 @@ export default {
     CONSENSUS_VALIDATION_RETRY_WAIT_TIME,
     CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX,
     CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX,
+    CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET,
     NODE_CONNECTION_PUBLIC_PERCENT,
     CONSENSUS_ROUND_NODE_COUNT,
     TRANSACTION_FEE_PROXY,
@@ -872,12 +907,17 @@ export default {
     TRANSACTION_PARENT_MAX,
     TRANSACTION_SIGNATURE_MAX,
     TRANSACTION_RETRY_SYNC_MAX,
+    TRANSACTION_CLOCK_SKEW_TOLERANCE,
     TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN,
     TRANSACTION_OUTPUT_REFRESH_OLDER_THAN,
     TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN,
     NETWORK_LONG_TIME_WAIT_MAX,
     NETWORK_SHORT_TIME_WAIT_MAX,
     WALLET_TRANSACTION_QUEUE_SIZE_MAX,
+    WALLET_AGGREGATION_TRANSACTION_MAX,
+    WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT,
+    WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT,
+    WALLET_AGGREGATION_CONSUME_SMALLER_FIRST,
     WALLET_TRANSACTION_QUEUE_SIZE_NORMAL,
     WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT,
     WALLET_TRANSACTION_SUPPORTED_VERSION,
@@ -890,10 +930,7 @@ export default {
     PEER_ROTATION_CONFIG,
     JOB_CONFIG_PATH,
     JOB_CONFIG_VERSION,
-    DEBUG_LOG_FILTER
+    DEBUG_LOG_FILTER,
+    CHUNK_SIZE,
+    MAX_STORAGE_RESERVED
 };
-
-// dev branch should be running in the test-network
-if (!MODE_TEST_NETWORK) {
-    throw Error('develop branch should be running in the test-network');
-}

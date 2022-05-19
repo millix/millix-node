@@ -1,22 +1,22 @@
 import Mnemonic from 'bitcore-mnemonic';
 import Bitcore from 'bitcore-lib';
 import crypto from 'crypto';
-import config, {SHARD_ZERO_NAME} from '../config/config';
+import config from '../config/config';
 import fs from 'fs';
 import path from 'path';
 import base58 from 'bs58';
 import os from 'os';
-import {KJUR, KEYUTIL, X509, ASN1HEX} from 'jsrsasign';
+import {ASN1HEX, KEYUTIL, KJUR, X509} from 'jsrsasign';
 import async from 'async';
 import _ from 'lodash';
 import database from '../../database/database';
-import peer from '../../net/peer';
 import objectHash from '../crypto/object-hash';
 import network from '../../net/network';
 import genesisConfig from '../genesis/genesis-config';
 import signature from '../crypto/signature';
 import node from '../../database/repositories/node';
 import {v4 as uuidv4} from 'uuid';
+import ntp from '../ntp';
 
 
 class WalletUtils {
@@ -33,6 +33,11 @@ class WalletUtils {
             address,
             address_attribute: addressAttribute
         };
+    }
+
+    derivePublicKey(extendedPrivateKey, isChange, addressPosition) {
+        const publicKey = extendedPrivateKey.derive(isChange, false).derive(addressPosition, false).publicKey;
+        return publicKey.toBuffer({size: 32});
     }
 
     getAddressFromPublicKey(addressKeyPublicBuffer) {
@@ -475,13 +480,16 @@ class WalletUtils {
                     return reject('couldn\'t read node key');
                 }
 
-                data = JSON.parse(data);
-                if (data.key) {
-                    return resolve(new Bitcore.HDPrivateKey(data.key));
+                try {
+                    data = JSON.parse(data);
+                    if (data.key) {
+                        return resolve(new Bitcore.HDPrivateKey(data.key));
+                    }
                 }
-                else {
-                    return reject('couldn\'t read node key');
+                catch (e) {
                 }
+
+                return reject('couldn\'t read node key');
             });
         });
     }
@@ -526,8 +534,6 @@ class WalletUtils {
                 return resolve(false);
             }
 
-            console.log(`[wallet-utils] Verifying transaction ${transaction.transaction_id}`);
-
             let transactionDate;
             if (![
                 '0a0',
@@ -541,13 +547,19 @@ class WalletUtils {
                 transactionDate = new Date(transaction.transaction_date);
             }
 
-            if ([
+            const maxTransactionDate = ntp.now().getTime() + config.TRANSACTION_CLOCK_SKEW_TOLERANCE * 1000;
+            if (transactionDate.getTime() >= maxTransactionDate) {
+                return resolve(false);
+            }
+            else if ([
                 '0b0',
                 '0b10',
                 '0b20',
+                '0b30',
                 'lb0l',
                 'lb1l',
-                'lb2l'
+                'lb2l',
+                'lb3l'
             ].includes(transaction.version)) {
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 if (!(isValidRefresh)) {
@@ -571,7 +583,7 @@ class WalletUtils {
                         resolve(!isConsumingExpired);
                     })
                     .catch(err => {
-                        console.log(`Failed to check if consuming expired. Abandoning verification. Error: ${err}`);
+                        console.log(`[wallet-utils] failed to check if consuming expired. abandoning verification. error: ${err}`);
                         resolve(false);
                     });
             }
@@ -606,10 +618,7 @@ class WalletUtils {
                         }
                     }
                 });
-            }, (isConsumingExpired) => {
-                console.log(`[wallet-utils] CONSUMING EXPIRED OUTPUTS: ${isConsumingExpired}`);
-                resolve(isConsumingExpired);
-            });
+            }, (isConsumingExpired) => resolve(isConsumingExpired));
         });
     }
 
@@ -651,7 +660,12 @@ class WalletUtils {
                     || !this.isValidAddress(input.address_key_identifier)
                     || !addressRepository.supportedVersionSet.has(input.address_version)
                     || outputUsedInTransaction.has(outputID)
-                    || transactionDate < input.output_transaction_date) {
+                    || transactionDate < input.output_transaction_date
+                    || !_.has(input, 'input_position')
+                    || !_.has(input, 'output_position')
+                    || !_.has(input, 'output_transaction_date')
+                    || !_.has(input, 'output_transaction_id')
+                    || !_.has(input, 'output_shard_id')) {
                     return false;
                 }
                 outputUsedInTransaction.add(outputID);
@@ -696,9 +710,7 @@ class WalletUtils {
             transaction['transaction_parent_list'] = [];
         }
 
-        // verify signature
-        let vTransaction = _.cloneDeep(_.omit(transaction, [
-            'transaction_output_attribute',
+        const omitFields = [
             'payload_hash',
             'transaction_id',
             'transaction_date',
@@ -706,7 +718,16 @@ class WalletUtils {
             'node_id_proxy',
             'shard_id',
             'version'
-        ]));
+        ];
+
+        const versionType = transaction.version.charAt(1);
+        if (!((versionType === 'a' || versionType === 'b') &&
+              parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3)) {
+            omitFields.push('transaction_output_attribute');
+        }
+
+        // verify signature
+        let vTransaction = _.cloneDeep(_.omit(transaction, omitFields));
 
         const addressSignatureList = [];
         for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
@@ -764,7 +785,7 @@ class WalletUtils {
         return true;
     }
 
-    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion) {
+    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes = {}) {
         if (feeOutputList.length < 1 || !feeOutputList[0].node_id_proxy) {
             // there should be at least one output entry for the proxy (fees).
             return Promise.reject('proxy/output fee information is required');
@@ -789,31 +810,12 @@ class WalletUtils {
         maximumOldestDate.setMinutes(maximumOldestDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
 
         return new Promise((resolve, reject) => {
-            let allocatedFunds = 0;
-            const amount       = _.sum(_.map(outputList, o => o.amount)) + _.sum(_.map(feeOutputList, o => o.amount));
-            async.eachSeries(inputList, (input, callback) => {
-                database.firstShards((shardID) => {
-                    const transactionRepository = database.getRepository('transaction', shardID);
-                    return transactionRepository.getTransactionOutput({
-                        transaction_id        : input.output_transaction_id,
-                        output_position       : input.output_position,
-                        address_key_identifier: input.address_key_identifier
-                    });
-                }).then(output => {
-                    allocatedFunds += output.amount;
-                    callback();
-                }).catch(() => {
-                    callback(`transaction_output_not_found: ${JSON.stringify(input)}`);
-                });
-            }, (err) => {
-                if (err) {
-                    return reject(err);
-                }
-                else if (amount !== allocatedFunds) {
-                    return reject(`invalid_amount: allocated (${allocatedFunds}), spend (${amount})`);
-                }
-                resolve();
-            });
+            const allocatedFunds = _.sum(_.map(inputList, o => o.amount));
+            const amount         = _.sum(_.map(outputList, o => o.amount)) + _.sum(_.map(feeOutputList, o => o.amount));
+            if (amount !== allocatedFunds) {
+                return reject(`invalid_amount: allocated (${allocatedFunds}), spend (${amount})`);
+            }
+            resolve();
         }).then(() => new Promise((resolve, reject) => {
             const addressBaseList = _.uniq(_.map(inputList, i => i.address_base));
             const signatureList   = _.map(addressBaseList, addressBase => ({
@@ -950,13 +952,36 @@ class WalletUtils {
                   transaction.transaction_output_list.forEach((output, idx) => output['output_position'] = hasRefreshTransaction && i === 0 ? idx : idx - feeOutputList.length);
                   transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
                   transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
-                  transaction['payload_hash']            = objectHash.getCHash288(transaction);
-                  transaction['transaction_date']        = Math.floor(timeNow.getTime() / 1000);
-                  transaction['node_id_origin']          = network.nodeID;
-                  transaction['node_id_proxy']           = nodeIDProxy;
-                  transaction['shard_id']                = _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
-                  transaction['version']                 = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
-                  const tempAddressSignatures            = {};
+
+                  let hasSignedOutputAttribute = false;
+                  let version                  = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
+                  const versionType            = version.charAt(1);
+                  if ((versionType === 'a' || versionType === 'b') &&
+                      parseInt(version.substring(2, version.length - 1)) >= 3) {
+                      // transaction output attribute
+                      const transactionFeeList                    = feeOutputList.length > 0 ?
+                                                                    _.map(feeOutputList, o => _.pick(o, [
+                                                                        'node_id_proxy',
+                                                                        'fee_type'
+                                                                    ])) : undefined;
+                      transaction['transaction_output_attribute'] = {
+                          transaction_fee            : transactionFeeList,
+                          transaction_output_metadata: outputAttributes
+                      };
+
+                      if (transaction.transaction_output_attribute.transaction_fee) {
+                          transaction.transaction_output_attribute.transaction_fee.forEach((outputAttribute, idx) => outputAttribute['output_position'] = idx - feeOutputList.length);
+                      }
+                      hasSignedOutputAttribute = true;
+                  }
+
+                  transaction['payload_hash']     = objectHash.getCHash288(transaction);
+                  transaction['transaction_date'] = Math.floor(timeNow.getTime() / 1000);
+                  transaction['node_id_origin']   = network.nodeID;
+                  transaction['node_id_proxy']    = nodeIDProxy;
+                  transaction['shard_id']         = genesisConfig.genesis_shard_id; // TODO:activate random shard _.sample(_.filter(_.keys(database.shards), shardID => shardID !== SHARD_ZERO_NAME));
+                  transaction['version']          = version;
+                  const tempAddressSignatures     = {};
                   for (let transactionSignature of transaction.transaction_signature_list) {
                       const privateKeyHex = privateKeyMap[transactionSignature.address_base];
                       if (!privateKeyHex) {
@@ -975,19 +1000,119 @@ class WalletUtils {
                       transactionSignature['signature'] = tempAddressSignatures[transactionSignature.address_base];
                   }
                   transaction['transaction_id'] = objectHash.getCHash288(transaction);
-                  if ((hasRefreshTransaction && i === 1 || !hasRefreshTransaction) && feeOutputList.length > 0) {
+                  if (!hasSignedOutputAttribute && (hasRefreshTransaction && i === 1 || !hasRefreshTransaction) && feeOutputList.length > 0) {
                       // transaction output attribute: fee
                       transaction['transaction_output_attribute'] = {
-                          transaction_fee: _.map(feeOutputList, o => _.pick(o, [
+                          transaction_fee            : _.map(feeOutputList, o => _.pick(o, [
                               'node_id_proxy',
                               'fee_type'
-                          ]))
+                          ])),
+                          transaction_output_metadata: outputAttributes
                       };
                       transaction.transaction_output_attribute.transaction_fee.forEach((outputAttribute, idx) => outputAttribute['output_position'] = idx - feeOutputList.length);
                   }
               }
               return transactionList;
           });
+    }
+
+    splitOutputAmount(inputList, feeOutputList, numberOfOutputs) {
+        const outputList      = [];
+        const amount          = _.sum(_.map(inputList, o => o.amount)) - _.sum(_.map(feeOutputList, o => o.amount));
+        const amountPerOutput = Math.floor(amount / numberOfOutputs);
+        const remainingAmount = amount - numberOfOutputs * amountPerOutput;
+
+        const address = inputList[inputList.length - 1];
+
+        for (let i = 0; i < numberOfOutputs; i++) {
+            outputList.push({
+                address_base          : address.address_base,
+                address_version       : address.address_version,
+                address_key_identifier: address.address_key_identifier,
+                amount                : amountPerOutput
+            });
+        }
+        // add the remaining amount to the last output
+        outputList[outputList.length - 1].amount += remainingAmount;
+        return outputList;
+    }
+
+    /*
+     * generates an aggregation transaction from the active wallet which optimizes the funds and allows spending more funds in fewer transactions
+     */
+    signAggregationTransaction(inputList = [], feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, numberOfInputs = 120, numberOfOutputs = 1, numberOfTransactions = 1) {
+        if (inputList.length === numberOfOutputs) {
+            return Promise.reject({error: 'aggregation_not_required'});
+        }
+
+        const totalTransactions = Math.min(Math.ceil(inputList.length / config.TRANSACTION_INPUT_MAX), numberOfTransactions);
+        if (totalTransactions === 1) { // we just need to create a single transaction
+            feeOutputList[0].amount = config.TRANSACTION_FEE_DEFAULT;
+            const outputList        = this.splitOutputAmount(inputList, feeOutputList, numberOfOutputs);
+            return this.signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion);
+        }
+
+        const remainingInputs = inputList.length - totalTransactions * config.TRANSACTION_INPUT_MAX;
+        return new Promise((resolve, reject) => {
+            const feeOutputListIntermediate = _.cloneDeep(feeOutputList);
+            feeOutputListIntermediate.forEach(fee => fee.amount = 0); /* dont pay fee for intermediate transactions */
+            async.times(totalTransactions, (idx, callback) => {
+                const inputListSlice = _.slice(inputList, idx * config.TRANSACTION_INPUT_MAX, Math.min((idx + 1) * config.TRANSACTION_INPUT_MAX, inputList.length));
+                const amount         = _.sum(_.map(inputListSlice, o => o.amount));
+                const address        = inputListSlice[inputListSlice.length - 1];
+                const outputList     = [
+                    {
+                        address_base          : address.address_base,
+                        address_version       : address.address_version,
+                        address_key_identifier: address.address_key_identifier,
+                        amount
+                    }
+                ];
+
+                this.signTransaction(inputListSlice, outputList, feeOutputListIntermediate, addressAttributeMap, privateKeyMap, transactionDate, config.WALLET_TRANSACTION_REFRESH_VERSION)
+                    .then(transactions => callback(null, transactions))
+                    .catch(error => callback(error));
+            }, (error, transactionsList) => {
+                if (error) {
+                    return reject(error);
+                }
+
+                // get only the refresh transaction or the single transaction
+                // if there is no refresh
+                transactionsList = _.map(transactionsList, intermediateTransactionList => _.first(intermediateTransactionList));
+
+                // get all outputs from intermediate transactions
+                const intermediateInputList = _.map(transactionsList, intermediateTransaction => ({
+                    'output_transaction_id'  : intermediateTransaction.transaction_id,
+                    'output_position'        : 0,
+                    'output_transaction_date': intermediateTransaction.transaction_date,
+                    'output_shard_id'        : intermediateTransaction.shard_id,
+                    ..._.pick(intermediateTransaction.transaction_output_list[0], [
+                        'address_base',
+                        'address_version',
+                        'address_key_identifier',
+                        'amount'
+                    ])
+                }));
+
+                // generate the transaction that aggregates all other
+                // intermediate transactions.
+                if (_.isEmpty(feeOutputList)) {
+                    return reject('transaction_invalid_fee_output');
+                }
+
+                feeOutputList[0].amount = transactionsList.length * config.TRANSACTION_FEE_DEFAULT;
+
+                const outputList = this.splitOutputAmount(intermediateInputList, feeOutputList, Math.max(remainingInputs > 0 ? numberOfOutputs - remainingInputs : numberOfOutputs, 1));
+
+                this.signTransaction(intermediateInputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion)
+                    .then(([transaction]) => resolve([
+                        ...transactionsList,
+                        transaction
+                    ]))
+                    .catch(reject);
+            });
+        });
     }
 }
 

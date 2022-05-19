@@ -25,8 +25,8 @@ class _4wR3kjTwwC67R94Z extends Endpoint {
         wallet.stop();
         network.stop();
         peer.stop();
-        database.runVacuum()
-                .then(() => database.runWallCheckpoint())
+        database.runVacuumAll()
+                .then(() => database.runWallCheckpointAll())
                 .then(() => {
                     return wallet.initialize(true)
                                  .then(() => network.initialize())

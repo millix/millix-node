@@ -50,7 +50,7 @@ class _RLOk0Wji0lQVjynT extends Endpoint {
             let memory = {
                 total      : Math.round((os.totalmem() / 1024 / 1024 / 1024) * 100) / 100 + 'GB',
                 free       : Math.round((os.freemem() / 1024 / 1024 / 1024) * 100) / 100 + 'GB',
-                freePercent: Math.round(os.freemem() / os.totalmem() * 100).toString() + '%',
+                freePercent: Math.round(os.freemem() / os.totalmem() * 100).toString() + '%'
             };
 
             res.send({

@@ -19,6 +19,24 @@
       "enable": true
     },
     {
+      "id": "WGem8x5aycBqFXWQ",
+      "name": "get_available_version",
+      "description": "returns a available client/browser version",
+      "method": "GET",
+      "version_released": "1.17.6",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "PZ7x3HVHVstLNYf0",
+      "name": "event_log_list",
+      "description": "returns a event log list",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "vM27tlHkqbRej6tP",
       "name": "list_node_memory_extended",
       "description": "returns a list of all peer nodes (node table and memory list) known by the host.  it returns the newest records by default",
@@ -325,6 +343,24 @@
       "enable": true
     },
     {
+      "id": "F7APEv5JfCY1siyz",
+      "name": "list_transaction_output_attribute_sent",
+      "description": "returns sent transactions attribute records from table transaction_output_attribute that match the provided parameters.  it returns the newest records by default",
+      "method": "GET",
+      "version_released": "1.18.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "Mu7VpxzfYyQimf3V",
+      "name": "list_transaction_output_attribute_received",
+      "description": "returns received transactions attribute records from table transaction_output_attribute that match the provided parameters.  it returns the newest records by default",
+      "method": "GET",
+      "version_released": "1.18.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "GktuwZlVP39gty6v",
       "name": "new_session_with_phrase",
       "description": "uses the passphrase and 24 word mnemonic phrase to set the active wallet used in the session by the node",
@@ -415,6 +451,15 @@
       "enable": true
     },
     {
+      "id": "FC8ylC617zzn1Gaa",
+      "name": "get_unspent_output_summary",
+      "description": "returns the unspent output stat summary",
+      "method": "GET",
+      "version_released": "1.16.1",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "RLOk0Wji0lQVjynT",
       "name": "get_os_info",
       "description": "get the node os info",
@@ -429,6 +474,24 @@
       "description": "submits a new transaction from the active wallet, specifying the outputs and amounts to the node. this API builds the tx payload and submits it",
       "method": "GET",
       "version_released": "1.10.2",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "XQmpDjEVF691r2gX",
+      "name": "send_transaction_with_data_from_wallet",
+      "description": "submits a new transaction with data on dag from the active wallet, specifying the outputs and amounts to the node. this API builds the tx payload and submits it",
+      "method": "GET",
+      "version_released": "1.18.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "kC5N9Tz06b2rA4Pg",
+      "name": "send_aggregation_transaction_from_wallet",
+      "description": "submits a new aggregation transaction from the active wallet which optimizes the funds and allows spending more funds in fewer transactions. this API builds the tx payload and submits it",
+      "method": "GET",
+      "version_released": "1.16.0",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },
@@ -520,6 +583,15 @@
       "method": "GET",
       "version_released": "1.11.5",
       "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "P2LMh8NsUTkpWAH3",
+      "name": "reset_validation_transaction_by_guid",
+      "description": "reset transaction validation by transaction guid",
+      "method": "POST",
+      "version_released": "1.11.5",
+      "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     }
   ]
