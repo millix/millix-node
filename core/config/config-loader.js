@@ -32,6 +32,7 @@ class _ConfigLoader {
             'WALLET_AGGREGATION_CONSUME_SMALLER_FIRST',
             'JOB_CONFIG_VERSION',
             'NODE_PUBLIC',
+            'NODE_DNS_SERVER',
             'SHARD_ZERO_NAME'
         ]);
     }

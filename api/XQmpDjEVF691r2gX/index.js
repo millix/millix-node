@@ -61,6 +61,26 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                     api_message: `invalid transaction: must contain transaction_output_list(type array), transaction_output_fee (type object) and transaction_data (type object)`
                 });
             }
+
+            if (transactionPartialPayload.transaction_output_attribute) {
+                if (!_.isObject(transactionPartialPayload.transaction_output_attribute)) {
+                    return res.send({
+                        api_status : 'fail',
+                        api_message: `invalid transaction: must contain a valid transaction_output_attribute (type object)`
+                    });
+                }
+                else {
+                    const size = JSON.stringify(transactionPartialPayload.transaction_output_attribute).length;
+                    if (size > 2048) {
+                        return res.send({
+                            api_status : 'fail',
+                            api_message: `invalid transaction: must contain a valid transaction_output_attribute (max size = 2048 | current size = ${size})`
+                        });
+                    }
+                }
+            }
+
+
             mutex.lock(['submit_transaction'], (unlock) => {
                 const buffer   = Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data));
                 const fileList = [
@@ -76,14 +96,14 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                 transactionPartialPayload.transaction_output_list.forEach(output => {
                     if (output.address_version.charAt(1) === 'b') {
                         // use default address version
-                        output.address_version = this.addressRepository.getDefaultAddressVersion().version;
+                        output.address_version    = this.addressRepository.getDefaultAddressVersion().version;
                         // convert public key to address
                         output.address_public_key = output.address_base;
-                        output.address_base = walletUtils.getAddressFromPublicKey(base58.decode(output.address_public_key))
+                        output.address_base       = walletUtils.getAddressFromPublicKey(base58.decode(output.address_public_key));
                     }
                 });
 
-                fileManager.createTransactionWithFileList(fileList, transactionPartialPayload.transaction_output_list, transactionPartialPayload.transaction_output_fee)
+                fileManager.createTransactionWithFileList(fileList, transactionPartialPayload.transaction_output_list, transactionPartialPayload.transaction_output_fee, transactionPartialPayload.transaction_output_attribute)
                            .then(transaction => {
                                unlock();
                                res.send({
