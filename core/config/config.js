@@ -1,5 +1,5 @@
 export const MODE_DEBUG                                        = true;
-export const MODE_TEST_NETWORK                                 = true;
+export const MODE_TEST_NETWORK                                 = false;
 export const NODE_DNS_SERVER                                   = [
     '1.1.1.1',
     '8.8.8.8'
@@ -939,8 +939,3 @@ export default {
     CHUNK_SIZE,
     MAX_STORAGE_RESERVED
 };
-
-// dev branch should be running in the test-network
-if (!MODE_TEST_NETWORK) {
-    throw Error('develop branch should be running in the test-network');
-}
