@@ -602,6 +602,15 @@
       "version_released": "1.18.4",
       "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
+    },
+    {
+      "id": "wWo8DCcoXVlpczoP",
+      "name": "get_transaction_output_stats",
+      "description": "get transaction output stats",
+      "method": "GET",
+      "version_released": "1.18.5",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
     }
   ]
 }

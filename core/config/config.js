@@ -28,6 +28,7 @@ export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
 export const MODE_NODE_SYNC_FULL                               = true;
 export const MODE_STORAGE_SYNC                                 = false;
+export const MODE_STORAGE_SYNC_FULL                            = false;
 export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
@@ -855,6 +856,7 @@ export default {
     MODE_DEBUG,
     NODE_DNS_SERVER,
     MODE_STORAGE_SYNC,
+    MODE_STORAGE_SYNC_FULL,
     MODE_NODE_SYNC_FULL,
     MODE_NODE_VALIDATION_FULL,
     FORCE_QUEUE_UPDATE,
