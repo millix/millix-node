@@ -17,10 +17,10 @@ class _0df01ae7dd51cec4 extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        mutex.getBacklogList().then(backlog_list => {
+        mutex.getBacklogList().then(backlogList => {
             res.send({
                 api_status  : 'success',
-                backlog_list: backlog_list
+                backlog_list: backlogList
             });
         });
     }
