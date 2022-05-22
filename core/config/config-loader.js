@@ -33,6 +33,8 @@ class _ConfigLoader {
             'JOB_CONFIG_VERSION',
             'NODE_PUBLIC',
             'NODE_DNS_SERVER',
+            'MODE_STORAGE_SYNC',
+            'MODE_STORAGE_SYNC_FULL',
             'SHARD_ZERO_NAME'
         ]);
     }
