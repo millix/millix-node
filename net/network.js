@@ -1,6 +1,6 @@
 import WebSocket, {Server} from 'ws';
 import _ from 'lodash';
-import config from '../core/config/config';
+import config, {NODE_STORAGE_PORT_CHECK} from '../core/config/config';
 import database from '../database/database';
 import eventBus from '../core/event-bus';
 import crypto from 'crypto';
@@ -21,6 +21,9 @@ import statistics from '../core/statistics';
 import console from '../core/console';
 import os from 'os';
 import task from '../core/task';
+import request from 'request';
+import sender from '../core/storage/sender';
+import receiver from '../core/storage/receiver';
 
 const WebSocketServer = Server;
 
@@ -394,14 +397,14 @@ class Network {
 
             let url = config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT;
             node    = {
-                node_feature_set     : {
+                node_feature_set: {
                     storage: config.MODE_STORAGE_SYNC
                 },
-                node_prefix  : config.WEBSOCKET_PROTOCOL,
-                node_address : this.nodePublicIp,
-                node_port    : config.NODE_PORT,
-                node_port_api: config.NODE_PORT_API,
-                node         : url
+                node_prefix     : config.WEBSOCKET_PROTOCOL,
+                node_address    : this.nodePublicIp,
+                node_port       : config.NODE_PORT,
+                node_port_api   : config.NODE_PORT_API,
+                node            : url
             };
 
             if (!isInboundConnection) {
@@ -535,6 +538,20 @@ class Network {
                         if (config.NODE_NAT_PMP_CHECK) {
                             peer.sendNATCheck({
                                 url: config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT
+                            }, ws);
+                        }
+
+                        if (config.NODE_STORAGE_PORT_CHECK && !sender.isPublic) {
+                            peer.sendEndpointProbeRequest({
+                                url          : `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`,
+                                endpoint_type: 'https'
+                            }, ws);
+                        }
+
+                        if (config.NODE_STORAGE_PORT_CHECK && !receiver.isPublic) {
+                            peer.sendEndpointProbeRequest({
+                                url          : `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_RECEIVER}`,
+                                endpoint_type: 'https'
                             }, ws);
                         }
 
@@ -714,7 +731,7 @@ class Network {
                 times   : 3,
                 interval: 500
             }, (callback) => {
-                this._natCheckTryConnect(ws.node)
+                this._urlCheckConnect(ws.node)
                     .then(() => callback())
                     .catch(() => callback(true));
             }, (err) => {
@@ -903,24 +920,36 @@ class Network {
         this.nodeIsPublic = this.nodeIsPublic || content.is_valid_nat;
     }
 
-    _natCheckTryConnect(url) {
+    _urlCheckConnect(url, endpointType = 'wss') {
         return new Promise((resolve, reject) => {
-            const client      = new WebSocket(url, {
-                rejectUnauthorized: false,
-                handshakeTimeout  : 10000
-            });
-            client.createTime = Date.now();
-            client.once('open', () => {
-                console.log('[network outgoing] natcheck ok for url ' + url);
-                client.close(1000, 'close connection');
-                resolve();
-            });
+            if (endpointType === 'wss') {
+                const client      = new WebSocket(url, {
+                    rejectUnauthorized: false,
+                    handshakeTimeout  : 10000
+                });
+                client.createTime = Date.now();
+                client.once('open', () => {
+                    console.log('[network outgoing] natcheck ok for url ' + url);
+                    client.close(1000, 'close connection');
+                    resolve();
+                });
 
-            client.on('error', (e) => {
-                console.log('[network outgoing] natcheck error in connection to ' + url + '. disconnected after ' + (Date.now() - client.createTime) + 'ms.', e.code);
-                client.close(1000, 'close connection');
-                reject();
-            });
+                client.on('error', (e) => {
+                    console.log('[network outgoing] natcheck error in connection to ' + url + '. disconnected after ' + (Date.now() - client.createTime) + 'ms.', e.code);
+                    client.close(1000, 'close connection');
+                    reject();
+                });
+            }
+            else {
+                request.get(url, {
+                    strictSSL: false,
+                    encoding : null
+                }).on('response', function() {
+                    resolve();
+                }).on('error', function() {
+                    reject();
+                });
+            }
         });
     }
 
@@ -931,7 +960,7 @@ class Network {
             times   : 10,
             interval: 500
         }, (callback) => {
-            this._natCheckTryConnect(url)
+            this._urlCheckConnect(url)
                 .then(() => callback())
                 .catch(() => callback(true));
         }, (err) => {
@@ -951,6 +980,22 @@ class Network {
         console.log('[network outgoing] natcheck connecting to node ' + url);
     }
 
+    _onEndpointReachableCheck(content, ws) {
+        const {
+                  url,
+                  endpoint_type: endpointType
+              } = content;
+        console.log('[network] check if endpoint is reachable', url, 'from', ws.nodeID);
+        async.retry({
+            times   : 10,
+            interval: 500
+        }, (callback) => {
+            this._urlCheckConnect(url, endpointType)
+                .then(() => callback())
+                .catch(() => callback(true));
+        }, _ => _);
+    }
+
     doPortMapping() {
         if (!config.NODE_NAT_PMP) {
             return Promise.resolve();
@@ -962,31 +1007,31 @@ class Network {
             privatePort: config.NODE_PORT,
             protocol   : 'TCP',
             description: 'millix network'
-        }).catch(_=>_)
-            .then(() => portMapper({
-                publicPort : config.NODE_PORT_API,
-                privatePort: config.NODE_PORT_API,
-                protocol   : 'TCP',
-                description: 'millix api'
-            }).catch(_=>_))
-            .then(() => portMapper({
-                publicPort : config.NODE_PORT_DISCOVERY,
-                privatePort: config.NODE_PORT_DISCOVERY,
-                protocol   : 'UDP',
-                description: 'millix discovery'
-            }).catch(_=>_))
-            .then(() => config.MODE_STORAGE_SYNC && portMapper({
-                publicPort : config.NODE_PORT_STORAGE_PROVIDER,
-                privatePort: config.NODE_PORT_STORAGE_PROVIDER,
-                protocol   : 'TCP',
-                description: 'millix storage provider'
-            }).catch(_=>_))
-            .then(() => config.MODE_STORAGE_SYNC && portMapper({
-                publicPort : config.NODE_PORT_STORAGE_RECEIVER,
-                privatePort: config.NODE_PORT_STORAGE_RECEIVER,
-                protocol   : 'TCP',
-                description: 'millix storage receiver'
-            }).catch(_=>_));
+        }).catch(_ => _)
+          .then(() => portMapper({
+              publicPort : config.NODE_PORT_API,
+              privatePort: config.NODE_PORT_API,
+              protocol   : 'TCP',
+              description: 'millix api'
+          }).catch(_ => _))
+          .then(() => portMapper({
+              publicPort : config.NODE_PORT_DISCOVERY,
+              privatePort: config.NODE_PORT_DISCOVERY,
+              protocol   : 'UDP',
+              description: 'millix discovery'
+          }).catch(_ => _))
+          .then(() => config.MODE_STORAGE_SYNC && portMapper({
+              publicPort : config.NODE_PORT_STORAGE_PROVIDER,
+              privatePort: config.NODE_PORT_STORAGE_PROVIDER,
+              protocol   : 'TCP',
+              description: 'millix storage provider'
+          }).catch(_ => _))
+          .then(() => config.MODE_STORAGE_SYNC && portMapper({
+              publicPort : config.NODE_PORT_STORAGE_RECEIVER,
+              privatePort: config.NODE_PORT_STORAGE_RECEIVER,
+              protocol   : 'TCP',
+              description: 'millix storage receiver'
+          }).catch(_ => _));
     }
 
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
@@ -1006,6 +1051,7 @@ class Network {
         eventBus.on('node_address_request', this._onGetNodeAddress.bind(this));
         eventBus.on('connection_ready', this._onConnectionReady.bind(this));
         eventBus.on('inbound_stream_response', this._onInboundStreamResponse.bind(this));
+        eventBus.on('endpoint_probe_request', this._onEndpointReachableCheck.bind(this));
         eventBus.on('nat_check', this._onNATCheck.bind(this));
         eventBus.on('nat_check_response', this._onNATCheckResponse.bind(this));
         task.scheduleTask('retry_connect_online_node', this.retryConnectToOnlineNodes.bind(this), 10000, true);
@@ -1231,6 +1277,7 @@ class Network {
         eventBus.removeAllListeners('inbound_stream_response');
         eventBus.removeAllListeners('nat_check');
         eventBus.removeAllListeners('nat_check_response');
+        eventBus.removeAllListeners('endpoint_probe_request');
         task.removeTask('retry_connect_online_node');
         this.stopWebSocket();
 

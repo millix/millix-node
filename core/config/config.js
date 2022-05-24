@@ -22,6 +22,7 @@ export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
 export const NODE_NAT_PMP                                      = true;
 export const NODE_NAT_PMP_CHECK                                = false;
+export const NODE_STORAGE_PORT_CHECK                           = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = undefined;
@@ -855,6 +856,7 @@ STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE = 'millix_storage_queue.sqlite';
 export default {
     MODE_DEBUG,
     NODE_DNS_SERVER,
+    NODE_STORAGE_PORT_CHECK,
     MODE_STORAGE_SYNC,
     MODE_STORAGE_SYNC_FULL,
     MODE_NODE_SYNC_FULL,
