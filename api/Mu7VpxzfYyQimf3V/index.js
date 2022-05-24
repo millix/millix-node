@@ -56,7 +56,8 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                 transaction_date         : output.transaction_date,
                 amount                   : output.amount,
                 address_key_identifier_to: output.address_key_identifier,
-                address_to               : output.address
+                address_to               : output.address,
+                is_stable                : output.is_stable
             }));
             // define from
             return new Promise((resolve) => {
