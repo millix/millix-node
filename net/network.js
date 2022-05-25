@@ -543,14 +543,14 @@ class Network {
 
                         if (config.NODE_STORAGE_PORT_CHECK && !sender.isPublic) {
                             peer.sendEndpointProbeRequest({
-                                url          : `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`,
+                                url          : `https://${this.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`,
                                 endpoint_type: 'https'
                             }, ws);
                         }
 
                         if (config.NODE_STORAGE_PORT_CHECK && !receiver.isPublic) {
                             peer.sendEndpointProbeRequest({
-                                url          : `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_RECEIVER}`,
+                                url          : `https://${this.nodePublicIp}:${config.NODE_PORT_STORAGE_RECEIVER}`,
                                 endpoint_type: 'https'
                             }, ws);
                         }
@@ -681,7 +681,7 @@ class Network {
         if (peerToDisconnect && peerToDisconnect.close) {
             console.log(`[peer-rotation] drop with node id ${peerToDisconnect.nodeID} - ${peerToDisconnect.node}`);
             if (peerToDisconnect.readyState === WebSocket.CLOSED || peerToDisconnect.readyState === WebSocket.CLOSING) {
-                network._unregisterWebsocket(peerToDisconnect);
+                this._unregisterWebsocket(peerToDisconnect);
             }
             else {
                 peerToDisconnect.close();
