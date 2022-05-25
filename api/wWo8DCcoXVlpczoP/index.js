@@ -1,17 +1,18 @@
-import Endpoint from '../endpoint';
 import database from '../../database/database';
-import async from 'async';
+import Endpoint from '../endpoint';
 import _ from 'lodash';
-import fileManager from '../../core/storage/file-manager';
+import async from 'async';
 import wallet from '../../core/wallet/wallet';
+import fileManager from '../../core/storage/file-manager';
+import cache from '../../core/cache';
 
 
 /**
- * api list_transaction_output_attribute_received
+ * api get_transaction_output_stats
  */
-class _Mu7VpxzfYyQimf3V extends Endpoint {
+class _wWo8DCcoXVlpczoP extends Endpoint {
     constructor() {
-        super('Mu7VpxzfYyQimf3V');
+        super('wWo8DCcoXVlpczoP');
         this.normalizationRepository = database.getRepository('normalization');
     }
 
@@ -56,8 +57,7 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                 transaction_date         : output.transaction_date,
                 amount                   : output.amount,
                 address_key_identifier_to: output.address_key_identifier,
-                address_to               : output.address,
-                is_stable                : output.is_stable
+                address_to               : output.address
             }));
             // define from
             return new Promise((resolve) => {
@@ -80,9 +80,15 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
             });
         }).then(data => {
             // filter data where sender equals to receiver
-            data = _.filter(data, row => row.address_key_identifier_to !== row.address_key_identifier_from);
-            // get data
+            data      = _.filter(data, row => row.address_key_identifier_to !== row.address_key_identifier_from);
+            // count data can be read
+            let count = 0;
             async.eachSeries(data, (transaction, callback) => {
+                if (cache.getCacheItem('api_transaction_stats', `${transaction.transaction_id}`)) {
+                    count++;
+                    return callback();
+                }
+
                 database.applyShards((shardID) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.listTransactionOutputAttributes({
@@ -93,29 +99,34 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                         .then(attributes => {
                             async.eachSeries(attributes, (attribute, attributeCallback) => {
                                 attribute.value = JSON.parse(attribute.value);
-                                if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
-                                    attribute.value.file_data = {};
+                                if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata') &&
+                                    !cache.getCacheItem('api_transaction_stats', `${attribute.transaction_id}_${attribute.attribute_type_id}`)) {
                                     async.eachSeries(attribute.value.file_list, (file, fileReadCallback) => {
                                         const key = file.key || file[wallet.defaultKeyIdentifier]?.key;
                                         if (!key) {
-                                            return fileReadCallback();
+                                            return fileReadCallback(true);
                                         }
                                         fileManager.decryptFile(transaction.address_key_identifier_from, transaction.transaction_date, transaction.transaction_id, file.hash, key, file.public)
-                                                   .then(fileData => {
-                                                       attribute.value.file_data[file.hash] = JSON.parse(fileData.toString());
-                                                       fileReadCallback();
-                                                   }).catch(() => fileReadCallback());
-                                    }, () => attributeCallback());
+                                                   .then(_ => fileReadCallback()).catch(() => fileReadCallback(true));
+                                    }, (error) => {
+                                        if (!error) {
+                                            cache.setCacheItem('api_transaction_stats', `${attribute.transaction_id}_${attribute.attribute_type_id}`, true, 4200000); //1h10min
+                                        }
+                                        attributeCallback(error);
+                                    });
                                 }
                                 else {
                                     attributeCallback();
                                 }
-                            }, () => {
-                                transaction.transaction_output_attribute = attributes;
+                            }, error => {
+                                if (!error) {
+                                    cache.setCacheItem('api_transaction_stats', `${transaction.transaction_id}`, true, 4200000); //1h10min
+                                    count++;
+                                }
                                 callback();
                             });
                         });
-            }, () => res.send(data));
+            }, () => res.send({count}));
         }).catch(e => res.send({
             api_status : 'fail',
             api_message: `unexpected generic api error: (${e})`
@@ -124,4 +135,4 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
 }
 
 
-export default new _Mu7VpxzfYyQimf3V();
+export default new _wWo8DCcoXVlpczoP();

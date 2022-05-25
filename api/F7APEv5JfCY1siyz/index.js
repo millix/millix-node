@@ -72,6 +72,7 @@ class _F7APEv5JfCY1siyz extends Endpoint {
                         transaction['address_key_identifier_to'] = output.address_key_identifier;
                         transaction['address_to']                = output.address;
                         transaction['amount']                    = output.amount;
+                        transaction['is_stable']                 = output.is_stable;
                         callback();
                     });
                 }, () => resolve(data));

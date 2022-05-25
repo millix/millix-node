@@ -22,12 +22,14 @@ export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
 export const NODE_NAT_PMP                                      = true;
 export const NODE_NAT_PMP_CHECK                                = false;
+export const NODE_STORAGE_PORT_CHECK                           = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
 export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
 export const MODE_NODE_SYNC_FULL                               = true;
-export const MODE_STORAGE_SYNC                                 = false;
+export const MODE_STORAGE_SYNC                                 = true;
+export const MODE_STORAGE_SYNC_FULL                            = false;
 export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
@@ -795,8 +797,8 @@ export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1651849309;
-export const NODE_MILLIX_VERSION                               = '1.18.3';
+export const NODE_MILLIX_BUILD_DATE                            = 1653436299;
+export const NODE_MILLIX_VERSION                               = '1.19.0';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -854,7 +856,9 @@ STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE = 'millix_storage_queue.sqlite';
 export default {
     MODE_DEBUG,
     NODE_DNS_SERVER,
+    NODE_STORAGE_PORT_CHECK,
     MODE_STORAGE_SYNC,
+    MODE_STORAGE_SYNC_FULL,
     MODE_NODE_SYNC_FULL,
     MODE_NODE_VALIDATION_FULL,
     FORCE_QUEUE_UPDATE,
