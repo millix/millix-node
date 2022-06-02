@@ -99,7 +99,10 @@ class FileExchange {
                 transaction_file_list : fileAvailableList
             };
 
-            if (sender.isPublic) {
+            if (sender.isPublic && _.sample([
+                false,
+                true
+            ])) { // randomly switch between upload and download mode
                 data['server_endpoint'] = `https://${network.nodePublicIp}:${config.NODE_PORT_STORAGE_PROVIDER}`;
                 _.each(fileAvailableList, (file) => { // serve files via https server
                     sender.serveFile(ws.nodeID, addressKeyIdentifier, transactionID, file.file_hash);
