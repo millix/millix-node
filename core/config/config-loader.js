@@ -57,55 +57,19 @@ class _ConfigLoader {
                 }
             }
 
-            if (!oldVersion || (major === 1 && minor <= 17 && patch <= 5)) {
-                /* apply to all version <= 1.17.5 */
-                async.eachSeries(db.shards, (shard, callback) => {
-                    shard.database.exec(`
-                        update transaction_input
-                        set status = 1
-                        where transaction_id in (select transaction_id from 'transaction'
-                        where status = 3
-                          and create_date
-                            > strftime('%s'
-                            , 'now'
-                            , '-90 days'));
-                        update transaction_output
-                        set is_stable   = 0,
-                            stable_date = NULL,
-                            status      = 1
-                        where transaction_id in (select transaction_id from 'transaction'
-                        where status = 3
-                          and create_date
-                            > strftime('%s'
-                            , 'now'
-                            , '-90 days'));
-                        update 'transaction'
-                        set is_stable = 0, stable_date = NULL, status = 1
-                        where transaction_id in (select transaction_id from 'transaction' where status = 3
-                          and create_date
-                            > strftime('%s'
-                            , 'now'
-                            , '-90 days'));
-                        update transaction_input
-                        set status = 3
-                        where transaction_id =
-                              '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
-                        update transaction_output
-                        set is_stable   = 1,
-                            stable_date = CAST(strftime('%s', 'now') AS INTEGER),
-                            status      = 3
-                        where transaction_id =
-                              '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
-                        update 'transaction'
-                        set is_stable = 1, stable_date = CAST(strftime('%s', 'now') AS INTEGER), status = 3
-                        where transaction_id = '2Q72mpGptbz2YdGYh4DPvTV8PTP5CNXgyqPoN1Uf5KKzCqVLUp';
-                    `, err => {
-                        if (err) {
-                            console.log('[config-loader] could not apply database patch on version update', err);
-                        }
-                        callback();
-                    });
-                }, () => resolve());
+            if (!oldVersion || (major === 1 && minor <= 19 && patch <= 0)) {
+                if (!oldVersion || config.MODE_TEST_NETWORK) {
+                    return resolve();
+                }
+                /* apply to all version <= 1.19.0 */
+                const configRepository = db.getRepository('config');
+                configRepository.updateConfig('mode_storage_sync', 'true')
+                                .catch(_ => _)
+                                .then(configRepository.updateConfig('node_port_storage_receiver', 8000))
+                                .catch(_ => _)
+                                .then(configRepository.updateConfig('node_port_storage_provider', 8001))
+                                .catch(_ => _)
+                                .then(() => resolve());
             }
             else {
                 resolve();

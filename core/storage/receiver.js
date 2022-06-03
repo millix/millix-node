@@ -21,6 +21,7 @@ class Receiver {
         this.httpsServer = null;
         this.app         = null;
         this.nodeId      = null;
+        this.isPublic    = !config.NODE_STORAGE_PORT_CHECK ? config.NODE_PUBLIC : false;
     }
 
     initialize() {
@@ -66,6 +67,11 @@ class Receiver {
         this.app.use(helmet());
         this.app.use(bodyParser.json({limit: '50mb'}));
         this.app.use(cors());
+
+        this.app.get('/', (req, res) => {
+            this.isPublic = true;
+            res.end();
+        });
 
         this.app.post('/file/:nodeId/:addressKeyIdentifier/:transactionDate/:transactionId/:fileHash/:chunkNumber', (req, res) => {
             const nodeId               = req.params.nodeId;
