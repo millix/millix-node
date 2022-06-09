@@ -92,7 +92,7 @@ if (dataFolder) {
     config.DATABASE_CONNECTION.FOLDER            = dataFolder;
 }
 
-if (!path.isAbsolute(pidFile)) {
+if (pidFile && !path.isAbsolute(pidFile)) {
     pidFile = dataFolder ? path.join(dataFolder, pidFile) : path.join(os.homedir(), pidFile);
 }
 
