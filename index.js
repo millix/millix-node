@@ -8,6 +8,9 @@ import genesisConfig from './core/genesis/genesis-config';
 import request from 'request';
 import services from './core/services/services';
 import logManager from './core/log-manager';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const argv = require('yargs')
     .options({
@@ -73,16 +76,24 @@ if (argv.testPort) {
     config.NODE_TEST_PORT = argv.testPort;
 }
 
-if (argv.dataFolder) {
-    config.STORAGE_CONNECTION.FOLDER             = argv.dataFolder + '/storage/';
-    config.STORAGE_CONNECTION.PENDING_TO_SEND    = argv.dataFolder + '/storage/sending.log';
-    config.STORAGE_CONNECTION.PENDING_TO_RECEIVE = argv.dataFolder + '/storage/receiving.log';
-    config.WALLET_KEY_PATH                       = argv.dataFolder + 'millix_private_key.json';
-    config.NODE_KEY_PATH                         = argv.dataFolder + 'node.json';
-    config.NODE_CERTIFICATE_KEY_PATH             = argv.dataFolder + 'node_certificate_key.pem';
-    config.NODE_CERTIFICATE_PATH                 = argv.dataFolder + 'node_certificate.pem';
-    config.JOB_CONFIG_PATH                       = argv.dataFolder + 'job.json';
-    config.DATABASE_CONNECTION.FOLDER            = argv.dataFolder;
+let pidFile      = argv.pidFile;
+const dataFolder = argv.dataFolder ?
+                   path.isAbsolute(argv.dataFolder) ? argv.dataFolder : path.join(os.homedir(), argv.dataFolder)
+                                   : undefined;
+if (dataFolder) {
+    config.STORAGE_CONNECTION.FOLDER             = path.join(dataFolder, '/storage/');
+    config.STORAGE_CONNECTION.PENDING_TO_SEND    = path.join(dataFolder, '/storage/sending.log');
+    config.STORAGE_CONNECTION.PENDING_TO_RECEIVE = path.join(dataFolder, '/storage/receiving.log');
+    config.WALLET_KEY_PATH                       = path.join(dataFolder, 'millix_private_key.json');
+    config.NODE_KEY_PATH                         = path.join(dataFolder, 'node.json');
+    config.NODE_CERTIFICATE_KEY_PATH             = path.join(dataFolder, 'node_certificate_key.pem');
+    config.NODE_CERTIFICATE_PATH                 = path.join(dataFolder, 'node_certificate.pem');
+    config.JOB_CONFIG_PATH                       = path.join(dataFolder, 'job.json');
+    config.DATABASE_CONNECTION.FOLDER            = dataFolder;
+}
+
+if (!path.isAbsolute(pidFile)) {
+    pidFile = dataFolder ? path.join(dataFolder, pidFile) : path.join(os.homedir(), pidFile);
 }
 
 if (argv.debug === 'true') {
@@ -103,32 +114,72 @@ process.on('SIGINT', async function() {
         console.log('[main] closing all db connections');
         await db.close();
         console.log('[main] all db connections closed');
+
+        if (pidFile && fs.existsSync(pidFile)) {
+            fs.unlinkSync(pidFile);
+        }
+
         process.exit(0);
     }
 });
+
+const checkPIDFile = () => {
+    if (!pidFile) {
+        console.log('pid file not in use');
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        if (!fs.existsSync(pidFile)) {
+            fs.writeFile(pidFile, process.pid, () => {
+                resolve();
+            });
+            return;
+        }
+
+        fs.readFile(pidFile, 'utf-8', (err, data) => {
+            let pid           = parseInt(data);
+            let processKilled = false;
+            if (Number.isInteger(pid)) {
+                try {
+                    process.kill(pid);
+                }
+                catch (ignore) {
+                }
+                processKilled = true;
+                console.log('zombie process killed, pid:', pid);
+            }
+            fs.writeFile(pidFile, process.pid, () => {
+                setTimeout(() => resolve(), processKilled ? 1000 : 0);
+            });
+        });
+    });
+};
+
 logger.initialize().then(() => {
     console.log('starting millix-core');
-    db.initialize()
-      .then(() => configLoader.cleanConfigsFromDatabase())
-      .then(() => configLoader.load(false))
-      .then(() => services.initialize())
-      .then(() => {
-          logManager.logSize = 1000;
-          if (config.MODE_TEST) {
-              request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
-                  {
-                      json: true,
-                      body: {
-                          ip_address: config.NODE_HOST,
-                          api_port  : config.NODE_PORT_API,
-                          port      : config.NODE_PORT,
-                          prefix    : config.WEBSOCKET_PROTOCOL
-                      }
-                  },
-                  (err, res, data) => {
-                      genesisConfig.genesis_transaction = data.genesis;
-                      console.log('registered new genesis: ', genesisConfig.genesis_transaction);
-                  });
-          }
-      });
+    checkPIDFile()
+        .then(() => db.initialize())
+        .then(() => configLoader.cleanConfigsFromDatabase())
+        .then(() => configLoader.load(false))
+        .then(() => services.initialize())
+        .then(() => {
+            logManager.logSize = 1000;
+            if (config.MODE_TEST) {
+                request.post('http://' + config.NODE_TEST_HOST + ':' + config.NODE_TEST_PORT + '/ytgY8lWDDcEwL3PN', //node_register
+                    {
+                        json: true,
+                        body: {
+                            ip_address: config.NODE_HOST,
+                            api_port  : config.NODE_PORT_API,
+                            port      : config.NODE_PORT,
+                            prefix    : config.WEBSOCKET_PROTOCOL
+                        }
+                    },
+                    (err, res, data) => {
+                        genesisConfig.genesis_transaction = data.genesis;
+                        console.log('registered new genesis: ', genesisConfig.genesis_transaction);
+                    });
+            }
+        });
 });
