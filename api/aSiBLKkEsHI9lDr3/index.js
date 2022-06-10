@@ -35,7 +35,7 @@ class _aSiBLKkEsHI9lDr3 extends Endpoint {
 
         const shardDate      = Math.floor(Date.now() / 1000);
         const nodeID         = server.nodeID;
-        const schemaPath     = req.query.p4 || path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + 'shard/');
+        const schemaPath     = req.query.p4 || path.join(config.DATABASE_CONNECTION.FOLDER, 'shard/');
         const shardName      = req.query.p0;
         const shardType      = req.query.p1;
         const isRequired     = !!req.query.p2;

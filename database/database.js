@@ -198,7 +198,7 @@ export class Database {
     }
 
     _initializeMillixSqlite3() {
-        this.databaseRootFolder = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
+        this.databaseRootFolder = config.DATABASE_CONNECTION.FOLDER;
         this.databaseMillix     = new Pool(this.databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_MILLIX, config.DATABASE_CONNECTION.SCRIPT_INIT_MILLIX);
         return this.databaseMillix.initialize();
     }
