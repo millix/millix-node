@@ -80,17 +80,15 @@ let pidFile      = argv.pidFile;
 const dataFolder = argv.dataFolder ?
                    path.isAbsolute(argv.dataFolder) ? argv.dataFolder : path.join(os.homedir(), argv.dataFolder)
                                    : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
-if (dataFolder) {
-    config.STORAGE_CONNECTION.FOLDER             = path.join(dataFolder, '/storage/');
-    config.STORAGE_CONNECTION.PENDING_TO_SEND    = path.join(dataFolder, '/storage/sending.log');
-    config.STORAGE_CONNECTION.PENDING_TO_RECEIVE = path.join(dataFolder, '/storage/receiving.log');
-    config.WALLET_KEY_PATH                       = path.join(dataFolder, 'millix_private_key.json');
-    config.NODE_KEY_PATH                         = path.join(dataFolder, 'node.json');
-    config.NODE_CERTIFICATE_KEY_PATH             = path.join(dataFolder, 'node_certificate_key.pem');
-    config.NODE_CERTIFICATE_PATH                 = path.join(dataFolder, 'node_certificate.pem');
-    config.JOB_CONFIG_PATH                       = path.join(dataFolder, 'job.json');
-    config.DATABASE_CONNECTION.FOLDER            = dataFolder;
-}
+config.STORAGE_CONNECTION.FOLDER             = path.join(dataFolder, '/storage/');
+config.STORAGE_CONNECTION.PENDING_TO_SEND    = path.join(dataFolder, '/storage/sending.log');
+config.STORAGE_CONNECTION.PENDING_TO_RECEIVE = path.join(dataFolder, '/storage/receiving.log');
+config.WALLET_KEY_PATH                       = path.join(dataFolder, 'millix_private_key.json');
+config.NODE_KEY_PATH                         = path.join(dataFolder, 'node.json');
+config.NODE_CERTIFICATE_KEY_PATH             = path.join(dataFolder, 'node_certificate_key.pem');
+config.NODE_CERTIFICATE_PATH                 = path.join(dataFolder, 'node_certificate.pem');
+config.JOB_CONFIG_PATH                       = path.join(dataFolder, 'job.json');
+config.DATABASE_CONNECTION.FOLDER            = dataFolder;
 
 if (pidFile && !path.isAbsolute(pidFile)) {
     pidFile = dataFolder ? path.join(dataFolder, pidFile) : path.join(os.homedir(), pidFile);
