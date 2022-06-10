@@ -79,7 +79,7 @@ if (argv.testPort) {
 let pidFile      = argv.pidFile;
 const dataFolder = argv.dataFolder ?
                    path.isAbsolute(argv.dataFolder) ? argv.dataFolder : path.join(os.homedir(), argv.dataFolder)
-                                   : undefined;
+                                   : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
 if (dataFolder) {
     config.STORAGE_CONNECTION.FOLDER             = path.join(dataFolder, '/storage/');
     config.STORAGE_CONNECTION.PENDING_TO_SEND    = path.join(dataFolder, '/storage/sending.log');
