@@ -9,8 +9,8 @@ export default new (class Migrate extends Migration {
 
     migrate(db, migrationFile) {
         return new Promise((resolve, reject) => {
-            let databaseFile = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_MILLIX);
-            let shardFolder  = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + 'shard/');
+            let databaseFile = path.join(config.DATABASE_CONNECTION.FOLDER, config.DATABASE_CONNECTION.FILENAME_MILLIX);
+            let shardFolder  = path.join(config.DATABASE_CONNECTION.FOLDER, 'shard/');
 
             if (!fs.existsSync(shardFolder)) {
                 fs.mkdirSync(shardFolder);

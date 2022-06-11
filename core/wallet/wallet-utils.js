@@ -95,9 +95,9 @@ class WalletUtils {
     }
 
     loadMnemonic() {
-        console.log(path.join(os.homedir(), config.WALLET_KEY_PATH));
+        console.log(config.WALLET_KEY_PATH);
         return new Promise((resolve, reject) => {
-            fs.readFile(path.join(os.homedir(), config.WALLET_KEY_PATH), 'utf8', (err, data) => {
+            fs.readFile(config.WALLET_KEY_PATH, 'utf8', (err, data) => {
                 if (err) {
                     return reject('Couldn\'t read wallet mnemonic');
                 }
@@ -122,7 +122,7 @@ class WalletUtils {
                 mnemonic_phrase,
                 mnemonic_new
             };
-            fs.writeFile(path.join(os.homedir(), config.WALLET_KEY_PATH), JSON.stringify(keys, null, '\t'), 'utf8', function(err) {
+            fs.writeFile(config.WALLET_KEY_PATH, JSON.stringify(keys, null, '\t'), 'utf8', function(err) {
                 if (err) {
                     return reject('failed to write keys file');
                 }
@@ -147,7 +147,7 @@ class WalletUtils {
 
     removeMnemonic() {
         return new Promise(resolve => {
-            fs.unlink(path.join(os.homedir(), config.WALLET_KEY_PATH), function() {
+            fs.unlink(config.WALLET_KEY_PATH, function() {
                 resolve();
             });
         });
@@ -345,17 +345,17 @@ class WalletUtils {
         return new Promise((resolve, reject) => {
             const elements = [
                 {
-                    file       : path.join(os.homedir(), config.NODE_CERTIFICATE_KEY_PATH),
+                    file       : config.NODE_CERTIFICATE_KEY_PATH,
                     transformer: KEYUTIL.getKey,
                     key        : 'certificate_private_key'
                 },
                 {
-                    file       : path.join(os.homedir(), config.NODE_KEY_PATH),
+                    file       : config.NODE_KEY_PATH,
                     transformer: (data) => new Bitcore.HDPrivateKey(data),
                     key        : 'node'
                 },
                 {
-                    file       : path.join(os.homedir(), config.NODE_CERTIFICATE_PATH),
+                    file       : config.NODE_CERTIFICATE_PATH,
                     transformer: (pem) => {
                         const x509 = new X509();
                         x509.readCertPEM(pem);
@@ -436,11 +436,11 @@ class WalletUtils {
 
                         const privateKeyPem = KEYUTIL.getPEM(ecKeypair.prvKeyObj, 'PKCS1PRV');
 
-                        fs.writeFile(path.join(os.homedir(), config.NODE_CERTIFICATE_KEY_PATH), privateKeyPem, 'utf8', function(err) {
+                        fs.writeFile(config.NODE_CERTIFICATE_KEY_PATH, privateKeyPem, 'utf8', function(err) {
                             if (err) {
                                 return reject('failed to write node private key file');
                             }
-                            fs.writeFile(path.join(os.homedir(), config.NODE_CERTIFICATE_PATH), certificatePem, 'utf8', function(err) {
+                            fs.writeFile(config.NODE_CERTIFICATE_PATH, certificatePem, 'utf8', function(err) {
                                 if (err) {
                                     return reject('failed to write node certificate file');
                                 }
@@ -475,7 +475,7 @@ class WalletUtils {
 
     loadNodeKey() {
         return new Promise((resolve, reject) => {
-            fs.readFile(path.join(os.homedir(), config.NODE_KEY_PATH), 'utf8', function(err, data) {
+            fs.readFile(config.NODE_KEY_PATH, 'utf8', function(err, data) {
                 if (err) {
                     return reject('couldn\'t read node key');
                 }
@@ -496,7 +496,7 @@ class WalletUtils {
 
     storeNodeKey(key) {
         return new Promise((resolve, reject) => {
-            fs.writeFile(path.join(os.homedir(), config.NODE_KEY_PATH), JSON.stringify({key: key.toString()}, null, '\t'), 'utf8', function(err) {
+            fs.writeFile(config.NODE_KEY_PATH, JSON.stringify({key: key.toString()}, null, '\t'), 'utf8', function(err) {
                 if (err) {
                     return reject('failed to write node key file');
                 }
@@ -507,14 +507,14 @@ class WalletUtils {
 
     storeNodeData(extraData) {
         return new Promise((resolve, reject) => {
-            fs.readFile(path.join(os.homedir(), config.NODE_KEY_PATH), 'utf8', function(err, data) {
+            fs.readFile(config.NODE_KEY_PATH, 'utf8', function(err, data) {
                 if (err) {
                     return reject('couldn\'t the node data file');
                 }
 
                 data = {...JSON.parse(data), ...extraData};
 
-                fs.writeFile(path.join(os.homedir(), config.NODE_KEY_PATH), JSON.stringify(data, null, '\t'), 'utf8', function(err) {
+                fs.writeFile(config.NODE_KEY_PATH, JSON.stringify(data, null, '\t'), 'utf8', function(err) {
                     if (err) {
                         return reject('failed to write to the node data file');
                     }

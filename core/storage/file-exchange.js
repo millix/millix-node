@@ -24,7 +24,7 @@ class FileExchange {
             return Promise.resolve();
         }
 
-        this.filesRootFolder = path.join(os.homedir(), config.STORAGE_CONNECTION.FOLDER);
+        this.filesRootFolder = config.STORAGE_CONNECTION.FOLDER;
         if (!fs.existsSync(this.filesRootFolder)) {
             fs.mkdirSync(path.join(this.filesRootFolder));
         }

@@ -88,7 +88,7 @@ export default class Shard {
 
     _attachShardZero() {
         return new Promise((resolve, reject) => {
-            const databaseRootFolder = path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
+            const databaseRootFolder = config.DATABASE_CONNECTION.FOLDER;
             const shardZeroDBPath    = path.join(databaseRootFolder, config.DATABASE_CONNECTION.FILENAME_MILLIX);
             this.database.exec(`ATTACH DATABASE '${shardZeroDBPath}' AS shard_zero`, (err) => {
                 if (err) {
