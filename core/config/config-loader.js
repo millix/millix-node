@@ -155,7 +155,7 @@ class _ConfigLoader {
                 }
             }, () => {
                 if (overwriteDefaultConfigsFromDatabase) {
-                    const dataFolder                             = path.isAbsolute(config.STORAGE_CONNECTION.FOLDER) ? config.STORAGE_CONNECTION.FOLDER : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
+                    const dataFolder                             = path.isAbsolute(config.DATABASE_CONNECTION.FOLDER) ? config.DATABASE_CONNECTION.FOLDER : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
                     config.STORAGE_CONNECTION.FOLDER             = path.join(dataFolder, '/storage/');
                     config.STORAGE_CONNECTION.PENDING_TO_SEND    = path.join(dataFolder, '/storage/sending.log');
                     config.STORAGE_CONNECTION.PENDING_TO_RECEIVE = path.join(dataFolder, '/storage/receiving.log');
