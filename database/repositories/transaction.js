@@ -2735,7 +2735,14 @@ export default class Transaction {
                                     // shard
                                     const transactionRepository = database.getRepository('transaction', transaction.shard_id);
                                     return transactionRepository.addTransactionFromShardObject(transaction, wallet.transactionHasKeyIdentifier(transaction, keyIdentifierSet))
-                                                                .then(() => this.deleteTransaction(transaction.transaction_id));
+                                                                .then(() => transactionRepository.getTransactionObject(transaction.transaction_id))
+                                                                .then((transactionCopy) => {
+                                                                    if (!transactionCopy || !this.isSameTransactionObject(transaction, transactionCopy)) {
+                                                                        return transactionRepository.deleteTransaction(transaction.transaction_id)
+                                                                                                    .then(() => Promise.reject());
+                                                                    }
+                                                                    return this.deleteTransaction(transaction.transaction_id);
+                                                                });
                                 }
                                 else {
                                     if (!wallet.transactionHasKeyIdentifier(transaction, keyIdentifierSet)) {
@@ -2751,6 +2758,12 @@ export default class Transaction {
                     }, () => resolve());
                 });
         });
+    }
+
+    isSameTransactionObject(transaction, transactionOther) {
+        transaction      = this.normalizeTransactionObject(transaction);
+        transactionOther = this.normalizeTransactionObject(transactionOther);
+        return _.isEqual(transaction, transactionOther);
     }
 
     deleteTransactions(transactions) {
