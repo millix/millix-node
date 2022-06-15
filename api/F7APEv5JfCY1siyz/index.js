@@ -21,14 +21,16 @@ class _F7APEv5JfCY1siyz extends Endpoint {
      * @param req (p0: date_begin, p1: date_end, p2: node_id_origin, p3:
      *     is_stable, p4: is_parent, p5: is_timeout, p6: create_date_begin, p7:
      *     create_date_end, p8: status, p9: version, p10:
-     *     address_key_identifier, p11: attribute_type_id, p12:
-     *     order_by="create_date desc", p13: record_limit=1000, p14: shard_id)
+     *     address_key_identifier, p11: attribute_type_id, p12: data_type,
+     *     p13:order_by="create_date desc", p14: record_limit=1000, p15:
+     *     shard_id)
      * @param res
      */
     handler(app, req, res) {
-        const orderBy = req.query.p12 || '`transaction`.create_date desc';
-        const limit   = parseInt(req.query.p13) || 1000;
-        const shardID = req.query.p14 || undefined;
+        const orderBy  = req.query.p13 || '`transaction`.create_date desc';
+        const limit    = parseInt(req.query.p14) || 1000;
+        const shardID  = req.query.p15 || undefined;
+        const dataType = req.query.p12 || undefined;
 
         database.applyShards((dbShardID) => {
             const transactionRepository = database.getRepository('transaction', dbShardID);
@@ -78,6 +80,7 @@ class _F7APEv5JfCY1siyz extends Endpoint {
                 }, () => resolve(data));
             });
         }).then(data => {
+            const dataToRemove = new Set();
             async.eachSeries(data, (transaction, callback) => {
                 database.applyShards((shardID) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
@@ -96,6 +99,12 @@ class _F7APEv5JfCY1siyz extends Endpoint {
                                         if (!key) {
                                             return fileReadCallback();
                                         }
+
+                                        if (dataType && file.type !== dataType) {
+                                            dataToRemove.add(transaction);
+                                            return fileReadCallback();
+                                        }
+
                                         fileManager.decryptFile(transaction.address_key_identifier_from, transaction.transaction_date, transaction.transaction_id, file.hash, key, file.public)
                                                    .then(fileData => {
                                                        attribute.value.file_data[file.hash] = JSON.parse(fileData.toString());
@@ -111,7 +120,10 @@ class _F7APEv5JfCY1siyz extends Endpoint {
                                 callback();
                             });
                         });
-            }, () => res.send(data));
+            }, () => {
+                _.pull(data, ...dataToRemove);
+                res.send(data);
+            });
         }).catch(e => res.send({
             api_status : 'fail',
             api_message: `unexpected generic api error: (${e})`

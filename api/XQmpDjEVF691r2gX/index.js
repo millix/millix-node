@@ -24,50 +24,37 @@ class _XQmpDjEVF691r2gX extends Endpoint {
             }
 
             if (req.method === 'POST') {
-                const contentType = req.headers['Content-Type'];
-                if (contentType === 'multipart/form-data') {
+                const contentType = req.headers['content-type'];
+                if (contentType && contentType.startsWith('multipart/form-data')) {
                     let transactionPartialPayload;
                     let transactionData;
+                    let transactionDataMimeType;
                     const bb = busboy({headers: req.headers});
                     bb.on('file', (name, file, info) => {
-                        const {
-                                  filename,
-                                  encoding,
-                                  mimeType
-                              } = info;
-                        console.log(
-                            `File [${name}]: filename: %j, encoding: %j, mimeType: %j`,
-                            filename,
-                            encoding,
-                            mimeType
-                        );
-
-                        const buffers = [];
+                        transactionDataMimeType = info.mimeType;
+                        const buffers           = [];
                         file.on('data', (data) => {
-                            console.log(`File [${name}] got ${data.length} bytes`);
                             buffers.push(data);
                         }).on('close', () => {
                             transactionData = Buffer.concat(buffers);
-                            console.log(`File [${name}] done: size ${transactionData.length}`);
                         });
                     });
 
                     bb.on('field', (name, val) => {
-                        console.log(`Field [${name}]: value: %j`, val);
                         if (name === 'p0') {
                             transactionPartialPayload = JSON.parse(val);
                         }
                     });
 
                     bb.on('close', () => {
-                        console.log('Done parsing form!');
                         if (transactionData === undefined || transactionPartialPayload === undefined) {
                             return reject({
                                 api_status : 'fail',
                                 api_message: 'p0<transaction_output_payload> is required'
                             });
                         }
-                        transactionPartialPayload.transaction_data = transactionData;
+                        transactionPartialPayload.transaction_data           = transactionData;
+                        transactionPartialPayload.transaction_data_mime_type = transactionDataMimeType;
                         resolve(transactionPartialPayload);
                     });
 
@@ -132,6 +119,7 @@ class _XQmpDjEVF691r2gX extends Endpoint {
 
                     mutex.lock(['submit_transaction'], (unlock) => {
                         const dataType = transactionPartialPayload.transaction_data_type;
+                        const mimeType = transactionPartialPayload.transaction_data_mime_type;
                         let buffer;
                         if (dataType === 'json' || dataType === 'tangled_messenger') {
                             buffer = Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data));
@@ -147,15 +135,19 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                             });
                         }
 
-                        const fileList = [
-                            {
-                                buffer,
-                                name  : `${Date.now()}`,
-                                size  : buffer.length,
-                                type  : dataType,
-                                public: false
-                            }
-                        ];
+                        const file = {
+                            buffer,
+                            name  : `${Date.now()}`,
+                            size  : buffer.length,
+                            type  : dataType,
+                            public: false
+                        };
+
+                        if (mimeType) {
+                            file['mime_type'] = mimeType;
+                        }
+
+                        const fileList = [file];
 
                         transactionPartialPayload.transaction_output_list.forEach(output => {
                             if (output.address_version.charAt(1) === 'b') {

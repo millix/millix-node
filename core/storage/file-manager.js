@@ -332,7 +332,8 @@ class FileManager {
             file_list: []
         };
 
-        // sort keys - important! if not sorted the signature verification might fail
+        // sort keys - important! if not sorted the signature verification
+        // might fail
         transactionOutputAttribute = Object.keys(transactionOutputAttribute).sort().reduce(
             (obj, key) => {
                 obj[key] = transactionOutputAttribute[key];
@@ -357,6 +358,10 @@ class FileManager {
                           'type'  : file.type,
                           'name'  : file.name
                       };
+
+                      if (file.mime_type) {
+                          fileAttribute['mime_type'] = file.mime_type;
+                      }
 
                       if (file.public) {
                           if (!transactionOutputAttribute['shared_key']) {
