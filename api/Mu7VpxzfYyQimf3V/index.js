@@ -59,6 +59,7 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                 amount                   : output.amount,
                 address_key_identifier_to: output.address_key_identifier,
                 address_to               : output.address,
+                output_position          : output.output_position,
                 is_stable                : output.is_stable
             }));
             // define from
@@ -81,8 +82,16 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                 }, () => resolve(data));
             });
         }).then(data => {
+            const transactionLastOutputPosition = {};
+            _.each(data, row => {
+                if (!transactionLastOutputPosition[row.transaction_id] || transactionLastOutputPosition[row.transaction_id] < row.output_position) {
+                    transactionLastOutputPosition[row.transaction_id] = row.output_position;
+                }
+            });
             // filter data where sender equals to receiver
-            data = _.filter(data, row => row.address_key_identifier_to !== row.address_key_identifier_from);
+            data = _.filter(data, row => !(transactionLastOutputPosition[row.transaction_id] === row.output_position /* last output */
+                                           && row.address_key_identifier_to === row.address_key_identifier_from /* sender is the receiver */
+                                           && row.output_position !== 0 /* not single output transaction */));
 
             const dataToRemove = new Set();
 
