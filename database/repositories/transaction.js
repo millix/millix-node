@@ -1580,7 +1580,7 @@ export default class Transaction {
             let {
                     sql,
                     parameters
-                } = Database.buildQuery('SELECT * FROM `transaction_output`', where);
+                } = Database.buildQuery('SELECT transaction_output.*, `transaction`.transaction_date FROM `transaction_output` INNER JOIN `transaction` ON transaction_output.transaction_id = `transaction`.transaction_id', where);
             this.database.get(sql,
                 parameters, (err, row) => {
                     if (err) {
