@@ -65,7 +65,7 @@ class _Logger {
             // Allow to print all the error level messages inside the error.log
             // file
             new winston.transports.File({
-                filename        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER, '/logs/error.log'),
+                filename        : path.join(config.DATABASE_CONNECTION.FOLDER, '/logs/error.log'),
                 handleExceptions: true,
                 handleRejections: true,
                 level           : 'error'

@@ -27,7 +27,7 @@ class FileManager {
     }
 
     initialize() {
-        this.filesRootFolder = path.join(os.homedir(), config.STORAGE_CONNECTION.FOLDER);
+        this.filesRootFolder = config.STORAGE_CONNECTION.FOLDER;
         return Promise.resolve();
     }
 

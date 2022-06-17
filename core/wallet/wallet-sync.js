@@ -25,8 +25,8 @@ export class WalletSync {
     }
 
     initialize() {
-        if (!fs.existsSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER))) {
-            fs.mkdirSync(path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER));
+        if (!fs.existsSync(config.DATABASE_CONNECTION.FOLDER)) {
+            fs.mkdirSync(config.DATABASE_CONNECTION.FOLDER);
         }
 
         this.queue = new Queue((batch, done) => {
@@ -70,7 +70,7 @@ export class WalletSync {
             id                      : 'transaction_id',
             store                   : new SqliteStore({
                 dialect     : 'sqlite',
-                path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_QUEUE),
+                path        : path.join(config.DATABASE_CONNECTION.FOLDER, config.DATABASE_CONNECTION.FILENAME_TRANSACTION_QUEUE),
                 setImmediate: global.setImmediate
             }),
             batchSize               : this.CARGO_MAX_LENGHT,
@@ -172,7 +172,7 @@ export class WalletSync {
             store                   : new SqliteStore({
                 clear       : true,
                 dialect     : 'sqlite',
-                path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_WALLET_QUEUE),
+                path        : path.join(config.DATABASE_CONNECTION.FOLDER, config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_WALLET_QUEUE),
                 setImmediate: global.setImmediate
             }),
             batchSize               : this.CARGO_MAX_LENGHT,
@@ -272,7 +272,7 @@ export class WalletSync {
             store                   : new SqliteStore({
                 clear       : true,
                 dialect     : 'sqlite',
-                path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE),
+                path        : path.join(config.DATABASE_CONNECTION.FOLDER, config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE),
                 setImmediate: global.setImmediate
             }),
             batchSize               : this.CARGO_MAX_LENGHT,
@@ -297,7 +297,7 @@ export class WalletSync {
             id          : 'id',
             store       : new SqliteStore({
                 dialect     : 'sqlite',
-                path        : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER + config.DATABASE_CONNECTION.FILENAME_TRANSACTION_UNRESOLVED_QUEUE),
+                path        : path.join(config.DATABASE_CONNECTION.FOLDER, config.DATABASE_CONNECTION.FILENAME_TRANSACTION_UNRESOLVED_QUEUE),
                 setImmediate: global.setImmediate
             }),
             setImmediate: global.setImmediate

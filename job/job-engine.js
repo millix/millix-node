@@ -215,7 +215,7 @@ class JobEngine {
 
     loadConfig(resetConfig) {
         return new Promise(resolve => {
-            const configFilePath = path.join(os.homedir(), config.JOB_CONFIG_PATH);
+            const configFilePath = config.JOB_CONFIG_PATH;
             if (!fs.existsSync(configFilePath) || resetConfig) {
                 this.configJobEngine = defaultConfigJobEngine;
                 fs.writeFile(configFilePath, JSON.stringify(this.configJobEngine, null, '\t'), 'utf8', (err) => {

@@ -2,6 +2,8 @@ import db from '../../database/database';
 import config from './config';
 import _ from 'lodash';
 import async from 'async';
+import path from 'path';
+import os from 'os';
 
 
 class _ConfigLoader {
@@ -151,7 +153,27 @@ class _ConfigLoader {
                           }
                       });
                 }
-            }, () => resolve(dbConfigs));
+            }, () => {
+                if (overwriteDefaultConfigsFromDatabase) {
+                    const dataFolder                             = path.isAbsolute(config.DATABASE_CONNECTION.FOLDER) ? config.DATABASE_CONNECTION.FOLDER : path.join(os.homedir(), config.DATABASE_CONNECTION.FOLDER);
+                    config.STORAGE_CONNECTION.FOLDER             = path.join(dataFolder, '/storage/');
+                    config.STORAGE_CONNECTION.PENDING_TO_SEND    = path.join(dataFolder, '/storage/sending.log');
+                    config.STORAGE_CONNECTION.PENDING_TO_RECEIVE = path.join(dataFolder, '/storage/receiving.log');
+                    config.DATABASE_CONNECTION.FOLDER            = dataFolder;
+
+                    config.WALLET_KEY_PATH                        = path.join(dataFolder, 'millix_private_key.json');
+                    dbConfigs.config['WALLET_KEY_PATH']           = config.WALLET_KEY_PATH;
+                    config.NODE_KEY_PATH                          = path.join(dataFolder, 'node.json');
+                    dbConfigs.config['NODE_KEY_PATH']             = config.NODE_KEY_PATH;
+                    config.NODE_CERTIFICATE_KEY_PATH              = path.join(dataFolder, 'node_certificate_key.pem');
+                    dbConfigs.config['NODE_CERTIFICATE_KEY_PATH'] = config.NODE_CERTIFICATE_KEY_PATH;
+                    config.NODE_CERTIFICATE_PATH                  = path.join(dataFolder, 'node_certificate.pem');
+                    dbConfigs.config['NODE_CERTIFICATE_PATH']     = config.NODE_CERTIFICATE_PATH;
+                    config.JOB_CONFIG_PATH                        = path.join(dataFolder, 'job.json');
+                    dbConfigs.config['JOB_CONFIG_PATH']           = config.JOB_CONFIG_PATH;
+                }
+                resolve(dbConfigs);
+            });
         });
     }
 }

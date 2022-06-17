@@ -15,8 +15,8 @@ export class FileSync {
     }
 
     initialize() {
-        if (!fs.existsSync(path.join(os.homedir(), config.STORAGE_CONNECTION.FOLDER))) {
-            fs.mkdirSync(path.join(os.homedir(), config.STORAGE_CONNECTION.FOLDER));
+        if (!fs.existsSync(config.STORAGE_CONNECTION.FOLDER)) {
+            fs.mkdirSync(config.STORAGE_CONNECTION.FOLDER);
         }
 
         this.queue = new Queue((data, done) => {
@@ -35,7 +35,7 @@ export class FileSync {
             id                      : 'transaction_id',
             store                   : new SqliteStore({
                 dialect     : 'sqlite',
-                path        : path.join(os.homedir(), config.STORAGE_CONNECTION.FOLDER + config.STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE),
+                path        : path.join(config.STORAGE_CONNECTION.FOLDER, config.STORAGE_CONNECTION.FILENAME_STORAGE_QUEUE),
                 setImmediate: global.setImmediate
             }),
             batchSize               : 1,
