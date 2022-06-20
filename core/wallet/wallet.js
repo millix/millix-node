@@ -1879,7 +1879,8 @@ class Wallet {
         let nodeRepository    = database.getRepository('node');
         let addressRepository = database.getRepository('address');
         const defaultAddress  = this.defaultKeyIdentifier + addressRepository.getDefaultAddressVersion().version + this.defaultKeyIdentifier;
-        return nodeRepository.addNodeAttribute(network.nodeID, 'address_default', defaultAddress);
+        return nodeRepository.addNodeAttribute(network.nodeID, 'address_default', defaultAddress)
+                             .then(() => nodeRepository.addNodeAttribute(network.nodeID, 'address_default_key_public', this.defaultKeyIdentifierPublicKey));
     }
 
     _propagateTransactions() {
@@ -1978,7 +1979,9 @@ class Wallet {
                            this._initializeEvents();
                            return database.getRepository('keychain').getWalletDefaultKeyIdentifier(walletID)
                                           .then(defaultKeyIdentifier => {
-                                              this.defaultKeyIdentifier = defaultKeyIdentifier;
+                                              const extendedPrivateKey           = this.getActiveWalletKey(this.getDefaultActiveWallet());
+                                              this.defaultKeyIdentifierPublicKey = base58.encode(walletUtils.derivePublicKey(extendedPrivateKey, 0, 0));
+                                              this.defaultKeyIdentifier          = defaultKeyIdentifier;
                                               return this._doTransactionOutputExpiration();
                                           })
                                           .then(() => {
