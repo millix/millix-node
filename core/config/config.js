@@ -25,6 +25,7 @@ export const NODE_NAT_PMP_CHECK                                = false;
 export const NODE_STORAGE_PORT_CHECK                           = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
+export const ACTIVE_LANGUAGE_GUID                              = 'BEpDwgG53';
 export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
 export const MODE_NODE_SYNC_FULL                               = true;
@@ -874,6 +875,7 @@ export default {
     NODE_NAT_PMP_CHECK,
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
+    ACTIVE_LANGUAGE_GUID,
     NODE_INITIAL_LIST,
     NODE_CONNECTION_STATIC,
     NODE_CONNECTION_INBOUND_MAX,
