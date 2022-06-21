@@ -752,7 +752,8 @@ export default class Transaction {
     addTransactionFromShardObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
-                const cachedTransaction = _.cloneDeep(transaction);
+                const cachedTransaction = transaction;
+                transaction = _.cloneDeep(cachedTransaction);
 
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
@@ -2735,7 +2736,14 @@ export default class Transaction {
                                     // shard
                                     const transactionRepository = database.getRepository('transaction', transaction.shard_id);
                                     return transactionRepository.addTransactionFromShardObject(transaction, wallet.transactionHasKeyIdentifier(transaction, keyIdentifierSet))
-                                                                .then(() => this.deleteTransaction(transaction.transaction_id));
+                                                                .then(() => transactionRepository.getTransactionObject(transaction.transaction_id))
+                                                                .then((transactionCopy) => {
+                                                                    if (!transactionCopy || !this.isSameTransactionObject(transaction, transactionCopy)) {
+                                                                        return transactionRepository.deleteTransaction(transaction.transaction_id)
+                                                                                                    .then(() => Promise.reject());
+                                                                    }
+                                                                    return this.deleteTransaction(transaction.transaction_id);
+                                                                });
                                 }
                                 else {
                                     if (!wallet.transactionHasKeyIdentifier(transaction, keyIdentifierSet)) {
@@ -2751,6 +2759,12 @@ export default class Transaction {
                     }, () => resolve());
                 });
         });
+    }
+
+    isSameTransactionObject(transaction, transactionOther) {
+        transaction      = this.normalizeTransactionObject(transaction);
+        transactionOther = this.normalizeTransactionObject(transactionOther);
+        return _.isEqual(transaction, transactionOther);
     }
 
     deleteTransactions(transactions) {
