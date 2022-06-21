@@ -752,7 +752,8 @@ export default class Transaction {
     addTransactionFromShardObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
-                const cachedTransaction = _.cloneDeep(transaction);
+                const cachedTransaction = transaction;
+                transaction = _.cloneDeep(cachedTransaction);
 
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
