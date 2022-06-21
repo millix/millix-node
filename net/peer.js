@@ -10,6 +10,8 @@ import peerRotation from './peer-rotation';
 import statistics from '../core/statistics';
 import wallet from '../core/wallet/wallet';
 import cache from '../core/cache';
+import base58 from 'bs58';
+import walletUtils from '../core/wallet/wallet-utils';
 
 
 class Peer {
@@ -1373,6 +1375,13 @@ class Peer {
             }
 
             statistics.newEvent('add_or_update_attribute');
+
+            if (content.attribute_type === 'address_default_key_public') {
+                const addressRepository = database.getRepository('address');
+                const addressBase         = walletUtils.getAddressFromPublicKey(base58.decode(content.value));
+                addressRepository.upsertAddressAttribute(addressBase, 'key_public', content.value).then(_ => _).catch(_ => _);
+            }
+
             const nodeRepository = database.getRepository('node');
             nodeRepository.addNodeAttribute(content.node_id, content.attribute_type, content.value)
                           .then(_ => _)

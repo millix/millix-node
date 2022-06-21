@@ -168,6 +168,22 @@ export default class Address {
         });
     }
 
+    upsertAddressAttribute(addressBase, attributeName, attributeValue) {
+        return new Promise((resolve, reject) => {
+            let attributeTypeID = this.normalizationRepository.get(attributeName);
+            this.database.run('INSERT OR IGNORE INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?,?,?)', [
+                addressBase,
+                attributeTypeID,
+                attributeValue
+            ], (err) => {
+                if (err) {
+                    return reject();
+                }
+                resolve();
+            });
+        });
+    }
+
     getAddressBaseAttribute(addressBase, attributeName) {
         const attributeTypeID = this.normalizationRepository.get(attributeName);
         if (!attributeTypeID) {
@@ -206,7 +222,10 @@ export default class Address {
     listAddress(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
 
-            let {sql, parameters} = Database.buildQuery('SELECT address.*, atp.attribute_type, at.value as attribute_value FROM address  \
+            let {
+                    sql,
+                    parameters
+                } = Database.buildQuery('SELECT address.*, atp.attribute_type, at.value as attribute_value FROM address  \
                 LEFT JOIN address_attribute AS at ON at.address_base = address.address_base \
                 LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id', where, orderBy, limit);
             this.database.all(
@@ -240,7 +259,10 @@ export default class Address {
 
     listAddressAttribute(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
-            let {sql, parameters} = Database.buildQuery('SELECT * FROM address_attribute', where, orderBy, limit);
+            let {
+                    sql,
+                    parameters
+                } = Database.buildQuery('SELECT * FROM address_attribute', where, orderBy, limit);
             this.database.all(
                 sql,
                 parameters,

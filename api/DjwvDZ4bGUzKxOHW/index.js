@@ -45,7 +45,7 @@ class _DjwvDZ4bGUzKxOHW extends Endpoint {
                 });
             })
             .catch(e => {
-                return res.status(400).send({
+                return res.status(200).send({
                     api_status : 'fail',
                     api_message: `unexpected generic api error: (${e})`
                 });

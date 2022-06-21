@@ -25,6 +25,7 @@ export const NODE_NAT_PMP_CHECK                                = false;
 export const NODE_STORAGE_PORT_CHECK                           = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';
+export const ACTIVE_LANGUAGE_GUID                              = 'BEpDwgG53';
 export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
 export const MODE_NODE_SYNC_FULL                               = true;
@@ -797,8 +798,8 @@ export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1654817283;
-export const NODE_MILLIX_VERSION                               = '1.19.2';
+export const NODE_MILLIX_BUILD_DATE                            = 1655724794;
+export const NODE_MILLIX_VERSION                               = '1.20.0';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -874,6 +875,7 @@ export default {
     NODE_NAT_PMP_CHECK,
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
+    ACTIVE_LANGUAGE_GUID,
     NODE_INITIAL_LIST,
     NODE_CONNECTION_STATIC,
     NODE_CONNECTION_INBOUND_MAX,
