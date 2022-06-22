@@ -508,7 +508,7 @@ class Wallet {
                       let addressChange = outputs[outputs.length - 1];
                       dstOutputs.push({
                           address_base          : addressChange.address_base,
-                          address_version       : addressChange.address_version,
+                          address_version       : database.getRepository('address').getDefaultAddressVersion().version,
                           address_key_identifier: addressChange.address_key_identifier,
                           amount                : change
                       });
