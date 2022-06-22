@@ -153,10 +153,14 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                         transactionPartialPayload.transaction_output_list.forEach(output => {
                             if (output.address_version.charAt(1) === 'b') {
                                 // use default address version
-                                output.address_version    = dataType === 'tangled_nft' ? config.ADDRESS_VERSION_NFT : this.addressRepository.getDefaultAddressVersion().version;
+                                output.address_version    = this.addressRepository.getDefaultAddressVersion().version;
                                 // convert public key to address
                                 output.address_public_key = output.address_base;
                                 output.address_base       = walletUtils.getAddressFromPublicKey(base58.decode(output.address_public_key));
+                            }
+
+                            if (dataType === 'tangled_nft') {
+                                output.address_version = config.ADDRESS_VERSION_NFT;
                             }
                         });
 
