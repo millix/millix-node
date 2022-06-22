@@ -4,7 +4,7 @@ import _ from 'lodash';
 import fileManager from '../../core/storage/file-manager';
 import database from '../../database/database';
 import walletUtils from '../../core/wallet/wallet-utils';
-import config from 'core/config/config';
+import config from '../../core/config/config';
 import base58 from 'bs58';
 import busboy from 'busboy';
 
