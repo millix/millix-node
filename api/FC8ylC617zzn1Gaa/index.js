@@ -2,6 +2,7 @@ import Endpoint from '../endpoint';
 import wallet from '../../core/wallet/wallet';
 import database from '../../database/database';
 import _ from 'lodash';
+import config from '../../core/config/config';
 
 
 /**
@@ -25,11 +26,12 @@ class _FC8ylC617zzn1Gaa extends Endpoint {
         }).then(unstableTransactionCounts => database.applyShards((shardID) => {
             const transactionRepository = database.getRepository('transaction', shardID);
             return transactionRepository.listTransactionOutput({
-                address_key_identifier        : wallet.defaultKeyIdentifier,
-                is_spent                      : 0,
-                is_double_spend               : 0,
-                'transaction_output.is_stable': 1,
-                'transaction_output.status!'  : 3
+                address_key_identifier               : wallet.defaultKeyIdentifier,
+                is_spent                             : 0,
+                is_double_spend                      : 0,
+                'transaction_output.is_stable'       : 1,
+                'transaction_output.status!'         : 3,
+                'transaction_output.address_not-like': `%${config.ADDRESS_VERSION_NFT}%`
             }, 'amount', 128);
         }, 'amount', 128).then(unspentOutputs => {
             res.send({
