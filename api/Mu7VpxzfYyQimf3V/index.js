@@ -49,6 +49,7 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                 '`transaction`.status'                : req.query.p8,
                 '`transaction`.version'               : req.query.p9,
                 'address_key_identifier'              : req.query.p10,
+                'is_spent'                            : dataType === 'tangled_nft' ? 0 : undefined,
                 'output_position!'                    : -1, //discard fee output
                 '`transaction`.shard_id'              : shardID
             }, orderBy, limit);
