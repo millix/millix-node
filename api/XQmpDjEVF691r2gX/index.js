@@ -7,6 +7,7 @@ import walletUtils from '../../core/wallet/wallet-utils';
 import config from '../../core/config/config';
 import base58 from 'bs58';
 import busboy from 'busboy';
+import wallet from '../../core/wallet/wallet';
 
 
 /**
@@ -119,67 +120,64 @@ class _XQmpDjEVF691r2gX extends Endpoint {
 
 
                     mutex.lock(['submit_transaction'], (unlock) => {
-                        const dataType = transactionPartialPayload.transaction_data_type;
-                        const mimeType = transactionPartialPayload.transaction_data_mime_type;
-                        let buffer;
-                        if (dataType === 'json' || dataType === 'tangled_messenger') {
-                            buffer = Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data));
-                        }
-                        else if (dataType === 'binary' || dataType === 'tangled_nft') {
-                            buffer = transactionPartialPayload.transaction_data;
-                        }
-                        else {
-                            unlock();
-                            return res.send({
-                                api_status : 'fail',
-                                api_message: `invalid transaction data type: must contain a valid transaction_data_type ('json' | 'binary' | 'tangled_messenger' | 'tangled_nft')`
+                        this.getTransactionBuffer(transactionPartialPayload)
+                            .then(buffer => this.getTransactionOutputToSpend(transactionPartialPayload).then(srcOutputs => ([
+                                buffer,
+                                srcOutputs
+                            ])))
+                            .then(([buffer, srcOutputs]) => {
+
+                                if (!buffer) {
+                                    return Promise.reject('invalid buffer');
+                                }
+                                const dataType = transactionPartialPayload.transaction_data_type;
+                                const mimeType = transactionPartialPayload.transaction_data_mime_type;
+
+                                const file = {
+                                    buffer,
+                                    name  : `${Date.now()}`,
+                                    size  : buffer.length,
+                                    type  : dataType,
+                                    public: false
+                                };
+
+                                if (mimeType) {
+                                    file['mime_type'] = mimeType;
+                                }
+
+                                const fileList = [file];
+
+                                transactionPartialPayload.transaction_output_list.forEach(output => {
+                                    if (output.address_version.charAt(1) === 'b') {
+                                        // use default address version
+                                        output.address_version    = this.addressRepository.getDefaultAddressVersion().version;
+                                        // convert public key to address
+                                        output.address_public_key = output.address_base;
+                                        output.address_base       = walletUtils.getAddressFromPublicKey(base58.decode(output.address_public_key));
+                                    }
+
+                                    if (dataType === 'tangled_nft') {
+                                        output.address_version = config.ADDRESS_VERSION_NFT;
+                                    }
+                                });
+
+                                return fileManager.createTransactionWithFileList(fileList, transactionPartialPayload.transaction_output_list, transactionPartialPayload.transaction_output_fee, srcOutputs, transactionPartialPayload.transaction_output_attribute)
+                                                  .then(transaction => {
+                                                      unlock();
+                                                      res.send({
+                                                          api_status : 'success',
+                                                          transaction: transaction.transaction_list
+                                                      });
+                                                  });
+                            })
+                            .catch((e) => {
+                                console.log(`[api ${this.endpoint}] error: ${e}`);
+                                unlock();
+                                return res.send({
+                                    api_status : 'fail',
+                                    api_message: e
+                                });
                             });
-                        }
-
-                        const file = {
-                            buffer,
-                            name  : `${Date.now()}`,
-                            size  : buffer.length,
-                            type  : dataType,
-                            public: false
-                        };
-
-                        if (mimeType) {
-                            file['mime_type'] = mimeType;
-                        }
-
-                        const fileList = [file];
-
-                        transactionPartialPayload.transaction_output_list.forEach(output => {
-                            if (output.address_version.charAt(1) === 'b') {
-                                // use default address version
-                                output.address_version    = this.addressRepository.getDefaultAddressVersion().version;
-                                // convert public key to address
-                                output.address_public_key = output.address_base;
-                                output.address_base       = walletUtils.getAddressFromPublicKey(base58.decode(output.address_public_key));
-                            }
-
-                            if (dataType === 'tangled_nft') {
-                                output.address_version = config.ADDRESS_VERSION_NFT;
-                            }
-                        });
-
-                        fileManager.createTransactionWithFileList(fileList, transactionPartialPayload.transaction_output_list, transactionPartialPayload.transaction_output_fee, transactionPartialPayload.transaction_output_attribute)
-                                   .then(transaction => {
-                                       unlock();
-                                       res.send({
-                                           api_status : 'success',
-                                           transaction: transaction.transaction_list
-                                       });
-                                   })
-                                   .catch(e => {
-                                       console.log(`[api ${this.endpoint}] error: ${e}`);
-                                       unlock();
-                                       res.send({
-                                           api_status : 'fail',
-                                           api_message: e
-                                       });
-                                   });
                     });
                 }
                 catch (e) {
@@ -191,6 +189,92 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                 }
             })
             .catch(err => res.send(err));
+    }
+
+    getTransactionBuffer(transactionPartialPayload) {
+        const dataType = transactionPartialPayload.transaction_data_type;
+        if (dataType === 'json' || dataType === 'tangled_messenger') {
+            return Promise.resolve(Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data)));
+        }
+        else if (dataType === 'binary' || dataType === 'tangled_nft') {
+            if (transactionPartialPayload.transaction_output_attribute.parent_transaction_id) {
+                return fileManager.getBufferByTransactionAndFileHash(transactionPartialPayload.transaction_output_attribute.parent_transaction_id,
+                    wallet.defaultKeyIdentifier,
+                    transactionPartialPayload.transaction_data.attribute_type_id,
+                    transactionPartialPayload.transaction_data.file_hash)
+                                  .then(data => {
+                                      transactionPartialPayload.transaction_data_mime_type = data.mime_type;
+                                      return data.file_data;
+                                  });
+            }
+            else {
+                return Promise.resolve(transactionPartialPayload.transaction_data);
+            }
+        }
+
+        return Promise.reject(`invalid transaction data type: must contain a valid transaction_data_type ('json' | 'binary' | 'tangled_messenger' | 'tangled_nft')`);
+    }
+
+    getTransactionOutputToSpend(transactionPartialPayload) {
+        const dataType = transactionPartialPayload.transaction_data_type;
+        if (dataType === 'tangled_nft' && transactionPartialPayload.transaction_output_attribute.parent_transaction_id) {
+            return database.applyShards(shardID => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.listTransactionOutput({
+                    '`transaction`.transaction_id': transactionPartialPayload.transaction_output_attribute.parent_transaction_id,
+                    'address_like'                : `%${config.ADDRESS_VERSION_NFT}%`,
+                    'address_key_identifier'      : wallet.defaultKeyIdentifier,
+                    'transaction_output.is_stable': 1,
+                    'is_spent'                    : 0
+                });
+            }).then(nftOutputList => {
+                if (nftOutputList.length === 0) {
+                    return Promise.reject({error: 'nft output not available'});
+                }
+
+                // get output to pay fees
+                return database.applyShards((shardID) => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    return transactionRepository.getFreeOutput(wallet.defaultKeyIdentifier);
+                }).then((outputs) => {
+                    if (!outputs || outputs.length === 0) {
+                        return Promise.reject({
+                            error: 'insufficient_balance',
+                            data : {balance_stable: 0}
+                        });
+                    }
+                    outputs = _.orderBy(outputs, ['amount'], ['asc']);
+
+                    const transactionAmount = transactionPartialPayload.transaction_output_fee.amount;
+                    let remainingAmount     = transactionAmount;
+                    const outputsToUse      = [nftOutputList[0]];
+
+                    for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
+
+                        if (i + 1 === config.TRANSACTION_INPUT_MAX) { /* we cannot add more inputs and still we did not aggregate the required amount for the transaction */
+                            return Promise.reject({
+                                error: 'transaction_input_max_error',
+                                data : {amount_max: transactionAmount - remainingAmount}
+                            });
+                        }
+
+                        let output = outputs[i];
+                        remainingAmount -= output.amount;
+                        outputsToUse.push(output);
+                    }
+
+                    if (remainingAmount > 0) {
+                        return Promise.reject({
+                            error: 'insufficient_balance',
+                            data : {balance_stable: transactionAmount - remainingAmount}
+                        });
+                    }
+
+                    return outputsToUse;
+                });
+            });
+        }
+        return Promise.resolve(null);
     }
 }
 

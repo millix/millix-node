@@ -286,7 +286,10 @@ class Wallet {
                 const outputAddress = mapAddresses[output.address];
                 if (!outputAddress) {
                     console.log('[wallet][warn] output address not found', output);
-                    const {address: missingAddress} = addressRepository.getAddressComponent(output.address);
+                    const {
+                              address: missingAddress,
+                              version
+                          } = addressRepository.getAddressComponent(output.address);
                     //TODO: find a better way to get the address
                     for (let addressPosition = 0; addressPosition < 2 ** 32; addressPosition++) {
                         let {
@@ -294,7 +297,7 @@ class Wallet {
                                 address_attribute: addressAttribute
                             } = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
                         if (addressBase === missingAddress) {
-                            output['address_version']        = addressRepository.getDefaultAddressVersion().version;
+                            output['address_version']        = version;
                             output['address_key_identifier'] = this.defaultKeyIdentifier;
                             output['address_base']           = addressBase;
                             output['address_position']       = addressPosition;
