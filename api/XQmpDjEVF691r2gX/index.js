@@ -130,8 +130,21 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                                 if (!buffer) {
                                     return Promise.reject('invalid buffer');
                                 }
+
                                 const dataType = transactionPartialPayload.transaction_data_type;
                                 const mimeType = transactionPartialPayload.transaction_data_mime_type;
+
+                                if (dataType === 'transaction') {
+                                    // burn asset or nft
+                                    return wallet.addTransaction(transactionPartialPayload.transaction_output_list, transactionPartialPayload.transaction_output_fee, srcOutputs, config.MODE_TEST_NETWORK ? 'la3l' : '0a30', transactionPartialPayload.transaction_output_attribute)
+                                                 .then(transaction => {
+                                                     unlock();
+                                                     res.send({
+                                                         api_status: 'success',
+                                                         transaction
+                                                     });
+                                                 });
+                                }
 
                                 const file = {
                                     buffer,
@@ -192,12 +205,14 @@ class _XQmpDjEVF691r2gX extends Endpoint {
     }
 
     getTransactionBuffer(transactionPartialPayload) {
-        const dataType = transactionPartialPayload.transaction_data_type;
+        let dataType = transactionPartialPayload.transaction_data_type;
         if (dataType === 'json' || dataType === 'tangled_messenger') {
             return Promise.resolve(Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data)));
         }
-        else if (dataType === 'binary' || dataType === 'tangled_nft') {
-            if (transactionPartialPayload.transaction_output_attribute.parent_transaction_id) {
+
+        if (dataType === 'binary' || dataType === 'tangled_nft' || dataType === 'tangled_asset' || dataType === 'transaction') {
+            const parentDataType = transactionPartialPayload.transaction_data_type_parent || dataType;
+            if ((parentDataType === 'binary' || parentDataType === 'tangled_nft') && transactionPartialPayload.transaction_output_attribute.parent_transaction_id) {
                 return fileManager.getBufferByTransactionAndFileHash(transactionPartialPayload.transaction_output_attribute.parent_transaction_id,
                     wallet.defaultKeyIdentifier,
                     transactionPartialPayload.transaction_data.attribute_type_id,
@@ -207,16 +222,15 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                                       return data.file_data;
                                   });
             }
-            else {
-                return Promise.resolve(transactionPartialPayload.transaction_data);
-            }
+
+            return Promise.resolve(transactionPartialPayload.transaction_data);
         }
 
         return Promise.reject(`invalid transaction data type: must contain a valid transaction_data_type ('json' | 'binary' | 'tangled_messenger' | 'tangled_nft')`);
     }
 
     getTransactionOutputToSpend(transactionPartialPayload) {
-        const dataType = transactionPartialPayload.transaction_data_type;
+        const dataType = transactionPartialPayload.transaction_data_type_parent || transactionPartialPayload.transaction_data_type;
         if (dataType === 'tangled_nft' && transactionPartialPayload.transaction_output_attribute.parent_transaction_id) {
             return database.applyShards(shardID => {
                 const transactionRepository = database.getRepository('transaction', shardID);
@@ -237,7 +251,7 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.getFreeOutput(wallet.defaultKeyIdentifier);
                 }).then((outputs) => {
-                    if (!outputs || outputs.length === 0) {
+                    if (!outputs || (transactionPartialPayload.transaction_data_type === 'tangled_nft' && outputs.length === 0)) {
                         return Promise.reject({
                             error: 'insufficient_balance',
                             data : {balance_stable: 0}
@@ -248,6 +262,11 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                     const transactionAmount = transactionPartialPayload.transaction_output_fee.amount;
                     let remainingAmount     = transactionAmount;
                     const outputsToUse      = [nftOutputList[0]];
+
+                    if (outputs.length === 0) {
+                        transactionPartialPayload.transaction_output_list[0].amount -= transactionPartialPayload.transaction_output_fee.amount;
+                        remainingAmount -= nftOutputList[0].amount;
+                    }
 
                     for (let i = 0; i < outputs.length && remainingAmount > 0; i++) {
 
