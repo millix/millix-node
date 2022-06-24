@@ -93,6 +93,10 @@ class _F7APEv5JfCY1siyz extends Endpoint {
                             async.eachSeries(attributes, (attribute, attributeCallback) => {
                                 attribute.value = JSON.parse(attribute.value);
                                 if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
+                                    if (!attribute.value.file_list || attribute.value.file_list.length === 0) {
+                                        dataToRemove.add(transaction);
+                                        return attributeCallback();
+                                    }
                                     attribute.value.file_data = {};
                                     async.eachSeries(attribute.value.file_list, (file, fileReadCallback) => {
                                         const key = file.key || file[wallet.defaultKeyIdentifier]?.key;
