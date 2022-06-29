@@ -46,7 +46,7 @@ export class Database {
         if (where) {
             _.each(_.keys(where), key => {
                 if (where[key] === undefined ||
-                    ((key.endsWith('_begin') || key.endsWith('_min') || key.endsWith('_end') || key.endsWith('_max')) && !where[key]) ||
+                    ((key.endsWith('_begin') || key.endsWith('_min') || key.endsWith('_end') || key.endsWith('_max') || key.endsWith('_like') || key.endsWith('_not-like')) && !where[key]) ||
                     (key.endsWith('_in') && !(where[key] instanceof Array))) {
                     return;
                 }
@@ -70,6 +70,12 @@ export class Database {
                         parameters.push(parameter);
                     }
                     return;
+                }
+                else if (key.endsWith('_like')) {
+                    sql += `${key.substring(0, key.lastIndexOf('_'))} like ?`;
+                }
+                else if (key.endsWith('_not-like')) {
+                    sql += `${key.substring(0, key.lastIndexOf('_'))} not like ?`;
                 }
                 else {
                     sql += `${key}= ?`;

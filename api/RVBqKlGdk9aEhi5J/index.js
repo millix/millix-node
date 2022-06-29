@@ -93,9 +93,9 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                     database.firstShards((shardID) => {
                         const transactionRepository = database.getRepository('transaction', shardID);
                         return transactionRepository.getTransactionOutput({
-                            transaction_id        : input.output_transaction_id,
-                            output_position       : input.output_position,
-                            address_key_identifier: input.address_key_identifier
+                            '`transaction`.transaction_id': input.output_transaction_id,
+                            'output_position'             : input.output_position,
+                            'address_key_identifier'      : input.address_key_identifier
                         });
                     }).then(output => {
                         input.amount = output.amount;

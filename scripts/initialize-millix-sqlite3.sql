@@ -186,6 +186,7 @@ CREATE INDEX idx_transaction_output_address_key_identifier_spent_double_spend_st
 CREATE INDEX idx_transaction_output_address_is_spent ON transaction_output (address, is_spent);
 CREATE INDEX idx_transaction_output_address_create_date ON transaction_output (address, create_date);
 CREATE INDEX idx_transaction_output_address_is_stable_is_spent_is_double_spend ON transaction_output (address, is_stable, is_spent, is_double_spend);
+CREATE INDEX idx_transaction_output_transaction_id_address_key_identifier ON transaction_output (transaction_id, address_key_identifier);
 CREATE INDEX idx_transaction_output_transaction_id_is_stable_is_double_spend ON transaction_output (transaction_id, is_stable, is_double_spend);
 CREATE INDEX idx_transaction_output_transaction_id_is_spent ON transaction_output (transaction_id, is_spent);
 CREATE INDEX idx_transaction_output_create_date ON transaction_output (create_date);
@@ -348,14 +349,16 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "16");
+INSERT INTO schema_information (key, value) VALUES ("version", "20");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
        ("0b0", 1, 0, "(?<address>.*)(?<version>0b0)(?<identifier>.*)"),
+       ("0c0", 1, 0, "(?<address>.*)(?<version>0c0)(?<identifier>.*)"),
        ("lal", 0, 1, "(?<address>.*)(?<version>lal)(?<identifier>.*)"),
        ("la0l", 0, 1, "(?<address>.*)(?<version>la0l)(?<identifier>.*)"),
-       ("lb0l", 0, 0, "(?<address>.*)(?<version>lb0l)(?<identifier>.*)");
+       ("lb0l", 0, 0, "(?<address>.*)(?<version>lb0l)(?<identifier>.*)"),
+       ("lcl", 0, 0, "(?<address>.*)(?<version>lcl)(?<identifier>.*)");
 
 INSERT INTO normalization (normalization_name, normalization_id)
 VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
@@ -422,7 +425,8 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('transaction_count', 'qhTfPzLhZENklxNbTQYW'),
        ('transaction_fee_proxy', 'qTCYsDQzIoVbaX8iIjry'),
        ('transaction_fee_network', '9hJcCunmEibhDgoLHzC8'),
-       ('transaction_fee_default', 'eoSDGGFKD3dYfcKF1nFO');
+       ('transaction_fee_default', 'eoSDGGFKD3dYfcKF1nFO'),
+       ('transaction_output_metadata', 'Adl87cz8kC190Nqc');
 
 INSERT INTO address_attribute_type (address_attribute_type_id, attribute_type) VALUES ('9MgxVxyXsM2EozHVUZgw', 'key_public');
 INSERT INTO transaction_output_attribute_type (attribute_type_id, attribute_type) VALUES ('360NCKsWffvH48QDlh4a', 'transaction_fee');

@@ -27,9 +27,9 @@ class _KN2ZttYDEKzCulEZ extends Endpoint {
 
         database.firstShardORShardZeroRepository('transaction', req.query.p2, transactionRepository => {
             return transactionRepository.getTransactionOutput({
-                transaction_id : req.query.p0,
-                output_position: req.query.p1,
-                shard_id       : req.query.p2
+                '`transaction`.transaction_id': req.query.p0,
+                'output_position'             : req.query.p1,
+                '`transaction`.shard_id'      : req.query.p2
             });
         }).then(transactionOutput => {
             res.send(transactionOutput || {
