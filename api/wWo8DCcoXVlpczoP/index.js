@@ -22,14 +22,16 @@ class _wWo8DCcoXVlpczoP extends Endpoint {
      * @param req (p0: date_begin, p1: date_end, p2: node_id_origin, p3:
      *     is_stable, p4: is_parent, p5: is_timeout, p6: create_date_begin, p7:
      *     create_date_end, p8: status, p9: version, p10:
-     *     address_key_identifier, p11: attribute_type_id, p12:
-     *     order_by="create_date desc", p13: record_limit=1000, p14: shard_id)
+     *     address_key_identifier, p11: attribute_type_id, p12: data_type,
+     *     p13: order_by="create_date desc", p14: record_limit=1000, p15:
+     *     shard_id)
      * @param res
      */
     handler(app, req, res) {
-        const orderBy = req.query.p12 || '`transaction`.create_date desc';
-        const limit   = parseInt(req.query.p13) || 1000;
-        const shardID = req.query.p14 || undefined;
+        const orderBy  = req.query.p13 || '`transaction`.create_date desc';
+        const limit    = parseInt(req.query.p14) || 1000;
+        const shardID  = req.query.p15 || undefined;
+        const dataType = req.query.p12 || undefined;
 
         database.applyShards((dbShardID) => {
             const transactionRepository = database.getRepository('transaction', dbShardID);
@@ -48,6 +50,7 @@ class _wWo8DCcoXVlpczoP extends Endpoint {
                 '`transaction`.status'                : req.query.p8,
                 '`transaction`.version'               : req.query.p9,
                 'address_key_identifier'              : req.query.p10,
+                'is_spent'                            : dataType === 'tangled_nft' ? 0 : undefined,
                 'output_position!'                    : -1, //discard fee output
                 '`transaction`.shard_id'              : shardID
             }, orderBy, limit);
@@ -106,6 +109,11 @@ class _wWo8DCcoXVlpczoP extends Endpoint {
                                         if (!key) {
                                             return fileReadCallback(true);
                                         }
+
+                                        if (dataType && file.type !== dataType) {
+                                            return fileReadCallback(true);
+                                        }
+
                                         fileManager.decryptFile(transaction.address_key_identifier_from, transaction.transaction_date, transaction.transaction_id, file.hash, key, file.public)
                                                    .then(_ => fileReadCallback()).catch(() => fileReadCallback(true));
                                     }, (error) => {

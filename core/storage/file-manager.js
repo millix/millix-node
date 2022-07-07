@@ -1,5 +1,4 @@
 import path from 'path';
-import os from 'os';
 import config from '../config/config';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -28,6 +27,7 @@ class FileManager {
 
     initialize() {
         this.filesRootFolder = config.STORAGE_CONNECTION.FOLDER;
+        this.normalizationRepository = database.getRepository('normalization');
         return Promise.resolve();
     }
 
@@ -163,10 +163,11 @@ class FileManager {
      ];
      * @param dstOutputs
      * @param outputFee
+     * @param srcOutputs
      * @param defaultTransactionOutputAttribute
      * @return {Promise<{file_list: *, transaction_list: *}>}
      */
-    createTransactionWithFileList(fileList, dstOutputs, outputFee, defaultTransactionOutputAttribute = {}) {
+    createTransactionWithFileList(fileList, dstOutputs, outputFee, srcOutputs = null, defaultTransactionOutputAttribute = {}) {
         //Create directory for my files (if not exist)
         const transactionTempDirectory = this._createAndGetFolderLocation([
             wallet.defaultKeyIdentifier,
@@ -176,7 +177,7 @@ class FileManager {
         return this._getPublicKeyMap(dstOutputs)
                    .then((publicKeyBufferMap) => this._createEncryptedFiles(fileList, transactionTempDirectory, publicKeyBufferMap, defaultTransactionOutputAttribute))
                    .then(data => {
-                       return wallet.addTransaction(dstOutputs, outputFee, null, config.MODE_TEST_NETWORK ? 'la3l' : '0a30', data.transaction_output_attribute)
+                       return wallet.addTransaction(dstOutputs, outputFee, srcOutputs, config.MODE_TEST_NETWORK ? 'la3l' : '0a30', data.transaction_output_attribute)
                                     .then(transactionList => ({
                                         ...data,
                                         transaction_list: transactionList
@@ -205,6 +206,69 @@ class FileManager {
                            }
                        });
                    });
+    }
+
+    getBufferByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, fileHash) {
+        return database.firstShards((dbShardID) => {
+            const transactionRepository = database.getRepository('transaction', dbShardID);
+            return transactionRepository.getTransactionOutput({
+                '`transaction`.transaction_id': transactionId,
+                'address_key_identifier'      : addressKeyIdentifier,
+                'output_position!'            : -1 //discard fee output
+            });
+        }).then(output => {
+            const data = {
+                transaction_id           : output.transaction_id,
+                transaction_date         : output.transaction_date,
+                address_key_identifier_to: output.address_key_identifier,
+                address_to               : output.address,
+                is_stable                : output.is_stable
+            };
+            return database.firstShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.getTransactionInput({
+                    'transaction_id': data.transaction_id,
+                    'input_position': 0
+                });
+            }).then(input => {
+                if (!input) {
+                    return Promise.reject('transaction_output_not_found');
+                }
+                data['address_key_identifier_from'] = input.address_key_identifier;
+                data['address_from']                = input.address;
+                return data;
+            });
+        }).then(data => {
+            // get data
+            return database.applyShards((shardID) => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.listTransactionOutputAttributes({
+                    transaction_id   : data.transaction_id,
+                    attribute_type_id: attributeTypeId
+                });
+            }).then(attributes => {
+                for (const attribute of attributes) {
+                    attribute.value = JSON.parse(attribute.value);
+                    if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
+                        const file = _.find(attribute.value.file_list, file => file.hash === fileHash);
+                        if (!file) {
+                            return Promise.reject('file_not_found');
+                        }
+                        const key = file.key || file[wallet.defaultKeyIdentifier]?.key;
+                        if (!key) {
+                            return Promise.reject('decrypt_key_not_found');
+                        }
+
+                        const dataType = file.type || 'json';
+                        return this.decryptFile(data.address_key_identifier_from, data.transaction_date, data.transaction_id, file.hash, key, file.public).then(fileData => ({
+                            file_data: fileData,
+                            mime_type: file.mime_type,
+                            data_type: dataType
+                        }));
+                    }
+                }
+            });
+        });
     }
 
     _getPublicKeyMap(dstOutputs) {
@@ -332,7 +396,8 @@ class FileManager {
             file_list: []
         };
 
-        // sort keys - important! if not sorted the signature verification might fail
+        // sort keys - important! if not sorted the signature verification
+        // might fail
         transactionOutputAttribute = Object.keys(transactionOutputAttribute).sort().reduce(
             (obj, key) => {
                 obj[key] = transactionOutputAttribute[key];
@@ -357,6 +422,10 @@ class FileManager {
                           'type'  : file.type,
                           'name'  : file.name
                       };
+
+                      if (file.mime_type) {
+                          fileAttribute['mime_type'] = file.mime_type;
+                      }
 
                       if (file.public) {
                           if (!transactionOutputAttribute['shared_key']) {

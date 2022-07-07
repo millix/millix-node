@@ -765,6 +765,9 @@ export const WALLET_TRANSACTION_DEFAULT_VERSION                = MODE_TEST_NETWO
 export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b20';
 export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb2l';
 export const WALLET_TRANSACTION_REFRESH_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK : WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK;
+export const ADDRESS_VERSION_NFT_MAIN_NETWORK                  = '0c0';
+export const ADDRESS_VERSION_NFT_TEST_NETWORK                  = 'lcl';
+export const ADDRESS_VERSION_NFT                               = MODE_TEST_NETWORK ? ADDRESS_VERSION_NFT_TEST_NETWORK : ADDRESS_VERSION_NFT_MAIN_NETWORK;
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a0',
     '0b0',
@@ -798,8 +801,8 @@ export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1655724794;
-export const NODE_MILLIX_VERSION                               = '1.20.0';
+export const NODE_MILLIX_BUILD_DATE                            = 1656527911;
+export const NODE_MILLIX_VERSION                               = '1.20.1';
 export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
 export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
@@ -846,7 +849,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '19';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '20';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -875,6 +878,7 @@ export default {
     NODE_NAT_PMP_CHECK,
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
+    ADDRESS_VERSION_NFT,
     ACTIVE_LANGUAGE_GUID,
     NODE_INITIAL_LIST,
     NODE_CONNECTION_STATIC,

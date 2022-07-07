@@ -151,7 +151,7 @@ export default class Transaction {
             this.database.get('SELECT COALESCE(SUM(AMOUNT), 0) as amount FROM transaction_output ' +
                               'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE transaction_output.address_key_identifier=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) +
-                              ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3', [keyIdentifier],
+                              ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3 AND transaction_output.address not like "%' + config.ADDRESS_VERSION_NFT + '%"', [keyIdentifier],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });
@@ -161,7 +161,7 @@ export default class Transaction {
     getAddressBalance(address, stable) {
         return new Promise((resolve) => {
             this.database.get('SELECT COALESCE(SUM(AMOUNT), 0) as amount FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
-                              'WHERE address=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3', [address],
+                              'WHERE address=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3 AND transaction_output.address not like "%' + config.ADDRESS_VERSION_NFT + '%"', [address],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });
@@ -752,7 +752,8 @@ export default class Transaction {
     addTransactionFromShardObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
-                const cachedTransaction = _.cloneDeep(transaction);
+                const cachedTransaction = transaction;
+                transaction = _.cloneDeep(cachedTransaction);
 
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
@@ -1580,7 +1581,7 @@ export default class Transaction {
             let {
                     sql,
                     parameters
-                } = Database.buildQuery('SELECT * FROM `transaction_output`', where);
+                } = Database.buildQuery('SELECT transaction_output.*, `transaction`.transaction_date FROM `transaction_output` INNER JOIN `transaction` ON transaction_output.transaction_id = `transaction`.transaction_id', where);
             this.database.get(sql,
                 parameters, (err, row) => {
                     if (err) {
@@ -2345,9 +2346,10 @@ export default class Transaction {
     getFreeOutput(addressKeyIdentifier) {
         return new Promise((resolve) => {
             const now = Math.floor(ntp.now().getTime() / 1000);
-            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output \
-                              INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
-                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3 and `transaction`.transaction_date < ?',
+            this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output ' +
+                              'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
+                              'WHERE transaction_output.address_key_identifier=? AND is_spent = 0 AND transaction_output.is_stable = 1 AND is_double_spend = 0 AND transaction_output.status != 3 AND `transaction`.transaction_date < ? ' +
+                              'AND transaction_output.address NOT LIKE "%' + config.ADDRESS_VERSION_NFT + '%"',
                 [
                     addressKeyIdentifier,
                     now
@@ -2360,9 +2362,10 @@ export default class Transaction {
     countWalletFreeOutput(addressKeyIdentifier) {
         return new Promise((resolve) => {
             const now = Math.floor(ntp.now().getTime() / 1000);
-            this.database.get('SELECT count(1) as count FROM transaction_output \
-                              INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id \
-                              WHERE transaction_output.address_key_identifier=? and is_spent = 0 and transaction_output.is_stable = 1 and is_double_spend = 0 and transaction_output.status != 3 and `transaction`.transaction_date < ?',
+            this.database.get('SELECT count(1) as count FROM transaction_output ' +
+                              'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
+                              'WHERE transaction_output.address_key_identifier=? AND is_spent = 0 AND transaction_output.is_stable = 1 AND is_double_spend = 0 AND transaction_output.status != 3 AND `transaction`.transaction_date < ? ' +
+                              'AND transaction_output.address NOT LIKE "%' + config.ADDRESS_VERSION_NFT + '%"',
                 [
                     addressKeyIdentifier,
                     now

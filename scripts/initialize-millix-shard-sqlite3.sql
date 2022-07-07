@@ -104,9 +104,11 @@ CREATE INDEX idx_transaction_output_address_key_identifier_spent_double_spend_st
 CREATE INDEX idx_transaction_output_address_is_spent ON transaction_output (address, is_spent);
 CREATE INDEX idx_transaction_output_address_create_date ON transaction_output (address, create_date);
 CREATE INDEX idx_transaction_output_address_is_stable_is_spent_is_double_spend ON transaction_output (address, is_stable, is_spent, is_double_spend);
+CREATE INDEX idx_transaction_output_transaction_id_address_key_identifier ON transaction_output (transaction_id, address_key_identifier);
 CREATE INDEX idx_transaction_output_transaction_id_is_stable_is_double_spend ON transaction_output (transaction_id, is_stable, is_double_spend);
 CREATE INDEX idx_transaction_output_transaction_id_is_spent ON transaction_output (transaction_id, is_spent);
 CREATE INDEX idx_transaction_output_create_date ON transaction_output (create_date);
+CREATE INDEX idx_transaction_output_output_position ON transaction_output (output_position);
 
 
 CREATE TABLE transaction_output_attribute
