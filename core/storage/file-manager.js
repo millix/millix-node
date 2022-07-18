@@ -26,7 +26,7 @@ class FileManager {
     }
 
     initialize() {
-        this.filesRootFolder = config.STORAGE_CONNECTION.FOLDER;
+        this.filesRootFolder         = config.STORAGE_CONNECTION.FOLDER;
         this.normalizationRepository = database.getRepository('normalization');
         return Promise.resolve();
     }
@@ -208,7 +208,7 @@ class FileManager {
                    });
     }
 
-    getBufferByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, fileHash) {
+    getBufferByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, fileHash, fileKey = null) {
         return database.firstShards((dbShardID) => {
             const transactionRepository = database.getRepository('transaction', dbShardID);
             return transactionRepository.getTransactionOutput({
@@ -254,13 +254,15 @@ class FileManager {
                         if (!file) {
                             return Promise.reject('file_not_found');
                         }
-                        const key = file.key || file[wallet.defaultKeyIdentifier]?.key;
+
+                        const key = fileKey ? Buffer.from(fileKey, 'hex') : file.key || file[wallet.defaultKeyIdentifier]?.key;
+
                         if (!key) {
                             return Promise.reject('decrypt_key_not_found');
                         }
 
                         const dataType = file.type || 'json';
-                        return this.decryptFile(data.address_key_identifier_from, data.transaction_date, data.transaction_id, file.hash, key, file.public).then(fileData => ({
+                        return this.decryptFile(data.address_key_identifier_from, data.transaction_date, data.transaction_id, file.hash, key, !!fileKey || file.public).then(fileData => ({
                             file_data: fileData,
                             mime_type: file.mime_type,
                             data_type: dataType
@@ -268,6 +270,41 @@ class FileManager {
                     }
                 }
             });
+        });
+    }
+
+
+    getKeyByTransactionAndFileHash(transactionId, attributeTypeId, fileHash) {
+        return database.applyShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return transactionRepository.listTransactionOutputAttributes({
+                transaction_id   : transactionId,
+                attribute_type_id: attributeTypeId
+            });
+        }).then(attributes => {
+            for (const attribute of attributes) {
+                if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
+                    attribute.value = JSON.parse(attribute.value);
+                    const file = _.find(attribute.value.file_list, file => file.hash === fileHash);
+                    if (!file) {
+                        return Promise.reject('file_not_found');
+                    }
+
+                    let key = file.key;
+                    if (key) {
+                        return key;
+                    }
+
+                    key = file[wallet.defaultKeyIdentifier]?.key;
+                    if (!key) {
+                        return Promise.reject('decrypt_key_not_found');
+                    }
+
+                    const extendedPrivateKey = wallet.getActiveWalletKey(wallet.getDefaultActiveWallet());
+                    const privateKeyBuffer   = walletUtils.derivePrivateKey(extendedPrivateKey, 0, 0);
+                    return this._keyCipher(Buffer.from(key, 'hex'), privateKeyBuffer, FileManager.DECRYPT).toString('hex');
+                }
+            }
         });
     }
 
