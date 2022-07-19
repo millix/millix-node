@@ -83,9 +83,9 @@ Anyone and everyone is welcome to contribute. Please take a moment to review the
 3. Submit Pull Request with comprehensive description of changes
 
 ## run in testnet
-update millix-node/core/config/config.js and set test mode to true
+update core/config/environment.js and set test mode to true
 ```
-export const MODE_TEST_NETWORK = true;
+environment['MODE_TEST_NETWORK']          = false;
 ```
 
 ## Release Schedules

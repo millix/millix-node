@@ -10,6 +10,7 @@ const const_value_default = {
 let environment;
 try {
     environment = require('./environment');
+    environment = environment.default;
 }
 catch (ex) {
 }
@@ -20,8 +21,8 @@ function get_const_value(const_name) {
     }
 
     let value = const_value_default[const_name];
-    if (environment && typeof (environment.default[const_name]) !== 'undefined') {
-        value = environment.default[const_name];
+    if (environment && typeof (environment[const_name]) !== 'undefined') {
+        value = environment[const_name];
     }
 
     return value;
@@ -836,20 +837,20 @@ export const NODE_MILLIX_VERSION                               = get_const_value
 export const DATA_BASE_DIR_MAIN_NETWORK                        = get_const_value('DATA_BASE_DIR_MAIN_NETWORK');
 export const DATA_BASE_DIR_TEST_NETWORK                        = get_const_value('DATA_BASE_DIR_TEST_NETWORK');
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
-export const NODE_KEY_PATH                                     = DATA_BASE_DIR + '/node.json';
-export const NODE_CERTIFICATE_KEY_PATH                         = DATA_BASE_DIR + '/node_certificate_key.pem';
-export const NODE_CERTIFICATE_PATH                             = DATA_BASE_DIR + '/node_certificate.pem';
-export const WALLET_KEY_PATH                                   = DATA_BASE_DIR + '/millix_private_key.json';
-export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR + '/job.json';
-export const JOB_CONFIG_VERSION                                = 7;
-export const SHARD_ZERO_NAME                                   = 'shard_zero';
-export const DEBUG_LOG_FILTER                                  = [];
-export const CHUNK_SIZE                                        = 50331648; //48MB
-export const MAX_STORAGE_RESERVED                              = 1073741824; //1GB
-export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
-export const PEER_ROTATION_MORE_THAN_MOST                      = 0.2;
-export const PEER_ROTATION_MORE_THAN_ALL                       = 0.01;
-export const PEER_ROTATION_CONFIG                              = {
+export const NODE_KEY_PATH                   = DATA_BASE_DIR + '/node.json';
+export const NODE_CERTIFICATE_KEY_PATH       = DATA_BASE_DIR + '/node_certificate_key.pem';
+export const NODE_CERTIFICATE_PATH           = DATA_BASE_DIR + '/node_certificate.pem';
+export const WALLET_KEY_PATH                 = DATA_BASE_DIR + '/millix_private_key.json';
+export const JOB_CONFIG_PATH                 = DATA_BASE_DIR + '/job.json';
+export const JOB_CONFIG_VERSION              = 7;
+export const SHARD_ZERO_NAME                 = 'shard_zero';
+export const DEBUG_LOG_FILTER                = [];
+export const CHUNK_SIZE                      = 50331648; //48MB
+export const MAX_STORAGE_RESERVED            = 1073741824; //1GB
+export const PEER_ROTATION_MORE_THAN_AVERAGE = 0.5;
+export const PEER_ROTATION_MORE_THAN_MOST    = 0.2;
+export const PEER_ROTATION_MORE_THAN_ALL     = 0.01;
+export const PEER_ROTATION_CONFIG            = {
     'PROACTIVE': {
         'frequency'    : 0.7,
         'DATA_QUANTITY': {
