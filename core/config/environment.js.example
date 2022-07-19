@@ -1,0 +1,17 @@
+export const SHOW_API_ERROR_IN_MODAL = false;
+
+export const NODE_ID        = '';  // to be used in src/js/api/index.js
+export const NODE_SIGNATURE = '';  // to be used in src/js/api/index.js
+
+// test net
+// const GENESIS_TRANSACTION_ID = 'BbYAZLcxbx6adN3KwHZSTGjE6VpeDhiJ3ZPrXs6EMAGqDPfi5';
+// const GENESIS_SHARD_ID       = 'AyAC3kjLtjM4vktAJ5Xq6mbXKjzEqXoSsmGhhgjnkXUvjtF2M';
+
+const environment = {
+    SHOW_API_ERROR_IN_MODAL,
+    NODE_ID,
+    NODE_SIGNATURE,
+    GENESIS_TRANSACTION_ID,
+    GENESIS_SHARD_ID
+};
+export default environment;

@@ -1,5 +1,35 @@
-export const MODE_DEBUG                                        = true;
-export const MODE_TEST_NETWORK                                 = false;
+const const_value_default = {
+    'MODE_DEBUG'                : true,
+    'MODE_TEST_NETWORK'         : true,
+    'NODE_MILLIX_BUILD_DATE'    : 1656527911,
+    'NODE_MILLIX_VERSION'       : '1.20.1',
+    'DATA_BASE_DIR_MAIN_NETWORK': './millix',
+    'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet'
+};
+
+let environment;
+try {
+    environment = require('./environment');
+}
+catch (ex) {
+}
+
+function get_const_value(const_name) {
+    if (!const_value_default[const_name]) {
+        throw 'const_value_default is not defined for ' + const_name;
+    }
+
+    let value = const_value_default[const_name];
+    if (environment && typeof (environment.default[const_name]) !== 'undefined') {
+        value = environment.default[const_name];
+    }
+
+    return value;
+}
+
+
+export const MODE_DEBUG                                        = get_const_value('MODE_DEBUG');
+export const MODE_TEST_NETWORK                                 = get_const_value('MODE_TEST_NETWORK');
 export const NODE_DNS_SERVER                                   = [
     '1.1.1.1',
     '8.8.8.8'
@@ -801,10 +831,10 @@ export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = 1656527911;
-export const NODE_MILLIX_VERSION                               = '1.20.1';
-export const DATA_BASE_DIR_MAIN_NETWORK                        = './millix';
-export const DATA_BASE_DIR_TEST_NETWORK                        = './millix-testnet';
+export const NODE_MILLIX_BUILD_DATE                            = get_const_value('NODE_MILLIX_BUILD_DATE');
+export const NODE_MILLIX_VERSION                               = get_const_value('NODE_MILLIX_VERSION');
+export const DATA_BASE_DIR_MAIN_NETWORK                        = get_const_value('DATA_BASE_DIR_MAIN_NETWORK');
+export const DATA_BASE_DIR_TEST_NETWORK                        = get_const_value('DATA_BASE_DIR_TEST_NETWORK');
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
 export const NODE_KEY_PATH                                     = DATA_BASE_DIR + '/node.json';
 export const NODE_CERTIFICATE_KEY_PATH                         = DATA_BASE_DIR + '/node_certificate_key.pem';
