@@ -19,11 +19,11 @@ class _Mh9QifTIESw5t1fa extends Endpoint {
      *
      * @param app
      * @param req (p0: transaction_id, p1: address_key_identifier, p2:
-     *     attribute_type_id, p3: file_hash)
+     *     attribute_type_id, p3: file_hash, p4: file_key)
      * @param res
      */
     handler(app, req, res) {
-        fileManager.getBufferByTransactionAndFileHash(req.query.p0, req.query.p1, req.query.p2, req.query.p3)
+        fileManager.getBufferByTransactionAndFileHash(req.query.p0, req.query.p1, req.query.p2, req.query.p3, req.query.p4)
                    .then(({
                               file_data: fileData,
                               data_type: dataType,

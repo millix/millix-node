@@ -125,7 +125,8 @@ class FileExchange {
     }
 
     addTransactionToSyncQueue(transaction) {
-        fileSync.add(transaction);
+        fileSync.addWithTransaction(transaction);
+        fileSync.removeFromPendingSync(transaction.transaction_id);
     }
 
     syncFilesFromTransaction(transactionId, addressKeyIdentifier, transactionOutputAttribute, transactionDate) {

@@ -11,7 +11,8 @@ import fileExchange from './file-exchange';
 export class FileSync {
 
     constructor() {
-        this.queue = null;
+        this.queue       = null;
+        this.pendingSync = new Set();
     }
 
     initialize() {
@@ -58,17 +59,33 @@ export class FileSync {
         return Promise.resolve();
     }
 
+    addToPendingSync(transactionId) {
+        this.pendingSync.add(transactionId);
+    }
+
+    hasPendingSync(transactionId) {
+        return this.pendingSync.has(transactionId);
+    }
+
+    removeFromPendingSync(transactionId) {
+        this.pendingSync.delete(transactionId);
+    }
+
     pushToQueue(data) {
         this.queue.push(data);
     }
 
 
-    add(transaction) {
+    addWithTransaction(transaction) {
+        this.add(transaction.transaction_id, transaction.transaction_input_list[0].address_key_identifier, transaction.transaction_output_attribute.transaction_output_metadata, Math.floor(new Date(transaction.transaction_date).getTime() / 1000))
+    }
+
+    add(transactionId, addressKeyIdentifier, transactionOutputMetadata, transactionDate) {
         this.queue.push({
-            transaction_id             : transaction.transaction_id,
-            address_key_identifier     : transaction.transaction_input_list[0].address_key_identifier,
-            transaction_output_metadata: transaction.transaction_output_attribute.transaction_output_metadata,
-            transaction_date           : Math.floor(new Date(transaction.transaction_date).getTime() / 1000),
+            transaction_id             : transactionId,
+            address_key_identifier     : addressKeyIdentifier,
+            transaction_output_metadata: transactionOutputMetadata,
+            transaction_date           : transactionDate,
             timestamp                  : Date.now()
         });
     }
