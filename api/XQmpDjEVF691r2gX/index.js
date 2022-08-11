@@ -249,7 +249,16 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                                                         .then(metadataBuffer => [
                                                             data.file_data,
                                                             metadataBuffer?.file_data
-                                                        ]);
+                                                        ])
+                                                        .catch(e => {
+                                                            if (e === 'file_meta_not_found') {
+                                                                return [
+                                                                    data.file_data,
+                                                                    undefined
+                                                                ];
+                                                            }
+                                                            return Promise.reject(e);
+                                                        });
                                   });
             }
 
