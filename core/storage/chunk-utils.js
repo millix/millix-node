@@ -7,15 +7,22 @@ class ChunkUtils {
     constructor() {
     }
 
-    writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunk) {
+    writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunk, chunkNumber) {
         return new Promise((resolve, reject) => {
             let fileLocation = fileManager.createAndGetFileLocation(addressKeyIdentifier, transactionDate, transactionId, fileHash);
-            fs.appendFile(fileLocation, chunk, (err) => {
+            fs.open(fileLocation, 'w', (err, fd) => {
                 if (err) {
-                    console.log(err);
-                    return reject();
+                    console.log("[chunk-utils] error: ", err);
+                    return reject(err);
                 }
-                resolve();
+
+                fs.write(fd, chunk, 0, chunk.length, chunkNumber * CHUNK_SIZE, (err) => {
+                    if (err) {
+                        console.log("[chunk-utils] error: ", err);
+                        return reject();
+                    }
+                    resolve();
+                });
             });
         });
     }

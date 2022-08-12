@@ -121,7 +121,11 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                                             return fileReadCallback();
                                         }
 
-                                        if (dataType && file.type !== dataType) {
+                                        let fileType = file.type;
+                                        if (fileType.endsWith('_meta')) {
+                                            fileType = fileType.substring(0, fileType.length - 5);
+                                        }
+                                        if (dataType && (fileType !== dataType)) {
                                             dataToRemove.add(transaction);
                                             return fileReadCallback();
                                         }

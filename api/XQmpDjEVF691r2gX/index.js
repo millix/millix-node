@@ -93,10 +93,11 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                     if (!_.isArray(transactionPartialPayload.transaction_output_list)
                         || !_.isObject(transactionPartialPayload.transaction_output_fee)
                         || !_.isObject(transactionPartialPayload.transaction_data)
-                        || !_.isString(transactionPartialPayload.transaction_data_type)) {
+                        || !_.isString(transactionPartialPayload.transaction_data_type)
+                        || (transactionPartialPayload.transaction_data_meta && !_.isObject(transactionPartialPayload.transaction_data_meta))) {
                         return res.send({
                             api_status : 'fail',
-                            api_message: `invalid transaction: must contain transaction_output_list(type array), transaction_output_fee (type object), transaction_data (type object) and transaction_data_type (string)`
+                            api_message: `invalid transaction: must contain transaction_output_list(type array), transaction_output_fee (type object), transaction_data (type object), transaction_data_type (type string) and transaction_data_meta (type object)`
                         });
                     }
 
@@ -121,11 +122,12 @@ class _XQmpDjEVF691r2gX extends Endpoint {
 
                     mutex.lock(['submit_transaction'], (unlock) => {
                         this.getTransactionBuffer(transactionPartialPayload)
-                            .then(buffer => this.getTransactionOutputToSpend(transactionPartialPayload).then(srcOutputs => ([
+                            .then(([buffer, metadataBuffer]) => this.getTransactionOutputToSpend(transactionPartialPayload).then(srcOutputs => ([
                                 buffer,
+                                metadataBuffer,
                                 srcOutputs
                             ])))
-                            .then(([buffer, srcOutputs]) => {
+                            .then(([buffer, metadataBuffer, srcOutputs]) => {
 
                                 if (!buffer) {
                                     return Promise.reject('invalid buffer');
@@ -159,6 +161,17 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                                 }
 
                                 const fileList = [file];
+
+                                if (metadataBuffer) {
+                                    const metaFile = {
+                                        buffer: metadataBuffer,
+                                        name  : `${file.name}_meta`,
+                                        size  : metadataBuffer.length,
+                                        type  : `${file.type}_meta`,
+                                        public: false
+                                    };
+                                    fileList.push(metaFile);
+                                }
 
                                 transactionPartialPayload.transaction_output_list.forEach(output => {
                                     if (output.address_version.charAt(1) === 'b') {
@@ -206,8 +219,18 @@ class _XQmpDjEVF691r2gX extends Endpoint {
 
     getTransactionBuffer(transactionPartialPayload) {
         let dataType = transactionPartialPayload.transaction_data_type;
+
+        let metadataBuffer = undefined;
+
         if (dataType === 'json' || dataType === 'tangled_messenger') {
-            return Promise.resolve(Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data)));
+            if (transactionPartialPayload.transaction_data_meta) {
+                metadataBuffer = Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data_meta));
+            }
+
+            return Promise.resolve([
+                Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data)),
+                metadataBuffer
+            ]);
         }
 
         if (dataType === 'binary' || dataType === 'tangled_nft' || dataType === 'tangled_asset' || dataType === 'transaction') {
@@ -219,11 +242,34 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                     transactionPartialPayload.transaction_data.file_hash)
                                   .then(data => {
                                       transactionPartialPayload.transaction_data_mime_type = data.mime_type;
-                                      return data.file_data;
+                                      return fileManager.getBufferMetaByTransactionAndFileHash(transactionPartialPayload.transaction_output_attribute.parent_transaction_id,
+                                          wallet.defaultKeyIdentifier,
+                                          transactionPartialPayload.transaction_data.attribute_type_id,
+                                          transactionPartialPayload.transaction_data.file_hash)
+                                                        .then(metadataBuffer => [
+                                                            data.file_data,
+                                                            metadataBuffer?.file_data
+                                                        ])
+                                                        .catch(e => {
+                                                            if (e === 'file_meta_not_found') {
+                                                                return [
+                                                                    data.file_data,
+                                                                    undefined
+                                                                ];
+                                                            }
+                                                            return Promise.reject(e);
+                                                        });
                                   });
             }
 
-            return Promise.resolve(transactionPartialPayload.transaction_data);
+            if (transactionPartialPayload.transaction_data_meta) {
+                metadataBuffer = Buffer.from(JSON.stringify(transactionPartialPayload.transaction_data_meta));
+            }
+
+            return Promise.resolve([
+                transactionPartialPayload.transaction_data,
+                metadataBuffer
+            ]);
         }
 
         return Promise.reject(`invalid transaction data type: must contain a valid transaction_data_type ('json' | 'binary' | 'tangled_messenger' | 'tangled_nft')`);

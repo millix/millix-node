@@ -64,8 +64,8 @@ vi run-millix-node.sh
 ```
 sudo npm install -g @babel/cli @babel/core @babel/node
 npm install
-sudo chmod +x run-millix-node.sh.sh
-sh run-millix-node.sh.sh
+sudo chmod +x run-millix-node.sh
+sh run-millix-node.sh
 ```
 
 ## How to Contribute
