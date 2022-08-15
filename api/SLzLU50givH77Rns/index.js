@@ -54,7 +54,10 @@ class _SLzLU50givH77Rns extends Endpoint {
                            return transactionRepository.getTransaction(transactionId);
                        }).then(transaction => {
                            if (!transaction) {
-                               fileSync.addToPendingSync(transactionId);
+                               fileSync.addToPendingSync(transactionId, {
+                                   priority   : 1,
+                                   max_retries: 15
+                               });
                                peer.transactionSyncRequest(transactionId, {
                                    priority          : 1,
                                    dispatch_request  : true,
@@ -78,7 +81,10 @@ class _SLzLU50givH77Rns extends Endpoint {
                                for (const attribute of attributes) {
                                    if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
                                        const transactionOutputMetadata = JSON.parse(attribute.value);
-                                       fileSync.add(transactionId, addressKeyIdentifier, transactionOutputMetadata, Math.floor(transaction.transaction_date.getTime() / 1000));
+                                       fileSync.add(transactionId, addressKeyIdentifier, transactionOutputMetadata, Math.floor(transaction.transaction_date.getTime() / 1000), {
+                                           priority   : 1,
+                                           max_retries: 15
+                                       });
                                        res.send({
                                            status : 'syncing',
                                            trigger: e?.code === 'ENOENT' ? 'transaction_data_not_found' : e
