@@ -1023,7 +1023,7 @@ class Wallet {
                                                                                      (versionType === 'a' || versionType === 'b') &&
                                                                                      parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3 &&
                                                                                      transaction.transaction_output_attribute.transaction_output_metadata?.file_list?.length > 0) {
-                                                                                     fileExchange.addTransactionToSyncQueue(transaction);
+                                                                                     fileExchange.addTransactionToSyncQueue(transaction, fileSync.getPendingSyncOptions(transaction.transaction_id));
                                                                                  }
 
                                                                                  delete this._transactionReceivedFromNetwork[transaction.transaction_id];
