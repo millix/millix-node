@@ -26,7 +26,7 @@ class _SLzLU50givH77Rns extends Endpoint {
         const addressKeyIdentifier = req.query.p1;
         const attributeTypeId      = req.query.p2;
         fileManager.getBufferByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, req.query.p3, req.query.p4)
-                   .then(_ => {
+                   .then(({file_data: fileData}) => {
                        return database.applyShards((shardID) => {
                            const transactionRepository = database.getRepository('transaction', shardID);
                            return transactionRepository.listTransactionOutputAttributes({
@@ -37,6 +37,12 @@ class _SLzLU50givH77Rns extends Endpoint {
                            for (const attribute of attributes) {
                                if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
                                    const transactionOutputMetadata = JSON.parse(attribute.value);
+                                   try {
+                                       const jsonData                         = JSON.parse(fileData);
+                                       transactionOutputMetadata['file_data'] = {[req.query.p3]: jsonData};
+                                   }
+                                   catch (ignored) {
+                                   }
                                    res.send({
                                        status                     : 'synced',
                                        transaction_output_metadata: transactionOutputMetadata
