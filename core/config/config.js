@@ -1,6 +1,6 @@
 const const_value_default = {
-    'MODE_DEBUG'                : true,
-    'MODE_TEST_NETWORK'         : true,
+    'MODE_DEBUG'                : false,
+    'MODE_TEST_NETWORK'         : false,
     'NODE_MILLIX_BUILD_DATE'    : 1656527911,
     'NODE_MILLIX_VERSION'       : '1.20.1',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
@@ -757,14 +757,14 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT                        = 2;
-export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 1;
-export const CONSENSUS_ROUND_VALIDATION_MAX                    = 5;
-export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 5;
-export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 5;
+export const CONSENSUS_ROUND_NODE_COUNT                        = 12;
+export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 3;
+export const CONSENSUS_ROUND_VALIDATION_MAX                    = 3;
+export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 3;
+export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 3;
 export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
 export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 100;
-export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 30 * 1000;
+export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 15 * 1000;
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
@@ -784,8 +784,8 @@ export const TRANSACTION_CLOCK_SKEW_TOLERANCE                  = 10;
 export const TRANSACTION_PROGRESSIVE_SYNC_TIMESPAN             = 60;
 export const TRANSACTION_OUTPUT_REFRESH_OLDER_THAN             = 10;
 export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
-export const NODE_CONNECTION_INBOUND_MAX                       = 30;
-export const NODE_CONNECTION_OUTBOUND_MAX                      = 30;
+export const NODE_CONNECTION_INBOUND_MAX                       = 60;
+export const NODE_CONNECTION_OUTBOUND_MAX                      = 60;
 export const NODE_CONNECTION_PUBLIC_PERCENT                    = 0.2;
 export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
