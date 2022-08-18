@@ -5,7 +5,20 @@ const const_value_default = {
     'NODE_MILLIX_VERSION'       : '1.20.1',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
-    'DEBUG_LOG_FILTER'          : []
+    'DEBUG_LOG_FILTER'          : [],
+
+    'NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK': 6000,
+    'NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK': 8000,
+    'NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK': 6001,
+    'NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK': 8001,
+
+    'CONSENSUS_ROUND_NODE_COUNT'         : 12,
+    'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
+    'CONSENSUS_ROUND_VALIDATION_MAX'     : 3,
+    'CONSENSUS_ROUND_NOT_FOUND_MAX'      : 3,
+    'CONSENSUS_ROUND_DOUBLE_SPEND_MAX'   : 3,
+
+    'CONSENSUS_VALIDATION_WAIT_TIME_MAX': 15 * 1000
 };
 
 let environment;
@@ -40,10 +53,10 @@ export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
 export const NODE_PORT_DISCOVERY_MAIN_NETWORK                  = 2000;
-export const NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK           = 6000;
-export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = 8000;
-export const NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK           = 6001;
-export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = 8001;
+export const NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK           = get_const_value('NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK');
+export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = get_const_value('NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK');
+export const NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK           = get_const_value('NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK');
+export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = get_const_value('NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK');
 export const NODE_PORT_STORAGE_RECEIVER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK : NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK;
 export const NODE_PORT_STORAGE_PROVIDER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK : NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK;
 export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
@@ -757,14 +770,14 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT                        = 12;
-export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = 3;
-export const CONSENSUS_ROUND_VALIDATION_MAX                    = 3;
-export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = 3;
-export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = 3;
+export const CONSENSUS_ROUND_NODE_COUNT                        = get_const_value('CONSENSUS_ROUND_NODE_COUNT');
+export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = get_const_value('CONSENSUS_ROUND_VALIDATION_REQUIRED');
+export const CONSENSUS_ROUND_VALIDATION_MAX                    = get_const_value('CONSENSUS_ROUND_VALIDATION_MAX');
+export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = get_const_value('CONSENSUS_ROUND_NOT_FOUND_MAX');
+export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = get_const_value('CONSENSUS_ROUND_DOUBLE_SPEND_MAX');
 export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
 export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 100;
-export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = 15 * 1000;
+export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = get_const_value('CONSENSUS_VALIDATION_WAIT_TIME_MAX');
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
