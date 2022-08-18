@@ -1,0 +1,5 @@
+const environment = {};
+
+environment['MODE_TEST_NETWORK']          = false;
+
+export default environment;

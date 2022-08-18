@@ -124,8 +124,9 @@ class FileExchange {
         eventBus.on('transaction_file_request', this._onTransactionFileSyncRequest.bind(this));
     }
 
-    addTransactionToSyncQueue(transaction) {
-        fileSync.add(transaction);
+    addTransactionToSyncQueue(transaction, options = {}) {
+        fileSync.addWithTransaction(transaction, options);
+        fileSync.removeFromPendingSync(transaction.transaction_id);
     }
 
     syncFilesFromTransaction(transactionId, addressKeyIdentifier, transactionOutputAttribute, transactionDate) {

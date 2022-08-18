@@ -89,7 +89,7 @@ class Receiver {
 
                 req.on('end', () => {
                     const chunk = Buffer.concat(buffers);
-                    chunkUtils.writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunk)
+                    chunkUtils.writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, fileHash, chunk, chunkNumber)
                               .then(() => {
                                   storageAcl.removeChunkFromReceiver(nodeId, transactionId, fileHash, chunkNumber);
                                   eventBus.emit(`transaction_file_chunk_response:${nodeId}:${transactionId}:${fileHash}`, req.params);
@@ -137,7 +137,7 @@ class Receiver {
                                     file
                                 });
                             }
-                            chunkUtils.writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, file.file_hash, body).then(() => {
+                            chunkUtils.writeFileChunk(addressKeyIdentifier, transactionDate, transactionId, file.file_hash, body, chunkNumber).then(() => {
                                 callback();
                             }).catch((err) => {
                                 return callback({

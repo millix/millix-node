@@ -11,7 +11,9 @@ import fileExchange from './file-exchange';
 export class FileSync {
 
     constructor() {
-        this.queue = null;
+        this.queue       = null;
+        this.pendingSync = {};
+        this.pendingJob  = [];
     }
 
     initialize() {
@@ -20,14 +22,20 @@ export class FileSync {
         }
 
         this.queue = new Queue((data, done) => {
+            console.log('[file-sync] processing file ', data);
             fileExchange.syncFilesFromTransaction(data.transaction_id, data.address_key_identifier, data.transaction_output_metadata, data.transaction_date)
                         .catch(_ => _)
                         .then(status => {
+                            console.log('[file-sync] done processing file ', data);
                             if (status === 'transaction_file_sync_completed') {
                                 return done();
                             }
                             setTimeout(() => {
                                 done();
+                                data.retries++;
+                                if (data.retries >= data.options?.max_retries) {
+                                    return;
+                                }
                                 this.queue.push(data);
                             }, 10000);
                         });
@@ -39,7 +47,14 @@ export class FileSync {
                 setImmediate: global.setImmediate
             }),
             batchSize               : 1,
-            precondition            : function(cb) {
+            precondition            : (cb) => {
+                if (this.pendingJob.length > 0) {
+                    for (const job of this.pendingJob) {
+                        this.queue.push(job);
+                    }
+                    this.pendingJob = [];
+                }
+
                 if (network.registeredClients.length > 0) {
                     cb(null, true);
                 }
@@ -58,19 +73,49 @@ export class FileSync {
         return Promise.resolve();
     }
 
+    addToPendingSync(transactionId, options = {}) {
+        this.pendingSync[transactionId] = {options};
+    }
+
+    hasPendingSync(transactionId) {
+        return !!this.pendingSync[transactionId];
+    }
+
+    getPendingSyncOptions(transactionId) {
+        return this.pendingSync[transactionId]?.options;
+    }
+
+    removeFromPendingSync(transactionId) {
+        delete this.pendingSync[transactionId];
+    }
+
     pushToQueue(data) {
         this.queue.push(data);
     }
 
 
-    add(transaction) {
-        this.queue.push({
-            transaction_id             : transaction.transaction_id,
-            address_key_identifier     : transaction.transaction_input_list[0].address_key_identifier,
-            transaction_output_metadata: transaction.transaction_output_attribute.transaction_output_metadata,
-            transaction_date           : Math.floor(new Date(transaction.transaction_date).getTime() / 1000),
-            timestamp                  : Date.now()
-        });
+    addWithTransaction(transaction, options = {}) {
+        this.add(transaction.transaction_id, transaction.transaction_input_list[0].address_key_identifier, transaction.transaction_output_attribute.transaction_output_metadata, Math.floor(new Date(transaction.transaction_date).getTime() / 1000), options);
+    }
+
+    add(transactionId, addressKeyIdentifier, transactionOutputMetadata, transactionDate, options = {}) {
+        const job = {
+            transaction_id             : transactionId,
+            address_key_identifier     : addressKeyIdentifier,
+            transaction_output_metadata: transactionOutputMetadata,
+            transaction_date           : transactionDate,
+            timestamp                  : Date.now(),
+            priority                   : options?.priority || 0,
+            retries                      : 0,
+            options
+        };
+
+        if (!this.queue._connected) {
+            this.pendingJob.push(job);
+            return;
+        }
+
+        this.queue.push(job);
     }
 
 

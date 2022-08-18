@@ -28,6 +28,15 @@
       "enable": true
     },
     {
+      "id": "kIoe20LWh2aw3CAu",
+      "name": "get_storage_config",
+      "description": "returns storage related config",
+      "method": "GET",
+      "version_released": "1.20.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "PZ7x3HVHVstLNYf0",
       "name": "event_log_list",
       "description": "returns a event log list",
@@ -483,6 +492,24 @@
       "description": "get binary data stored as a transaction output file",
       "method": "GET",
       "version_released": "1.19.2",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "3K2xvNRLMpiEqLo8",
+      "name": "get_transaction_output_key",
+      "description": "get the decrypt key for a transaction output file",
+      "method": "GET",
+      "version_released": "1.20.2",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "SLzLU50givH77Rns",
+      "name": "sync_transaction_output_data",
+      "description": "sync binary data stored as a transaction output file",
+      "method": "GET",
+      "version_released": "1.20.2",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
     },

@@ -22,6 +22,7 @@ import base58 from 'bs58';
 import task from '../task';
 import cache from '../cache';
 import fileExchange from '../storage/file-exchange';
+import fileSync from '../storage/file-sync';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -1018,11 +1019,11 @@ class Wallet {
 
 
                                                                                  const versionType = transaction.version.charAt(1);
-                                                                                 if ((config.MODE_STORAGE_SYNC_FULL || (config.MODE_STORAGE_SYNC && hasKeyIdentifier)) &&
+                                                                                 if ((config.MODE_STORAGE_SYNC_FULL || fileSync.hasPendingSync(transaction.transaction_id) || (config.MODE_STORAGE_SYNC && hasKeyIdentifier)) &&
                                                                                      (versionType === 'a' || versionType === 'b') &&
                                                                                      parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3 &&
                                                                                      transaction.transaction_output_attribute.transaction_output_metadata?.file_list?.length > 0) {
-                                                                                     fileExchange.addTransactionToSyncQueue(transaction);
+                                                                                     fileExchange.addTransactionToSyncQueue(transaction, fileSync.getPendingSyncOptions(transaction.transaction_id));
                                                                                  }
 
                                                                                  delete this._transactionReceivedFromNetwork[transaction.transaction_id];

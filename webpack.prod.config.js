@@ -1,22 +1,25 @@
-const path              = require('path');
+const path       = require('path');
+const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
-    target   : 'node',
-    mode     : 'production',
-    entry    : './index.js',
-    output   : {
+    target : 'node',
+    mode   : 'development',
+    entry  : './index.js',
+    output : {
         filename: 'index.dist.js',
         path    : path.resolve(__dirname, '.')
     },
-    externals: {
-        sqlite3   : 'commonjs sqlite3',
+    devtool: 'inline-source-map',
+    watch  : false,
+    resolve: {
+        alias: {
+            [path.join(__dirname, 'node_modules/sqlite3/lib/sqlite3-binding.js')]: path.join(__dirname, 'database/sqlite3/sqlite3-binding.js')
+        }
     },
-    devtool  : 'source-map',
-    watch    : false,
-    module   : {
+    module : {
         rules: [
             {
-                test   : /\.js$/,
+                test   : /\.m?js$/,
                 exclude: /node_modules/,
                 use    : {
                     loader : 'babel-loader',
@@ -25,10 +28,12 @@ module.exports = {
                             '@babel/preset-env'
                         ],
                         plugins    : [
-                            ["@babel/plugin-transform-runtime",
-                             {
-                                "regenerator": true
-                            }]
+                            [
+                                '@babel/plugin-transform-runtime',
+                                {
+                                    'regenerator': true
+                                }
+                            ]
                         ],
                         sourceMaps : 'inline',
                         retainLines: true
@@ -36,12 +41,21 @@ module.exports = {
                 },
                 resolve: {
                     extensions: [
-                        '.js'
+                        '.js',
+                        '.mjs'
                     ]
                 }
             }
         ]
     },
-    plugins  : [
+    plugins: [
+        new CopyPlugin({
+            patterns: [
+                {
+                    from: 'node_modules/sqlite3/lib/binding/**/node_sqlite3.node',
+                    to  : 'build/node_sqlite3.node'
+                }
+            ]
+        })
     ]
 };

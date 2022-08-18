@@ -11,6 +11,7 @@ import apiConfig from '../core/config/api.json';
 import _ from 'lodash';
 import base58 from 'bs58';
 import walletUtils from '../core/wallet/wallet-utils';
+import eventBus from '../core/event-bus';
 
 
 class Server {
@@ -72,13 +73,14 @@ class Server {
                         module = require('./' + api.api_id + '/index');
                     }
                     catch (e) {
+                        console.error(e);
                     }
 
                     if (module) {
                         module.default.register(app, api.permission);
                     }
                     else {
-                        console.log('api source code not found');
+                        console.log(api.api_id + ' api source code not found');
                         database.getRepository('api').removeAPI(api.api_id);
                     }
                 });
@@ -92,7 +94,12 @@ class Server {
                 });
 
                 walletUtils.loadNodeKeyAndCertificate()
-                           .then(({certificate_private_key_pem: certificatePrivateKeyPem, certificate_pem: certificatePem, node_private_key: nodePrivateKey, node_public_key: nodePublicKey}) => {
+                           .then(({
+                                      certificate_private_key_pem: certificatePrivateKeyPem,
+                                      certificate_pem            : certificatePem,
+                                      node_private_key           : nodePrivateKey,
+                                      node_public_key            : nodePublicKey
+                                  }) => {
                                // starting the server
                                const httpsServer = https.createServer({
                                    key      : certificatePrivateKeyPem,
@@ -107,10 +114,12 @@ class Server {
                                    console.log(`[api] node_id ${this.nodeID}`);
                                    let nodeSignature = walletUtils.signMessage(nodePrivateKey, this.nodeID);
                                    console.log(`[api] node_signature ${nodeSignature}`);
-                                   walletUtils.storeNodeData({
+                                   const nodeData = {
                                        node_id       : this.nodeID,
                                        node_signature: nodeSignature
-                                   }).then(_ => _).catch(_ => _);
+                                   };
+                                   walletUtils.storeNodeData(nodeData).then(_ => _).catch(_ => _);
+                                   eventBus.emit('node_data', nodeData);
                                    const nodeRepository = database.getRepository('node');
                                    const nop            = () => {
                                    };

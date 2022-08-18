@@ -114,24 +114,37 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                                         return attributeCallback();
                                     }
 
-                                    attribute.value.file_data = {};
+                                    const attribute_file_data = {};
+                                    const attribute_file_key  = {};
                                     async.eachSeries(attribute.value.file_list, (file, fileReadCallback) => {
+                                        fileManager.getKeyByTransactionAndFileHash(transaction.transaction_id, req.query.p11, file.hash).then(transaction_output_key => {
+                                            attribute_file_key[file.hash] = transaction_output_key;
+                                        }).catch(_ => _);
+
                                         const key = file.key || file[wallet.defaultKeyIdentifier]?.key;
                                         if (!key) {
                                             return fileReadCallback();
                                         }
 
-                                        if (dataType && file.type !== dataType) {
+                                        let fileType = file.type;
+                                        if (fileType.endsWith('_meta')) {
+                                            fileType = fileType.substring(0, fileType.length - 5);
+                                        }
+                                        if (dataType && (fileType !== dataType)) {
                                             dataToRemove.add(transaction);
                                             return fileReadCallback();
                                         }
 
                                         fileManager.decryptFile(transaction.address_key_identifier_from, transaction.transaction_date, transaction.transaction_id, file.hash, key, file.public)
                                                    .then(fileData => {
-                                                       attribute.value.file_data[file.hash] = JSON.parse(fileData.toString());
+                                                       attribute_file_data[file.hash] = JSON.parse(fileData.toString());
                                                        fileReadCallback();
                                                    }).catch(() => fileReadCallback());
-                                    }, () => attributeCallback());
+                                    }, () => {
+                                        attributeCallback();
+                                    });
+                                    attribute.file_data          = attribute_file_data;
+                                    attribute.attribute_file_key = attribute_file_key;
                                 }
                                 else {
                                     attributeCallback();
