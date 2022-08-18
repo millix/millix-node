@@ -1,4 +1,4 @@
-const const_value_default = {
+const CONST_VALUE_DEFAULT = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
     'NODE_MILLIX_BUILD_DATE'    : 1656527911,
@@ -29,14 +29,14 @@ try {
 catch (ex) {
 }
 
-function getConstValue(const_name) {
-    if (!Object.keys(const_value_default).includes(const_name)) {
-        throw 'const_value_default is not defined for ' + const_name;
+function getConstValue(constName) {
+    if (!Object.keys(CONST_VALUE_DEFAULT).includes(constName)) {
+        throw 'CONST_VALUE_DEFAULT is not defined for ' + constName;
     }
 
-    let value = const_value_default[const_name];
-    if (environment && typeof (environment[const_name]) !== 'undefined') {
-        value = environment[const_name];
+    let value = CONST_VALUE_DEFAULT[constName];
+    if (environment && typeof (environment[constName]) !== 'undefined') {
+        value = environment[constName];
     }
 
     return value;
