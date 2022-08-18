@@ -25,84 +25,87 @@ class _SLzLU50givH77Rns extends Endpoint {
         const transactionId        = req.query.p0;
         const addressKeyIdentifier = req.query.p1;
         const attributeTypeId      = req.query.p2;
-        fileManager.getBufferByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, req.query.p3, req.query.p4)
-                   .then(({file_data: fileData}) => {
-                       return database.applyShards((shardID) => {
-                           const transactionRepository = database.getRepository('transaction', shardID);
-                           return transactionRepository.listTransactionOutputAttributes({
-                               transaction_id   : transactionId,
-                               attribute_type_id: attributeTypeId
-                           });
-                       }).then(attributes => {
-                           for (const attribute of attributes) {
-                               if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
-                                   const transactionOutputMetadata = JSON.parse(attribute.value);
-                                   try {
-                                       const jsonData                         = JSON.parse(fileData);
-                                       transactionOutputMetadata['file_data'] = {[req.query.p3]: jsonData};
-                                   }
-                                   catch (ignored) {
-                                   }
-                                   res.send({
-                                       status                     : 'synced',
-                                       transaction_output_metadata: transactionOutputMetadata
-                                   });
-                                   return;
-                               }
-                           }
+        fileManager.getAttributesByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, req.query.p3, req.query.p4)
+                   .then(([attributes, transactionData]) => {
+                       return fileManager.getDecryptedBuffer(attributes, transactionData, attributeTypeId, req.query.p3, req.query.p4)
+                                         .then(({file_data: fileData}) => {
+                                             return database.applyShards((shardID) => {
+                                                 const transactionRepository = database.getRepository('transaction', shardID);
+                                                 return transactionRepository.listTransactionOutputAttributes({
+                                                     transaction_id   : transactionId,
+                                                     attribute_type_id: attributeTypeId
+                                                 });
+                                             }).then(attributes => {
+                                                 for (const attribute of attributes) {
+                                                     if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
+                                                         const transactionOutputMetadata = JSON.parse(attribute.value);
+                                                         try {
+                                                             const jsonData                         = JSON.parse(fileData);
+                                                             transactionOutputMetadata['file_data'] = {[req.query.p3]: jsonData};
+                                                         }
+                                                         catch (ignored) {
+                                                         }
+                                                         res.send({
+                                                             status                     : 'synced',
+                                                             transaction_output_metadata: transactionOutputMetadata
+                                                         });
+                                                         return;
+                                                     }
+                                                 }
 
-                           return Promise.reject('transaction_sync_fail');
-                       });
-                   })
-                   .catch(e => {
-                       return database.firstShards(shardId => {
-                           const transactionRepository = database.getRepository('transaction', shardId);
-                           return transactionRepository.getTransaction(transactionId);
-                       }).then(transaction => {
-                           if (!transaction) {
-                               fileSync.addToPendingSync(transactionId, {
-                                   priority   : 1,
-                                   max_retries: 15
-                               });
-                               peer.transactionSyncRequest(transactionId, {
-                                   priority          : 1,
-                                   dispatch_request  : true,
-                                   force_request_sync: true
-                               }).catch(_ => _);
-                               res.send({
-                                   status : 'syncing',
-                                   trigger: 'transaction_not_found'
-                               });
-                               return;
-                           }
+                                                 return Promise.reject('transaction_sync_fail');
+                                             });
+                                         })
+                                         .catch(e => {
+                                             return database.firstShards(shardId => {
+                                                 const transactionRepository = database.getRepository('transaction', shardId);
+                                                 return transactionRepository.getTransaction(transactionId);
+                                             }).then(transaction => {
+                                                 if (!transaction) {
+                                                     fileSync.addToPendingSync(transactionId, {
+                                                         priority   : 1,
+                                                         max_retries: 15
+                                                     });
+                                                     peer.transactionSyncRequest(transactionId, {
+                                                         priority          : 1,
+                                                         dispatch_request  : true,
+                                                         force_request_sync: true
+                                                     }).catch(_ => _);
+                                                     res.send({
+                                                         status : 'syncing',
+                                                         trigger: 'transaction_not_found'
+                                                     });
+                                                     return;
+                                                 }
 
 
-                           return database.applyShards((shardID) => {
-                               const transactionRepository = database.getRepository('transaction', shardID);
-                               return transactionRepository.listTransactionOutputAttributes({
-                                   transaction_id   : transactionId,
-                                   attribute_type_id: attributeTypeId
-                               });
-                           }).then(attributes => {
-                               for (const attribute of attributes) {
-                                   if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
-                                       const transactionOutputMetadata = JSON.parse(attribute.value);
-                                       fileSync.add(transactionId, addressKeyIdentifier, transactionOutputMetadata, Math.floor(transaction.transaction_date.getTime() / 1000), {
-                                           priority   : 1,
-                                           max_retries: 15
-                                       });
-                                       res.send({
-                                           status : 'syncing',
-                                           trigger: e?.code === 'ENOENT' ? 'transaction_data_not_found' : e
-                                       });
-                                       return;
-                                   }
-                               }
+                                                 return database.applyShards((shardID) => {
+                                                     const transactionRepository = database.getRepository('transaction', shardID);
+                                                     return transactionRepository.listTransactionOutputAttributes({
+                                                         transaction_id   : transactionId,
+                                                         attribute_type_id: attributeTypeId
+                                                     });
+                                                 }).then(attributes => {
+                                                     for (const attribute of attributes) {
+                                                         if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
+                                                             const transactionOutputMetadata = JSON.parse(attribute.value);
+                                                             fileSync.add(transactionId, transactionData.address_key_identifier_from, transactionOutputMetadata, Math.floor(transaction.transaction_date.getTime() / 1000), {
+                                                                 priority   : 1,
+                                                                 max_retries: 15
+                                                             });
+                                                             res.send({
+                                                                 status : 'syncing',
+                                                                 trigger: e?.code === 'ENOENT' ? 'transaction_data_not_found' : e
+                                                             });
+                                                             return;
+                                                         }
+                                                     }
 
-                               return Promise.reject('transaction_sync_fail');
-                           });
+                                                     return Promise.reject('transaction_sync_fail');
+                                                 });
 
-                       });
+                                             });
+                                         });
                    })
                    .catch(e => res.send({
                        api_status : 'fail',

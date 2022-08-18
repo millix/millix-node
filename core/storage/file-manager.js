@@ -254,30 +254,32 @@ class FileManager {
     }
 
     getBufferByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, fileHash, fileKey = null) {
-        return this.getAttributesByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, fileHash, fileKey).then(([attributes, data]) => {
-            for (const attribute of attributes) {
-                attribute.value = JSON.parse(attribute.value);
-                if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
-                    const file = _.find(attribute.value.file_list, file => file.hash === fileHash);
-                    if (!file) {
-                        return Promise.reject('file_not_found');
-                    }
+        return this.getAttributesByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, fileHash, fileKey).then(([attributes, data]) => this.getDecryptedBuffer(attributes, data, attributeTypeId, fileHash, fileKey));
+    }
 
-                    const key = fileKey ? Buffer.from(fileKey, 'hex') : file.key || file[wallet.defaultKeyIdentifier]?.key;
-
-                    if (!key) {
-                        return Promise.reject('decrypt_key_not_found');
-                    }
-
-                    const dataType = file.type || 'json';
-                    return this.decryptFile(data.address_key_identifier_from, data.transaction_date, data.transaction_id, file.hash, key, !!fileKey || file.public).then(fileData => ({
-                        file_data: fileData,
-                        mime_type: file.mime_type,
-                        data_type: dataType
-                    }));
+    getDecryptedBuffer(attributes, transactionData, attributeTypeId, fileHash, fileKey = null) {
+        for (const attribute of attributes) {
+            attribute.value = JSON.parse(attribute.value);
+            if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
+                const file = _.find(attribute.value.file_list, file => file.hash === fileHash);
+                if (!file) {
+                    return Promise.reject('file_not_found');
                 }
+
+                const key = fileKey ? Buffer.from(fileKey, 'hex') : file.key || file[wallet.defaultKeyIdentifier]?.key;
+
+                if (!key) {
+                    return Promise.reject('decrypt_key_not_found');
+                }
+
+                const dataType = file.type || 'json';
+                return this.decryptFile(transactionData.address_key_identifier_from, transactionData.transaction_date, transactionData.transaction_id, file.hash, key, !!fileKey || file.public).then(fileData => ({
+                    file_data : fileData,
+                    mime_type : file.mime_type,
+                    data_type : dataType
+                }));
             }
-        });
+        }
     }
 
     getBufferMetaByTransactionAndFileHash(transactionId, addressKeyIdentifier, attributeTypeId, fileHash, fileKey = null) {
@@ -468,9 +470,10 @@ class FileManager {
 
                     if (file.type.endsWith('_meta') && file.name.endsWith('_meta')) {
                         const dataFileName = file.name.substring(0, file.name.length - 5);
-                        keySet[file.name] = keySet[dataFileName];
-                        fileCipher = crypto.createCipher('aes-256-cbc', keySet[file.name]);
-                    } else {
+                        keySet[file.name]  = keySet[dataFileName];
+                        fileCipher         = crypto.createCipher('aes-256-cbc', keySet[file.name]);
+                    }
+                    else {
                         fileCipher = crypto.createCipher('aes-256-cbc', keySet[file.name]);
                     }
 
