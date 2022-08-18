@@ -323,7 +323,7 @@ class FileManager {
             });
         }).then(attributes => {
             for (const attribute of attributes) {
-                if (attribute.attribute_type_id === this.normalizationRepository.get('transaction_output_metadata')) {
+                if (attribute.attribute_type_id === database.getRepository('normalization').get('transaction_output_metadata')) {
                     attribute.value = JSON.parse(attribute.value);
                     const file      = _.find(attribute.value.file_list, file => file.hash === fileHash);
                     if (!file) {
