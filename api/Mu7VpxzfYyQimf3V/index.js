@@ -114,11 +114,11 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
                                         return attributeCallback();
                                     }
 
-                                    const attribute_file_data = {};
-                                    const attribute_file_key  = {};
+                                    const attributeFileData = {};
+                                    const attributeFileKey  = {};
                                     async.eachSeries(attribute.value.file_list, (file, fileReadCallback) => {
-                                        fileManager.getKeyByTransactionAndFileHash(transaction.transaction_id, req.query.p11, file.hash).then(transaction_output_key => {
-                                            attribute_file_key[file.hash] = transaction_output_key;
+                                        fileManager.getKeyByTransactionAndFileHash(transaction.transaction_id, req.query.p11, file.hash).then(transactionOutputKey => {
+                                            attributeFileKey[file.hash] = transactionOutputKey;
                                         }).catch(_ => _);
 
                                         const key = file.key || file[wallet.defaultKeyIdentifier]?.key;
@@ -137,14 +137,14 @@ class _Mu7VpxzfYyQimf3V extends Endpoint {
 
                                         fileManager.decryptFile(transaction.address_key_identifier_from, transaction.transaction_date, transaction.transaction_id, file.hash, key, file.public)
                                                    .then(fileData => {
-                                                       attribute_file_data[file.hash] = JSON.parse(fileData.toString());
+                                                       attributeFileData[file.hash] = JSON.parse(fileData.toString());
                                                        fileReadCallback();
                                                    }).catch(() => fileReadCallback());
                                     }, () => {
                                         attributeCallback();
                                     });
-                                    attribute.file_data          = attribute_file_data;
-                                    attribute.attribute_file_key = attribute_file_key;
+                                    attribute.file_data          = attributeFileData;
+                                    attribute.attribute_file_key = attributeFileKey;
                                 }
                                 else {
                                     attributeCallback();

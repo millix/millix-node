@@ -1,4 +1,4 @@
-const const_value_default = {
+const CONST_VALUE_DEFAULT = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
     'NODE_MILLIX_BUILD_DATE'    : 1656527911,
@@ -16,22 +16,22 @@ try {
 catch (ex) {
 }
 
-function get_const_value(const_name) {
-    if (!Object.keys(const_value_default).includes(const_name)) {
-        throw 'const_value_default is not defined for ' + const_name;
+function getConstValue(constName) {
+    if (!Object.keys(CONST_VALUE_DEFAULT).includes(constName)) {
+        throw 'CONST_VALUE_DEFAULT is not defined for ' + constName;
     }
 
-    let value = const_value_default[const_name];
-    if (environment && typeof (environment[const_name]) !== 'undefined') {
-        value = environment[const_name];
+    let value = CONST_VALUE_DEFAULT[constName];
+    if (environment && typeof (environment[constName]) !== 'undefined') {
+        value = environment[constName];
     }
 
     return value;
 }
 
 
-export const MODE_DEBUG                                        = get_const_value('MODE_DEBUG');
-export const MODE_TEST_NETWORK                                 = get_const_value('MODE_TEST_NETWORK');
+export const MODE_DEBUG                                        = getConstValue('MODE_DEBUG');
+export const MODE_TEST_NETWORK                                 = getConstValue('MODE_TEST_NETWORK');
 export const NODE_DNS_SERVER                                   = [
     '1.1.1.1',
     '8.8.8.8'
@@ -833,10 +833,10 @@ export const DATABASE_ENGINE                                   = 'sqlite';
 export const DATABASE_CONNECTION                               = {};
 export const STORAGE_CONNECTION                                = {};
 export const MILLIX_CIRCULATION                                = 9e15;
-export const NODE_MILLIX_BUILD_DATE                            = get_const_value('NODE_MILLIX_BUILD_DATE');
-export const NODE_MILLIX_VERSION                               = get_const_value('NODE_MILLIX_VERSION');
-export const DATA_BASE_DIR_MAIN_NETWORK                        = get_const_value('DATA_BASE_DIR_MAIN_NETWORK');
-export const DATA_BASE_DIR_TEST_NETWORK                        = get_const_value('DATA_BASE_DIR_TEST_NETWORK');
+export const NODE_MILLIX_BUILD_DATE                            = getConstValue('NODE_MILLIX_BUILD_DATE');
+export const NODE_MILLIX_VERSION                               = getConstValue('NODE_MILLIX_VERSION');
+export const DATA_BASE_DIR_MAIN_NETWORK                        = getConstValue('DATA_BASE_DIR_MAIN_NETWORK');
+export const DATA_BASE_DIR_TEST_NETWORK                        = getConstValue('DATA_BASE_DIR_TEST_NETWORK');
 let DATA_BASE_DIR                                              = MODE_TEST_NETWORK ? DATA_BASE_DIR_TEST_NETWORK : DATA_BASE_DIR_MAIN_NETWORK;
 export const NODE_KEY_PATH                                     = DATA_BASE_DIR + '/node.json';
 export const NODE_CERTIFICATE_KEY_PATH                         = DATA_BASE_DIR + '/node_certificate_key.pem';
@@ -845,7 +845,7 @@ export const WALLET_KEY_PATH                                   = DATA_BASE_DIR +
 export const JOB_CONFIG_PATH                                   = DATA_BASE_DIR + '/job.json';
 export const JOB_CONFIG_VERSION                                = 7;
 export const SHARD_ZERO_NAME                                   = 'shard_zero';
-export const DEBUG_LOG_FILTER                                  = get_const_value('DEBUG_LOG_FILTER');
+export const DEBUG_LOG_FILTER                                  = getConstValue('DEBUG_LOG_FILTER');
 export const CHUNK_SIZE                                        = 50331648; //48MB
 export const MAX_STORAGE_RESERVED                              = 1073741824; //1GB
 export const PEER_ROTATION_MORE_THAN_AVERAGE                   = 0.5;
