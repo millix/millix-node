@@ -29,7 +29,7 @@ try {
 catch (ex) {
 }
 
-function get_const_value(const_name) {
+function getConstValue(const_name) {
     if (!Object.keys(const_value_default).includes(const_name)) {
         throw 'const_value_default is not defined for ' + const_name;
     }
@@ -43,8 +43,8 @@ function get_const_value(const_name) {
 }
 
 
-export const MODE_DEBUG                                        = get_const_value('MODE_DEBUG');
-export const MODE_TEST_NETWORK                                 = get_const_value('MODE_TEST_NETWORK');
+export const MODE_DEBUG                                        = getConstValue('MODE_DEBUG');
+export const MODE_TEST_NETWORK                                 = getConstValue('MODE_TEST_NETWORK');
 export const NODE_DNS_SERVER                                   = [
     '1.1.1.1',
     '8.8.8.8'
@@ -53,10 +53,10 @@ export const NODE_PORT_MAIN_NETWORK                            = 10000;
 export const NODE_PORT_TEST_NETWORK                            = 30000;
 export const NODE_PORT_DISCOVERY_TEST_NETWORK                  = 4000;
 export const NODE_PORT_DISCOVERY_MAIN_NETWORK                  = 2000;
-export const NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK           = get_const_value('NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK');
-export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = get_const_value('NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK');
-export const NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK           = get_const_value('NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK');
-export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = get_const_value('NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK');
+export const NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK           = getConstValue('NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK');
+export const NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK           = getConstValue('NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK');
+export const NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK           = getConstValue('NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK');
+export const NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK           = getConstValue('NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK');
 export const NODE_PORT_STORAGE_RECEIVER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_RECEIVER_TEST_NETWORK : NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK;
 export const NODE_PORT_STORAGE_PROVIDER                        = MODE_TEST_NETWORK ? NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK : NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK;
 export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
@@ -770,14 +770,14 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
-export const CONSENSUS_ROUND_NODE_COUNT                        = get_const_value('CONSENSUS_ROUND_NODE_COUNT');
-export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = get_const_value('CONSENSUS_ROUND_VALIDATION_REQUIRED');
-export const CONSENSUS_ROUND_VALIDATION_MAX                    = get_const_value('CONSENSUS_ROUND_VALIDATION_MAX');
-export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = get_const_value('CONSENSUS_ROUND_NOT_FOUND_MAX');
-export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = get_const_value('CONSENSUS_ROUND_DOUBLE_SPEND_MAX');
+export const CONSENSUS_ROUND_NODE_COUNT                        = getConstValue('CONSENSUS_ROUND_NODE_COUNT');
+export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = getConstValue('CONSENSUS_ROUND_VALIDATION_REQUIRED');
+export const CONSENSUS_ROUND_VALIDATION_MAX                    = getConstValue('CONSENSUS_ROUND_VALIDATION_MAX');
+export const CONSENSUS_ROUND_NOT_FOUND_MAX                     = getConstValue('CONSENSUS_ROUND_NOT_FOUND_MAX');
+export const CONSENSUS_ROUND_DOUBLE_SPEND_MAX                  = getConstValue('CONSENSUS_ROUND_DOUBLE_SPEND_MAX');
 export const CONSENSUS_VALIDATION_DEPTH_MAX                    = 50;
 export const CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX            = 100;
-export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = get_const_value('CONSENSUS_VALIDATION_WAIT_TIME_MAX');
+export const CONSENSUS_VALIDATION_WAIT_TIME_MAX                = getConstValue('CONSENSUS_VALIDATION_WAIT_TIME_MAX');
 export const CONSENSUS_VALIDATION_RETRY_WAIT_TIME              = 10 * 1000;
 export const CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX         = 2;
 export const CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX         = 2;
