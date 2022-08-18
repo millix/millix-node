@@ -17,7 +17,7 @@ catch (ex) {
 }
 
 function get_const_value(const_name) {
-    if (!const_value_default[const_name]) {
+    if (!Object.keys(const_value_default).includes(const_name)) {
         throw 'const_value_default is not defined for ' + const_name;
     }
 
