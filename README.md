@@ -82,6 +82,11 @@ Anyone and everyone is welcome to contribute. Please take a moment to review the
 2. Make changes and test
 3. Submit Pull Request with comprehensive description of changes
 
+## run in testnet
+update core/config/environment.js and set test mode to true
+```
+environment['MODE_TEST_NETWORK']          = false;
+```
 
 ## Release Schedules
 

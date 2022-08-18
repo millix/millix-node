@@ -73,13 +73,14 @@ class Server {
                         module = require('./' + api.api_id + '/index');
                     }
                     catch (e) {
+                        console.error(e);
                     }
 
                     if (module) {
                         module.default.register(app, api.permission);
                     }
                     else {
-                        console.log('api source code not found');
+                        console.log(api.api_id + ' api source code not found');
                         database.getRepository('api').removeAPI(api.api_id);
                     }
                 });

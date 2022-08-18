@@ -1,3 +1,4 @@
 node_modules
 package-lock.json
 data/keys.json
+/core/config/environment.js
