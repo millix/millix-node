@@ -370,6 +370,15 @@
       "enable": true
     },
     {
+      "id": "yyCtgjuFu9mx0edg",
+      "name": "list_transaction_output_attribute_received",
+      "description": "returns received transaction attribute records from table transaction_output_attribute",
+      "method": "GET",
+      "version_released": "1.21.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "GktuwZlVP39gty6v",
       "name": "new_session_with_phrase",
       "description": "uses the passphrase and 24 word mnemonic phrase to set the active wallet used in the session by the node",
