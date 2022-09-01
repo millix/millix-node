@@ -12,28 +12,30 @@ export default class Keychain {
         this.normalizationRepository = repository;
     }
 
-    addAddress(walletID, isChange, addressPosition, addressBase, addressVersion, addressKeyIdentifier, addressAttribute) {
+    addAddress(walletID, isChange, addressPosition, addressBase, addressVersion, addressKeyIdentifier, addressAttribute, status = 1) {
         let address = addressBase + addressVersion + addressKeyIdentifier;
 
         return new Promise((resolve, reject) => {
             this.database.serialize(() => {
                 let errKeychain, errKeychainAddress;
                 this.database.run( // IGNORE in case the address was already generated
-                    'INSERT INTO keychain (wallet_id, is_change, address_position, address_base) VALUES (?,?,?,?)',
+                    'INSERT INTO keychain (wallet_id, is_change, address_position, address_base, status) VALUES (?,?,?,?,?)',
                     [
                         walletID,
                         isChange,
                         addressPosition,
-                        addressBase
+                        addressBase,
+                        status
                     ],
                     err => errKeychain = err);
 
-                this.database.run('INSERT INTO keychain_address(address, address_base, address_version, address_key_identifier) VALUES(?,?,?,?)',
+                this.database.run('INSERT INTO keychain_address(address, address_base, address_version, address_key_identifier, status) VALUES(?,?,?,?,?)',
                     [
                         address,
                         addressBase,
                         addressVersion,
-                        addressKeyIdentifier
+                        addressKeyIdentifier,
+                        status
                     ],
                     err => errKeychainAddress = err);
 
@@ -80,7 +82,7 @@ export default class Keychain {
                         console.log(err);
                         return reject(err);
                     }
-                    resolve(row.address_position + 1);
+                    resolve(row.address_position !== undefined ? row.address_position + 1 : undefined);
                 }
             );
         });
@@ -165,6 +167,46 @@ export default class Keychain {
         });
     }
 
+    activateAndGetNextAddress(walletId) {
+        return new Promise((resolve, reject) => {
+            this.database.all('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value \
+            FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
+            LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
+            LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id \
+            WHERE ka.status = 0 AND k.wallet_id=? ORDER BY k.address_position LIMIT 1', [walletId],
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    const nextAddress = this._processAddressList(rows)[0];
+
+                    if (!nextAddress) {
+                        return reject();
+                    }
+
+                    this.database.run('UPDATE keychain_address SET status = 1 WHERE address_base = ?', [nextAddress.address_base],
+                        (err) => {
+                            if (err) {
+                                return reject(err);
+                            }
+
+                            this.database.run('UPDATE keychain SET status = 1 WHERE address_base = ?', [nextAddress.address_base],
+                                (err) => {
+                                    if (err) {
+                                        return reject(err);
+                                    }
+                                });
+
+                            nextAddress.status = 1;
+                            resolve(nextAddress);
+                        });
+                }
+            );
+        });
+    }
+
     getWalletDefaultKeyIdentifier(walletID) {
         return new Promise(resolve => {
             this.database.get('SELECT address_base as address_key_identifier FROM keychain WHERE wallet_id = ? AND is_change=0 AND address_position=0', [walletID], (err, row) => {
@@ -203,7 +245,10 @@ export default class Keychain {
 
     listWalletAddresses(where, orderBy, limit) {
         return new Promise((resolve, reject) => {
-            const {sql, parameters} = Database.buildQuery('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value \
+            const {
+                      sql,
+                      parameters
+                  } = Database.buildQuery('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value \
                  FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
                  LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
                  LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id', where, 'ka.' + orderBy, limit);
