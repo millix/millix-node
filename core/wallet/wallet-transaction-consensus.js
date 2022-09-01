@@ -1072,6 +1072,12 @@ export class WalletTransactionConsensus {
     }
 
     doValidateTransaction() {
+
+        if (wallet.isGeneratingWalletAddresses) {
+            console.log('[wallet-transaction-consensus] wait for wallet address generation to finish');
+            return Promise.resolve();
+        }
+
         let consensusCount = 0;
         for (let k of _.keys(this._consensusRoundState)) {
             if (this._consensusRoundState[k].active) {
@@ -1157,15 +1163,58 @@ export class WalletTransactionConsensus {
                 ];
             }
         }).then(([pendingTransactions, isTransactionFundingWallet]) => {
-            console.log('[wallet-transaction-consensus] get unstable transactions done. is wallet transaction', isTransactionFundingWallet);
-            let rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id) || this._consensusRoundState[t.transaction_id]);
-            let pendingTransaction   = pendingTransactions[0];
+            const rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id) || this._consensusRoundState[t.transaction_id]);
+            let pendingTransaction     = pendingTransactions[0];
 
             if (!pendingTransaction) {
                 pendingTransaction = rejectedTransactions[0];
             }
 
-            const transactionID = pendingTransaction.transaction_id;
+            if (!isTransactionFundingWallet) {
+                return [
+                    pendingTransaction,
+                    isTransactionFundingWallet
+                ];
+            }
+
+            return database.applyShards(shardID => {
+                const transactionRepository = database.getRepository('transaction', shardID);
+                return transactionRepository.getTransactionOutputs(pendingTransaction.transaction_id);
+            }).then(outputs => {
+                outputs            = outputs.filter(output => output.address_key_identifier === wallet.defaultKeyIdentifier);
+                const totalOutputs = outputs.length;
+
+                if (totalOutputs === 0) {
+                    return [
+                        pendingTransaction,
+                        isTransactionFundingWallet
+                    ];
+                }
+
+                return wallet.updateTransactionOutputWithAddressInformation(outputs)
+                             .then(processedOutputs => {
+                                 if (processedOutputs.length !== totalOutputs) {
+                                     // invalidate current transaction because
+                                     // some output sent to this wallet cannot
+                                     // be processed
+                                     return database.applyShards((shardID) => {
+                                         const transactionRepository = database.getRepository('transaction', shardID);
+                                         return transactionRepository.invalidateTransaction(pendingTransaction.transaction_id);
+                                     }).then(() => Promise.reject());
+                                 }
+
+                                 return [
+                                     pendingTransaction,
+                                     isTransactionFundingWallet
+                                 ];
+                             }).catch(() => Promise.reject({transaction_id: pendingTransaction.transaction_id}));
+            });
+
+        }).then(([pendingTransaction, isTransactionFundingWallet]) => {
+            console.log('[wallet-transaction-consensus] get unstable transactions done. is wallet transaction', isTransactionFundingWallet);
+
+
+            const transactionID = pendingTransaction?.transaction_id;
 
             if (!pendingTransaction) {
                 console.log('[wallet-transaction-consensus] no pending funds available for validation.');
