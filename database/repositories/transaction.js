@@ -769,6 +769,9 @@ export default class Transaction {
                     transactionStatus = transaction.status === 3 ? 3 :
                                         Math.round(expireDate.getTime() / 1000) >= transactionDate ? 2 : 1;
                 }
+                if (!transactionStableDate) {
+                    transactionStatus = 1;
+                }
                 else {
                     transactionStatus = transaction.status;
                 }
@@ -2045,13 +2048,13 @@ export default class Transaction {
     resetTransaction(transactionID) {
         return new Promise((resolve) => {
             this.database.serialize(() => {
-                this.database.run('UPDATE transaction_input SET double_spend_date = NULL, is_double_spend = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                this.database.run('UPDATE transaction_input SET double_spend_date = NULL, is_double_spend = 0, status = 1 WHERE transaction_id = ?', [transactionID], (err) => {
                     err && console.log('[Database] reset transaction inputs. [message] ', err);
                 });
-                this.database.run('UPDATE transaction_output SET stable_date = NULL, is_stable = 0, spent_date = NULL, is_spent = 0, double_spend_date = NULL, is_double_spend = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                this.database.run('UPDATE transaction_output SET stable_date = NULL, is_stable = 0, spent_date = NULL, is_spent = 0, double_spend_date = NULL, is_double_spend = 0, status = 1 WHERE transaction_id = ?', [transactionID], (err) => {
                     err && console.log('[Database] reset transaction outputs. [message] ', err);
                 });
-                this.database.run('UPDATE `transaction` SET stable_date = NULL, is_stable = 0 WHERE transaction_id = ?', [transactionID], (err) => {
+                this.database.run('UPDATE `transaction` SET stable_date = NULL, is_stable = 0, status = 1 WHERE transaction_id = ?', [transactionID], (err) => {
                     err && console.log('[Database] Failed pruning transactions. [message] ', err);
                     resolve();
                 });
