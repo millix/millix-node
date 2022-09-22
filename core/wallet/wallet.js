@@ -11,7 +11,7 @@ import peer from '../../net/peer';
 import async from 'async';
 import _ from 'lodash';
 import genesisConfig from '../genesis/genesis-config';
-import config, {NODE_MILLIX_BUILD_DATE, NODE_MILLIX_VERSION} from '../config/config';
+import config from '../config/config';
 import statsApi from '../../api/rKclyiLtHx0dx55M/index';
 import network from '../../net/network';
 import mutex from '../mutex';
@@ -177,13 +177,18 @@ class Wallet {
         return this.defaultKeyIdentifier;
     }
 
-    deriveAndSaveAddress(walletID, isChange, addressPosition) {
+    deriveAndSaveAddress(walletID, isChange, addressPosition, addressKeyIdentifier, status = 1) {
         const keychain = database.getRepository('keychain');
         let {
                 address          : addressBase,
                 address_attribute: addressAttribute
             }          = this.deriveAddress(walletID, isChange, addressPosition);
-        return keychain.getWalletDefaultKeyIdentifier(walletID)
+        return !!addressKeyIdentifier ?
+               keychain.addAddress(walletID, isChange, addressPosition, addressBase,
+                   database.getRepository('address').getDefaultAddressVersion().version,
+                   addressKeyIdentifier || addressBase, addressAttribute, status)
+                                      :
+               keychain.getWalletDefaultKeyIdentifier(walletID)
                        .then(addressKeyIdentifier => [
                            addressBase,
                            addressAttribute,
@@ -207,8 +212,10 @@ class Wallet {
     }
 
     addNewAddress(walletID) {
-        return database.getRepository('keychain').getNextAddressPosition(walletID)
-                       .then((addressPosition) => this.deriveAndSaveAddress(walletID, 0, addressPosition))
+        const keychain = database.getRepository('keychain');
+        return keychain.activateAndGetNextAddress(walletID)
+                       .catch(() => keychain.getNextAddressPosition(walletID)
+                                            .then((addressPosition) => this.deriveAndSaveAddress(walletID, 0, addressPosition)))
                        .then(address => {
                            eventBus.emit('newAddress', address);
                            console.log('New address for wallet ' + walletID + ' is ' + address.address);
@@ -276,36 +283,17 @@ class Wallet {
     }
 
     updateTransactionOutputWithAddressInformation(outputs) {
-        const addressRepository  = database.getRepository('address');
         const keychainRepository = database.getRepository('keychain');
         return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
             const mapAddresses = {};
             addresses.forEach(address => mapAddresses[address.address] = address);
-
+            const outputToRemoveList = [];
             for (let i = 0; i < outputs.length; i++) {
                 const output        = outputs[i];
                 const outputAddress = mapAddresses[output.address];
                 if (!outputAddress) {
                     console.log('[wallet][warn] output address not found', output);
-                    const {
-                              address: missingAddress,
-                              version
-                          } = addressRepository.getAddressComponent(output.address);
-                    //TODO: find a better way to get the address
-                    for (let addressPosition = 0; addressPosition < 2 ** 32; addressPosition++) {
-                        let {
-                                address          : addressBase,
-                                address_attribute: addressAttribute
-                            } = this.deriveAddress(this.getDefaultActiveWallet(), 0, addressPosition);
-                        if (addressBase === missingAddress) {
-                            output['address_version']        = version;
-                            output['address_key_identifier'] = this.defaultKeyIdentifier;
-                            output['address_base']           = addressBase;
-                            output['address_position']       = addressPosition;
-                            output['address_attribute']      = addressAttribute;
-                            break;
-                        }
-                    }
+                    outputToRemoveList.push(output);
                 }
                 else {
                     output['address_version']        = outputAddress.address_version;
@@ -315,6 +303,9 @@ class Wallet {
                     output['address_attribute']      = outputAddress.address_attribute;
                 }
             }
+
+            _.pull(outputs, outputToRemoveList);
+
             return outputs;
         });
     }
@@ -1446,9 +1437,9 @@ class Wallet {
                                      return Promise.reject('[wallet] cannot create node about attribute');
                                  }
                                  return nodeRepository.addNodeAttribute(network.nodeID, 'node_about', JSON.stringify({
-                                     node_version    : NODE_MILLIX_VERSION,
+                                     node_version    : config.NODE_MILLIX_VERSION,
                                      node_create_date: versionInfo.create_date,
-                                     node_update_date: NODE_MILLIX_BUILD_DATE
+                                     node_update_date: config.NODE_MILLIX_BUILD_DATE
                                  }));
                              });
           })
@@ -1919,6 +1910,39 @@ class Wallet {
         }
     }
 
+    _generateWalletAddresses() {
+        this.isGeneratingWalletAddresses = true;
+        const start                      = Date.now();
+        const nAddresses                 = config.WALLET_ADDRESS_GENERATE_MAX;
+        const concurrency                = 4;
+
+        const keychain = database.getRepository('keychain');
+        keychain.getNextAddressPosition(this.getDefaultActiveWallet())
+                .then(nextAddressPosition => {
+
+                    if (nextAddressPosition === undefined) {
+                        nextAddressPosition = 0;
+                    }
+
+                    if (nextAddressPosition >= nAddresses) {
+                        this.isGeneratingWalletAddresses = false;
+                        return;
+                    }
+
+                    async.timesLimit(nAddresses - nextAddressPosition, concurrency, (i, callback) => {
+                        const addressPosition = i + nextAddressPosition;
+                        if (addressPosition % 1000 === 0 && addressPosition !== 0) {
+                            console.log(`[wallet] took  ${(Date.now() - start) / 1000}s to process ${addressPosition} addresses`);
+                        }
+                        this.deriveAndSaveAddress(this.getDefaultActiveWallet(), 0, addressPosition, this.defaultKeyIdentifier, 0).catch(_ => _).then(() => callback());
+                    }, () => {
+                        console.log(`[wallet] took  ${(Date.now() - start) / 1000}s to process ${nAddresses} addresses`);
+                        this.isGeneratingWalletAddresses = false;
+                    });
+
+                });
+    }
+
     _initializeEvents() {
         walletSync.initialize()
                   .then(() => walletTransactionConsensus.initialize())
@@ -1996,6 +2020,9 @@ class Wallet {
                                                   eventBus.once('network_ready', () => this.updateDefaultAddressAttribute().then(_ => _));
                                               }
                                               this.initialized = true;
+
+                                              this._generateWalletAddresses();
+
                                               return walletID;
                                           });
                        })
