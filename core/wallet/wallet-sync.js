@@ -93,7 +93,7 @@ export class WalletSync {
         this.transactionSpendWalletQueue = new Queue((batch, done) => {
             console.log('[wallet-sync] wallet transaction output spend sync stats ', this.transactionSpendWalletQueue.getStats());
             if (batch.length === 0) {
-                return setTimeout(done, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
+                return setTimeout(done, 60000);
             }
 
             const transactionOutputToSyncList = [];
@@ -164,7 +164,7 @@ export class WalletSync {
                     return setTimeout(() => {
                         done();
                         transactionOutputToQueue.forEach(output => this.transactionSpendWalletQueue.push(output));
-                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
+                    }, 60000);
                 });
             });
         }, {
@@ -175,7 +175,7 @@ export class WalletSync {
                 path        : path.join(config.DATABASE_CONNECTION.FOLDER, config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_WALLET_QUEUE),
                 setImmediate: global.setImmediate
             }),
-            batchSize               : this.CARGO_MAX_LENGHT,
+            batchSize               : 100,
             precondition            : function(cb) {
                 if (network.registeredClients.length > 0) {
                     cb(null, true);
@@ -195,7 +195,7 @@ export class WalletSync {
         this.transactionSpendQueue = new Queue((batch, done) => {
             console.log('[wallet-sync] transaction output spend sync stats ', this.transactionSpendQueue.getStats());
             if (batch.length === 0) {
-                return setTimeout(done, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
+                return setTimeout(done, 60000);
             }
             const transactionOutputToSyncList = [];
             async.eachSeries(batch, (job, callback) => {
@@ -264,7 +264,7 @@ export class WalletSync {
                     return setTimeout(() => {
                         done();
                         transactionOutputToQueue.forEach(output => this.transactionSpendQueue.push(output));
-                    }, config.NETWORK_LONG_TIME_WAIT_MAX * 2);
+                    }, 60000);
                 });
             });
         }, {
@@ -275,7 +275,7 @@ export class WalletSync {
                 path        : path.join(config.DATABASE_CONNECTION.FOLDER, config.DATABASE_CONNECTION.FILENAME_TRANSACTION_SPEND_QUEUE),
                 setImmediate: global.setImmediate
             }),
-            batchSize               : this.CARGO_MAX_LENGHT,
+            batchSize               : 100,
             precondition            : function(cb) {
                 if (network.registeredClients.length > 0) {
                     cb(null, true);
