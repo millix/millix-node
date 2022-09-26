@@ -1,8 +1,8 @@
 const CONST_VALUE_DEFAULT = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
-    'NODE_MILLIX_BUILD_DATE'    : 1662071942,
-    'NODE_MILLIX_VERSION'       : '1.21.1',
+    'NODE_MILLIX_BUILD_DATE'    : 1664207584,
+    'NODE_MILLIX_VERSION'       : '1.21.4',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
@@ -895,7 +895,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '20';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '21';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';

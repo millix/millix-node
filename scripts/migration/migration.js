@@ -5,7 +5,7 @@ export default class Migration {
     constructor() {
     }
 
-    runMigrateScript(db, migrationFile, parameters = {}) {
+    runMigrateScript(db, migrationFile, parameters = {}, checkDatabase = false) {
         return new Promise((resolve, reject) => {
             fs.readFile(migrationFile, 'utf8', (err, data) => {
                 if (err) {
@@ -19,6 +19,10 @@ export default class Migration {
                 db.exec(data, function(err) {
                     if (err) {
                         return reject(err);
+                    }
+
+                    if (!checkDatabase) {
+                        return resolve();
                     }
 
                     db.serialize(() => {

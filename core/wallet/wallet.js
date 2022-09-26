@@ -602,7 +602,7 @@ class Wallet {
     getTransactionCount() {
         return database.applyShards((shardID) => {
             return database.getRepository('transaction', shardID)
-                           .getTransactionCountByAddressKeyIdentifier(this.defaultKeyIdentifier);
+                           .getReceivedTransactionOutputCountByAddressKeyIdentifier(this.defaultKeyIdentifier);
         }).then(transactionCountList => {
             return _.sum(transactionCountList);
         });
@@ -1880,7 +1880,7 @@ class Wallet {
 
     _propagateTransactions() {
         const transactionRepository = database.getRepository('transaction');
-        transactionRepository.getExpiredTransactions()
+        transactionRepository.getTransactionsNotHibernated()
                              .then(transactions => {
                                  if (transactions.length > 0) {
                                      peer.propagateTransactionList(transactions);
