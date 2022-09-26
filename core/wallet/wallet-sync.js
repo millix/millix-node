@@ -303,6 +303,10 @@ export class WalletSync {
             setImmediate: global.setImmediate
         });
 
+        if (!config.MODE_NODE_SYNC_FULL) {
+            return this.updateSyncTransactionSpend();
+        }
+
         return database.applyShards(shardID => {
             return database.getRepository('transaction', shardID)
                            .getMissingInputTransactions();
