@@ -33,7 +33,7 @@ export default class Transaction {
         return Math.round(expireDate.getTime() / 1000) >= transactionDate;
     }
 
-    getExpiredTransactions() {
+    getTransactionsNotHibernated() {
         return new Promise((resolve) => {
             this.database.all(`select transaction_id, transaction_date
                                from 'transaction'
@@ -239,43 +239,25 @@ export default class Transaction {
     getWalletUnstableTransactions(addressKeyIdentifier, excludeTransactionIDList) {
         const params = [addressKeyIdentifier].concat(excludeTransactionIDList);
         return new Promise(resolve => {
-            async.eachOfSeries([
-                /* get transaction by input using wallet funds */
-                'SELECT DISTINCT `transaction`.* FROM `transaction` ' +
-                'INNER JOIN transaction_input ON transaction_input.transaction_id = `transaction`.transaction_id ' +
-                'INNER JOIN transaction_output ON transaction_output.transaction_id = transaction_input.transaction_id ' +
-                'WHERE transaction_input.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100',
-                /* get transaction by wallet output */
+            this.database.all(/* get transaction by wallet output */
                 'SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                 'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
                 'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100',
-                /* get transaction by output received by active wallet */
-                'SELECT DISTINCT `transaction`.* FROM transaction_input ' +
-                'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_input.transaction_id ' +
-                'INNER JOIN `transaction_output` ON `transaction_output`.transaction_id = transaction_input.transaction_id ' +
-                'WHERE transaction_input.output_transaction_id IN (SELECT transaction_input.transaction_id FROM transaction_input INNER JOIN transaction_output ON transaction_input.transaction_id =  transaction_output.transaction_id WHERE transaction_input.address_key_identifier = ?1 AND +transaction_output.is_stable = 1 AND +transaction_output.is_spent = 1 AND transaction_output.status = 2) ' +
-                'AND transaction_input.address_key_identifier != ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') +
-                'AND +`transaction`.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100'
-            ], (sql, idx, callback) => {
-                this.database.all(sql, params, (err, rows) => {
-                    if (rows && rows.length > 0) {
-                        return callback(rows);
+                params, (err, rows) => {
+                    if (err) {
+                        console.log('[database] error', err);
                     }
-                    else if (err) {
-                        console.log(err);
-                    }
-                    callback();
+                    resolve(rows || []);
                 });
-            }, data => resolve(data || []));
         });
     }
 
     countAllUnstableTransactions() {
         return new Promise((resolve, reject) => {
-            this.database.get(`select ((select count(1)
+            this.database.get(`select ((select count(*)
                                         from 'transaction'
                                         where is_stable = 0) +
-                                       (select count(1)
+                                       (select count(*)
                                         from shard_zero.'transaction'
                                         where is_stable = 0)) as count;`, (err, data) => {
                 if (err) {
@@ -288,9 +270,9 @@ export default class Transaction {
 
     countAllTransactions() {
         return new Promise((resolve, reject) => {
-            this.database.get(`select ((select count(1)
+            this.database.get(`select ((select count(*)
                                         from 'transaction') +
-                                       (select count(1)
+                                       (select count(*)
                                         from shard_zero.'transaction')) as count;`, (err, data) => {
                 if (err) {
                     return reject(err);
@@ -500,6 +482,25 @@ export default class Transaction {
                         return reject(err);
                     }
                     resolve(_.uniqBy(rows, row => row.transaction_id + row.output_position));
+                }
+            );
+        });
+    }
+
+
+    getReceivedTransactionOutputCountByAddressKeyIdentifier(keyIdentifier) {
+        return new Promise((resolve, reject) => {
+            this.database.get(
+                `SELECT count(*) as transaction_count FROM transaction_output o
+                    WHERE o.address_key_identifier = ?`,
+                [
+                    keyIdentifier
+                ],
+                (err, row) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(row.transaction_count);
                 }
             );
         });
@@ -753,7 +754,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
                 const cachedTransaction = transaction;
-                transaction = _.cloneDeep(cachedTransaction);
+                transaction             = _.cloneDeep(cachedTransaction);
 
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
@@ -2901,21 +2902,21 @@ export default class Transaction {
                 TEMPORARY TABLE transaction_expired AS
             WITH expired AS (SELECT t.transaction_id
                              FROM 'transaction' t
-                             WHERE t.transaction_date <= ${seconds}
-                               AND t.status = 1
-                               AND t.transaction_id NOT IN
+                             WHERE t.transaction_date <= ?
+                               AND NOT EXISTS
                                    (SELECT o.transaction_id
                                     FROM transaction_output o
                                     WHERE is_stable = 0
                                       AND o.address_key_identifier IN
                                           (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})
-                                    UNION
-                                    SELECT o.transaction_id
-                                    FROM transaction_output o
-                                             INNER JOIN transaction_input i
-                                                        ON i.transaction_id = o.transaction_id
+                                      AND o.transaction_id = t.transaction_id)
+                               AND NOT EXISTS
+                                   (SELECT o.transaction_id
+                                    FROM transaction_input i
+                                    INNER JOIN transaction_output o
+                                    ON i.transaction_id = t.transaction_id AND o.transaction_id = t.transaction_id
                                     WHERE is_stable = 0
-                                      AND i.address_key_identifier IN
+                                        AND +i.address_key_identifier IN
                                           (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})))
             SELECT *
             FROM expired;
@@ -2930,7 +2931,7 @@ export default class Transaction {
             UPDATE 'transaction'
             set status = 2
             WHERE transaction_id IN
-                  (SELECT transaction_id FROM transaction_expired);
+                (SELECT transaction_id FROM transaction_expired);
             DROP TABLE IF EXISTS transaction_expired;`, err => {
                 if (err) {
                     console.log('[Database] Failed updating transactions to expired. [message] ', err);
@@ -2947,7 +2948,7 @@ export default class Transaction {
         return new Promise(resolve => {
             this.database.exec(`
                 create
-                    temporary table transaction_unspent as
+                temporary table transaction_unspent as
                 with outputs
                          as (select o.transaction_id, o.output_position
                              from transaction_output o
