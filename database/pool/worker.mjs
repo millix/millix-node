@@ -20,18 +20,18 @@ function initializeDB(databaseRootFolder, databaseName, initializeScriptFile) {
 
         database = new sqlite3.Database(dbFile, (err) => {
             if (err) {
-                return reject(err.message);
+                return reject(`${err.message} - ${dbFile}`);
             }
 
             if (doInitialize) {
                 fs.readFile(initializeScriptFile, 'utf8', (err, data) => {
                     if (err) {
-                        return reject(err.message);
+                        return reject(`${err.message} - ${dbFile}`);
                     }
 
                     database.exec(data, (err) => {
                         if (err) {
-                            return reject(err.message);
+                            return reject(`${err.message} - ${dbFile}`);
                         }
                         database.run('PRAGMA journal_mode = WAL', () => database.run('PRAGMA synchronous = NORMAL', () => resolve()));
                     });

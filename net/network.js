@@ -1,6 +1,6 @@
 import WebSocket, {Server} from 'ws';
 import _ from 'lodash';
-import config, {NODE_STORAGE_PORT_CHECK} from '../core/config/config';
+import config from '../core/config/config';
 import database from '../database/database';
 import eventBus from '../core/event-bus';
 import crypto from 'crypto';
@@ -52,6 +52,8 @@ class Network {
             'transaction_sync'
         ]);
         this.initialized                           = false;
+        this._connectingToInactiveNodes            = false;
+        this._connectingToOnlineNodes              = false;
         this.dht                                   = null;
         this.noop                                  = () => {
         };
@@ -147,9 +149,9 @@ class Network {
             ws.setMaxListeners(20); // avoid warning
             ws.createTime = Date.now();
 
-            ws.once('open', () => {
-                console.log('[network outgoing] Open connection to ' + url);
+            console.log('[network outgoing] Open connection to ' + url);
 
+            ws.once('open', () => {
                 ws.node                  = url;
                 ws.nodePort              = port;
                 ws.nodePortApi           = portApi;
@@ -192,7 +194,6 @@ class Network {
             });
 
             ws.on('message', this._onWebsocketMessage.bind(this, ws));
-            console.log('[network outgoing] connecting to node');
 
         });
     }
@@ -324,35 +325,47 @@ class Network {
                                 this.addNode(prefix, host, port, portApi);
                             }
                         });
-                        this.retryConnectToInactiveNodes().then(_ => _).catch(_ => _);
                     });
                 });
     }
 
     retryConnectToOnlineNodes() {
+        if (!this.initialized || this._connectingToOnlineNodes) {
+            return Promise.resolve();
+        }
+
+        console.log('[network outbound] try connecting to online nodes');
+        this._connectingToOnlineNodes = true;
+
         return new Promise(resolve => {
             async.eachLimit(_.shuffle(_.keys(this._nodeListOnline)), 4, (nodeURL, callback) => {
                 const node = this._nodeList[nodeURL];
 
                 if (this._nodeListOnline[nodeURL] < Date.now() - 600000) {
                     delete this._nodeListOnline[nodeURL];
-                    return callback();
+                    return setTimeout(callback, 1000);
                 }
                 else if (this._nodeRegistry[node.node_id]) {
-                    return callback();
+                    return setTimeout(callback, 1000);
                 }
 
                 this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
                     .then(() => setTimeout(callback, 1000))
                     .catch(() => setTimeout(callback, 1000));
-            }, () => resolve());
+            }, () => {
+                this._connectingToOnlineNodes = false;
+                resolve();
+            });
         });
     }
 
     retryConnectToInactiveNodes() {
-        if (!this.initialized) {
+        if (!this.initialized || this._connectingToInactiveNodes) {
             return Promise.resolve();
         }
+
+        this._connectingToInactiveNodes = true;
+
         let inactiveClients = new Set();
         _.each(_.keys(this._nodeList), url => {
             let node = this._nodeList[url];
@@ -371,7 +384,10 @@ class Network {
                 this._connectTo(node.node_prefix, node.node_address, node.node_port, node.node_port_api, node.node_id)
                     .then(() => setTimeout(callback, 1000))
                     .catch(() => setTimeout(callback, 1000));
-            }, () => resolve());
+            }, () => {
+                this._connectingToInactiveNodes = false;
+                resolve();
+            });
         });
     }
 
@@ -929,13 +945,13 @@ class Network {
                 });
                 client.createTime = Date.now();
                 client.once('open', () => {
-                    console.log('[network outgoing] natcheck ok for url ' + url);
+                    console.log('[network natcheck] natcheck ok for url ' + url);
                     client.close(1000, 'close connection');
                     resolve();
                 });
 
                 client.on('error', (e) => {
-                    console.log('[network outgoing] natcheck error in connection to ' + url + '. disconnected after ' + (Date.now() - client.createTime) + 'ms.', e.code);
+                    console.log('[network natcheck] natcheck error in connection to ' + url + '. disconnected after ' + (Date.now() - client.createTime) + 'ms.', e.code);
                     client.close(1000, 'close connection');
                     reject();
                 });
@@ -977,7 +993,7 @@ class Network {
                 }, ws);
             }
         });
-        console.log('[network outgoing] natcheck connecting to node ' + url);
+        console.log('[network natcheck] natcheck connecting to node ' + url);
     }
 
     _onEndpointReachableCheck(content, ws) {
