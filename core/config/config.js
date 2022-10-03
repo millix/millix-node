@@ -12,6 +12,8 @@ const const_value_default = {
     'NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK': 6001,
     'NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK': 8001,
 
+    'MODE_NODE_SYNC_FULL' : false,
+
     'CONSENSUS_ROUND_NODE_COUNT'         : 12,
     'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
     'CONSENSUS_ROUND_VALIDATION_MAX'     : 3,
@@ -73,7 +75,7 @@ export const RPC_INTERFACE                                     = '0.0.0.0';
 export const ACTIVE_LANGUAGE_GUID                              = 'BEpDwgG53';
 export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
-export const MODE_NODE_SYNC_FULL                               = true;
+export const MODE_NODE_SYNC_FULL                               = getConstValue('MODE_NODE_SYNC_FULL');
 export const MODE_STORAGE_SYNC                                 = true;
 export const MODE_STORAGE_SYNC_FULL                            = false;
 export const FORCE_QUEUE_UPDATE                                = false;
