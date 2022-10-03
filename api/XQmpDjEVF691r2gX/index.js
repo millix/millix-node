@@ -8,6 +8,7 @@ import config from '../../core/config/config';
 import base58 from 'bs58';
 import busboy from 'busboy';
 import wallet from '../../core/wallet/wallet';
+import cache from '../../core/cache';
 
 
 /**
@@ -296,6 +297,8 @@ class _XQmpDjEVF691r2gX extends Endpoint {
                 return database.applyShards((shardID) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.getFreeOutput(wallet.defaultKeyIdentifier);
+                }).then((outputs) => {
+                    return wallet.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)));
                 }).then((outputs) => {
                     if (!outputs || (transactionPartialPayload.transaction_data_type === 'tangled_nft' && outputs.length === 0)) {
                         return Promise.reject({

@@ -841,6 +841,8 @@ export const WALLET_AGGREGATION_TRANSACTION_MAX                = 1;
 export const WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT       = 1;
 export const WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT        = 120;
 export const WALLET_AGGREGATION_CONSUME_SMALLER_FIRST          = true;
+export const WALLET_AGGREGATION_AUTO_ENABLED                   = true;
+export const WALLET_AGGREGATION_AUTO_OUTPUT_MIN                = 50;
 export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
@@ -895,7 +897,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '21';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '22';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -976,6 +978,8 @@ export default {
     NETWORK_LONG_TIME_WAIT_MAX,
     NETWORK_SHORT_TIME_WAIT_MAX,
     WALLET_ADDRESS_GENERATE_MAX,
+    WALLET_AGGREGATION_AUTO_ENABLED,
+    WALLET_AGGREGATION_AUTO_OUTPUT_MIN,
     WALLET_TRANSACTION_QUEUE_SIZE_MAX,
     WALLET_AGGREGATION_TRANSACTION_MAX,
     WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT,

@@ -262,6 +262,15 @@
       "enable": true
     },
     {
+      "id": "QgbDSAuy1SYgocs6",
+      "name": "reload_configs_from_database",
+      "description": "reloads configurations from the database",
+      "method": "GET",
+      "version_released": "1.21.5",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "BPZZ0l2nTfMSmmpl",
       "name": "get_mnemonic_phrase",
       "description": "returns the 24 word mnemonic phrase for the active session which is stored by default in the millix directory",

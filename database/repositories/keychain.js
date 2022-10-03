@@ -147,6 +147,26 @@ export default class Keychain {
         });
     }
 
+    getAddressesByAddressBase(addressBaseList) {
+        return new Promise((resolve, reject) => {
+            this.database.all(
+                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.create_date, atp.attribute_type, at.value as attribute_value \
+                 FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
+                 LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
+                 LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id \
+                 WHERE ka.address_base IN ( ' + addressBaseList.map(() => '?').join(',') + ' ) ', addressBaseList,
+                (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    resolve(this._processAddressList(rows));
+                }
+            );
+        });
+    }
+
     getAddress(address) {
         return new Promise((resolve, reject) => {
             this.database.all(
