@@ -56,6 +56,7 @@ class _F7APEv5JfCY1siyz extends Endpoint {
             const data = inputList.map(input => ({
                 transaction_id             : input.transaction_id,
                 transaction_date           : input.transaction_date,
+                transaction_create_date    : input.transaction_create_date,
                 address_key_identifier_from: input.address_key_identifier,
                 address_from               : input.address
             }));
