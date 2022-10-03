@@ -10,6 +10,7 @@ function processOutputList(outputList, attributeTypeId, orderBy, limit, shardID,
     const data = outputList.map(output => ({
         transaction_id           : output.transaction_id,
         transaction_date         : output.transaction_date,
+        transaction_create_date  : output.transaction_create_date,
         amount                   : output.amount,
         address_key_identifier_to: output.address_key_identifier,
         address_to               : output.address,

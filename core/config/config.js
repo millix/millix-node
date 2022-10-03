@@ -1,4 +1,4 @@
-const CONST_VALUE_DEFAULT = {
+const const_value_default = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
     'NODE_MILLIX_BUILD_DATE'    : 1664207584,
@@ -11,6 +11,8 @@ const CONST_VALUE_DEFAULT = {
     'NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK': 8000,
     'NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK': 6001,
     'NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK': 8001,
+
+    'MODE_NODE_SYNC_FULL' : false,
 
     'CONSENSUS_ROUND_NODE_COUNT'         : 12,
     'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
@@ -29,14 +31,14 @@ try {
 catch (ex) {
 }
 
-function getConstValue(constName) {
-    if (!Object.keys(CONST_VALUE_DEFAULT).includes(constName)) {
-        throw 'CONST_VALUE_DEFAULT is not defined for ' + constName;
+function getConstValue(const_name) {
+    if (!Object.keys(const_value_default).includes(const_name)) {
+        throw 'const_value_default is not defined for ' + const_name;
     }
 
-    let value = CONST_VALUE_DEFAULT[constName];
-    if (environment && typeof (environment[constName]) !== 'undefined') {
-        value = environment[constName];
+    let value = const_value_default[const_name];
+    if (environment && typeof (environment[const_name]) !== 'undefined') {
+        value = environment[const_name];
     }
 
     return value;
@@ -73,7 +75,7 @@ export const RPC_INTERFACE                                     = '0.0.0.0';
 export const ACTIVE_LANGUAGE_GUID                              = 'BEpDwgG53';
 export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
-export const MODE_NODE_SYNC_FULL                               = true;
+export const MODE_NODE_SYNC_FULL                               = getConstValue('MODE_NODE_SYNC_FULL');
 export const MODE_STORAGE_SYNC                                 = true;
 export const MODE_STORAGE_SYNC_FULL                            = false;
 export const FORCE_QUEUE_UPDATE                                = false;
