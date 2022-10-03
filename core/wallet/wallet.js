@@ -283,14 +283,20 @@ class Wallet {
     }
 
     updateTransactionOutputWithAddressInformation(outputs) {
-        const keychainRepository = database.getRepository('keychain');
-        return keychainRepository.getAddresses(_.uniq(_.map(outputs, output => output.address))).then(addresses => {
-            const mapAddresses = {};
-            addresses.forEach(address => mapAddresses[address.address] = address);
+        const keychainRepository     = database.getRepository('keychain');
+        const addressRepository      = database.getRepository('address');
+        const addressToAddressBaseMap = {};
+        return keychainRepository.getAddressesByAddressBase(_.uniq(_.map(outputs, output => {
+            const {address: addressBase}           = addressRepository.getAddressComponent(output.address);
+            addressToAddressBaseMap[output.address] = addressBase;
+            return addressBase;
+        }))).then(addresses => {
+            const addressBaseToAddressInfoMap = {};
+            addresses.forEach(address => addressBaseToAddressInfoMap[address.address_base] = address);
             const outputToRemoveList = [];
             for (let i = 0; i < outputs.length; i++) {
                 const output        = outputs[i];
-                const outputAddress = mapAddresses[output.address];
+                const outputAddress = addressBaseToAddressInfoMap[addressToAddressBaseMap[output.address]];
                 if (!outputAddress) {
                     console.log('[wallet][warn] output address not found', output);
                     outputToRemoveList.push(output);
@@ -304,7 +310,7 @@ class Wallet {
                 }
             }
 
-            _.pull(outputs, outputToRemoveList);
+            _.pull(outputs, ...outputToRemoveList);
 
             return outputs;
         });
