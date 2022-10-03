@@ -350,7 +350,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "20");
+INSERT INTO schema_information (key, value) VALUES ("version", "22");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
@@ -427,6 +427,8 @@ VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),
        ('transaction_fee_proxy', 'qTCYsDQzIoVbaX8iIjry'),
        ('transaction_fee_network', '9hJcCunmEibhDgoLHzC8'),
        ('transaction_fee_default', 'eoSDGGFKD3dYfcKF1nFO'),
+       ('wallet_aggregation_auto_enabled', 'n2aXBpCWhSVHx8kl8lwj'),
+       ('wallet_aggregation_auto_output_min', 'Q1Ok1vhMqDsKNrADxbhh'),
        ('transaction_output_metadata', 'Adl87cz8kC190Nqc');
 
 INSERT INTO address_attribute_type (address_attribute_type_id, attribute_type) VALUES ('9MgxVxyXsM2EozHVUZgw', 'key_public');

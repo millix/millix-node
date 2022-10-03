@@ -23,6 +23,7 @@ import task from '../task';
 import cache from '../cache';
 import fileExchange from '../storage/file-exchange';
 import fileSync from '../storage/file-sync';
+import utils from '../utils/utils';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -48,6 +49,7 @@ class Wallet {
         this.initialized                     = false;
         this._transactionSendInterrupt       = false;
         this._activeShards                   = new Set();
+        this._isSendingNewTransaction        = false;
 
         this._activeShards.add(genesisConfig.genesis_shard_id);
         if (!config.MODE_TEST_NETWORK) {
@@ -319,6 +321,7 @@ class Wallet {
     processTransaction(transactionFunction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
+                this._isSendingNewTransaction = true;
                 this._transactionSendInterrupt = false;
                 return transactionFunction()
                     .then(transactionList => {
@@ -327,10 +330,12 @@ class Wallet {
                     })
                     .then((transactionList) => {
                         this._transactionSendInterrupt = false;
+                        this._isSendingNewTransaction = false;
                         unlock();
                         resolve(transactionList);
                     })
                     .catch((e) => {
+                        this._isSendingNewTransaction = false;
                         this._transactionSendInterrupt = false;
                         unlock();
                         reject(e);
@@ -349,15 +354,15 @@ class Wallet {
         });
     }
 
-    aggregateOutputs() {
+    aggregateOutputs(outputList) {
         return this.processTransaction(() => {
-            return database.applyShards((shardID) => {
+            return utils.orElsePromise(outputList, () => database.applyShards((shardID) => {
                 const transactionRepository = database.getRepository('transaction', shardID);
                 return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
                                                                              .then(outputs => outputs.length ? resolve(outputs) : reject()));
             }).then((outputs) => {
                 return this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)));
-            }).then((outputs) => {
+            })).then((outputs) => {
                 if (!outputs || outputs.length === 0) {
                     return Promise.reject({
                         error: 'insufficient_balance',
@@ -1490,6 +1495,24 @@ class Wallet {
             });
     }
 
+    _doAutoAggregateTransaction() {
+        if (this._isSendingNewTransaction || !config.WALLET_AGGREGATION_AUTO_ENABLED) {
+            return Promise.resolve();
+        }
+
+        return database.applyShards((shardID) => {
+            const transactionRepository = database.getRepository('transaction', shardID);
+            return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
+                                                                         .then(outputs => outputs.length ? resolve(outputs) : reject()));
+        }).then((outputs) => {
+            return this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)));
+        }).then(outputs => {
+            if (outputs.length >= config.WALLET_AGGREGATION_AUTO_OUTPUT_MIN) {
+                return this.aggregateOutputs(outputs);
+            }
+        });
+    }
+
     _doDAGProgress() {
         return new Promise(resolve => {
             database.getRepository('keychain').getWalletAddresses(this.getDefaultActiveWallet())
@@ -1954,6 +1977,9 @@ class Wallet {
                   .then(() => walletTransactionConsensus.initialize())
                   .then(() => {
                       task.scheduleTask('transaction_propagate', this._propagateTransactions.bind(this), 10000);
+                      task.scheduleTask('auto_aggregate_transaction', this._doAutoAggregateTransaction.bind(this), 600000 /*10 min*/, true);
+                      setTimeout(() => this._doAutoAggregateTransaction(), 150000 /*2.5 min*/);
+
                       eventBus.on('transaction_list_propagate', this.onPropagateTransactionList.bind(this));
                       eventBus.on('peer_connection_new', this._onNewPeerConnection.bind(this));
                       eventBus.on('peer_connection_closed', this._onPeerConnectionClosed.bind(this));
@@ -2049,6 +2075,8 @@ class Wallet {
     stop() {
         this.initialized = false;
         walletSync.close().then(_ => _).catch(_ => _);
+        task.removeTask('transaction_propagate');
+        task.removeTask('auto_aggregate_transaction');
         eventBus.removeAllListeners('peer_connection_new');
         eventBus.removeAllListeners('peer_connection_closed');
         eventBus.removeAllListeners('transaction_new_request_proxy');
