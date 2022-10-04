@@ -285,20 +285,25 @@ class Wallet {
     }
 
     updateTransactionOutputWithAddressInformation(outputs) {
-        const keychainRepository     = database.getRepository('keychain');
-        const addressRepository      = database.getRepository('address');
-        const addressToAddressBaseMap = {};
+        const keychainRepository      = database.getRepository('keychain');
+        const addressRepository       = database.getRepository('address');
+        const outputAddressToAddressComponentMap = {};
         return keychainRepository.getAddressesByAddressBase(_.uniq(_.map(outputs, output => {
-            const {address: addressBase}           = addressRepository.getAddressComponent(output.address);
-            addressToAddressBaseMap[output.address] = addressBase;
-            return addressBase;
+            const addressComponents                 = addressRepository.getAddressComponent(output.address);
+            outputAddressToAddressComponentMap[output.address] = {
+                address_base          : addressComponents.address,
+                address_version       : addressComponents.version,
+                address_key_identifier: addressComponents.identifier
+            };
+            return addressComponents.address; //address_base
         }))).then(addresses => {
             const addressBaseToAddressInfoMap = {};
             addresses.forEach(address => addressBaseToAddressInfoMap[address.address_base] = address);
             const outputToRemoveList = [];
             for (let i = 0; i < outputs.length; i++) {
                 const output        = outputs[i];
-                const outputAddress = addressBaseToAddressInfoMap[addressToAddressBaseMap[output.address]];
+                const outputAddress = outputAddressToAddressComponentMap[output.address];
+                const addressInfo = addressBaseToAddressInfoMap[outputAddress.address_base];
                 if (!outputAddress) {
                     console.log('[wallet][warn] output address not found', output);
                     outputToRemoveList.push(output);
@@ -307,8 +312,8 @@ class Wallet {
                     output['address_version']        = outputAddress.address_version;
                     output['address_key_identifier'] = outputAddress.address_key_identifier;
                     output['address_base']           = outputAddress.address_base;
-                    output['address_position']       = outputAddress.address_position;
-                    output['address_attribute']      = outputAddress.address_attribute;
+                    output['address_position']       = addressInfo.address_position;
+                    output['address_attribute']      = addressInfo.address_attribute;
                 }
             }
 
@@ -321,7 +326,7 @@ class Wallet {
     processTransaction(transactionFunction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
-                this._isSendingNewTransaction = true;
+                this._isSendingNewTransaction  = true;
                 this._transactionSendInterrupt = false;
                 return transactionFunction()
                     .then(transactionList => {
@@ -330,12 +335,12 @@ class Wallet {
                     })
                     .then((transactionList) => {
                         this._transactionSendInterrupt = false;
-                        this._isSendingNewTransaction = false;
+                        this._isSendingNewTransaction  = false;
                         unlock();
                         resolve(transactionList);
                     })
                     .catch((e) => {
-                        this._isSendingNewTransaction = false;
+                        this._isSendingNewTransaction  = false;
                         this._transactionSendInterrupt = false;
                         unlock();
                         reject(e);
