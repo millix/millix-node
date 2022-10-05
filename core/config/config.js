@@ -1,8 +1,8 @@
-const CONST_VALUE_DEFAULT = {
+const const_value_default = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
-    'NODE_MILLIX_BUILD_DATE'    : 1664207584,
-    'NODE_MILLIX_VERSION'       : '1.21.4',
+    'NODE_MILLIX_BUILD_DATE'    : 1664816702,
+    'NODE_MILLIX_VERSION'       : '1.21.5',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
@@ -11,6 +11,8 @@ const CONST_VALUE_DEFAULT = {
     'NODE_PORT_STORAGE_RECEIVER_MAIN_NETWORK': 8000,
     'NODE_PORT_STORAGE_PROVIDER_TEST_NETWORK': 6001,
     'NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK': 8001,
+
+    'MODE_NODE_SYNC_FULL' : false,
 
     'CONSENSUS_ROUND_NODE_COUNT'         : 12,
     'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
@@ -29,14 +31,14 @@ try {
 catch (ex) {
 }
 
-function getConstValue(constName) {
-    if (!Object.keys(CONST_VALUE_DEFAULT).includes(constName)) {
-        throw 'CONST_VALUE_DEFAULT is not defined for ' + constName;
+function getConstValue(const_name) {
+    if (!Object.keys(const_value_default).includes(const_name)) {
+        throw 'const_value_default is not defined for ' + const_name;
     }
 
-    let value = CONST_VALUE_DEFAULT[constName];
-    if (environment && typeof (environment[constName]) !== 'undefined') {
-        value = environment[constName];
+    let value = const_value_default[const_name];
+    if (environment && typeof (environment[const_name]) !== 'undefined') {
+        value = environment[const_name];
     }
 
     return value;
@@ -73,7 +75,7 @@ export const RPC_INTERFACE                                     = '0.0.0.0';
 export const ACTIVE_LANGUAGE_GUID                              = 'BEpDwgG53';
 export const NODE_PUBLIC                                       = undefined;
 export const MODE_NODE_VALIDATION_FULL                         = true;
-export const MODE_NODE_SYNC_FULL                               = true;
+export const MODE_NODE_SYNC_FULL                               = getConstValue('MODE_NODE_SYNC_FULL');
 export const MODE_STORAGE_SYNC                                 = true;
 export const MODE_STORAGE_SYNC_FULL                            = false;
 export const FORCE_QUEUE_UPDATE                                = false;
@@ -841,6 +843,8 @@ export const WALLET_AGGREGATION_TRANSACTION_MAX                = 1;
 export const WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT       = 1;
 export const WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT        = 120;
 export const WALLET_AGGREGATION_CONSUME_SMALLER_FIRST          = true;
+export const WALLET_AGGREGATION_AUTO_ENABLED                   = true;
+export const WALLET_AGGREGATION_AUTO_OUTPUT_MIN                = 50;
 export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
 export const DATABASE_ENGINE                                   = 'sqlite';
@@ -895,7 +899,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '21';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '22';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -976,6 +980,8 @@ export default {
     NETWORK_LONG_TIME_WAIT_MAX,
     NETWORK_SHORT_TIME_WAIT_MAX,
     WALLET_ADDRESS_GENERATE_MAX,
+    WALLET_AGGREGATION_AUTO_ENABLED,
+    WALLET_AGGREGATION_AUTO_OUTPUT_MIN,
     WALLET_TRANSACTION_QUEUE_SIZE_MAX,
     WALLET_AGGREGATION_TRANSACTION_MAX,
     WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT,
