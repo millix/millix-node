@@ -304,7 +304,7 @@ class Wallet {
                 const output        = outputs[i];
                 const outputAddress = outputAddressToAddressComponentMap[output.address];
                 const addressInfo = addressBaseToAddressInfoMap[outputAddress.address_base];
-                if (!outputAddress) {
+                if (!addressInfo) {
                     console.log('[wallet][warn] output address not found', output);
                     outputToRemoveList.push(output);
                 }
