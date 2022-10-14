@@ -1,6 +1,7 @@
 import Endpoint from '../endpoint';
 import config from '../../core/config/config';
 import walletUtils from '../../core/utils/wallet-utils';
+import os from 'os';
 
 const https = require('https');
 
@@ -59,7 +60,8 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
                         api_status         : 'success',
                         version_available  : version_available,
                         application        : application,
-                        node_millix_version: node_millix_version
+                        node_millix_version: node_millix_version,
+                        os_platform        : os.platform()
                     });
                 });
             });
