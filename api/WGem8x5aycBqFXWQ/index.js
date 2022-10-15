@@ -1,6 +1,6 @@
 import Endpoint from '../endpoint';
 import config from '../../core/config/config';
-import walletUtils from '../../core/utils/wallet-utils';
+import wallet from '../../core/wallet/wallet';
 import os from 'os';
 
 const https = require('https');
@@ -21,23 +21,23 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
      * @param res
      */
     handler(app, req, res) {
-        const node_millix_version = config.NODE_MILLIX_VERSION;
+        const nodeMillixVersion = config.NODE_MILLIX_VERSION;
 
         let hostname    = 'millix.org';
         let application = 'client';
-        if (node_millix_version.includes('tangled')) {
+        if (nodeMillixVersion.includes('tangled')) {
             hostname    = 'tangled.com';
             application = 'browser';
         }
 
-        walletUtils.getCurrentWalletInfo().then(wallet_info => {
+        wallet.getCurrentWalletInfo().then(walletInfo => {
             let payload = {
-                version               : node_millix_version,
-                network_initialized   : wallet_info.network_initialized,
-                node_id               : wallet_info.node_id,
-                address_key_identifier: wallet_info.address_key_identifier,
-                address_version       : wallet_info.address_version,
-                address_public_key    : wallet_info.address_public_key
+                version               : nodeMillixVersion,
+                network_initialized   : walletInfo.network_initialized,
+                node_id               : walletInfo.node_id,
+                address_key_identifier: walletInfo.address_key_identifier,
+                address_version       : walletInfo.address_version,
+                address_public_key    : walletInfo.address_public_key
             };
 
             const options = {
@@ -50,17 +50,17 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
             const request = https.request(options, result => {
                 result.on('data', d => {
                     const buf             = Buffer.from(d, 'utf8');
-                    let version_available = buf.toString().replace(/(\n)/gm, '');
+                    let versionAvailable = buf.toString().replace(/(\n)/gm, '');
 
                     if (application === 'browser') {
-                        version_available += '-tangled';
+                        versionAvailable += '-tangled';
                     }
 
                     res.send({
                         api_status         : 'success',
-                        version_available  : version_available,
+                        version_available  : versionAvailable,
                         application        : application,
-                        node_millix_version: node_millix_version,
+                        node_millix_version: nodeMillixVersion,
                         os_platform        : os.platform()
                     });
                 });
