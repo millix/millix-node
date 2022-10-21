@@ -39,30 +39,22 @@
 ## Installation
 
 
-## Install nodejs 12
+## Install nodejs 16
 ```
  sudo apt update
  sudo apt -y install curl dirmngr apt-transport-https lsb-release ca-certificates build-essential
- curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+ curl -sL https://deb.nodesource.com/setup_16.x | sudo -E bash -
  sudo apt-get -y install nodejs
- node --version (check version: should be 12.x.x)
+ node --version (check version: should be 16.x.x)
  ```
  
-## Download millix-node code
+## Clone millix-node code
 ```
-git clone https://github.com/millix/millix-node.git -b develop
+git clone https://github.com/millix/millix-node.git
 ````
 
 ## Run millix-node
 ```
-cd millix-node
-vi run-millix-node.sh
-#replace “127.0.0.1” with your ip  (find by whatismyip)
-```
-
-### Run:
-```
-sudo npm install -g @babel/cli @babel/core @babel/node
 npm install
 sudo chmod +x run-millix-node.sh
 sh run-millix-node.sh

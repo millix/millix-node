@@ -7,7 +7,7 @@ module.exports = {
     entry  : './index.js',
     output : {
         filename: 'index.dist.js',
-        path    : path.resolve(__dirname, '.')
+        path    : path.resolve(__dirname, './dist')
     },
     devtool: 'inline-source-map',
     watch  : false,
