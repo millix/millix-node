@@ -2,6 +2,8 @@ import Endpoint from '../endpoint';
 import config from '../../core/config/config';
 import wallet from '../../core/wallet/wallet';
 import os from 'os';
+import _ from 'lodash';
+import server from '../server';
 
 const https = require('https');
 
@@ -31,14 +33,18 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
         }
 
         wallet.getCurrentWalletInfo().then(walletInfo => {
-            let payload = {
-                version               : nodeMillixVersion,
-                network_initialized   : walletInfo.network_initialized,
-                node_id               : walletInfo.node_id,
-                address_key_identifier: walletInfo.address_key_identifier,
-                address_version       : walletInfo.address_version,
-                address_public_key    : walletInfo.address_public_key
+            const nodeID = server.nodeID;
+            let payload  = {
+                version            : nodeMillixVersion,
+                network_initialized: walletInfo.network_initialized,
+                node_id            : nodeID
             };
+
+            if (wallet.initialized && !_.isEmpty(wallet.getActiveWallets())) {
+                payload.address_key_identifier = walletInfo.address_key_identifier;
+                payload.address_version        = walletInfo.address_version;
+                payload.address_public_key     = walletInfo.address_public_key;
+            }
 
             const options = {
                 hostname: hostname,
@@ -49,7 +55,7 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
 
             const request = https.request(options, result => {
                 result.on('data', d => {
-                    const buf             = Buffer.from(d, 'utf8');
+                    const buf            = Buffer.from(d, 'utf8');
                     let versionAvailable = buf.toString().replace(/(\n)/gm, '');
 
                     if (application === 'browser') {
