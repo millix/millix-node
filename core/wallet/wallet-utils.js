@@ -549,16 +549,7 @@ class WalletUtils {
             if (transactionDate.getTime() >= maxTransactionDate) {
                 return resolve(false);
             }
-            else if ([
-                '0b0',
-                '0b10',
-                '0b20',
-                '0b30',
-                'lb0l',
-                'lb1l',
-                'lb2l',
-                'lb3l'
-            ].includes(transaction.version)) {
+            else if (config.WALLET_TRANSACTION_SUPPORTED_VERSION.filter(version => version.charAt(1) === 'b').includes(transaction.version)) { // refresh transactions
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 if (!(isValidRefresh)) {
                     console.log('[wallet-utils] Rejecting refresh transaction');
@@ -723,6 +714,17 @@ class WalletUtils {
               parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3)) {
             omitFields.push('transaction_output_attribute');
         }
+        else {
+            // check if bridge transaction and has the bridged network and
+            // address
+            const isBridgeBurn = transaction.version === config.BRIDGE_TRANSACTION_VERSION_BURN;
+            const isBridgeMint = transaction.version === config.BRIDGE_TRANSACTION_VERSION_MINT;
+            if (isBridgeMint || isBridgeBurn) {
+                if (!this.isValidBridgeTransaction(transaction, isBridgeMint)) {
+                    return false;
+                }
+            }
+        }
 
         // verify signature
         let vTransaction = _.cloneDeep(_.omit(transaction, omitFields));
@@ -761,6 +763,29 @@ class WalletUtils {
 
         vTransaction['transaction_id'] = objectHash.getCHash288(vTransaction);
         return !(vTransaction['payload_hash'] !== transaction['payload_hash'] || vTransaction['transaction_id'] !== transaction['transaction_id']);
+    }
+
+    isValidBridgeTransaction(transaction, isBridgeMint = false) {
+        const bridgeMapping = transaction.transaction_output_attribute?.transaction_output_metadata?.bridge_mapping;
+        if (!bridgeMapping || !bridgeMapping.address ||
+            (isBridgeMint && !bridgeMapping.network)) {
+            return false;
+        }
+
+        if (isBridgeMint) {
+            // 3 outputs (destination, bridge fees, and proxy fees)
+            // destination address should be a bridge address
+            return transaction.transaction_output_list.length === 3 && transaction.transaction_output_list[0].version === config.ADDRESS_VERSION_BRIDGE;
+        }
+
+        // if burn
+        // 2 or 3 outputs (destination, [change,] and proxy fees)
+        // if there is a change it must be sent to a bridge address
+        if (transaction.transaction_output_list.length === 3) {
+            return transaction.transaction_output_list[1].version === config.ADDRESS_VERSION_BRIDGE;
+        }
+
+        return true;
     }
 
     // Refresh transaction is valid if all inputs and outputs belong to same
