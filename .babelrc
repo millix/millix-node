@@ -2,9 +2,14 @@
   "presets": [
     "@babel/preset-env"
   ],
-  "plugins": [
-    "@babel/plugin-proposal-class-properties"
-  ],
+  "env": {
+    "development": {
+      "plugins": [
+        "@babel/plugin-proposal-class-properties",
+        "babel-plugin-transform-import-meta"
+      ]
+    }
+  },
   "sourceMaps": "inline",
   "retainLines": true
 }

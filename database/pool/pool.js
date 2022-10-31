@@ -184,7 +184,7 @@ export class Pool {
 
     _createWorker() {
         return new Promise((resolve) => {
-            const worker = new Worker('./database/pool/worker.mjs');
+            const worker = new Worker(new URL("./worker.mjs", import.meta.url));
 
             let error = null; // Error that caused the worker to crash
 

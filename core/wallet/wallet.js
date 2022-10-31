@@ -175,6 +175,32 @@ class Wallet {
         throw Error('Wallet not activated');
     }
 
+    getCurrentWalletInfo() {
+        let walletInfo = {
+            network_initialized: network.initialized,
+            node_id            : network.nodeID
+        };
+
+        if (this.initialized || !_.isEmpty(this.getActiveWallets())) {
+            const keyIdentifier = this.defaultKeyIdentifier;
+            return database.getRepository('address').getAddressBaseAttribute(keyIdentifier, 'key_public')
+                           .then(publicKey => {
+                               const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
+                               return {
+                                   address_key_identifier: keyIdentifier,
+                                   address_version       : addressVersion,
+                                   address_public_key    : publicKey,
+                                   ...walletInfo
+                               };
+                           });
+        }
+        else {
+            return new Promise((resolve) => {
+                resolve(walletInfo);
+            });
+        }
+    }
+
     getKeyIdentifier() {
         return this.defaultKeyIdentifier;
     }
