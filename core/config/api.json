@@ -665,6 +665,15 @@
       "version_released": "1.18.5",
       "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
+    },
+    {
+      "id": "ZXJ3DqyLslyQETkX",
+      "name": "cryptography",
+      "description": "depending on direction encrypt or decrypt provided string",
+      "method": "GET",
+      "version_released": "1.21.5",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
     }
   ]
 }
