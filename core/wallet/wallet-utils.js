@@ -574,9 +574,8 @@ class WalletUtils {
                 // now the refresh time is 10 min
                 // (TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN)
                 const expireMinutes   = transactionDate.getTime() <= 1620603935000 ? 4320 : config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN;
-                let maximumOldestDate = new Date(transactionDate.getTime());
-                maximumOldestDate.setMinutes(maximumOldestDate.getMinutes() - expireMinutes);
-                this.isConsumingExpiredOutputs(transaction.transaction_input_list, maximumOldestDate)
+                let maximumOldestDate = transactionDate.getTime() - expireMinutes * 60 * 1000;
+                this.isConsumingExpiredOutputs(transaction.transaction_input_list, Math.floor(maximumOldestDate / 1000))
                     .then(isConsumingExpired => {
                         resolve(!isConsumingExpired);
                     })
@@ -595,27 +594,15 @@ class WalletUtils {
     isConsumingExpiredOutputs(inputList, maximumOldestDate) {
         return new Promise(resolve => {
             async.eachSeries(inputList, (input, callback) => {
-                let output_shard = input.output_shard_id;
-
-                database.firstShardZeroORShardRepository('transaction', output_shard, transactionRepository => {
-                    return transactionRepository.getTransaction(input.output_transaction_id);
-                }).then(sourceTransaction => {
-                    if (!sourceTransaction) {
-                        console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
-                        callback(false);
-                    }
-                    else {
-                        if ((maximumOldestDate - sourceTransaction.transaction_date) > 0) {
-                            // Meaning it
-                            // consumed an
-                            // expired output
-                            callback(true);
-                        }
-                        else {
-                            callback(false);
-                        }
-                    }
-                });
+                if (maximumOldestDate > input.output_transaction_date) {
+                    // Meaning it
+                    // consumed an
+                    // expired output
+                    callback(true);
+                }
+                else {
+                    callback(false);
+                }
             }, (isConsumingExpired) => resolve(isConsumingExpired));
         });
     }
@@ -804,9 +791,7 @@ class WalletUtils {
             return Promise.reject('private key set is required');
         }
 
-        let maximumOldestDate = new Date(transactionDate.getTime());
-        maximumOldestDate.setMinutes(maximumOldestDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-
+        let maximumOldestDate = transactionDate.getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
         return new Promise((resolve, reject) => {
             const allocatedFunds = _.sum(_.map(inputList, o => o.amount));
             const amount         = _.sum(_.map(outputList, o => o.amount)) + _.sum(_.map(feeOutputList, o => o.amount));
@@ -821,7 +806,7 @@ class WalletUtils {
                 address_attribute: addressAttributeMap[addressBase]
             }));
             return resolve(signatureList);
-        })).then(signatureList => this.isConsumingExpiredOutputs(inputList, maximumOldestDate).then(isConsumingExpiredOutputs => [
+        })).then(signatureList => this.isConsumingExpiredOutputs(inputList, Math.floor(maximumOldestDate / 1000)).then(isConsumingExpiredOutputs => [
             signatureList,
             isConsumingExpiredOutputs
         ]))

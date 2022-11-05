@@ -1763,30 +1763,6 @@ class Wallet {
         return Promise.resolve();
     }
 
-    _doTransactionOutputExpiration() {
-        if (mutex.getKeyQueuedSize(['transaction-output-expiration']) > 0) {
-            return Promise.resolve();
-        }
-
-        return new Promise(resolve => {
-            console.log('[Wallet] Starting transaction output expiration');
-            mutex.lock(['transaction-output-expiration'], unlock => {
-                let time = ntp.now();
-                time.setMinutes(time.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-
-                return database.getRepository('transaction').expireTransactions(time, [
-                    this.defaultKeyIdentifier,
-                    ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
-                ])
-                               .then(() => {
-                                   eventBus.emit('wallet_update');
-                                   unlock();
-                                   resolve();
-                               });
-            });
-        });
-    }
-
     _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes = {}, isAggregationTransaction = false) {
         const addressRepository = database.getRepository('address');
         const time              = ntp.now();
@@ -2073,7 +2049,6 @@ class Wallet {
                                               const extendedPrivateKey           = this.getActiveWalletKey(this.getDefaultActiveWallet());
                                               this.defaultKeyIdentifierPublicKey = base58.encode(walletUtils.derivePublicKey(extendedPrivateKey, 0, 0));
                                               this.defaultKeyIdentifier          = defaultKeyIdentifier;
-                                              return this._doTransactionOutputExpiration();
                                           })
                                           .then(() => {
                                               if (network.nodeID) {

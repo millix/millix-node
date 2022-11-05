@@ -28,9 +28,8 @@ export default class Transaction {
     isExpired(transactionDate) {
         // verify if expire time is greater than
         // transaction data
-        let expireDate = ntp.now();
-        expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-        return Math.round(expireDate.getTime() / 1000) >= transactionDate;
+        let expireDate = ntp.now().getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
+        return Math.round(expireDate / 1000) >= transactionDate;
     }
 
     getTransactionsNotHibernated() {
@@ -597,9 +596,8 @@ export default class Transaction {
                 // transaction data
                 let status;
                 if (!isWalletTransaction) {
-                    const expireDate = ntp.now();
-                    expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-                    status = Math.round(expireDate.getTime() / 1000) < transactionDate ? 1 : 2;
+                    const expireDate = ntp.now().getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
+                    status = Math.round(expireDate / 1000) < transactionDate ? 1 : 2;
                 }
                 else {
                     status = 1;
@@ -765,10 +763,9 @@ export default class Transaction {
                 let transactionStatus;
                 const transactionStableDate = transaction.stable_date || transaction.transaction_output_list[0].stable_date;
                 if (!isWalletTransaction) {
-                    const expireDate = ntp.now();
-                    expireDate.setMinutes(expireDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
+                    const expireDate = ntp.now().getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
                     transactionStatus = transaction.status === 3 ? 3 :
-                                        Math.round(expireDate.getTime() / 1000) >= transactionDate ? 2 : 1;
+                                        Math.round(expireDate / 1000) >= transactionDate ? 2 : 1;
                 }
                 if (!transactionStableDate) {
                     transactionStatus = 1;
@@ -1293,8 +1290,7 @@ export default class Transaction {
 
     invalidateTransaction(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.serialize(() => {
-                let sql = `
+            let sql = `
                     update 'transaction'
                     set status      = 3,
                         is_stable   = 1,
@@ -1314,42 +1310,24 @@ export default class Transaction {
                         is_double_spend   = 0,
                         double_spend_date = NULL
                     where transaction_id = "${transactionID}";
-                    update transaction_output as o
-                    set stable_date = CAST(strftime('%s', 'now') AS INTEGER),
-                        is_spent = exists (
-                        select o2.transaction_id
-                        from transaction_input i
-                        inner join transaction_output o2
-                        on i.transaction_id = o2.transaction_id
-                        where i.output_transaction_id = o.transaction_id
-                        and i.output_position = o.output_position
-                        and o2.status != 3 and o2.is_double_spend = 0
-                        ),
-                        spent_date = (
-                        select t.transaction_date
-                        from 'transaction' t
-                        inner join transaction_input i
-                        on i.transaction_id = t.transaction_id
-                        inner join transaction_output o2 on i.transaction_id = o2.transaction_id
-                        where i.output_transaction_id = o.transaction_id
-                        and i.output_position = o.output_position
-                        and
-                        o2.status != 3
-                        and o2.is_double_spend = 0
-                        )
-                    where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
                     update 'transaction'
                     set status      = 3,
                         is_stable   = 1,
                         stable_date = CAST(strftime('%s', 'now') AS INTEGER)
                     where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
+                    update transaction_output
+                    set is_spent = 0, spent_date = NULL,
+                        is_stable = 0, stable_date = NULL
+                        where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
+                    update 'transaction' as o
+                    set is_stable = 0, stable_date = NULL
+                    where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
                 `;
-                this.database.exec(sql, (err) => {
-                    if (err) {
-                        return reject();
-                    }
-                    return resolve();
-                });
+            this.database.exec(sql, (err) => {
+                if (err) {
+                    return reject();
+                }
+                return resolve();
             });
         });
     }
@@ -1788,9 +1766,8 @@ export default class Transaction {
     findUnstableTransaction(excludeTransactionIDList, returnHibernatedTransactions = false) {
         return new Promise((resolve, reject) => {
             const insertDate      = Math.floor(Date.now() / 1000) - 30;
-            let unstableDateStart = ntp.now();
-            unstableDateStart.setMinutes(unstableDateStart.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-            unstableDateStart = Math.floor(unstableDateStart.getTime() / 1000);
+            let unstableDateStart = ntp.now().getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
+            unstableDateStart = Math.floor(unstableDateStart / 1000);
             let sql, params;
             if (!returnHibernatedTransactions) {
                 sql    = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
@@ -2880,67 +2857,6 @@ export default class Transaction {
                     }
                     resolve(transactions);
                 });
-        });
-    }
-
-    expireTransactions(olderThan, addressKeyIdentifierList) {
-        if (!addressKeyIdentifierList || addressKeyIdentifierList.length === 0) {
-            return Promise.reject();
-        }
-
-        return database.applyShards((shardID) => {
-            return database.getRepository('transaction', shardID).expireTransactionsOnShard(olderThan, addressKeyIdentifierList);
-        });
-    }
-
-    expireTransactionsOnShard(olderThan, addressKeyIdentifierList) {
-        let seconds = Math.floor(olderThan.valueOf() / 1000);
-
-        return new Promise((resolve, reject) => {
-            this.database.exec(`DROP TABLE IF EXISTS transaction_expired;
-            CREATE
-                TEMPORARY TABLE transaction_expired AS
-            WITH expired AS (SELECT t.transaction_id
-                             FROM 'transaction' t
-                             WHERE t.transaction_date <= ?
-                               AND NOT EXISTS
-                                   (SELECT o.transaction_id
-                                    FROM transaction_output o
-                                    WHERE is_stable = 0
-                                      AND o.address_key_identifier IN
-                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})
-                                      AND o.transaction_id = t.transaction_id)
-                               AND NOT EXISTS
-                                   (SELECT o.transaction_id
-                                    FROM transaction_input i
-                                    INNER JOIN transaction_output o
-                                    ON i.transaction_id = t.transaction_id AND o.transaction_id = t.transaction_id
-                                    WHERE is_stable = 0
-                                        AND +i.address_key_identifier IN
-                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})))
-            SELECT *
-            FROM expired;
-            UPDATE transaction_output
-            set status = 2
-            WHERE transaction_id IN
-                  (SELECT transaction_id FROM transaction_expired);
-            UPDATE transaction_input
-            set status = 2
-            WHERE transaction_id IN
-                  (SELECT transaction_id FROM transaction_expired);
-            UPDATE 'transaction'
-            set status = 2
-            WHERE transaction_id IN
-                (SELECT transaction_id FROM transaction_expired);
-            DROP TABLE IF EXISTS transaction_expired;`, err => {
-                if (err) {
-                    console.log('[Database] Failed updating transactions to expired. [message] ', err);
-                    reject(err);
-                }
-                else {
-                    resolve();
-                }
-            });
         });
     }
 

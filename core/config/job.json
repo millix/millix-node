@@ -1,5 +1,5 @@
 {
-  "version":7,
+  "version":8,
   "processor_list": {
     "localhost": {
       "instances": 2
@@ -167,25 +167,6 @@
         "run_always": 1,
         "run_delay": 10000,
         "enable": false
-      }
-    },
-    "transaction_output_expiration": {
-      "type": "function",
-      "group": "wallet",
-      "processor": "localhost_wallet",
-      "payload": {
-        "module": "wallet",
-        "function_name": "_doTransactionOutputExpiration"
-      },
-      "object_list": [
-        "transaction",
-        "transaction_output"
-      ],
-      "priority": 0,
-      "option_list": {
-        "run_always": 1,
-        "run_delay": 10000,
-        "enable": true
       }
     },
     "node_attribute_update": {
