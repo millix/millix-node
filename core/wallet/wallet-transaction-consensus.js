@@ -882,23 +882,12 @@ export class WalletTransactionConsensus {
             }
         }
 
-        if (counter.invalid > 0 && (counter.double_spend > 0
-                                    || counter.valid > 0
-                                    || consensusData.consensus_round_validation_count > 0
-                                    || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not invalid we reset the invalid ones
-            invalidResponseNodeIDList.forEach(nodeID => {
-                delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
-                consensusData.consensus_round_node_discard.add(nodeID);
-                consensusData.requestPeerValidation && consensusData.requestPeerValidation();
-            });
-            return;
-        }
-        else if (counter.not_found > 0 && (counter.invalid > 0
+        if (counter.not_found > 0 && (counter.invalid > 0
                                            || counter.double_spend > 0
                                            || counter.valid > 0
                                            || consensusData.consensus_round_invalid_count > 0
                                            || consensusData.consensus_round_validation_count > 0
-                                           || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not invalid we reset the invalid ones
+                                           || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not not_found we reset the not_found ones
             notFoundResponseNodeIDList.forEach(nodeID => {
                 delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
                 consensusData.consensus_round_node_discard.add(nodeID);
