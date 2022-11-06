@@ -526,10 +526,13 @@ class WalletUtils {
     verifyTransaction(transaction) {
         return new Promise(resolve => {
             if (transaction.transaction_id === genesisConfig.genesis_transaction) {
-                return resolve(true);
+                return resolve([true]);
             }
             if (!this.isValidTransactionObject(transaction)) {
-                return resolve(false);
+                return resolve([
+                    false,
+                    'transaction_object_invalid'
+                ]);
             }
 
             let transactionDate;
@@ -547,7 +550,10 @@ class WalletUtils {
 
             const maxTransactionDate = ntp.now().getTime() + config.TRANSACTION_CLOCK_SKEW_TOLERANCE * 1000;
             if (transactionDate.getTime() >= maxTransactionDate) {
-                return resolve(false);
+                return resolve([
+                    false,
+                    'transaction_date_invalid'
+                ]);
             }
             else if ([
                 '0b0',
@@ -560,11 +566,10 @@ class WalletUtils {
                 'lb3l'
             ].includes(transaction.version)) {
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
-                if (!(isValidRefresh)) {
-                    console.log('[wallet-utils] Rejecting refresh transaction');
-                }
-
-                resolve(isValidRefresh);
+                resolve([
+                    isValidRefresh,
+                    !isValidRefresh ? 'transaction_refresh_invalid' : undefined
+                ]);
             }
             else if (transactionDate.getTime() <= 1597838399000) { // old transactions version: before unspent auto-consumption feature.
                 resolve(true);
@@ -577,11 +582,17 @@ class WalletUtils {
                 let maximumOldestDate = transactionDate.getTime() - expireMinutes * 60 * 1000;
                 this.isConsumingExpiredOutputs(transaction.transaction_input_list, Math.floor(maximumOldestDate / 1000))
                     .then(isConsumingExpired => {
-                        resolve(!isConsumingExpired);
+                        resolve([
+                            !isConsumingExpired,
+                            isConsumingExpired ? 'transaction_consume_expired_output' : undefined
+                        ]);
                     })
                     .catch(err => {
                         console.log(`[wallet-utils] failed to check if consuming expired. abandoning verification. error: ${err}`);
-                        resolve(false);
+                        resolve([
+                            true,
+                            'unexpected_internal_error'
+                        ]);
                     });
             }
         });

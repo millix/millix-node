@@ -311,11 +311,11 @@ class Wallet {
     }
 
     updateTransactionOutputWithAddressInformation(outputs) {
-        const keychainRepository      = database.getRepository('keychain');
-        const addressRepository       = database.getRepository('address');
+        const keychainRepository                 = database.getRepository('keychain');
+        const addressRepository                  = database.getRepository('address');
         const outputAddressToAddressComponentMap = {};
         return keychainRepository.getAddressesByAddressBase(_.uniq(_.map(outputs, output => {
-            const addressComponents                 = addressRepository.getAddressComponent(output.address);
+            const addressComponents                            = addressRepository.getAddressComponent(output.address);
             outputAddressToAddressComponentMap[output.address] = {
                 address_base          : addressComponents.address,
                 address_version       : addressComponents.version,
@@ -329,7 +329,7 @@ class Wallet {
             for (let i = 0; i < outputs.length; i++) {
                 const output        = outputs[i];
                 const outputAddress = outputAddressToAddressComponentMap[output.address];
-                const addressInfo = addressBaseToAddressInfoMap[outputAddress.address_base];
+                const addressInfo   = addressBaseToAddressInfoMap[outputAddress.address_base];
                 if (!addressInfo) {
                     console.log('[wallet][warn] output address not found', output);
                     outputToRemoveList.push(output);
@@ -936,9 +936,9 @@ class Wallet {
                            }
 
                            return walletUtils.verifyTransaction(transaction)
-                                             .then(validTransaction => {
+                                             .then(([validTransaction, invalidTransactionError]) => {
 
-                                                 if (!validTransaction) {
+                                                 if (!validTransaction && invalidTransactionError !== 'transaction_consume_expired_output') {
                                                      console.log('[wallet] invalid transaction received from network');
                                                      delete this._transactionReceivedFromNetwork[transaction.transaction_id];
                                                      delete this._transactionRequested[transaction.transaction_id];
@@ -1821,7 +1821,7 @@ class Wallet {
             .then(transactionList => {
                 let pipeline = new Promise(resolve => resolve(true));
                 transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
-                return pipeline.then(isValid => !isValid ? Promise.reject({
+                return pipeline.then(([isValid]) => !isValid ? Promise.reject({
                     error: 'transaction_invalid',
                     cause: 'tried to sign and store and invalid transaction'
                 }) : transactionList);

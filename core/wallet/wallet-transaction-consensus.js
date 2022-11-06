@@ -239,9 +239,18 @@ export class WalletTransactionConsensus {
                 }
 
                 walletUtils.verifyTransaction(transaction)
-                           .then(valid => {
+                           .then(([valid, invalidTransactionError]) => {
                                if (!valid) {
                                    console.log('[wallet-transaction-consensus-oracle] transaction data was is not valid ', transaction.transaction_id);
+
+                                   if (invalidTransactionError === 'transaction_consume_expired_output') {
+                                       return reject({
+                                           cause              : 'transaction_invalid',
+                                           transaction_id_fail: transaction.transaction_id,
+                                           message            : `transaction was is not valid (${invalidTransactionError}): ${transaction.transaction_id}`
+                                       });
+                                   }
+
                                    database.applyShards(shardID => {
                                        return database.getRepository('transaction', shardID).deleteTransaction(transaction.transaction_id);
                                    }).then(_ => _);
@@ -584,14 +593,21 @@ export class WalletTransactionConsensus {
             }
 
             return walletUtils.verifyTransaction(transaction)
-                              .then(isValid => {
+                              .then(([isValid, invalidTransactionError]) => {
                                   if (!isValid) {
-                                      database.applyShards((shardID) => {
-                                          const transactionRepository = database.getRepository('transaction', shardID);
-                                          return transactionRepository.invalidateTransaction(transactionID)
-                                                                      .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
-                                      }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
-                                              .then(() => Promise.reject());
+
+                                      if (invalidTransactionError === 'transaction_consume_expired_output') {
+                                          return database.applyShards((shardID) => {
+                                              const transactionRepository = database.getRepository('transaction', shardID);
+                                              return transactionRepository.invalidateTransaction(transactionID)
+                                                                          .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
+                                          }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
+                                                         .then(() => Promise.reject());
+                                      }
+
+                                      return database.applyShards(shardID => {
+                                          return database.getRepository('transaction', shardID).deleteTransaction(transaction.transaction_id);
+                                      }).then(() => Promise.reject());
                                   }
 
                                   return transaction;
