@@ -1123,7 +1123,7 @@ export class WalletTransactionConsensus {
         }
 
         if (consensusCount >= config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX) {
-            console.log('[wallet-transaction-consensus-validation] maximum number of transactions validation running reached : ', config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX);
+            console.log('[wallet-transaction-consensus-validation] maximum number of transactions validation running reached : ', config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX, _.keys(this._consensusRoundState));
             return Promise.resolve();
         }
 
