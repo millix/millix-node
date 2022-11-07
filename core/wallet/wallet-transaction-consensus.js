@@ -46,6 +46,11 @@ export class WalletTransactionConsensus {
              transaction_not_found_count: int
              }*/
         };
+        this._validationWatchDogState               = {
+            /*[transaction.transaction_id]: {
+             timestamp: int
+             }*/
+        };
         this._transactionRetryValidation            = new Set();
         this._transactionValidationNotFound         = new Set();
         this._transactionObjectCache                = {};
@@ -850,7 +855,6 @@ export class WalletTransactionConsensus {
         };
 
         let responseCount                = 0;
-        const invalidResponseNodeIDList  = [];
         const notFoundResponseNodeIDList = [];
         for (let [nodeID, {response}] of Object.entries(consensusResponseData)) {
             if (!response) {
@@ -883,11 +887,11 @@ export class WalletTransactionConsensus {
         }
 
         if (counter.not_found > 0 && (counter.invalid > 0
-                                           || counter.double_spend > 0
-                                           || counter.valid > 0
-                                           || consensusData.consensus_round_invalid_count > 0
-                                           || consensusData.consensus_round_validation_count > 0
-                                           || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not not_found we reset the not_found ones
+                                      || counter.double_spend > 0
+                                      || counter.valid > 0
+                                      || consensusData.consensus_round_invalid_count > 0
+                                      || consensusData.consensus_round_validation_count > 0
+                                      || consensusData.consensus_round_double_spend_count > 0)) { // if there is any response that is not not_found we reset the not_found ones
             notFoundResponseNodeIDList.forEach(nodeID => {
                 delete consensusData.consensus_round_response[consensusData.consensus_round_count][nodeID];
                 consensusData.consensus_round_node_discard.add(nodeID);
@@ -1074,6 +1078,21 @@ export class WalletTransactionConsensus {
     doConsensusTransactionValidationWatchDog() {
         for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
             if (consensusData.active && (Date.now() - consensusData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
+                if (this._validationWatchDogState[transactionID]) {
+                    if ((Date.now() - this._validationWatchDogState[transactionID].timestamp) >= 90000) { // max life is 1.5min
+                        if (this._consensusRoundState[transactionID].is_wallet_transaction) {
+                            this._transactionRetryValidation[transactionID] = Date.now() + 60000;
+                            this._transactionValidationRejected.add(transactionID);
+                        }
+                        this._consensusRoundState[transactionID].active = false;
+                        this._consensusRoundState[transactionID].resolve && this._consensusRoundState[transactionID].resolve();
+                        delete this._consensusRoundState[transactionID];
+                        return;
+                    }
+                }
+                else {
+                    this._validationWatchDogState[transactionID] = {timestamp: Date.now()};
+                }
                 console.log('[wallet-transaction-consensus-watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
                 for (let i = 0; i <= consensusData.consensus_round_count; i++) {
                     const consensusRoundResponseData = consensusData.consensus_round_response[i];
@@ -1289,17 +1308,21 @@ export class WalletTransactionConsensus {
                         pendingTransaction.transaction_date = new Date(pendingTransaction.transaction_date);
                     }
 
-                    resolve(pendingTransaction);
+                    resolve([
+                        pendingTransaction,
+                        isTransactionFundingWallet
+                    ]);
                     unlock();
                 }).catch(() => {
                     reject();
                     unlock();
                 });
             });
-        }).then(pendingTransaction => {
+        }).then(([pendingTransaction, isTransactionFundingWallet]) => {
             console.log('[wallet-transaction-consensus-validation] transaction validated internally, starting consensus using oracles');
             // replace lock id with transaction id
             this._consensusRoundState[pendingTransaction.transaction_id] = {
+                is_wallet_transaction             : isTransactionFundingWallet,
                 consensus_round_validation_count  : 0,
                 consensus_round_invalid_count     : 0,
                 consensus_round_double_spend_count: 0,
