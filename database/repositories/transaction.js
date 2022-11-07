@@ -1318,10 +1318,12 @@ export default class Transaction {
                     update transaction_output
                     set is_spent = 0, spent_date = NULL,
                         is_stable = 0, stable_date = NULL
-                        where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
-                    update 'transaction' as o
-                    set is_stable = 0, stable_date = NULL
-                    where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
+                        where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
+                          and status != 3;
+                    update 'transaction'
+                        set is_stable = 0, stable_date = NULL
+                        where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
+                          and status != 3;
                 `;
             this.database.exec(sql, (err) => {
                 if (err) {
