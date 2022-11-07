@@ -2072,7 +2072,7 @@ class Wallet {
                                               const extendedPrivateKey           = this.getActiveWalletKey(this.getDefaultActiveWallet());
                                               this.defaultKeyIdentifierPublicKey = base58.encode(walletUtils.derivePublicKey(extendedPrivateKey, 0, 0));
                                               this.defaultKeyIdentifier          = defaultKeyIdentifier;
-                                              return this._doTransactionOutputExpiration();
+                                              this._doTransactionOutputExpiration().then(_ => _).catch(_ => _);
                                           })
                                           .then(() => {
                                               if (network.nodeID) {

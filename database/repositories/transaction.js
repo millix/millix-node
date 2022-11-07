@@ -2896,7 +2896,8 @@ export default class Transaction {
                                     ON i.transaction_id = t.transaction_id AND o.transaction_id = t.transaction_id
                                     WHERE is_stable = 0
                                         AND +i.address_key_identifier IN
-                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})))
+                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')}))
+                             LIMIT 1000)
             SELECT *
             FROM expired;
             UPDATE transaction_output
