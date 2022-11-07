@@ -2862,6 +2862,67 @@ export default class Transaction {
         });
     }
 
+    expireTransactions(expireTime, addressKeyIdentifierList) {
+        if (!addressKeyIdentifierList || addressKeyIdentifierList.length === 0) {
+            return Promise.reject();
+        }
+
+        return database.applyShards((shardID) => {
+            return database.getRepository('transaction', shardID).expireTransactionsOnShard(expireTime, addressKeyIdentifierList);
+        });
+    }
+
+    expireTransactionsOnShard(expireTime, addressKeyIdentifierList) {
+
+        return new Promise((resolve, reject) => {
+            this.database.exec(`DROP TABLE IF EXISTS transaction_expired;
+            CREATE
+                TEMPORARY TABLE transaction_expired AS
+            WITH expired AS (SELECT t.transaction_id
+                             FROM 'transaction' t
+                             WHERE t.transaction_date <= ${expireTime}
+                               AND t.status = 1
+                               AND NOT EXISTS
+                                   (SELECT o.transaction_id
+                                    FROM transaction_output o
+                                    WHERE is_stable = 0
+                                      AND o.address_key_identifier IN
+                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})
+                                      AND o.transaction_id = t.transaction_id)
+                               AND NOT EXISTS
+                                   (SELECT o.transaction_id
+                                    FROM transaction_input i
+                                    INNER JOIN transaction_output o
+                                    ON i.transaction_id = t.transaction_id AND o.transaction_id = t.transaction_id
+                                    WHERE is_stable = 0
+                                        AND +i.address_key_identifier IN
+                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})))
+            SELECT *
+            FROM expired;
+            UPDATE transaction_output
+            set status = 2
+            WHERE transaction_id IN
+                  (SELECT transaction_id FROM transaction_expired);
+            UPDATE transaction_input
+            set status = 2
+            WHERE transaction_id IN
+                  (SELECT transaction_id FROM transaction_expired);
+            UPDATE 'transaction'
+            set status = 2
+            WHERE transaction_id IN
+                (SELECT transaction_id FROM transaction_expired);
+            DROP TABLE IF EXISTS transaction_expired;`, err => {
+                if (err) {
+                    console.log('[Database] Failed updating transactions to expired. [message] ', err);
+                    reject(err);
+                }
+                else {
+                    resolve();
+                }
+            });
+        });
+    }
+
     checkup() {
         return new Promise(resolve => {
             this.database.exec(`
