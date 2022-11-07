@@ -882,7 +882,6 @@ export class WalletTransactionConsensus {
             }
             else { /* 'transaction_invalid', 'transaction_invalid_amount' */
                 counter.invalid++;
-                invalidResponseNodeIDList.push(nodeID);
             }
         }
 
