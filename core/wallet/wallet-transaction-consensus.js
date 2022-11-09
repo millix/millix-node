@@ -588,6 +588,7 @@ export class WalletTransactionConsensus {
             if (!transaction) { // transaction data not found
                 console.log('[wallet-transaction-consensus-validation] transaction not found. unexpected behaviour.');
                 this._transactionValidationRejected.add(transactionID);
+                this._transactionRetryValidation[transactionID] = Date.now() + 5 * 60 * 1000; // allow retry in 5min
                 return database.applyShards(shardID => {
                     const transactionRepository = database.getRepository('transaction', shardID);
                     return transactionRepository.deleteTransaction(transactionID);
@@ -785,7 +786,7 @@ export class WalletTransactionConsensus {
             console.log('[wallet-transaction-consensus-validation] could not validate transaction', transactionID, ' using ', config.CONSENSUS_ROUND_VALIDATION_MAX, 'consensus rounds');
             consensusData.active = false;
             this._transactionValidationRejected.add(transactionID);
-            this._transactionRetryValidation[transactionID] = Date.now();
+            this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000 // allow retry in 1min;
             consensusData.resolve && consensusData.resolve();
         }
         else {
@@ -930,6 +931,7 @@ export class WalletTransactionConsensus {
                     cache.removeCacheItem('validation', transactionID);
                     consensusData.active = false;
                     this._transactionValidationRejected.add(transactionID);
+                    this._transactionRetryValidation[transactionID] = Date.now() + 5 * 60 * 1000; // if required, allow retry in 5min
                     console.log('[wallet-transaction-consensus-validation] the transaction', transactionID, 'was not validated (due to double spend) during consensus round number', consensusData.consensus_round_count);
                     return database.applyShards(shardID => {
                         const transactionRepository = database.getRepository('transaction', shardID);
@@ -1006,7 +1008,7 @@ export class WalletTransactionConsensus {
                     consensusData.active = false;
                     console.log('[wallet-transaction-consensus-validation] the transaction', transactionID, 'was not validated (due to not found reply) during consensus round number', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
-                    this._transactionRetryValidation[transactionID] = Date.now();
+                    this._transactionRetryValidation[transactionID] = Date.now(); // allow retry in 30s
                     return database.applyShards(shardID => {
                         const transactionRepository = database.getRepository('transaction', shardID);
                         return transactionRepository.timeoutTransaction(transactionID)
@@ -1080,7 +1082,7 @@ export class WalletTransactionConsensus {
                 if (this._validationWatchDogState[transactionID]) {
                     if ((Date.now() - this._validationWatchDogState[transactionID].timestamp) >= 90000) { // max life is 1.5min
                         if (this._consensusRoundState[transactionID].is_wallet_transaction) {
-                            this._transactionRetryValidation[transactionID] = Date.now() + 60000;
+                            this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000; // allow retry in 1min
                             this._transactionValidationRejected.add(transactionID);
                         }
                         this._consensusRoundState[transactionID].active = false;

@@ -1291,11 +1291,6 @@ export default class Transaction {
     invalidateTransaction(transactionID) {
         return new Promise((resolve, reject) => {
             let sql = `
-                    update 'transaction'
-                    set status      = 3,
-                        is_stable   = 1,
-                        stable_date = CAST(strftime('%s', 'now') AS INTEGER)
-                    where transaction_id = "${transactionID}";
                     update transaction_output
                     set status            = 3,
                         is_stable         = 1,
@@ -1305,21 +1300,25 @@ export default class Transaction {
                         is_spent          = 0,
                         spent_date        = NULL
                     where transaction_id = "${transactionID}";
+
                     update transaction_input
                     set status            = 3,
                         is_double_spend   = 0,
                         double_spend_date = NULL
                     where transaction_id = "${transactionID}";
+
                     update 'transaction'
                     set status      = 3,
                         is_stable   = 1,
                         stable_date = CAST(strftime('%s', 'now') AS INTEGER)
-                    where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}");
+                    where transaction_id = "${transactionID}";
+
                     update transaction_output
                     set is_spent = 0, spent_date = NULL,
                         is_stable = 0, stable_date = NULL
                         where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
                           and status != 3;
+
                     update 'transaction'
                         set is_stable = 0, stable_date = NULL
                         where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
@@ -1330,81 +1329,6 @@ export default class Transaction {
                     return reject();
                 }
                 return resolve();
-            });
-        });
-    }
-
-    invalidateAllTransactions(transactionID) {
-        return new Promise((resolve, reject) => {
-            this.database.serialize(() => {
-                let sql = `DROP TABLE IF EXISTS transaction_invalid_all;
-                CREATE
-                    TEMPORARY TABLE transaction_invalid_all AS
-                with recursive transaction_invalid_spenders (transaction_id, status)
-                                   as (
-                        select "${transactionID}", 2
-                        union
-                        select i.transaction_id, i.status
-                        from transaction_input i
-                                 inner join transaction_invalid_spenders s
-                                            on i.output_transaction_id = s.transaction_id
-                    )
-                select transaction_id
-                from transaction_invalid_spenders
-                where status != 3;
-                update 'transaction'
-                set status      = 3,
-                    is_stable   = 1,
-                    stable_date = CAST(strftime('%s', 'now') AS INTEGER)
-                where transaction_id in
-                      (select transaction_id from transaction_invalid_all);
-                update transaction_output
-                set status            = 3,
-                    is_stable         = 1,
-                    stable_date       = CAST(strftime('%s', 'now') AS INTEGER),
-                    is_double_spend   = 0,
-                    double_spend_date = NULL,
-                    is_spent          = 0,
-                    spent_date        = NULL
-                where transaction_id in
-                      (select transaction_id from transaction_invalid_all);
-                update transaction_input
-                set status            = 3,
-                    is_double_spend   = 0,
-                    double_spend_date = NULL
-                where transaction_id in
-                      (select transaction_id from transaction_invalid_all);
-                update transaction_output as o
-                set stable_date = CAST(strftime('%s', 'now') AS INTEGER),
-                    is_spent = exists (
-                    select o2.transaction_id
-                    from transaction_input i
-                    inner join transaction_output o2
-                    on i.transaction_id = o2.transaction_id
-                    where i.output_transaction_id = o.transaction_id
-                    and i.output_position = o.output_position
-                    and o2.status != 3 and o2.is_double_spend = 0
-                    ),
-                    spent_date = (
-                    select t.transaction_date
-                    from 'transaction' t
-                    inner join transaction_input i
-                    on i.transaction_id = t.transaction_id
-                    inner join transaction_output o2 on i.transaction_id = o2.transaction_id
-                    where i.output_transaction_id = o.transaction_id
-                    and i.output_position = o.output_position
-                    and
-                    o2.status != 3
-                    and o2.is_double_spend = 0
-                    )
-                where transaction_id in (select output_transaction_id from transaction_input where transaction_id in (select transaction_id from transaction_invalid_all));
-                DROP TABLE transaction_invalid_all;`;
-                this.database.exec(sql, (err) => {
-                    if (err) {
-                        return reject();
-                    }
-                    return resolve();
-                });
             });
         });
     }
@@ -1457,6 +1381,19 @@ export default class Transaction {
                 } = Database.buildQuery('SELECT transaction_output.*, `transaction`.transaction_date, `transaction`.create_date as transaction_create_date FROM `transaction_output` INNER JOIN `transaction` ON transaction_output.transaction_id = `transaction`.transaction_id', where, orderBy, limit);
             this.database.all(sql,
                 parameters, (err, rows) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(rows);
+                });
+        });
+    }
+    listWalletLeafTransactions(addressKeyIdentifier) {
+        return new Promise((resolve, reject) => {
+            const sql = `SELECT o.transaction_id FROM transaction_output o
+                         LEFT JOIN transaction_input i ON i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position
+                         WHERE o.address_key_identifier = ? AND i.output_transaction_id IS NULL`;
+            this.database.all(sql, [addressKeyIdentifier], (err, rows) => {
                     if (err) {
                         return reject(err);
                     }
@@ -1813,9 +1750,13 @@ export default class Transaction {
 
         return new Promise((resolve, reject) => {
             this.database.exec(`
-                UPDATE 'transaction'
-                SET is_stable   = 1,
-                    stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                UPDATE transaction_output
+                SET is_spent          = 1,
+                    is_double_spend   = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_double_spend   = 1,
+                    double_spend_date = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_stable         = 1,
+                    stable_date       = CAST(strftime('%s', 'now') AS INTEGER)
                 WHERE transaction_id = "${transactionID}";
 
                 UPDATE transaction_input
@@ -1830,14 +1771,21 @@ export default class Transaction {
                   AND output_transaction_id = "${doubleSpendInput.output_transaction_id}"
                   AND output_position = ${doubleSpendInput.output_position};
 
-                UPDATE transaction_output
-                SET is_spent          = 1,
-                    is_double_spend   = CAST(strftime('%s', 'now') AS INTEGER),
-                    is_double_spend   = 1,
-                    double_spend_date = CAST(strftime('%s', 'now') AS INTEGER),
-                    is_stable         = 1,
-                    stable_date       = CAST(strftime('%s', 'now') AS INTEGER)
+                UPDATE 'transaction'
+                SET is_stable   = 1,
+                    stable_date = CAST(strftime('%s', 'now') AS INTEGER)
                 WHERE transaction_id = "${transactionID}";
+
+                update transaction_output
+                set is_spent = 0, spent_date = NULL,
+                    is_stable = 0, stable_date = NULL
+                where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
+                  and status != 3;
+
+                update 'transaction'
+                set is_stable = 0, stable_date = NULL
+                where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
+                  and status != 3;
             `, err => {
                 if (err) {
                     console.log(err);
@@ -1845,183 +1793,6 @@ export default class Transaction {
                 }
                 return resolve();
             });
-        });
-    }
-
-    setTransactionAsDoubleSpend(rootTransactionList, rootDoubleSpendTransactionInput) {
-        if (!(rootDoubleSpendTransactionInput && rootDoubleSpendTransactionInput.output_transaction_id && rootDoubleSpendTransactionInput.output_shard_id && rootDoubleSpendTransactionInput.output_position !== undefined) || !rootTransactionList || rootTransactionList.length === 0) {
-            return Promise.resolve();
-        }
-        let now = ntp.now();
-        return new Promise(resolve => {
-            let depth = 0;
-            const dfs = (transactions, doubleSpendTransactions) => {
-                let allNewTransactions         = [];
-                let allNewDoubleTransactions   = [];
-                let processedDoubleSpendInputs = new Set();
-                async.eachOfSeries(transactions, (transaction, idx, callback) => {
-                    const doubleSpendTransactionInput = doubleSpendTransactions[idx];
-                    // mark tx as stable
-                    database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.setTransactionAsStable(transaction.transaction_id))
-                        // reset double spend on inputs
-                            .then(() => database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateAllTransactionInput(transaction.transaction_id, null)))
-                            .then(() => database.firstShardORShardZeroRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.getTransactionObject(transaction.transaction_id)))
-                            .then((transaction) => {
-                                return new Promise(resolve => {
-                                    // mark all outputs as double spend.
-                                    async.eachSeries(transaction.transaction_output_list, (output, callbackOutputs) => {
-                                        database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateTransactionOutput(transaction.transaction_id, output.output_position, now, now, now))
-                                                .then(() => callbackOutputs());
-                                    }, () => {
-                                        async.eachSeries(transaction.transaction_input_list, (input, callbackInputs) => { // reset spent date of the output spent by this transaction
-                                            (() => {
-                                                return database.applyShards((shardID) => {
-                                                    const transactionRepository = database.getRepository('transaction', shardID);
-                                                    return transactionRepository.getOutputSpendDate(input.output_transaction_id, input.output_position)
-                                                                                .then(spendDate => !!spendDate ? Promise.resolve(spendDate) : Promise.reject());
-                                                }).then(spendDate => {
-                                                    spendDate = spendDate.length > 0 ? new Date(_.min(spendDate) * 1000) : undefined;
-                                                    return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id, transactionRepository => transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, !spendDate ? null : spendDate));
-                                                });
-                                            })().then(() => { // mark the input as  double spend if it caused the double spend issue.
-                                                if (input.output_transaction_id === doubleSpendTransactionInput.output_transaction_id &&
-                                                    input.output_position === doubleSpendTransactionInput.output_position) {
-                                                    return database.applyShardZeroAndShardRepository('transaction', transaction.shard_id, transactionRepository => transactionRepository.updateTransactionInput(transaction.transaction_id, input.input_position, now));
-                                                }
-                                            }).then(() => callbackInputs());
-                                        }, () => resolve());
-                                    });
-                                });
-                            })
-                            .then(() => { // check if this double spend tx was processed and every input used in
-                                // transactions spending were settled
-                                if (processedDoubleSpendInputs.has(transaction.transaction_id)) {
-                                    return;
-                                }
-                                processedDoubleSpendInputs.add(transaction.transaction_id); // fix outputs used in the double spend transactions. reset state of outputs that were used just once to unspent.
-                                return database.applyShards(shardID => database.getRepository('transaction', shardID)
-                                                                               .listTransactionInput({
-                                                                                   output_transaction_id: transaction.transaction_id
-                                                                               })) // get inputs spending the double spend output
-                                               .then(spenderTransactionInputList => { // update the state of all inputs
-                                                   const spenderTransactionList = _.uniqBy(_.map(spenderTransactionInputList, input => _.pick(input, [
-                                                       'transaction_id',
-                                                       'shard_id'
-                                                   ])), 'transaction_id');
-                                                   return new Promise(resolve => {
-                                                       async.eachSeries(spenderTransactionList, (spenderTransaction, callbackSpenders) => {
-                                                           database.applyShardZeroAndShardRepository('transaction', spenderTransaction.shard_id, transactionRepository => {
-                                                               return transactionRepository.getTransactionInputs(spenderTransaction.transaction_id);
-                                                           })
-                                                                   .then(transactionInputList => {
-                                                                       async.eachSeries(transactionInputList, (transactionInput, callbackInput) => {
-                                                                           if (transactionInput.output_transaction_id === transaction.transaction_id) { // skip the double spend transaction
-                                                                               return callbackInput();
-                                                                           }
-                                                                           else { /* check the output spender transaction list. if there is only this transaction, we should reset the state to unspent */
-                                                                               database.applyShards(shardID => database.getRepository('transaction', shardID)
-                                                                                                                       .listTransactionInput({
-                                                                                                                           output_transaction_id: transactionInput.output_transaction_id,
-                                                                                                                           output_shard_id      : transactionInput.output_shard_id,
-                                                                                                                           output_position      : transactionInput.output_position
-                                                                                                                       }))
-                                                                                       .then(transactionOutputSpenderList => {
-                                                                                           return new Promise(resolve => {
-                                                                                               const uniqueTransactionIDs = new Set(_.map(transactionOutputSpenderList, i => i.transaction_id));
-                                                                                               if (uniqueTransactionIDs.size === 1) {
-                                                                                                   database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
-                                                                                                       return transactionRepository.listTransactionInput({'transaction_input.transaction_id': transactionInput.output_transaction_id})
-                                                                                                                                   .then(transactionInputList => {
-                                                                                                                                       // if any input is marked as double spend we should not toggle the state of the outputs
-                                                                                                                                       if (transactionInputList.length === 0 || _.some(transactionInputList, input => input.is_double_spend === 1)) {
-                                                                                                                                           return Promise.resolve();
-                                                                                                                                       }
-                                                                                                                                       return database.applyShardZeroAndShardRepository('transaction', transactionInput.output_shard_id, transactionRepository => {
-                                                                                                                                           return transactionRepository.updateTransactionOutput(transactionInput.output_transaction_id, transactionInput.output_position, null, undefined, null);
-                                                                                                                                       });
-                                                                                                                                   });
-                                                                                                   }).then(() => resolve());
-                                                                                               }
-                                                                                               else {
-                                                                                                   resolve();
-                                                                                               }
-                                                                                           });
-                                                                                       })
-                                                                                       .then(() => callbackInput());
-                                                                           }
-                                                                       }, () => callbackSpenders());
-                                                                   });
-                                                       }, () => resolve(spenderTransactionList));
-                                                   });
-                                               });
-                            })
-                            .then((spenderTransactionList) => {
-                                /* if the double spent input is invalid we skip any further state reset */
-                                return database.firstShardZeroORShardRepository('transaction', doubleSpendTransactionInput.shard_id, transactionRepository => {
-                                    return transactionRepository.isDoubleSpendTransaction(doubleSpendTransactionInput.transaction_id)
-                                                                .then(isDoubleSpend => isDoubleSpend ? Promise.resolve(true) : Promise.reject());
-                                }).then(isDoubleSpend => {
-                                    if (isDoubleSpend) {
-                                        return;
-                                    }
-                                    /* if some tx was marked as double spend because of the tx we invalidated, it should be revalidated */
-                                    const otherSpenderTransactionList = _.filter(spenderTransactionList, spenderTransaction => spenderTransaction.transaction_id !== transaction.transaction_id);
-                                    return new Promise(resolve => {
-                                        async.mapSeries(otherSpenderTransactionList, (spenderTransaction, callback) => {
-                                            database.firstShardORShardZeroRepository('transaction', spenderTransaction.shard_id,
-                                                transactionRepository => transactionRepository.isDoubleSpendTransaction(spenderTransaction.transaction_id)
-                                                                                              .then(isDoubleSpend => isDoubleSpend > 0 ? Promise.resolve(true) : Promise.reject()))
-                                                    .then(isDoubleSpend => callback(null, !!isDoubleSpend));
-                                        }, (err, result) => {
-                                            const shouldResetTransactions = _.every(result);
-                                            if (result.length > 0 && shouldResetTransactions) {
-                                                async.eachSeries(otherSpenderTransactionList, (spenderTransaction, callback) => {
-                                                    database.firstShardORShardZeroRepository('transaction', spenderTransaction.shard_id,
-                                                        transactionRepository => transactionRepository.getTransactionInput({
-                                                            is_double_spend                          : 1,
-                                                            'transaction_input.transaction_id'       : spenderTransaction.transaction_id,
-                                                            'transaction_input.output_transaction_id': doubleSpendTransactionInput.output_transaction_id,
-                                                            'transaction_input.output_position'      : doubleSpendTransactionInput.output_position
-                                                        }).then(result => !!result ? Promise.resolve(result) : Promise.reject()))
-                                                            .then(isDoubleSpendOnSameOutput => {
-                                                                if (isDoubleSpendOnSameOutput) {
-                                                                    return database.applyShardZeroAndShardRepository('transaction', spenderTransaction.shard_id,
-                                                                        transactionRepository => transactionRepository.resetTransaction(spenderTransaction.transaction_id, spenderTransaction.shard_id));
-                                                                }
-                                                            }).then(() => callback());
-                                                }, () => resolve());
-                                            }
-                                            else {
-                                                resolve();
-                                            }
-                                        });
-                                    });
-                                });
-                            })
-                            .then(() => database.applyShards((shardID) => {
-                                // get all transactions spending from this
-                                // double spend transaction.
-                                return database.getRepository('transaction', shardID)
-                                               .getTransactionObjectBySpentOutputTransaction(transaction.transaction_id);
-                            }))
-                            .then(newTransactions => {
-                                // new list of double spend transactions
-                                if (newTransactions && newTransactions.length) {
-                                    allNewTransactions.push(_.map(newTransactions, data => data.transaction));
-                                    allNewDoubleTransactions.push(_.map(newTransactions, data => data.transaction_input));
-                                }
-                                callback();
-                            });
-                }, () => {
-                    if (allNewTransactions.length === 0 || depth >= config.CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX) {
-                        return resolve();
-                    }
-                    depth++;
-                    dfs(_.flatten(allNewTransactions), _.flatten(allNewDoubleTransactions));
-                });
-
-            };
-            dfs([rootTransactionList], [rootDoubleSpendTransactionInput]);
         });
     }
 

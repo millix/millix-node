@@ -370,13 +370,14 @@ class Wallet {
                         this._transactionSendInterrupt = false;
                         unlock();
                         reject(e);
-                        if (e.error === 'transaction_proxy_rejected' && e.data.cause === 'transaction_double_spend') {
-                            if (e?.transaction_list?.length > 1) {
-                                const transactions       = _.slice(e.transaction_list, 0, e.transaction_list.length - 1);
-                                const shardID            = _.last(e.transaction_list).shard_id;
-                                const transactionsIDList = _.flatten(_.map(transactions, transaction => _.map(transaction.transaction_input_list, input => input.output_transaction_id)));
-                                this.resetValidation(transactionsIDList, shardID)
-                                    .then(_ => _);
+                        if (e.error === 'transaction_invalid' || (e.error === 'transaction_proxy_rejected' && (e.data.cause === 'transaction_double_spend' || e.data.cause === 'transaction_invalid'))) {
+                            if (e?.transaction_list) {
+                                const transactionsIDList = [];
+                                e.transaction_list.forEach(transaction => {
+                                    transactionsIDList.push(transaction.transaction_id);
+                                    transaction.transaction_input_list.forEach(input => transactionsIDList.push(input.output_transaction_id));
+                                });
+                                this.resetValidation(transactionsIDList).then(_ => _);
                                 this._doWalletUpdate();
                             }
                         }
@@ -728,71 +729,34 @@ class Wallet {
     }
 
     resetTransactionValidationByTransactionId(transactionID) {
-        return database.applyShards(shardID => {
-            const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.getTransactionObject(transactionID)
-                                        .then((transaction) => {
-                                            if (transaction) { // transaction data not found
-                                                return transactionRepository.resetTransaction(transactionID)
-                                                                            .then(() => {
-                                                                                return this.resetValidation(new Set([transaction.transaction_id]), shardID);
-                                                                            });
-                                            }
-                                        });
-        });
+        return this.resetValidation([transactionID]);
     }
 
-    resetTransactionValidationRejected() {
+    resetValidationOnLeafTransactions() {
         walletTransactionConsensus.resetTransactionValidationRejected();
         database.applyShards(shardID => {
             const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.listWalletTransactionOutputNotSpent(this.defaultKeyIdentifier)
-                                        .then(transactions => new Promise(resolve => {
-                                            async.eachSeries(transactions, (transaction, callback) => {
-                                                walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
-                                                walletTransactionConsensus.removeFromRetryTransactions(transaction.transaction_id);
-                                                transactionRepository.resetTransaction(transaction.transaction_id)
-                                                                     .then(() => callback())
-                                                                     .catch(() => callback());
-                                            }, () => resolve(new Set(_.map(transactions, t => t.transaction_id))));
-                                        }))
-                                        .then(rootTransactions => this.resetValidation(rootTransactions, shardID));
-        }).then(_ => _);
+            return transactionRepository.listWalletLeafTransactions(this.defaultKeyIdentifier)
+                                        .then(transactions => transactionRepository.getFreeOutput(this.defaultKeyIdentifier).then(freeOutput => [
+                                            ...transactions,
+                                            ...freeOutput
+                                        ]));
+        }).then(transactions => this.resetValidation(new Set(_.map(transactions, t => t.transaction_id))));
     }
 
-    resetValidation(rootTransactions, shardID) {
-        statsApi.clearCache();
-        const transactionRepository = database.getRepository('transaction', shardID);
+    resetValidation(transactions) {
         return new Promise((resolve) => {
-            const dfs = (transactions, visited = new Set()) => {
-                const listInputTransactionIdSpendingTransaction = new Set();
-                async.eachSeries(transactions, (transactionID, callback) => {
-                    transactionRepository.listTransactionInput({'output_transaction_id': transactionID})
-                                         .then(inputs => {
-                                             inputs.forEach(input => {
-                                                 if (!visited.has(input.transaction_id)) {
-                                                     listInputTransactionIdSpendingTransaction.add(input.transaction_id);
-                                                     visited.add(input.transaction_id);
-                                                 }
-                                             });
-                                             callback();
-                                         }).catch(() => callback());
-                }, () => {
-                    async.eachSeries(listInputTransactionIdSpendingTransaction, (transactionID, callback) => {
-                        transactionRepository.resetTransaction(transactionID)
-                                             .then(() => callback())
-                                             .catch(() => callback());
-                    }, () => {
-                        if (listInputTransactionIdSpendingTransaction.size > 0) {
-                            dfs(listInputTransactionIdSpendingTransaction, visited);
-                        }
-                        else {
-                            resolve();
-                        }
-                    });
-                });
-            };
-            dfs(rootTransactions);
+            async.eachSeries(transactions, (transactionID, callback) => {
+                database.applyShards(shardID => {
+                    const transactionRepository = database.getRepository('transaction', shardID);
+                    walletTransactionConsensus.removeFromRetryTransactions(transactionID);
+                    walletTransactionConsensus.removeFromRejectedTransactions(transactionID);
+                    return transactionRepository.resetTransaction(transactionID);
+                }).then(() => callback()).catch(() => callback());
+            }, () => {
+                resolve();
+                statsApi.clearCache();
+            });
         });
 
     }
@@ -1846,7 +1810,8 @@ class Wallet {
                 transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
                 return pipeline.then(([isValid]) => !isValid ? Promise.reject({
                     error: 'transaction_invalid',
-                    cause: 'tried to sign and store and invalid transaction'
+                    cause: 'tried to sign and store and invalid transaction',
+                    transaction_list: transactionList
                 }) : transactionList);
             });
     };
@@ -1868,7 +1833,7 @@ class Wallet {
                                                     .then(transaction => callback({transaction}))
                                                     .catch(e => {
                                                         if (!e
-                                                            || (e.data && e.error === 'transaction_proxy_rejected' && e.data.cause !== 'transaction_double_spend')
+                                                            || (e.data && e.error === 'transaction_proxy_rejected' && e.data.cause !== 'transaction_double_spend' && e.data.cause !== 'transaction_invalid')
                                                             || proxyErrorList.includes(e.error)) {
                                                             callback();
                                                         }
