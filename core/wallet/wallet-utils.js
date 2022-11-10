@@ -572,7 +572,7 @@ class WalletUtils {
                 ]);
             }
             else if (transactionDate.getTime() <= 1597838399000) { // old transactions version: before unspent auto-consumption feature.
-                resolve(true);
+                resolve([true]);
             }
             else {
                 // before 1620603935 the refresh time was 3 days
