@@ -1180,16 +1180,7 @@ export class WalletTransactionConsensus {
                                         callback(null, transactionList);
                                     })
                                     .catch(() => callback(null, []));
-                        }, (err, data) => {
-                            data = Array.prototype.concat.apply([], data);
-                            if (data.length > 0) {
-                                const transaction = _.minBy(data, t => t.transaction_date);
-                                resolve([transaction]);
-                            }
-                            else {
-                                resolve([]);
-                            }
-                        });
+                        }, (err, data) => resolve(Array.prototype.concat.apply([], data)));
                     });
                 }, 'transaction_date').then(pendingTransactions => {
                     console.log(`[wallet-transaction-consensus-validation] get wallet unstable transactions took ${Date.now() - startTime}ms and retrieved ${pendingTransactions.length} pending transactions`);
@@ -1235,10 +1226,10 @@ export class WalletTransactionConsensus {
                     }
                 }).then(([pendingTransactions, isTransactionFundingWallet]) => {
                     const rejectedTransactions = _.remove(pendingTransactions, t => this._transactionValidationRejected.has(t.transaction_id) || this._consensusRoundState[t.transaction_id]);
-                    let pendingTransaction     = pendingTransactions[0];
+                    let pendingTransaction     = _.minBy(pendingTransactions, t => t.transaction_date);
 
                     if (!pendingTransaction) {
-                        pendingTransaction = rejectedTransactions[0];
+                        pendingTransaction = _.minBy(rejectedTransactions, t => t.transaction_date);
                     }
 
                     if (!isTransactionFundingWallet) {
