@@ -15,6 +15,7 @@ import task from '../task';
 import cache from '../cache';
 import walletSync from './wallet-sync';
 import mutex from '../mutex';
+import {NodeVersion} from '../utils/utils';
 
 
 export class WalletTransactionConsensus {
@@ -561,7 +562,11 @@ export class WalletTransactionConsensus {
     }
 
     _selectNodesForConsensusRound(numberOfNodes = config.CONSENSUS_ROUND_NODE_COUNT, excludeNodeSet = new Set()) {
-        return _.sampleSize(_.filter(network.registeredClients, ws => ws.nodeConnectionReady && !excludeNodeSet.has(ws.nodeID)), numberOfNodes);
+        const minSupportedNodeVersion = new NodeVersion(1,22, 1);
+        return _.sampleSize(_.filter(network.registeredClients, ws => {
+            const nodeVersion = NodeVersion.fromString(ws.features.version);
+            return ws.nodeConnectionReady && !excludeNodeSet.has(ws.nodeID) && nodeVersion && nodeVersion.compareTo(minSupportedNodeVersion) >= 0;
+        }), numberOfNodes);
     }
 
     _isNeedNodesInConsensusRound(transactionID) {

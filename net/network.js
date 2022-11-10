@@ -414,7 +414,9 @@ class Network {
             let url = config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT;
             node    = {
                 node_feature_set: {
-                    storage: config.MODE_STORAGE_SYNC
+                    storage  : config.MODE_STORAGE_SYNC,
+                    full_node: config.MODE_NODE_SYNC_FULL,
+                    version  : config.NODE_MILLIX_VERSION
                 },
                 node_prefix     : config.WEBSOCKET_PROTOCOL,
                 node_address    : this.nodePublicIp,
@@ -597,13 +599,7 @@ class Network {
     _onNodeHandshake(registry, ws) {
         ws.nodeID       = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
-        ws.featureSet   = new Set();
-        _.each(_.keys(registry.node_feature_set), feature => {
-            if (registry.node_feature_set[feature]) {
-                ws.featureSet.add(feature);
-            }
-        });
-
+        ws.features   = {...registry.node_feature_set};
         if (ws.nodeID === this.nodeID) {
             ws.duplicated = true;
 
