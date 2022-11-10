@@ -1093,23 +1093,24 @@ export class WalletTransactionConsensus {
 
     doConsensusTransactionValidationWatchDog() {
         for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
-            if (consensusData.active && (Date.now() - consensusData.timestamp) >= config.CONSENSUS_VALIDATION_WAIT_TIME_MAX) {
-                if (this._validationWatchDogState[transactionID]) {
-                    if ((Date.now() - this._validationWatchDogState[transactionID].timestamp) >= 90000) { // max life is 1.5min
-                        if (this._consensusRoundState[transactionID].is_wallet_transaction) {
-                            this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000; // allow retry in 1min
-                            this._transactionValidationRejected.add(transactionID);
-                        }
-                        this._consensusRoundState[transactionID].active = false;
-                        this._consensusRoundState[transactionID].resolve && this._consensusRoundState[transactionID].resolve();
-                        delete this._consensusRoundState[transactionID];
-                        return;
+            if (this._validationWatchDogState[transactionID]) {
+                if ((Date.now() - this._validationWatchDogState[transactionID].timestamp) >= 90000) { // max life is 1.5min
+                    console.log('[wallet-transaction-consensus-watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
+                    if (this._consensusRoundState[transactionID].is_wallet_transaction) {
+                        this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000; // allow retry in 1min
+                        this._transactionValidationRejected.add(transactionID);
                     }
+                    this._consensusRoundState[transactionID].active = false;
+                    this._consensusRoundState[transactionID].resolve && this._consensusRoundState[transactionID].resolve();
+                    delete this._consensusRoundState[transactionID];
+                    return;
                 }
-                else {
-                    this._validationWatchDogState[transactionID] = {timestamp: Date.now()};
-                }
-                console.log('[wallet-transaction-consensus-watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
+            }
+            else {
+                this._validationWatchDogState[transactionID] = {timestamp: Date.now()};
+            }
+
+            if (consensusData.active && (Date.now() - consensusData.timestamp) >= 15000) {
                 for (let i = 0; i <= consensusData.consensus_round_count; i++) {
                     const consensusRoundResponseData = consensusData.consensus_round_response[i];
                     for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
