@@ -562,7 +562,7 @@ export class WalletTransactionConsensus {
     }
 
     _selectNodesForConsensusRound(numberOfNodes = config.CONSENSUS_ROUND_NODE_COUNT, excludeNodeSet = new Set()) {
-        const minSupportedNodeVersion = new NodeVersion(1,22, 1);
+        const minSupportedNodeVersion = new NodeVersion(1, 22, 1);
         return _.sampleSize(_.filter(network.registeredClients, ws => {
             const nodeVersion = NodeVersion.fromString(ws.features.version);
             return ws.nodeConnectionReady && !excludeNodeSet.has(ws.nodeID) && nodeVersion && nodeVersion.compareTo(minSupportedNodeVersion) >= 0;
@@ -753,6 +753,16 @@ export class WalletTransactionConsensus {
     }
 
     processTransactionValidationRequest(data, ws) {
+        const nodeVersion = NodeVersion.fromString(ws.features.version);
+        const minSupportedNodeVersion = new NodeVersion(1,22, 1);
+        if (!nodeVersion || nodeVersion.compareTo(minSupportedNodeVersion) < 0) {
+            peer.transactionValidationResponse({
+                ...data,
+                type: 'node_not_available'
+            }, ws);
+            return;
+        }
+
         // deal with the allocation process
         const cachedValidation = cache.getCacheItem('validation', data.transaction_id);
         if (cachedValidation) {
@@ -791,7 +801,7 @@ export class WalletTransactionConsensus {
             console.log('[wallet-transaction-consensus-validation] could not validate transaction', transactionID, ' using ', config.CONSENSUS_ROUND_VALIDATION_MAX, 'consensus rounds');
             consensusData.active = false;
             this._transactionValidationRejected.add(transactionID);
-            this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000 // allow retry in 1min;
+            this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000; // allow retry in 1min;
             consensusData.resolve && consensusData.resolve();
         }
         else {
