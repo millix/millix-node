@@ -1847,7 +1847,7 @@ export default class Transaction {
 
     getInputDoubleSpend(input, transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT transaction_input.* FROM transaction_input INNER JOIN `transaction` on `transaction`.transaction_id = transaction_input.transaction_id \
+            this.database.all('SELECT transaction_input.*, `transaction`.transaction_date FROM transaction_input INNER JOIN `transaction` on `transaction`.transaction_id = transaction_input.transaction_id \
                                INNER JOIN transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
                                WHERE transaction_input.output_transaction_id = ? AND transaction_input.output_position = ? AND transaction_input.transaction_id != ? AND transaction_output.is_double_spend = 0 AND `transaction`.status != 3',
                 [

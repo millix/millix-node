@@ -99,7 +99,7 @@ export class WalletTransactionConsensus {
         return new Promise(resolve => {
             let responseType = 'transaction_double_spend';
             let responseData = null;
-            async.eachSeries(inputs, (input, callback) => {
+            async.eachSeries(_.sortBy(inputs, 'transaction_date'), (input, callback) => {
                 database.firstShardZeroORShardRepository('transaction', input.shard_id, transactionRepository => {
                     return new Promise((resolve, reject) => {
                         transactionRepository.getTransaction(input.transaction_id)
@@ -115,8 +115,7 @@ export class WalletTransactionConsensus {
                     else if (transaction.status === 3) { // invalid transaction
                         return callback();
                     }
-                    else if (!doubleSpendSet.has(transaction.transaction_id) && (!responseData || transaction.transaction_date < responseData.transaction_date
-                                                                                 || ((transaction.transaction_date.getTime() === responseData.transaction_date.getTime()) && (transaction.transaction_id < responseData.transaction_id)))) {
+                    else if (!doubleSpendSet.has(transaction.transaction_id) && (!responseData || ((transaction.transaction_date.getTime() === responseData.transaction_date.getTime()) && (transaction.transaction_id < responseData.transaction_id)))) {
 
                         let newVisitedTransactionSet = new Set(transactionVisitedSet);
                         newVisitedTransactionSet.add(doubleSpendTransactionID);
@@ -300,8 +299,9 @@ export class WalletTransactionConsensus {
                                        return new Promise((resolve, reject) => {
                                            if (doubleSpendTransactions.length > 0) {
                                                doubleSpendTransactions.push({
-                                                   transaction_id: transaction.transaction_id,
-                                                   shard_id      : transaction.shard_id,
+                                                   transaction_id  : transaction.transaction_id,
+                                                   shard_id        : transaction.shard_id,
+                                                   transaction_date: Math.floor(walletUtils.getTransactionDateFromNormalizedObject(transaction).getTime() / 1000),
                                                    ...input
                                                });
                                                this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime)
@@ -753,8 +753,8 @@ export class WalletTransactionConsensus {
     }
 
     processTransactionValidationRequest(data, ws) {
-        const nodeVersion = NodeVersion.fromString(ws.features.version);
-        const minSupportedNodeVersion = new NodeVersion(1,22, 1);
+        const nodeVersion             = NodeVersion.fromString(ws.features.version);
+        const minSupportedNodeVersion = new NodeVersion(1, 22, 1);
         if (!nodeVersion || nodeVersion.compareTo(minSupportedNodeVersion) < 0) {
             peer.transactionValidationResponse({
                 ...data,

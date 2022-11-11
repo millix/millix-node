@@ -523,6 +523,22 @@ class WalletUtils {
         });
     }
 
+    getTransactionDateFromNormalizedObject(transaction) {
+        let transactionDate;
+        if (![
+            '0a0',
+            '0b0',
+            'la0l',
+            'lb0l'
+        ].includes(transaction.version)) {
+            transactionDate = new Date(transaction.transaction_date * 1000);
+        }
+        else {
+            transactionDate = new Date(transaction.transaction_date);
+        }
+        return transactionDate;
+    }
+
     verifyTransaction(transaction) {
         return new Promise(resolve => {
             if (transaction.transaction_id === genesisConfig.genesis_transaction) {
@@ -535,18 +551,7 @@ class WalletUtils {
                 ]);
             }
 
-            let transactionDate;
-            if (![
-                '0a0',
-                '0b0',
-                'la0l',
-                'lb0l'
-            ].includes(transaction.version)) {
-                transactionDate = new Date(transaction.transaction_date * 1000);
-            }
-            else {
-                transactionDate = new Date(transaction.transaction_date);
-            }
+            let transactionDate = this.getTransactionDateFromNormalizedObject(transaction);
 
             const maxTransactionDate = ntp.now().getTime() + config.TRANSACTION_CLOCK_SKEW_TOLERANCE * 1000;
             if (transactionDate.getTime() >= maxTransactionDate) {
