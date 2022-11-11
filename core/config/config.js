@@ -20,7 +20,7 @@ const const_value_default = {
     'CONSENSUS_ROUND_NOT_FOUND_MAX'      : 3,
     'CONSENSUS_ROUND_DOUBLE_SPEND_MAX'   : 3,
 
-    'CONSENSUS_VALIDATION_WAIT_TIME_MAX': 15 * 1000
+    'CONSENSUS_VALIDATION_WAIT_TIME_MAX': 45 * 1000
 };
 
 let environment;
