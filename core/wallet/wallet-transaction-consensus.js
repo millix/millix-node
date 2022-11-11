@@ -1098,8 +1098,8 @@ export class WalletTransactionConsensus {
                     console.log('[wallet-transaction-consensus-watchdog] killed by watch dog txid: ', transactionID, ' - consensus round: ', consensusData.consensus_round_count);
                     if (this._consensusRoundState[transactionID].is_wallet_transaction) {
                         this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000; // allow retry in 1min
-                        this._transactionValidationRejected.add(transactionID);
                     }
+                    this._transactionValidationRejected.add(transactionID);
                     this._consensusRoundState[transactionID].active = false;
                     this._consensusRoundState[transactionID].resolve && this._consensusRoundState[transactionID].resolve();
                     delete this._consensusRoundState[transactionID];
