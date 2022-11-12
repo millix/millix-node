@@ -958,59 +958,8 @@ export class WalletTransactionConsensus {
                         }
                         return database.firstShards(shardID => database.getRepository('transaction', shardID)
                                                                        .getTransactionObject(transactionID));
-                    }).then(transaction => {
-                        return new Promise(resolve => {
-                            if (!transaction) {
-                                return resolve();
-                            }
-
-                            async.eachSeries(transaction.transaction_input_list, (input, callback) => {
-
-                                if (this._transactionValidationRejected[input.output_transaction_id]) {
-                                    return callback();
-                                }
-
-                                database.applyShards(shardID => {
-                                    const transactionRepository = database.getRepository('transaction', shardID);
-                                    return transactionRepository.listTransactionSpendingOutput(input.output_transaction_id, input.output_position);
-                                }).then(transactionSpendingOutputList => {
-                                    let isDoubleSpend = false;
-                                    for (let transactionSpendingOutput of transactionSpendingOutputList) {
-                                        if (transactionSpendingOutput.transaction_id !== transaction.transaction_id &&
-                                            transactionSpendingOutput.status !== 3 &&
-                                            !this._transactionValidationRejected[transactionSpendingOutput.transaction_id] &&
-                                            (transactionSpendingOutput.is_stable === 0 || transactionSpendingOutput.is_double_spend === 0)) {
-                                            isDoubleSpend = true;
-                                            break;
-                                        }
-                                    }
-
-                                    if (!isDoubleSpend) {
-                                        database.firstShardORShardZeroRepository('transaction', input.output_shard_id, repository => {
-                                            return repository.isDoubleSpendTransaction(input.output_transaction_id).then(isDoubleSpend => isDoubleSpend ? Promise.resolve(true) : Promise.reject());
-                                        }).then(isDoubleSpend => {
-
-                                            if (isDoubleSpend === true) {
-                                                return callback();
-                                            }
-
-                                            return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id,
-                                                transactionRepository =>
-                                                    (config.CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET ?
-                                                     transactionRepository.resetTransaction(input.output_transaction_id) :
-                                                     transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, null))
-                                                        .then(() => transactionRepository.clearTransactionObjectCache(input.output_transaction_id)))
-                                                           .then(() => callback())
-                                                           .catch(() => callback());
-                                        });
-                                    }
-                                    else {
-                                        callback();
-                                    }
-                                });
-                            }, () => resolve(transaction));
-                        });
-                    }).then(transaction => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
+                    }).then(transaction => this.resetInputsSpentByTransaction(transaction))
+                                   .then(transaction => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
                                    .then(() => consensusData.resolve && consensusData.resolve())
                                    .catch(() => consensusData.resolve && consensusData.resolve());
                 }
@@ -1046,6 +995,14 @@ export class WalletTransactionConsensus {
                         database.applyShards((shardID) => {
                             const transactionRepository = database.getRepository('transaction', shardID);
                             return transactionRepository.invalidateTransaction(transactionID)
+                                                        .then(() => {
+                                                            if (transaction) {
+                                                                return transaction;
+                                                            }
+                                                            return database.firstShards(shardID => database.getRepository('transaction', shardID)
+                                                                                                           .getTransactionObject(transactionID));
+                                                        })
+                                                        .then(transaction => this.resetInputsSpentByTransaction(transaction))
                                                         .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
                         }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
                                 .then(() => consensusData.resolve && consensusData.resolve())
@@ -1089,6 +1046,53 @@ export class WalletTransactionConsensus {
             }
         }
         this._nextConsensusRound(transactionID);
+    }
+
+    resetInputsSpentByTransaction(transaction) {
+        if (!transaction) {
+            return Promise.resolve();
+        }
+
+        return new Promise(resolve => {
+            async.eachSeries(transaction.transaction_input_list, (input, callback) => {
+                database.applyShards(sharID => database.getRepository('transaction', sharID).getTransactionOutput({transaction_id: input.output_transaction_id}))
+                        .then(spentTransactionOutput => {
+                            if (_.some(spentTransactionOutput, output => output.is_double_spend === 1 || output.status === 3)) {
+                                return callback();
+                            }
+
+                            return database.applyShards(shardID => {
+                                const transactionRepository = database.getRepository('transaction', shardID);
+                                return transactionRepository.listTransactionSpendingOutput(input.output_transaction_id, input.output_position);
+                            }).then(transactionSpendingOutputList => {
+                                let isDoubleSpend = false;
+                                for (let transactionSpendingOutput of transactionSpendingOutputList) {
+                                    if (transactionSpendingOutput.transaction_id !== transaction.transaction_id &&
+                                        transactionSpendingOutput.status !== 3 &&
+                                        !this._transactionValidationRejected[transactionSpendingOutput.transaction_id] &&
+                                        (transactionSpendingOutput.is_stable === 0 || transactionSpendingOutput.is_double_spend === 0)) {
+                                        isDoubleSpend = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!isDoubleSpend) {
+                                    return database.applyShardZeroAndShardRepository('transaction', input.output_shard_id,
+                                        transactionRepository =>
+                                            (config.CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET ?
+                                             transactionRepository.resetTransaction(input.output_transaction_id) :
+                                             transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, null))
+                                                .then(() => transactionRepository.clearTransactionObjectCache(input.output_transaction_id)))
+                                                   .then(() => callback())
+                                                   .catch(() => callback());
+                                }
+                                else {
+                                    callback();
+                                }
+                            });
+                        });
+            }, () => resolve(transaction));
+        });
     }
 
     doConsensusTransactionValidationWatchDog() {

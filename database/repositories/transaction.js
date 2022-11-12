@@ -1312,17 +1312,6 @@ export default class Transaction {
                         is_stable   = 1,
                         stable_date = CAST(strftime('%s', 'now') AS INTEGER)
                     where transaction_id = "${transactionID}";
-
-                    update transaction_output
-                    set is_spent = 0, spent_date = NULL,
-                        is_stable = 0, stable_date = NULL
-                        where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
-                          and status != 3;
-
-                    update 'transaction'
-                        set is_stable = 0, stable_date = NULL
-                        where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
-                          and status != 3;
                 `;
             this.database.exec(sql, (err) => {
                 if (err) {
@@ -1775,17 +1764,6 @@ export default class Transaction {
                 SET is_stable   = 1,
                     stable_date = CAST(strftime('%s', 'now') AS INTEGER)
                 WHERE transaction_id = "${transactionID}";
-
-                update transaction_output
-                set is_spent = 0, spent_date = NULL,
-                    is_stable = 0, stable_date = NULL
-                where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
-                  and status != 3;
-
-                update 'transaction'
-                set is_stable = 0, stable_date = NULL
-                where transaction_id in (select output_transaction_id from transaction_input where transaction_id = "${transactionID}")
-                  and status != 3;
             `, err => {
                 if (err) {
                     console.log(err);
