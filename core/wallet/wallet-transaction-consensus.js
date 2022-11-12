@@ -95,7 +95,7 @@ export class WalletTransactionConsensus {
         this._transactionValidationRejected = new Set();
     }
 
-    _getValidInputOnDoubleSpend(doubleSpendTransactionID, inputs, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime) {
+    _getValidInputOnDoubleSpend(doubleSpendTransactionID, targetTransactionId, inputs, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime) {
         return new Promise(resolve => {
             let responseType = 'transaction_double_spend';
             let responseData = null;
@@ -113,7 +113,7 @@ export class WalletTransactionConsensus {
                         return callback(true);
                     }
                     else if (transaction.status === 3) { // invalid transaction
-                        return callback();
+                        return transaction.transaction_id === targetTransactionId ? callback(true) : callback();
                     }
                     else if (!doubleSpendSet.has(transaction.transaction_id) && (!responseData || ((transaction.transaction_date.getTime() === responseData.transaction_date.getTime()) && (transaction.transaction_id < responseData.transaction_id)))) {
 
@@ -128,7 +128,7 @@ export class WalletTransactionConsensus {
                             .catch(err => {
                                 if (err.cause === 'transaction_double_spend') {
                                     doubleSpendSet.add(transaction.transaction_id);
-                                    return callback();
+                                    return transaction.transaction_id === targetTransactionId ? callback(true) : callback();
                                 }
                                 else if (err.cause === 'transaction_not_found' || err.cause === 'transaction_invalid') {
                                     responseType = err.cause;
@@ -146,7 +146,7 @@ export class WalletTransactionConsensus {
                             });
                     }
                     else {
-                        callback();
+                        transaction.transaction_id === targetTransactionId ? callback(true) : callback();
                     }
                 }).catch(() => callback());
             }, () => resolve({
@@ -304,7 +304,7 @@ export class WalletTransactionConsensus {
                                                    transaction_date: Math.floor(walletUtils.getTransactionDateFromNormalizedObject(transaction).getTime() / 1000),
                                                    ...input
                                                });
-                                               this._getValidInputOnDoubleSpend(input.output_transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime)
+                                               this._getValidInputOnDoubleSpend(input.output_transaction_id, input.transaction_id, doubleSpendTransactions, nodeID, transactionVisitedSet, doubleSpendSet, proxyTimeStart, proxyTimeLimit, startTime)
                                                    .then(({
                                                               response_type: responseType,
                                                               data
