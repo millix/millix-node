@@ -621,7 +621,35 @@ export class WalletTransactionConsensus {
                                       }).then(() => Promise.reject());
                                   }
 
-                                  return transaction;
+                                  return new Promise((resolve, reject) => {
+                                      async.mapSeries(transaction.transaction_input_list, (input, callback) => {
+                                          database.applyShards(shardID => {
+                                              const transactionRepository = database.getRepository('transaction', shardID);
+                                              return transactionRepository.listTransactionOutput({'`transaction`.transaction_id': input.output_transaction_id});
+                                          }).then(outputList => callback(null, outputList)).catch(_ => callback(null, []));
+                                      }, (err, spentOutputList) => {
+                                          spentOutputList = _.flatten(spentOutputList);
+                                          if (_.some(spentOutputList, output => output.status === 3 || output.transaction_status === 3)) {
+                                              return database.applyShards((shardID) => {
+                                                  const transactionRepository = database.getRepository('transaction', shardID);
+                                                  return transactionRepository.invalidateTransaction(transactionID)
+                                                                              .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
+                                              }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
+                                                             .then(() => reject());
+                                          }
+                                          else if (_.some(spentOutputList, output => output.is_double_spend === 1)) {
+                                              const doubleSpendOutput = _.find(spentOutputList, output => output.is_double_spend === 1);
+                                              const doubleSpendInput = _.find(transaction.transaction_input_list, input => input.output_transaction_id === doubleSpendOutput.transaction_id);
+                                              return database.applyShards(shardID => {
+                                                  const transactionRepository = database.getRepository('transaction', shardID);
+                                                  return transactionRepository.updateTransactionAsDoubleSpend(transactionID, doubleSpendInput)
+                                                                              .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
+                                              }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
+                                                             .then(() => reject());
+                                          }
+                                          resolve(transaction);
+                                      });
+                                  });
                               });
         }).then(transaction => {
             console.log('[wallet-transaction-consensus-validation]', transactionID, ' is ready for consensus round');

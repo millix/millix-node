@@ -1367,7 +1367,7 @@ export default class Transaction {
             let {
                     sql,
                     parameters
-                } = Database.buildQuery('SELECT transaction_output.*, `transaction`.transaction_date, `transaction`.create_date as transaction_create_date FROM `transaction_output` INNER JOIN `transaction` ON transaction_output.transaction_id = `transaction`.transaction_id', where, orderBy, limit);
+                } = Database.buildQuery('SELECT transaction_output.*, `transaction`.transaction_date, `transaction`.create_date as transaction_create_date, `transaction`.status as transaction_status FROM `transaction_output` INNER JOIN `transaction` ON transaction_output.transaction_id = `transaction`.transaction_id', where, orderBy, limit);
             this.database.all(sql,
                 parameters, (err, rows) => {
                     if (err) {
