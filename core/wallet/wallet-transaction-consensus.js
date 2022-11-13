@@ -145,8 +145,10 @@ export class WalletTransactionConsensus {
                                 callback(true);
                             });
                     }
-                    else {
-                        transaction.transaction_id === targetTransactionId ? callback(true) : callback();
+                    else if (transaction.transaction_id === targetTransactionId || responseData && transaction.transaction_date.getTime() > responseData.transaction_date.getTime()) {
+                        callback(true);
+                    } else {
+                        callback()
                     }
                 }).catch(() => callback());
             }, () => resolve({
