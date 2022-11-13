@@ -130,7 +130,10 @@ export class WalletTransactionConsensus {
                                     doubleSpendSet.add(transaction.transaction_id);
                                     return transaction.transaction_id === targetTransactionId ? callback(true) : callback();
                                 }
-                                else if (err.cause === 'transaction_not_found' || err.cause === 'transaction_invalid') {
+                                else if (err.cause === 'transaction_invalid') {
+                                    return transaction.transaction_id === targetTransactionId ? callback(true) : callback();
+                                }
+                                else if (err.cause === 'transaction_not_found') {
                                     responseType = err.cause;
                                     responseData = {transaction_id: err.transaction_id_fail};
                                 }
