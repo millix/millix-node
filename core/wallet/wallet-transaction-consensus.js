@@ -1025,7 +1025,7 @@ export class WalletTransactionConsensus {
                     this._transactionValidationRejected.add(transactionID);
                     if (consensusData.consensus_round_double_spend_count === 0
                         && consensusData.consensus_round_validation_count === 0) { // only invalidate the transaction if all rounds are invalid
-                        database.applyShards((shardID) => {
+                        return database.applyShards((shardID) => {
                             const transactionRepository = database.getRepository('transaction', shardID);
                             return transactionRepository.invalidateTransaction(transactionID)
                                                         .then(() => {
@@ -1041,9 +1041,9 @@ export class WalletTransactionConsensus {
                                 .then(() => consensusData.resolve && consensusData.resolve())
                                 .catch(() => consensusData.resolve && consensusData.resolve());
                     }
-                    else {
-                        consensusData.resolve && consensusData.resolve();
-                    }
+
+                    consensusData.resolve && consensusData.resolve();
+                    return;
                 }
             }
         }
