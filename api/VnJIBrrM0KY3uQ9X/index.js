@@ -75,7 +75,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
             const transactionRepository = database.getRepository('transaction');
             let pipeline                = Promise.resolve(true);
             transactionList.forEach(transaction => pipeline = pipeline.then(valid => valid ? walletUtils.verifyTransaction(transaction) : false));
-            pipeline.then(valid => {
+            pipeline.then(([valid]) => {
                 if (!valid) {
                     return Promise.reject('transaction_payload_invalid');
                 }

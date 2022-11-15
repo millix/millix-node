@@ -21,7 +21,7 @@ class _QISzUVake29059bi extends Endpoint {
      * @returns {*}
      */
     handler(app, req, res) {
-        wallet.resetTransactionValidationRejected();
+        wallet.resetValidationOnLeafTransactions();
         res.send({success: true});
     }
 }
