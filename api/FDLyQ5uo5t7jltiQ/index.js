@@ -46,7 +46,8 @@ class _FDLyQ5uo5t7jltiQ extends Endpoint {
                 is_spent                              : req.query.p10,
                 spent_date_begin                      : req.query.p11,
                 spent_date_end                        : req.query.p12,
-                'transaction_output.shard_id'         : shardID
+                'transaction_output.shard_id'         : shardID,
+                '`transaction`.status!'               : 3,
             }, orderBy, limit);
         }, orderBy, limit, shardID)
                 .then(data => res.send(_.uniqBy(data, i => `${i.transaction_id}_${i.output_position}`)))
