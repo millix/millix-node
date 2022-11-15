@@ -150,7 +150,7 @@ export default class Transaction {
             this.database.get('SELECT COALESCE(SUM(AMOUNT), 0) as amount FROM transaction_output ' +
                               'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE transaction_output.address_key_identifier=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) +
-                              ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3 AND transaction_output.address not like "%' + config.ADDRESS_VERSION_NFT + '%"', [keyIdentifier],
+                              ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3 AND transaction_output.status != 3 AND transaction_output.address not like "%' + config.ADDRESS_VERSION_NFT + '%"', [keyIdentifier],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });

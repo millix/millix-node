@@ -30,6 +30,13 @@ export class NodeVersion {
         return null;
     }
 
+    static ofNullable(version) {
+        if (!version) {
+            return new NodeVersion(0, 0, 0);
+        }
+        return version;
+    }
+
     compareTo(other) {
         if (this.major === other.major && this.minor === other.minor && this.patch === other.patch) {
             return 0;

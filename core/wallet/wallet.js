@@ -23,7 +23,7 @@ import task from '../task';
 import cache from '../cache';
 import fileExchange from '../storage/file-exchange';
 import fileSync from '../storage/file-sync';
-import utils from '../utils/utils';
+import utils, {NodeVersion} from '../utils/utils';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -1809,8 +1809,8 @@ class Wallet {
                 let pipeline = new Promise(resolve => resolve(true));
                 transactionList.forEach(transaction => pipeline = pipeline.then(isValid => isValid ? walletUtils.verifyTransaction(transaction).catch(() => new Promise(resolve => resolve(false))) : false));
                 return pipeline.then(([isValid]) => !isValid ? Promise.reject({
-                    error: 'transaction_invalid',
-                    cause: 'tried to sign and store and invalid transaction',
+                    error           : 'transaction_invalid',
+                    cause           : 'tried to sign and store and invalid transaction',
                     transaction_list: transactionList
                 }) : transactionList);
             });
@@ -1825,7 +1825,8 @@ class Wallet {
             'proxy_connection_state_invalid',
             'proxy_time_limit_exceed'
         ];
-        return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(network.registeredClients, ws => ws.nodeID)))
+        const minNodeVersion        = new NodeVersion(1, 22, 1);
+        return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(_.filter(network.registeredClients, ws => NodeVersion.ofNullable(NodeVersion.fromString(ws.feature.node_version)).compareTo(minNodeVersion) >= 0), ws => ws.nodeID)))
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
