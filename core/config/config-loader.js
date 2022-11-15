@@ -79,23 +79,23 @@ class _ConfigLoader {
                             sql = `
                                 update 'transaction'
                                 set is_stable = 0, stable_date = NULL, status = 1
-                                where create_date >= 1667088000;
+                                where create_date >= 1667001600;
                                 update 'transaction_output'
                                 set is_stable = 0, stable_date = NULL, status = 1,
                                     is_spent = 0, spent_date = NULL, is_double_spend = 0, double_spend_date = NULL
-                                where create_date >= 1667088000;
+                                where create_date >= 1667001600;
                                 update 'transaction_input'
                                 set status = 1, is_double_spend = 0, double_spend_date = NULL
-                                where create_date >= 1667088000;
+                                where create_date >= 1667001600;
                                 update 'transaction_signature'
                                 set status = 1
-                                where create_date >= 1667088000;
+                                where create_date >= 1667001600;
                                 update 'transaction_parent'
                                 set status = 1
-                                where create_date >= 1667088000;
+                                where create_date >= 1667001600;
                                 update 'transaction_output_attribute'
                                 set status = 1
-                                where create_date >= 1667088000;
+                                where create_date >= 1667001600;
                             `;
                         }
                         console.log('[config-loader] reset transactions on shard', shardID);
