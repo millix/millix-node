@@ -1826,7 +1826,7 @@ class Wallet {
             'proxy_time_limit_exceed'
         ];
         const minNodeVersion        = new NodeVersion(1, 22, 1);
-        return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(_.filter(network.registeredClients, ws => NodeVersion.ofNullable(NodeVersion.fromString(ws.feature.node_version)).compareTo(minNodeVersion) >= 0), ws => ws.nodeID)))
+        return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(_.filter(network.registeredClients, ws => NodeVersion.ofNullable(NodeVersion.fromString(ws.features.node_version)).compareTo(minNodeVersion) >= 0), ws => ws.nodeID)))
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
