@@ -1026,8 +1026,6 @@ export class WalletTransactionConsensus {
                 console.log('[wallet-transaction-consensus-validation] transaction', transactionID, 'validated during consensus round number', consensusData.consensus_round_count);
                 cache.removeCacheItem('validation', transactionID);
                 consensusData.active = false;
-
-                console.log('[wallet-transaction-consensus-validation] transaction object no present for tx id:', transactionID);
                 return (() => {
                     if (transaction) {
                         return Promise.resolve(transaction);
@@ -1060,9 +1058,9 @@ export class WalletTransactionConsensus {
 
         return new Promise(resolve => {
             async.eachSeries(transaction.transaction_input_list, (input, callback) => {
-                database.applyShards(sharID => database.getRepository('transaction', sharID).getTransactionOutput({transaction_id: input.output_transaction_id}))
+                database.applyShards(sharID => database.getRepository('transaction', sharID).getTransactionOutput({'`transaction`.transaction_id': input.output_transaction_id}))
                         .then(spentTransactionOutput => {
-                            if (_.some(spentTransactionOutput, output => output.is_double_spend === 1 || output.status === 3)) {
+                            if (!config.CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET && _.some(spentTransactionOutput, output => output?.status === 3)) {
                                 return callback();
                             }
 
