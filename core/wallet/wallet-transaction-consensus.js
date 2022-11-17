@@ -943,7 +943,7 @@ export class WalletTransactionConsensus {
             console.log('[wallet-transaction-consensus-validation] the transaction', transactionID, 'was not validated during consensus round number', consensusData.consensus_round_count);
             let isDoubleSpend = counter.double_spend >= 2 / 3 * responseCount;
             let isNotFound    = counter.not_found >= 2 / 3 * responseCount;
-            let isInvalid     = counter.invalid >= 2 / 3 * responseCount;
+            let isInvalid     = (counter.invalid + counter.double_spend) >= 2 / 3 * responseCount;
             if (isDoubleSpend) {
                 consensusData.consensus_round_double_spend_count++;
                 console.log('[wallet-transaction-consensus-validation] increase number of double spend rounds to', consensusData.consensus_round_double_spend_count);
