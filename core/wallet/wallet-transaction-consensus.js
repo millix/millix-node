@@ -1060,7 +1060,7 @@ export class WalletTransactionConsensus {
             async.eachSeries(transaction.transaction_input_list, (input, callback) => {
                 database.applyShards(sharID => database.getRepository('transaction', sharID).getTransactionOutput({'`transaction`.transaction_id': input.output_transaction_id}))
                         .then(spentTransactionOutput => {
-                            if (!config.CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET && _.some(spentTransactionOutput, output => output?.status === 3)) {
+                            if (_.some(spentTransactionOutput, output => output?.status === 3)) {
                                 return callback();
                             }
 
