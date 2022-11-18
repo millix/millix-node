@@ -1,9 +1,10 @@
 import db from '../../database/database';
-import config from './config';
+import config, {SHARD_ZERO_NAME} from './config';
 import _ from 'lodash';
 import async from 'async';
 import path from 'path';
 import os from 'os';
+import {NodeVersion} from '../utils/utils';
 
 
 class _ConfigLoader {
@@ -47,31 +48,66 @@ class _ConfigLoader {
 
     _onMillixVersionUpgrade(oldVersion, newVersion) {
         return new Promise(resolve => {
-            const re = new RegExp('(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)');
-            let major, minor, patch;
-            if (oldVersion) {
-                const match = re.exec(oldVersion);
-                if (match && match.groups &&
-                    match.groups.major && match.groups.minor && match.groups.patch) {
-                    major = parseInt(match.groups.major);
-                    minor = parseInt(match.groups.minor);
-                    patch = parseInt(match.groups.patch);
-                }
-            }
-
-            if (!oldVersion || (major === 1 && minor <= 19 && patch <= 0)) {
+            const oldNodeVersion = NodeVersion.fromString(oldVersion);
+            const targetVersion  = new NodeVersion(1, 22, 0);
+            if (!oldNodeVersion || oldNodeVersion.compareTo(targetVersion) <= 0) {
                 if (!oldVersion || config.MODE_TEST_NETWORK) {
                     return resolve();
                 }
-                /* apply to all version <= 1.19.0 */
-                const configRepository = db.getRepository('config');
-                configRepository.updateConfig('mode_storage_sync', 'true')
-                                .catch(_ => _)
-                                .then(configRepository.updateConfig('node_port_storage_receiver', 8000))
-                                .catch(_ => _)
-                                .then(configRepository.updateConfig('node_port_storage_provider', 8001))
-                                .catch(_ => _)
-                                .then(() => resolve());
+                /* apply to all version <= 1.22.0 */
+                db.applyShards(shardID => {
+                    return new Promise(resolve => {
+                        let sql;
+                        if (shardID === SHARD_ZERO_NAME) {
+                            sql = `
+                                update 'transaction'
+                                set is_stable = 0, stable_date = NULL, status = 1;
+                                update 'transaction_output'
+                                set is_stable = 0, stable_date= NULL, status = 1,
+                                    is_spent = 0, spent_date = NULL, is_double_spend = 0, double_spend_date = NULL;
+                                update 'transaction_input'
+                                set status = 1, is_double_spend = 0, double_spend_date = NULL;
+                                update 'transaction_signature'
+                                set status = 1;
+                                update 'transaction_parent'
+                                set status = 1;
+                                update 'transaction_output_attribute'
+                                set status = 1;
+                            `;
+                        }
+                        else {
+                            sql = `
+                                update 'transaction'
+                                set is_stable = 0, stable_date = NULL, status = 1
+                                where create_date >= 1667001600;
+                                update 'transaction_output'
+                                set is_stable = 0, stable_date = NULL, status = 1,
+                                    is_spent = 0, spent_date = NULL, is_double_spend = 0, double_spend_date = NULL
+                                where create_date >= 1667001600;
+                                update 'transaction_input'
+                                set status = 1, is_double_spend = 0, double_spend_date = NULL
+                                where create_date >= 1667001600;
+                                update 'transaction_signature'
+                                set status = 1
+                                where create_date >= 1667001600;
+                                update 'transaction_parent'
+                                set status = 1
+                                where create_date >= 1667001600;
+                                update 'transaction_output_attribute'
+                                set status = 1
+                                where create_date >= 1667001600;
+                            `;
+                        }
+                        console.log('[config-loader] reset transactions on shard', shardID);
+                        db.getShard(shardID).database.exec(sql, (err) => {
+                            if (err) {
+                                console.log('[config-loader] error', err);
+                            }
+                            console.log('[config-loader] reset done - success:', !err);
+                            resolve();
+                        });
+                    });
+                }).then(() => resolve());
             }
             else {
                 resolve();

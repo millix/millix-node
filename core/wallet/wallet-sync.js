@@ -524,7 +524,7 @@ export class WalletSync {
         }
 
         if (!config.FORCE_QUEUE_UPDATE) {
-            return this.updateSyncWalletTransactionSpend(); /* only update walllet transactions */
+            return this.updateSyncWalletTransactionSpend(); /* only update wallet transactions */
         }
 
         const walletKeyIdentifierSet = new Set([
