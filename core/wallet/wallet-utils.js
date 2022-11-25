@@ -523,57 +523,72 @@ class WalletUtils {
         });
     }
 
+    getTransactionDateFromNormalizedObject(transaction) {
+        let transactionDate;
+        if (![
+            '0a0',
+            '0b0',
+            'la0l',
+            'lb0l'
+        ].includes(transaction.version)) {
+            transactionDate = new Date(transaction.transaction_date * 1000);
+        }
+        else {
+            transactionDate = new Date(transaction.transaction_date);
+        }
+        return transactionDate;
+    }
+
     verifyTransaction(transaction) {
         return new Promise(resolve => {
             if (transaction.transaction_id === genesisConfig.genesis_transaction) {
-                return resolve(true);
+                return resolve([true]);
             }
             if (!this.isValidTransactionObject(transaction)) {
-                return resolve(false);
+                return resolve([
+                    false,
+                    'transaction_object_invalid'
+                ]);
             }
 
-            let transactionDate;
-            if (![
-                '0a0',
-                '0b0',
-                'la0l',
-                'lb0l'
-            ].includes(transaction.version)) {
-                transactionDate = new Date(transaction.transaction_date * 1000);
-            }
-            else {
-                transactionDate = new Date(transaction.transaction_date);
-            }
+            let transactionDate = this.getTransactionDateFromNormalizedObject(transaction);
 
             const maxTransactionDate = ntp.now().getTime() + config.TRANSACTION_CLOCK_SKEW_TOLERANCE * 1000;
             if (transactionDate.getTime() >= maxTransactionDate) {
-                return resolve(false);
+                return resolve([
+                    false,
+                    'transaction_date_invalid'
+                ]);
             }
             else if (config.WALLET_TRANSACTION_SUPPORTED_VERSION.filter(version => version.charAt(1) === 'b').includes(transaction.version)) { // refresh transactions
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
-                if (!(isValidRefresh)) {
-                    console.log('[wallet-utils] Rejecting refresh transaction');
-                }
-
-                resolve(isValidRefresh);
+                resolve([
+                    isValidRefresh,
+                    !isValidRefresh ? 'transaction_refresh_invalid' : undefined
+                ]);
             }
             else if (transactionDate.getTime() <= 1597838399000) { // old transactions version: before unspent auto-consumption feature.
-                resolve(true);
+                resolve([true]);
             }
             else {
                 // before 1620603935 the refresh time was 3 days
                 // now the refresh time is 10 min
                 // (TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN)
                 const expireMinutes   = transactionDate.getTime() <= 1620603935000 ? 4320 : config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN;
-                let maximumOldestDate = new Date(transactionDate.getTime());
-                maximumOldestDate.setMinutes(maximumOldestDate.getMinutes() - expireMinutes);
-                this.isConsumingExpiredOutputs(transaction.transaction_input_list, maximumOldestDate)
+                let maximumOldestDate = transactionDate.getTime() - expireMinutes * 60 * 1000;
+                this.isConsumingExpiredOutputs(transaction.transaction_input_list, Math.floor(maximumOldestDate / 1000))
                     .then(isConsumingExpired => {
-                        resolve(!isConsumingExpired);
+                        resolve([
+                            !isConsumingExpired,
+                            isConsumingExpired ? 'transaction_consume_expired_output' : undefined
+                        ]);
                     })
                     .catch(err => {
                         console.log(`[wallet-utils] failed to check if consuming expired. abandoning verification. error: ${err}`);
-                        resolve(false);
+                        resolve([
+                            true,
+                            'unexpected_internal_error'
+                        ]);
                     });
             }
         });
@@ -586,27 +601,15 @@ class WalletUtils {
     isConsumingExpiredOutputs(inputList, maximumOldestDate) {
         return new Promise(resolve => {
             async.eachSeries(inputList, (input, callback) => {
-                let output_shard = input.output_shard_id;
-
-                database.firstShardZeroORShardRepository('transaction', output_shard, transactionRepository => {
-                    return transactionRepository.getTransaction(input.output_transaction_id);
-                }).then(sourceTransaction => {
-                    if (!sourceTransaction) {
-                        console.log(`[wallet-utils] Cannot check if parent transaction ${input.output_transaction_id} is expired, since it is not stored`);
-                        callback(false);
-                    }
-                    else {
-                        if ((maximumOldestDate - sourceTransaction.transaction_date) > 0) {
-                            // Meaning it
-                            // consumed an
-                            // expired output
-                            callback(true);
-                        }
-                        else {
-                            callback(false);
-                        }
-                    }
-                });
+                if (maximumOldestDate > input.output_transaction_date) {
+                    // Meaning it
+                    // consumed an
+                    // expired output
+                    callback(true);
+                }
+                else {
+                    callback(false);
+                }
             }, (isConsumingExpired) => resolve(isConsumingExpired));
         });
     }
@@ -829,9 +832,7 @@ class WalletUtils {
             return Promise.reject('private key set is required');
         }
 
-        let maximumOldestDate = new Date(transactionDate.getTime());
-        maximumOldestDate.setMinutes(maximumOldestDate.getMinutes() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN);
-
+        let maximumOldestDate = transactionDate.getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
         return new Promise((resolve, reject) => {
             const allocatedFunds = _.sum(_.map(inputList, o => o.amount));
             const amount         = _.sum(_.map(outputList, o => o.amount)) + _.sum(_.map(feeOutputList, o => o.amount));
@@ -846,7 +847,7 @@ class WalletUtils {
                 address_attribute: addressAttributeMap[addressBase]
             }));
             return resolve(signatureList);
-        })).then(signatureList => this.isConsumingExpiredOutputs(inputList, maximumOldestDate).then(isConsumingExpiredOutputs => [
+        })).then(signatureList => this.isConsumingExpiredOutputs(inputList, Math.floor(maximumOldestDate / 1000)).then(isConsumingExpiredOutputs => [
             signatureList,
             isConsumingExpiredOutputs
         ]))

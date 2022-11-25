@@ -67,7 +67,8 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
                         version_available  : versionAvailable,
                         application        : application,
                         node_millix_version: nodeMillixVersion,
-                        os_platform        : os.platform()
+                        os_platform        : os.platform(),
+                        os_arch            : os.arch()
                     });
                 });
             });
