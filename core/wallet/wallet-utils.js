@@ -778,14 +778,18 @@ class WalletUtils {
         if (isBridgeMint) {
             // 3 outputs (destination, bridge fees, and proxy fees)
             // destination address should be a bridge address
-            return transaction.transaction_output_list.length === 3 && transaction.transaction_output_list[0].version === config.ADDRESS_VERSION_BRIDGE;
+            const mintOutput    = _.find(transaction.transaction_output_list, {output_position: 0});
+            const mintFeeOutput = _.find(transaction.transaction_output_list, {output_position: 1});
+            return transaction.transaction_output_list.length === 3 && mintOutput.version === config.ADDRESS_VERSION_BRIDGE
+                   && mintOutput.address_key_identifier === mintFeeOutput.address_key_identifier;
         }
 
         // if burn
         // 2 or 3 outputs (destination, [change,] and proxy fees)
         // if there is a change it must be sent to a bridge address
         if (transaction.transaction_output_list.length === 3) {
-            return transaction.transaction_output_list[1].version === config.ADDRESS_VERSION_BRIDGE;
+            const burnChange = _.find(transaction.transaction_output_list, {output_position: 1});
+            return burnChange.version === config.ADDRESS_VERSION_BRIDGE;
         }
 
         return true;
