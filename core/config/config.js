@@ -14,7 +14,7 @@ const const_value_default = {
 
     'MODE_NODE_SYNC_FULL': false,
 
-    'EXTERNAL_API_NOTIFICATION': 'http://localhost:5500/',
+    'EXTERNAL_API_NOTIFICATION': null,
 
     'CONSENSUS_ROUND_NODE_COUNT'         : 12,
     'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
