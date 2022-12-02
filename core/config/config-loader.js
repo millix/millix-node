@@ -34,6 +34,7 @@ class _ConfigLoader {
             'WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT',
             'WALLET_AGGREGATION_CONSUME_SMALLER_FIRST',
             'BRIDGE_ADDRESS',
+            'EXTERNAL_API_NOTIFICATION',
             'JOB_CONFIG_VERSION',
             'NODE_PUBLIC',
             'NODE_DNS_SERVER',

@@ -14,6 +14,8 @@ const const_value_default = {
 
     'MODE_NODE_SYNC_FULL': false,
 
+    'EXTERNAL_API_NOTIFICATION': 'http://localhost:5500/',
+
     'CONSENSUS_ROUND_NODE_COUNT'         : 12,
     'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
     'CONSENSUS_ROUND_VALIDATION_MAX'     : 3,
@@ -81,6 +83,7 @@ export const MODE_STORAGE_SYNC                                 = true;
 export const MODE_STORAGE_SYNC_FULL                            = false;
 export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
+export const EXTERNAL_API_NOTIFICATION                         = getConstValue('EXTERNAL_API_NOTIFICATION');
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
         host          : '18.136.162.158',
@@ -967,8 +970,10 @@ export default {
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
     STORAGE_CONNECTION,
+    BRIDGE_ADDRESS,
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
+    EXTERNAL_API_NOTIFICATION,
     CONSENSUS_VALIDATION_DEPTH_MAX,
     BRIDGE_TRANSACTION_VERSION_MINT,
     BRIDGE_TRANSACTION_VERSION_BURN,

@@ -24,6 +24,7 @@ import cache from '../cache';
 import fileExchange from '../storage/file-exchange';
 import fileSync from '../storage/file-sync';
 import utils, {NodeVersion} from '../utils/utils';
+import request from 'request';
 
 export const WALLET_MODE = {
     CONSOLE: 'CONSOLE',
@@ -349,6 +350,28 @@ class Wallet {
         });
     }
 
+    hasAnyWalletKeyIdentifierInTransactionOutputList(transaction, walletKeyIdentifiers = new Set()) {
+        const transactionWalletKeyIdentifiers = new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier));
+        return _.some(Array.from(transactionWalletKeyIdentifiers), keyIdentifier => walletKeyIdentifiers.has(keyIdentifier));
+    }
+
+    notifyTransactionChanged(transactionList, status) {
+
+        const walletKeyIdentifiers = new Set([
+            this.defaultKeyIdentifier,
+            ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
+        ]);
+
+        _.each(_.filter(transactionList, transaction => !walletUtils.isRefreshTransaction(transaction) && this.hasAnyWalletKeyIdentifierInTransactionOutputList(transaction, walletKeyIdentifiers)), transaction => this.notifyExternalAPI(transaction, status));
+    }
+
+    notifyExternalAPI(transaction, status) {
+        request.get(`${config.EXTERNAL_API_NOTIFICATION}?p0=${transaction.transaction_id}&p1=${status}`, {
+            strictSSL: false,
+            encoding : null
+        }, _ => _);
+    }
+
     processTransaction(transactionFunction) {
         return new Promise((resolve, reject) => {
             mutex.lock(['write'], (unlock) => {
@@ -362,6 +385,7 @@ class Wallet {
                     .then((transactionList) => {
                         this._transactionSendInterrupt = false;
                         this._isSendingNewTransaction  = false;
+                        this.notifyTransactionChanged(transactionList, 'transaction_new');
                         unlock();
                         resolve(transactionList);
                     })
@@ -949,6 +973,7 @@ class Wallet {
                                                                                  console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
                                                                                  eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
                                                                                  this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
+                                                                                 this.notifyTransactionChanged([transaction], 'transaction_new');
 
                                                                                  eventBus.emit('wallet_event_log', {
                                                                                      type   : 'transaction_new',
@@ -1526,9 +1551,6 @@ class Wallet {
                         ], {
                             fee_type: 'transaction_fee_default',
                             amount  : 1
-                        }).then((transactionList) => {
-                            transactionList.forEach(transaction => this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier))));
-                            resolve();
                         }).catch(() => resolve());
                     });
         });

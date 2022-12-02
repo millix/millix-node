@@ -539,6 +539,10 @@ class WalletUtils {
         return transactionDate;
     }
 
+    isRefreshTransaction(transaction) {
+        return config.WALLET_TRANSACTION_SUPPORTED_VERSION.filter(version => version.charAt(1) === 'b').includes(transaction.version);
+    }
+
     verifyTransaction(transaction) {
         return new Promise(resolve => {
             if (transaction.transaction_id === genesisConfig.genesis_transaction) {
@@ -560,7 +564,7 @@ class WalletUtils {
                     'transaction_date_invalid'
                 ]);
             }
-            else if (config.WALLET_TRANSACTION_SUPPORTED_VERSION.filter(version => version.charAt(1) === 'b').includes(transaction.version)) { // refresh transactions
+            else if (this.isRefreshTransaction(transaction)) { // refresh transactions
                 const isValidRefresh = this.isValidRefreshTransaction(transaction.transaction_input_list, transaction.transaction_output_list);
                 resolve([
                     isValidRefresh,

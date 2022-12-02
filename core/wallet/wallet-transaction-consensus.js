@@ -150,8 +150,9 @@ export class WalletTransactionConsensus {
                     }
                     else if (transaction.transaction_id === targetTransactionId || responseData && transaction.transaction_date.getTime() > responseData.transaction_date.getTime()) {
                         callback(true);
-                    } else {
-                        callback()
+                    }
+                    else {
+                        callback();
                     }
                 }).catch(() => callback());
             }, () => resolve({
@@ -617,8 +618,10 @@ export class WalletTransactionConsensus {
                                               const transactionRepository = database.getRepository('transaction', shardID);
                                               return transactionRepository.invalidateTransaction(transactionID)
                                                                           .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
-                                          }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
-                                                         .then(() => Promise.reject());
+                                          }).then(() => {
+                                              wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier)));
+                                              wallet.notifyTransactionChanged([transaction], 'transaction_validation:invalid');
+                                          }).then(() => Promise.reject());
                                       }
 
                                       return database.applyShards(shardID => {
@@ -964,7 +967,10 @@ export class WalletTransactionConsensus {
                         return database.firstShards(shardID => database.getRepository('transaction', shardID)
                                                                        .getTransactionObject(transactionID));
                     }).then(transaction => this.resetInputsSpentByTransaction(transaction))
-                                   .then(transaction => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
+                                   .then(transaction => {
+                                       wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier)));
+                                       wallet.notifyTransactionChanged([transaction], 'transaction_validation:double_spend');
+                                   })
                                    .then(() => consensusData.resolve && consensusData.resolve())
                                    .catch(() => consensusData.resolve && consensusData.resolve());
                 }
@@ -983,6 +989,7 @@ export class WalletTransactionConsensus {
                         return transactionRepository.timeoutTransaction(transactionID)
                                                     .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
                     }).then(() => {
+                        wallet.notifyTransactionChanged([transaction], 'transaction_validation:timeout');
                         consensusData.resolve && consensusData.resolve();
                     });
                 }
@@ -1009,9 +1016,10 @@ export class WalletTransactionConsensus {
                                                         })
                                                         .then(transaction => this.resetInputsSpentByTransaction(transaction))
                                                         .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
-                        }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))))
-                                .then(() => consensusData.resolve && consensusData.resolve())
-                                .catch(() => consensusData.resolve && consensusData.resolve());
+                        }).then(() => {
+                            wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier)));
+                            wallet.notifyTransactionChanged([transaction], 'transaction_validation:invalid');
+                        }).then(() => consensusData.resolve && consensusData.resolve()).catch(() => consensusData.resolve && consensusData.resolve());
                     }
 
                     consensusData.resolve && consensusData.resolve();
@@ -1043,7 +1051,10 @@ export class WalletTransactionConsensus {
                         const transactionRepository = database.getRepository('transaction', shardID);
                         return transactionRepository.updateTransactionAsStable(transactionID)
                                                     .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
-                    }).then(() => wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier))));
+                    }).then(() => {
+                        wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier)));
+                        wallet.notifyTransactionChanged([transaction], 'transaction_validation:valid');
+                    });
                 }).then(() => consensusData.resolve && consensusData.resolve())
                     .catch(() => consensusData.resolve && consensusData.resolve());
             }
