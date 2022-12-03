@@ -818,7 +818,9 @@ export const WALLET_TRANSACTION_DEFAULT_VERSION                = MODE_TEST_NETWO
 export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b20';
 export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb2l';
 export const WALLET_TRANSACTION_REFRESH_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK : WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK;
-export const BRIDGE_ADDRESS                                    = null;
+export const BRIDGE_ADDRESS_MAIN_NETWORK                       = null;
+export const BRIDGE_ADDRESS_TEST_NETWORK                       = 'mrjwGXkksrfwAzwwa3KgdH9acv7ZND5xc9ldlmrjwGXkksrfwAzwwa3KgdH9acv7ZND5xc9';
+export const BRIDGE_ADDRESS                                    = MODE_TEST_NETWORK ? BRIDGE_ADDRESS_TEST_NETWORK : BRIDGE_ADDRESS_MAIN_NETWORK;
 export const BRIDGE_TRANSACTION_VERSION_MINT_MAIN_NETWORK      = '0b40';
 export const BRIDGE_TRANSACTION_VERSION_MINT_TEST_NETWORK      = 'lb4l';
 export const BRIDGE_TRANSACTION_VERSION_BURN_MAIN_NETWORK      = '0b50';
@@ -838,11 +840,11 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0b10',
     '0a20',
     '0b20',
-    '0a30',
+    '0a30', // transaction with data
     '0b30',
-    '0a40',
+    '0a40', // bridge mint
     '0b40',
-    '0a50',
+    '0a50', // bridge burn
     '0b50'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
