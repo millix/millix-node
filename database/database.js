@@ -75,6 +75,21 @@ export class Database {
                     sql += `${key.substring(0, key.lastIndexOf('_'))} like ?`;
                 }
                 else if (key.endsWith('_not-like')) {
+                    if (Array.isArray(where[key])) {
+                        const field = key.substring(0, key.lastIndexOf('_'));
+                        const lastItem = where[key].length - 1;
+                        for (let i = 0; i < where[key].length; i++) {
+                            if (i < lastItem) {
+                                sql += `${field} not like ? AND `;
+                            }
+                            else {
+                                sql += `${field} not like ?`;
+                            }
+                            parameters.push(where[key][i]);
+                        }
+                        return;
+                    }
+
                     sql += `${key.substring(0, key.lastIndexOf('_'))} not like ?`;
                 }
                 else {

@@ -31,7 +31,7 @@ class _FC8ylC617zzn1Gaa extends Endpoint {
                 is_double_spend                      : 0,
                 'transaction_output.is_stable'       : 1,
                 'transaction_output.status!'         : 3,
-                'transaction_output.address_not-like': `%${config.ADDRESS_VERSION_NFT}%`
+                'transaction_output.address_not-like': [`%${config.ADDRESS_VERSION_NFT}%`, `%${config.ADDRESS_VERSION_BRIDGE}%`]
             }, 'amount', 128);
         }, 'amount', 128).then(unspentOutputs => {
             res.send({
