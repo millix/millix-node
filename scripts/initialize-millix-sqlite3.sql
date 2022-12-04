@@ -350,7 +350,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "22");
+INSERT INTO schema_information (key, value) VALUES ("version", "23");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
@@ -359,7 +359,9 @@ VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
        ("lal", 0, 1, "(?<address>.*)(?<version>lal)(?<identifier>.*)"),
        ("la0l", 0, 1, "(?<address>.*)(?<version>la0l)(?<identifier>.*)"),
        ("lb0l", 0, 0, "(?<address>.*)(?<version>lb0l)(?<identifier>.*)"),
-       ("lcl", 0, 0, "(?<address>.*)(?<version>lcl)(?<identifier>.*)");
+       ("lcl", 0, 0, "(?<address>.*)(?<version>lcl)(?<identifier>.*)"),
+       ("0d0", 1, 0, "(?<address>.*)(?<version>0d0)(?<identifier>.*)"),
+       ("ldl", 0, 0, "(?<address>.*)(?<version>ldl)(?<identifier>.*)");
 
 INSERT INTO normalization (normalization_name, normalization_id)
 VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),

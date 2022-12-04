@@ -134,4 +134,4 @@ CREATE TABLE schema_information
 );
 CREATE INDEX idx_schema_information_create_date ON schema_information (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "22");
+INSERT INTO schema_information (key, value) VALUES ("version", "23");
