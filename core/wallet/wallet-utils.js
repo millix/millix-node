@@ -793,7 +793,7 @@ class WalletUtils {
         // if there is a change it must be sent to a bridge address
         if (transaction.transaction_output_list.length === 3) {
             const burnChange = _.find(transaction.transaction_output_list, {output_position: 1});
-            return burnChange.version === config.ADDRESS_VERSION_BRIDGE;
+            return burnChange.address_version === config.ADDRESS_VERSION_BRIDGE;
         }
 
         return true;
