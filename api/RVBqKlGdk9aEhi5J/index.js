@@ -63,6 +63,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
         const transactionInputs  = transactionPayload.transaction_input_list;
         const transactionOutputs = transactionPayload.transaction_output_list;
         const outputFee          = transactionPayload.transaction_output_fee;
+        const outputAttributes   = transactionPayload.transaction_output_attribute;
 
         let addressAttributeMap = {};
 
@@ -115,7 +116,7 @@ class _RVBqKlGdk9aEhi5J extends Endpoint {
                 });
             });
         }).then(() => {
-            return wallet.proxyTransaction(transactionInputs, transactionOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, false)
+            return wallet.proxyTransaction(transactionInputs, transactionOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, false, outputAttributes)
                          .then(signedTransactionList => {
                              console.log(`[api ${this.endpoint}] Successfully signed transaction transaction. Tx: ${signedTransactionList.map(t => t.transaction_id).join(',')}`);
                              res.send(signedTransactionList);

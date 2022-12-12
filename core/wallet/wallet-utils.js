@@ -788,6 +788,10 @@ class WalletUtils {
                    && mintOutput.address_key_identifier === mintFeeOutput.address_key_identifier;
         }
 
+        if (transaction.transaction_output_list.length > 3) {
+            return false;
+        }
+
         // if burn
         // 2 or 3 outputs (destination, [change,] and proxy fees)
         // if there is a change it must be sent to a bridge address
