@@ -1,6 +1,6 @@
 const const_value_default = {
     'MODE_DEBUG'                : false,
-    'MODE_TEST_NETWORK'         : true,
+    'MODE_TEST_NETWORK'         : false,
     'NODE_MILLIX_BUILD_DATE'    : 1670941264,
     'NODE_MILLIX_VERSION'       : '1.22.3',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
