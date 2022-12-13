@@ -1,8 +1,8 @@
 const const_value_default = {
     'MODE_DEBUG'                : false,
-    'MODE_TEST_NETWORK'         : false,
-    'NODE_MILLIX_BUILD_DATE'    : 1668638167,
-    'NODE_MILLIX_VERSION'       : '1.22.2',
+    'MODE_TEST_NETWORK'         : true,
+    'NODE_MILLIX_BUILD_DATE'    : 1670941264,
+    'NODE_MILLIX_VERSION'       : '1.22.3',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
@@ -13,6 +13,8 @@ const const_value_default = {
     'NODE_PORT_STORAGE_PROVIDER_MAIN_NETWORK': 8001,
 
     'MODE_NODE_SYNC_FULL': false,
+
+    'EXTERNAL_API_NOTIFICATION': null,
 
     'CONSENSUS_ROUND_NODE_COUNT'         : 12,
     'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
@@ -81,6 +83,7 @@ export const MODE_STORAGE_SYNC                                 = true;
 export const MODE_STORAGE_SYNC_FULL                            = false;
 export const FORCE_QUEUE_UPDATE                                = false;
 export const EXTERNAL_WALLET_KEY_IDENTIFIER                    = [];
+export const EXTERNAL_API_NOTIFICATION                         = getConstValue('EXTERNAL_API_NOTIFICATION');
 export const NODE_INITIAL_LIST_MAIN_NETWORK                    = [
     {
         host          : '18.136.162.158',
@@ -815,6 +818,18 @@ export const WALLET_TRANSACTION_DEFAULT_VERSION                = MODE_TEST_NETWO
 export const WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK   = '0b20';
 export const WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK   = 'lb2l';
 export const WALLET_TRANSACTION_REFRESH_VERSION                = MODE_TEST_NETWORK ? WALLET_TRANSACTION_REFRESH_VERSION_TEST_NETWORK : WALLET_TRANSACTION_REFRESH_VERSION_MAIN_NETWORK;
+export const BRIDGE_ADDRESS_MAIN_NETWORK                       = null;
+export const BRIDGE_ADDRESS_TEST_NETWORK                       = 'mrjwGXkksrfwAzwwa3KgdH9acv7ZND5xc9ldlmrjwGXkksrfwAzwwa3KgdH9acv7ZND5xc9';
+export const BRIDGE_ADDRESS                                    = MODE_TEST_NETWORK ? BRIDGE_ADDRESS_TEST_NETWORK : BRIDGE_ADDRESS_MAIN_NETWORK;
+export const BRIDGE_TRANSACTION_VERSION_MINT_MAIN_NETWORK      = '0a40';
+export const BRIDGE_TRANSACTION_VERSION_MINT_TEST_NETWORK      = 'la4l';
+export const BRIDGE_TRANSACTION_VERSION_BURN_MAIN_NETWORK      = '0a50';
+export const BRIDGE_TRANSACTION_VERSION_BURN_TEST_NETWORK      = 'la5l';
+export const BRIDGE_TRANSACTION_VERSION_MINT                   = MODE_TEST_NETWORK ? BRIDGE_TRANSACTION_VERSION_MINT_TEST_NETWORK : BRIDGE_TRANSACTION_VERSION_MINT_MAIN_NETWORK;
+export const BRIDGE_TRANSACTION_VERSION_BURN                   = MODE_TEST_NETWORK ? BRIDGE_TRANSACTION_VERSION_BURN_TEST_NETWORK : BRIDGE_TRANSACTION_VERSION_BURN_MAIN_NETWORK;
+export const ADDRESS_VERSION_BRIDGE_MAIN_NETWORK               = '0d0';
+export const ADDRESS_VERSION_BRIDGE_TEST_NETWORK               = 'ldl';
+export const ADDRESS_VERSION_BRIDGE                            = MODE_TEST_NETWORK ? ADDRESS_VERSION_BRIDGE_TEST_NETWORK : ADDRESS_VERSION_BRIDGE_MAIN_NETWORK;
 export const ADDRESS_VERSION_NFT_MAIN_NETWORK                  = '0c0';
 export const ADDRESS_VERSION_NFT_TEST_NETWORK                  = 'lcl';
 export const ADDRESS_VERSION_NFT                               = MODE_TEST_NETWORK ? ADDRESS_VERSION_NFT_TEST_NETWORK : ADDRESS_VERSION_NFT_MAIN_NETWORK;
@@ -825,8 +840,12 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0b10',
     '0a20',
     '0b20',
-    '0a30',
-    '0b30'
+    '0a30', // transaction with data
+    '0b30',
+    '0a40', // bridge mint
+    '0b40',
+    '0a50', // bridge burn
+    '0b50'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la0l',
@@ -836,7 +855,11 @@ export const WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK = [
     'la2l',
     'lb2l',
     'la3l',
-    'lb3l'
+    'lb3l',
+    'la4l',
+    'lb4l',
+    'la5l',
+    'lb5l'
 ];
 export const WALLET_TRANSACTION_SUPPORTED_VERSION              = MODE_TEST_NETWORK ? WALLET_TRANSACTION_SUPPORTED_VERSION_TEST_NETWORK : WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK;
 export const WALLET_TRANSACTION_QUEUE_SIZE_MAX                 = 1000;
@@ -901,7 +924,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '22';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '23';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -931,6 +954,7 @@ export default {
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
     ADDRESS_VERSION_NFT,
+    ADDRESS_VERSION_BRIDGE,
     ACTIVE_LANGUAGE_GUID,
     NODE_INITIAL_LIST,
     NODE_CONNECTION_STATIC,
@@ -948,9 +972,13 @@ export default {
     DATABASE_ENGINE,
     DATABASE_CONNECTION,
     STORAGE_CONNECTION,
+    BRIDGE_ADDRESS,
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
+    EXTERNAL_API_NOTIFICATION,
     CONSENSUS_VALIDATION_DEPTH_MAX,
+    BRIDGE_TRANSACTION_VERSION_MINT,
+    BRIDGE_TRANSACTION_VERSION_BURN,
     CONSENSUS_VALIDATION_REQUEST_DEPTH_MAX,
     CONSENSUS_ROUND_VALIDATION_MAX,
     CONSENSUS_ROUND_VALIDATION_REQUIRED,

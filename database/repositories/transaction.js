@@ -150,7 +150,7 @@ export default class Transaction {
             this.database.get('SELECT COALESCE(SUM(AMOUNT), 0) as amount FROM transaction_output ' +
                               'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE transaction_output.address_key_identifier=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) +
-                              ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3 AND transaction_output.status != 3 AND transaction_output.address not like "%' + config.ADDRESS_VERSION_NFT + '%"', [keyIdentifier],
+                              ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3 AND transaction_output.status != 3 AND transaction_output.address not like "%' + config.ADDRESS_VERSION_NFT + '%" AND transaction_output.address not like "%' + config.ADDRESS_VERSION_BRIDGE + '%"', [keyIdentifier],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });
@@ -160,7 +160,7 @@ export default class Transaction {
     getAddressBalance(address, stable) {
         return new Promise((resolve) => {
             this.database.get('SELECT COALESCE(SUM(AMOUNT), 0) as amount FROM transaction_output INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
-                              'WHERE address=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3 AND transaction_output.address not like "%' + config.ADDRESS_VERSION_NFT + '%"', [address],
+                              'WHERE address=? AND transaction_output.is_stable = ' + (stable ? 1 : 0) + ' AND is_spent = 0 AND is_double_spend = 0 AND `transaction`.status != 3 AND transaction_output.address not like "%' + config.ADDRESS_VERSION_NFT + '%" AND transaction_output.address not like "%' + config.ADDRESS_VERSION_BRIDGE + '%"', [address],
                 (err, row) => {
                     resolve(row ? row.amount || 0 : 0);
                 });
@@ -2081,7 +2081,8 @@ export default class Transaction {
             this.database.all('SELECT transaction_output.*, `transaction`.transaction_date FROM transaction_output ' +
                               'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE transaction_output.address_key_identifier=? AND is_spent = 0 AND transaction_output.is_stable = 1 AND is_double_spend = 0 AND transaction_output.status != 3 AND `transaction`.transaction_date < ? ' +
-                              'AND transaction_output.address NOT LIKE "%' + config.ADDRESS_VERSION_NFT + '%"',
+                              'AND transaction_output.address NOT LIKE "%' + config.ADDRESS_VERSION_NFT + '%" ' +
+                              'AND transaction_output.address NOT LIKE "%' + config.ADDRESS_VERSION_BRIDGE + '%"',
                 [
                     addressKeyIdentifier,
                     now
@@ -2097,7 +2098,8 @@ export default class Transaction {
             this.database.get('SELECT count(1) as count FROM transaction_output ' +
                               'INNER JOIN `transaction` ON `transaction`.transaction_id = transaction_output.transaction_id ' +
                               'WHERE transaction_output.address_key_identifier=? AND is_spent = 0 AND transaction_output.is_stable = 1 AND is_double_spend = 0 AND transaction_output.status != 3 AND `transaction`.transaction_date < ? ' +
-                              'AND transaction_output.address NOT LIKE "%' + config.ADDRESS_VERSION_NFT + '%"',
+                              'AND transaction_output.address NOT LIKE "%' + config.ADDRESS_VERSION_NFT + '%" ' +
+                              'AND transaction_output.address NOT LIKE "%' + config.ADDRESS_VERSION_BRIDGE + '%"',
                 [
                     addressKeyIdentifier,
                     now
@@ -2624,52 +2626,118 @@ export default class Transaction {
     expireTransactionsOnShard(expireTime, addressKeyIdentifierList) {
 
         return new Promise((resolve, reject) => {
-            this.database.exec(`DROP TABLE IF EXISTS transaction_expired;
-            CREATE
-                TEMPORARY TABLE transaction_expired AS
-            WITH expired AS (SELECT t.transaction_id
-                             FROM 'transaction' t
-                             WHERE t.transaction_date <= ${expireTime}
-                               AND t.status = 1
-                               AND NOT EXISTS
-                                   (SELECT o.transaction_id
-                                    FROM transaction_output o
-                                    WHERE is_stable = 0
-                                      AND o.address_key_identifier IN
-                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})
-                                      AND o.transaction_id = t.transaction_id)
-                               AND NOT EXISTS
-                                   (SELECT o.transaction_id
-                                    FROM transaction_input i
-                                    INNER JOIN transaction_output o
-                                    ON i.transaction_id = t.transaction_id AND o.transaction_id = t.transaction_id
-                                    WHERE is_stable = 0
-                                        AND +i.address_key_identifier IN
-                                          (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')}))
-                             LIMIT 1000)
-            SELECT *
-            FROM expired;
-            UPDATE transaction_output
-            set status = 2
-            WHERE transaction_id IN
-                  (SELECT transaction_id FROM transaction_expired);
-            UPDATE transaction_input
-            set status = 2
-            WHERE transaction_id IN
-                  (SELECT transaction_id FROM transaction_expired);
-            UPDATE 'transaction'
-            set status = 2
-            WHERE transaction_id IN
-                (SELECT transaction_id FROM transaction_expired);
-            DROP TABLE IF EXISTS transaction_expired;`, err => {
-                if (err) {
-                    console.log('[Database] Failed updating transactions to expired. [message] ', err);
-                    reject(err);
-                }
-                else {
-                    resolve();
-                }
-            });
+            if (!config.EXTERNAL_API_NOTIFICATION) {
+                this.database.exec(`DROP TABLE IF EXISTS transaction_expired;
+                    CREATE
+                        TEMPORARY TABLE transaction_expired AS
+                    WITH expired AS (SELECT t.transaction_id
+                                     FROM 'transaction' t
+                                     WHERE t.transaction_date <= ${expireTime}
+                                       AND t.status = 1
+                                       AND NOT EXISTS
+                                           (SELECT o.transaction_id
+                                            FROM transaction_output o
+                                            WHERE is_stable = 0
+                                              AND o.address_key_identifier IN
+                                                  (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')})
+                                              AND o.transaction_id = t.transaction_id)
+                                       AND NOT EXISTS
+                                           (SELECT o.transaction_id
+                                            FROM transaction_input i
+                                            INNER JOIN transaction_output o
+                                            ON i.transaction_id = t.transaction_id AND o.transaction_id = t.transaction_id
+                                            WHERE is_stable = 0
+                                                AND +i.address_key_identifier IN
+                                                  (${addressKeyIdentifierList.map(k => `"${k}"`).join(',')}))
+                                     LIMIT 1000)
+                    SELECT *
+                    FROM expired;
+                    UPDATE transaction_output
+                    set status = 2
+                    WHERE transaction_id IN
+                          (SELECT transaction_id FROM transaction_expired);
+                    UPDATE transaction_input
+                    set status = 2
+                    WHERE transaction_id IN
+                          (SELECT transaction_id FROM transaction_expired);
+                    UPDATE 'transaction'
+                    set status = 2
+                    WHERE transaction_id IN
+                        (SELECT transaction_id FROM transaction_expired);
+                    DROP TABLE IF EXISTS transaction_expired;`, err => {
+                        if (err) {
+                            console.log('[Database] Failed updating transactions to expired. [message] ', err);
+                            reject(err);
+                        }
+                        else {
+                            resolve();
+                        }
+                    });
+            } else {
+                this.database.all(`SELECT t.transaction_id
+                                     FROM 'transaction' t
+                                     WHERE t.transaction_date <= ?1
+                                       AND t.status = 1
+                                       AND NOT EXISTS
+                                           (SELECT o.transaction_id
+                                            FROM transaction_output o
+                                            WHERE is_stable = 0
+                                              AND o.address_key_identifier IN
+                                                  (${addressKeyIdentifierList.map((_, idx) => `?${idx + 2}`).join(',')})
+                                              AND o.transaction_id = t.transaction_id)
+                                       AND NOT EXISTS
+                                           (SELECT o.transaction_id
+                                            FROM transaction_input i
+                                            INNER JOIN transaction_output o
+                                            ON i.transaction_id = t.transaction_id AND o.transaction_id = t.transaction_id
+                                            WHERE is_stable = 0
+                                                AND +i.address_key_identifier IN
+                                                  (${addressKeyIdentifierList.map((_, idx) => `?${idx + 2}`).join(',')}))
+                                     LIMIT 1000`,
+                    [expireTime, ...addressKeyIdentifierList], (err, transactionList) => {
+                        if (err) {
+                            return reject(err);
+                        }
+
+                        this.database.all(`SELECT o.transaction_id
+                                            FROM transaction_output o
+                                            INNER JOIN 'transaction' t USING (transaction_id)
+                                            WHERE o.address_key_identifier IN
+                                                  (${addressKeyIdentifierList.map((_, idx) => `?${idx + 1}`).join(',')})
+                                              AND t.transaction_id IN (${transactionList.map((_, idx) => `?${idx + addressKeyIdentifierList.length + 1}`).join(',')})
+                                              AND t.version NOT LIKE '%b%'`,
+                            [...addressKeyIdentifierList, ...transactionList.map(transaction => transaction.transaction_id)], (err, walletTransactionList) => {
+                                if (err) {
+                                    return reject(err);
+                                }
+                                _.each(walletTransactionList, transaction => wallet.notifyExternalAPI(transaction, 'transaction_hibernate'));
+
+                                this.database.exec(`
+                                    UPDATE transaction_output
+                                    set status = 2
+                                    WHERE transaction_id IN
+                                          (${transactionList.map(t => `"${t.transaction_id}"`).join(',')});
+                                    UPDATE transaction_input
+                                    set status = 2
+                                    WHERE transaction_id IN
+                                          (${transactionList.map(t => `"${t.transaction_id}"`).join(',')});
+                                    UPDATE 'transaction'
+                                    set status = 2
+                                    WHERE transaction_id IN
+                                        (${transactionList.map(t => `"${t.transaction_id}"`).join(',')});
+                                        `,
+                                    (err) => {
+                                        if (err) {
+                                            console.log('[Database] Failed updating transactions to expired. [message] ', err);
+                                            reject(err);
+                                        }
+                                        else {
+                                            resolve();
+                                        }
+                                    })
+                            });
+                });
+            }
         });
     }
 
