@@ -788,19 +788,11 @@ class WalletUtils {
                    && mintOutput.address_key_identifier === mintFeeOutput.address_key_identifier;
         }
 
-        if (transaction.transaction_output_list.length > 3) {
-            return false;
-        }
-
         // if burn
-        // 2 or 3 outputs (destination, [change,] and proxy fees)
-        // if there is a change it must be sent to a bridge address
-        if (transaction.transaction_output_list.length === 3) {
-            const burnChange = _.find(transaction.transaction_output_list, {output_position: 1});
-            return burnChange.address_version === config.ADDRESS_VERSION_BRIDGE;
-        }
-
-        return true;
+        // 2 outputs (destination and proxy fees) there is no change to a bridge address
+        // more than 2 outputs (destination, [destination(n), change,] and proxy fees) there is a change (last output) and it must be sent to a bridge address
+        const burnChange = _.find(transaction.transaction_output_list, {address_version: config.ADDRESS_VERSION_BRIDGE});
+        return !burnChange || burnChange.output_position > 0 && burnChange.output_position === transaction.transaction_output_list.length - 2;
     }
 
     // Refresh transaction is valid if all inputs and outputs belong to same
