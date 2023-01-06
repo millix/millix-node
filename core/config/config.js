@@ -1,8 +1,8 @@
 const const_value_default = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
-    'NODE_MILLIX_BUILD_DATE'    : 1670941264,
-    'NODE_MILLIX_VERSION'       : '1.22.4',
+    'NODE_MILLIX_BUILD_DATE'    : 1672966136,
+    'NODE_MILLIX_VERSION'       : '1.23.0',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
