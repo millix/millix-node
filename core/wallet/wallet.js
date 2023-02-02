@@ -287,9 +287,52 @@ class Wallet {
     getWalletPrivateKey(mnemonicPhrase, isNewMnemonic) {
         return this.getWalletPassphrase(isNewMnemonic)
                    .then((passphrase) => {
-                       const mnemonic = new Mnemonic(mnemonicPhrase);
+                       const mnemonic = new Mnemonic(this._preProcessMnemonicPhrase(mnemonicPhrase));
                        return mnemonic.toHDPrivateKey(passphrase);
                    });
+    }
+
+    _preProcessMnemonicPhrase(mnemonicPhrase) {
+        const mnemonicPhraseWords = mnemonicPhrase.split(' ');
+
+        if (_.some(mnemonicPhraseWords, word => word.length > 4)) {
+            return mnemonicPhrase; // no need to create the words in the
+                                   // mnemonic phrase
+        }
+
+        // check if words have at least 4 letters
+        if (_.some(mnemonicPhraseWords, word => word.length !== 4)) {
+            throw Error(`the mnemonic phrase is not valid: ${mnemonicPhrase}`);
+        }
+
+        const dictionaries = _.without(_.keys(Mnemonic.Words), ...[
+            'CHINESE',
+            'JAPANESE',
+            'KOREAN'
+        ]);
+
+        for (let i = 0; i < dictionaries.length; i++) {
+            const dictionary                 = Mnemonic.Words[dictionaries[i]];
+            const reconstructedMnemonicWords = [];
+            for (const mnemonicWord of mnemonicPhraseWords) {
+                let found = false;
+                for (const dictionaryWord of dictionary) {
+                    if (dictionaryWord.startsWith(mnemonicWord)) {
+                        reconstructedMnemonicWords.push(dictionaryWord);
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    break;
+                }
+            }
+
+            if (reconstructedMnemonicWords.length === mnemonicPhraseWords.length) {
+                return reconstructedMnemonicWords.join(' ');
+            }
+        }
+
+        throw Error(`the mnemonic phrase is not valid: ${mnemonicPhrase}`);
     }
 
     isCreateWallet(xPrivKey, isNewMnemonic) {
