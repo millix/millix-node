@@ -1568,17 +1568,7 @@ class Wallet {
             return Promise.resolve();
         }
 
-        return database.applyShards((shardID) => {
-            const transactionRepository = database.getRepository('transaction', shardID);
-            return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
-                                                                         .then(outputs => outputs.length ? resolve(outputs) : reject()));
-        }).then((outputs) => {
-            return this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)));
-        }).then(outputs => {
-            if (outputs.length >= config.WALLET_AGGREGATION_AUTO_OUTPUT_MIN) {
-                return this.aggregateOutputs(outputs);
-            }
-        });
+        return this.aggregateOutputs();
     }
 
     _doDAGProgress() {
@@ -2043,7 +2033,7 @@ class Wallet {
                   .then(() => walletTransactionConsensus.initialize())
                   .then(() => {
                       task.scheduleTask('transaction_propagate', this._propagateTransactions.bind(this), 10000);
-                      task.scheduleTask('auto_aggregate_transaction', this._doAutoAggregateTransaction.bind(this), 600000 /*10 min*/, true);
+                      task.scheduleTask('auto_aggregate_transaction', this._doAutoAggregateTransaction.bind(this), config.WALLET_AGGREGATION_AUTO_INTERVAL);
                       setTimeout(() => this._doAutoAggregateTransaction(), 150000 /*2.5 min*/);
 
                       eventBus.on('transaction_list_propagate', this.onPropagateTransactionList.bind(this));
