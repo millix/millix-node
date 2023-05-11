@@ -638,8 +638,8 @@ class Wallet {
         return signature.sign(objectHash.getHashBuffer(message), privateKeyBuf);
     }
 
-    syncWalletTransactions(ws) {
-        if (!this.defaultKeyIdentifier || !!cache.getCacheItem('wallet', 'is_wallet_transaction_synced')) {
+    syncWalletTransactions(ws, forceSync = false) {
+        if (!this.defaultKeyIdentifier || !forceSync && !!cache.getCacheItem('wallet', 'is_wallet_transaction_synced')) {
             return Promise.resolve();
         }
 
