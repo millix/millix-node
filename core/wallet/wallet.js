@@ -287,9 +287,52 @@ class Wallet {
     getWalletPrivateKey(mnemonicPhrase, isNewMnemonic) {
         return this.getWalletPassphrase(isNewMnemonic)
                    .then((passphrase) => {
-                       const mnemonic = new Mnemonic(mnemonicPhrase);
+                       const mnemonic = new Mnemonic(this._preProcessMnemonicPhrase(mnemonicPhrase));
                        return mnemonic.toHDPrivateKey(passphrase);
                    });
+    }
+
+    _preProcessMnemonicPhrase(mnemonicPhrase) {
+        const mnemonicPhraseWords = mnemonicPhrase.split(' ');
+
+        if (_.some(mnemonicPhraseWords, word => word.length > 4)) {
+            return mnemonicPhrase; // no need to create the words in the
+                                   // mnemonic phrase
+        }
+
+        // check if words have at least 4 letters
+        if (_.some(mnemonicPhraseWords, word => word.length !== 4)) {
+            throw Error(`the mnemonic phrase is not valid: ${mnemonicPhrase}`);
+        }
+
+        const dictionaries = _.without(_.keys(Mnemonic.Words), ...[
+            'CHINESE',
+            'JAPANESE',
+            'KOREAN'
+        ]);
+
+        for (let i = 0; i < dictionaries.length; i++) {
+            const dictionary                 = Mnemonic.Words[dictionaries[i]];
+            const reconstructedMnemonicWords = [];
+            for (const mnemonicWord of mnemonicPhraseWords) {
+                let found = false;
+                for (const dictionaryWord of dictionary) {
+                    if (dictionaryWord.startsWith(mnemonicWord)) {
+                        reconstructedMnemonicWords.push(dictionaryWord);
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    break;
+                }
+            }
+
+            if (reconstructedMnemonicWords.length === mnemonicPhraseWords.length) {
+                return reconstructedMnemonicWords.join(' ');
+            }
+        }
+
+        throw Error(`the mnemonic phrase is not valid: ${mnemonicPhrase}`);
     }
 
     isCreateWallet(xPrivKey, isNewMnemonic) {
@@ -404,6 +447,11 @@ class Wallet {
                                 this.resetValidation(transactionsIDList).then(_ => _);
                                 this._doWalletUpdate();
                             }
+                        }
+
+                        if (e.error === 'transaction_proxy_rejected') {
+                            const ws = _.sample(network.registeredClients);
+                            this.syncWalletTransactions(ws, true);
                         }
                     });
             });
@@ -590,8 +638,8 @@ class Wallet {
         return signature.sign(objectHash.getHashBuffer(message), privateKeyBuf);
     }
 
-    syncWalletTransactions(ws) {
-        if (!this.defaultKeyIdentifier || !!cache.getCacheItem('wallet', 'is_wallet_transaction_synced')) {
+    syncWalletTransactions(ws, forceSync = false) {
+        if (!this.defaultKeyIdentifier || !forceSync && !!cache.getCacheItem('wallet', 'is_wallet_transaction_synced')) {
             return Promise.resolve();
         }
 
@@ -1520,17 +1568,7 @@ class Wallet {
             return Promise.resolve();
         }
 
-        return database.applyShards((shardID) => {
-            const transactionRepository = database.getRepository('transaction', shardID);
-            return new Promise((resolve, reject) => transactionRepository.getFreeOutput(this.defaultKeyIdentifier)
-                                                                         .then(outputs => outputs.length ? resolve(outputs) : reject()));
-        }).then((outputs) => {
-            return this.updateTransactionOutputWithAddressInformation(_.filter(outputs, output => !cache.getCacheItem('wallet', `is_spend_${output.transaction_id}_${output.output_position}`)));
-        }).then(outputs => {
-            if (outputs.length >= config.WALLET_AGGREGATION_AUTO_OUTPUT_MIN) {
-                return this.aggregateOutputs(outputs);
-            }
-        });
+        return this.aggregateOutputs();
     }
 
     _doDAGProgress() {
@@ -1995,7 +2033,7 @@ class Wallet {
                   .then(() => walletTransactionConsensus.initialize())
                   .then(() => {
                       task.scheduleTask('transaction_propagate', this._propagateTransactions.bind(this), 10000);
-                      task.scheduleTask('auto_aggregate_transaction', this._doAutoAggregateTransaction.bind(this), 600000 /*10 min*/, true);
+                      task.scheduleTask('auto_aggregate_transaction', this._doAutoAggregateTransaction.bind(this), config.WALLET_AGGREGATION_AUTO_INTERVAL);
                       setTimeout(() => this._doAutoAggregateTransaction(), 150000 /*2.5 min*/);
 
                       eventBus.on('transaction_list_propagate', this.onPropagateTransactionList.bind(this));

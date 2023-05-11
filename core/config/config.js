@@ -1,8 +1,8 @@
 const const_value_default = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
-    'NODE_MILLIX_BUILD_DATE'    : 1672966136,
-    'NODE_MILLIX_VERSION'       : '1.23.0',
+    'NODE_MILLIX_BUILD_DATE'    : 1683808753,
+    'NODE_MILLIX_VERSION'       : '1.23.2',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
@@ -869,6 +869,7 @@ export const WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT       = 1;
 export const WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT        = 120;
 export const WALLET_AGGREGATION_CONSUME_SMALLER_FIRST          = true;
 export const WALLET_AGGREGATION_AUTO_ENABLED                   = true;
+export const WALLET_AGGREGATION_AUTO_INTERVAL                  = 600000 /*10 min*/;
 export const WALLET_AGGREGATION_AUTO_OUTPUT_MIN                = 50;
 export const NETWORK_LONG_TIME_WAIT_MAX                        = 3000;
 export const NETWORK_SHORT_TIME_WAIT_MAX                       = 1500;
@@ -1012,6 +1013,7 @@ export default {
     NETWORK_SHORT_TIME_WAIT_MAX,
     WALLET_ADDRESS_GENERATE_MAX,
     WALLET_AGGREGATION_AUTO_ENABLED,
+    WALLET_AGGREGATION_AUTO_INTERVAL,
     WALLET_AGGREGATION_AUTO_OUTPUT_MIN,
     WALLET_TRANSACTION_QUEUE_SIZE_MAX,
     WALLET_AGGREGATION_TRANSACTION_MAX,
