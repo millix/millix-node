@@ -448,6 +448,11 @@ class Wallet {
                                 this._doWalletUpdate();
                             }
                         }
+
+                        if (e.error === 'transaction_proxy_rejected') {
+                            const ws = _.sample(network.registeredClients);
+                            this.syncWalletTransactions(ws, true);
+                        }
                     });
             });
         });
