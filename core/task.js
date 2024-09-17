@@ -20,6 +20,10 @@ class Task {
             this.debug && console.log(`[task] running ${taskName}`);
             if (asyncTask) {
                 task().then(() => {
+                    if (!self.runningTask[taskName]) {
+                        return;
+                    }
+
                     if (!once) {
                         self.runningTask[taskName] = setTimeout(run, waitTime);
                     }

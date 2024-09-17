@@ -52,7 +52,7 @@ module.exports = {
         new CopyPlugin({
             patterns: [
                 {
-                    from: 'node_modules/sqlite3/lib/binding/**/node_sqlite3.node',
+                    from: 'node_modules/sqlite3/build/**/node_sqlite3.node',
                     to  : 'build/node_sqlite3.node'
                 }
             ]
