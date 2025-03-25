@@ -3,6 +3,7 @@ import database from '../../database/database';
 import _ from 'lodash';
 import fileManager from '../storage/file-manager';
 import wallet from '../wallet/wallet';
+import console from '../console';
 
 function processOutputList(outputList, attributeTypeId, orderBy, limit, shardID, dataType) {
     const normalizationRepository = database.getRepository('normalization');
@@ -119,6 +120,18 @@ function processOutputList(outputList, attributeTypeId, orderBy, limit, shardID,
         });
 }
 
+function sortTransactionComponents(transactionDB) {
+    if (!transactionDB) {
+        return null;
+    }
+    transactionDB.transaction_parent_list = transactionDB.transaction_parent_list.sort();
+    transactionDB.transaction_output_list = _.sortBy(transactionDB.transaction_output_list, 'output_position');
+    transactionDB.transaction_input_list = _.sortBy(transactionDB.transaction_input_list, 'input_position');
+    transactionDB.transaction_signature_list = _.sortBy(transactionDB.transaction_signature_list, 'address_base');
+    return transactionDB;
+}
+
 export default {
-    processOutputList
+    processOutputList,
+    sortTransactionComponents
 };

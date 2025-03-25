@@ -181,8 +181,7 @@ export default class Transaction {
                         AND status != 3
                       GROUP BY address_key_identifier
                       UNION ALL
-                      SELECT address_key_identifier,
-                             COALESCE(SUM(AMOUNT), 0) as ${stable ? 'balance_stable' : 'balance_pending'}
+                      SELECT address_key_identifier, COALESCE (SUM (AMOUNT), 0) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM shard_zero.transaction_output
                       WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
@@ -215,8 +214,7 @@ export default class Transaction {
                         AND status != 3
                       GROUP BY address
                       UNION ALL
-                      SELECT address,
-                             COALESCE(SUM(AMOUNT), 0) as ${stable ? 'balance_stable' : 'balance_pending'}
+                      SELECT address, COALESCE (SUM (AMOUNT), 0) as ${stable ? 'balance_stable' : 'balance_pending'}
                       FROM shard_zero.transaction_output
                       WHERE is_stable = ${stable ? 1 : 0}
                         AND is_double_spend = 0
@@ -271,8 +269,8 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.get(`select ((select count(*)
                                         from 'transaction') +
-                                       (select count(*)
-                                        from shard_zero.'transaction')) as count;`, (err, data) => {
+                                      (select count(*)
+                                       from shard_zero.'transaction')) as count;`, (err, data) => {
                 if (err) {
                     return reject(err);
                 }
@@ -374,21 +372,21 @@ export default class Transaction {
 
     getTransactionByAddressKeyIdentifier(addressKeyIdentifier, returnValidTransactions = false) {
         return new Promise((resolve, reject) => {
-            this.database.all(`WITH transaction_wallet AS (
-                    SELECT transaction_input.transaction_id,
-                           transaction_input.shard_id
-                    FROM transaction_input
-                    WHERE transaction_input.address_key_identifier = ?
-                      AND transaction_input.status != 3
-                    UNION
-                    SELECT transaction_output.transaction_id,
-                           transaction_output.shard_id
-                    FROM transaction_output
-                    WHERE transaction_output.address_key_identifier = ?
-                      AND transaction_output.status != 3 ${returnValidTransactions ? 'AND transaction_output.is_stable = 1 AND transaction_output.is_double_spend = 0' : ''}
-                )
-                               SELECT DISTINCT transaction_id, shard_id
-                               FROM transaction_wallet`,
+            this.database.all(`WITH transaction_wallet
+                                        AS (SELECT transaction_input.transaction_id,
+                                                   transaction_input.shard_id
+                                            FROM transaction_input
+                                            WHERE transaction_input.address_key_identifier = ?
+                                              AND transaction_input.status != 3
+                               UNION
+                SELECT transaction_output.transaction_id,
+                       transaction_output.shard_id
+                FROM transaction_output
+                WHERE transaction_output.address_key_identifier = ?
+                  AND transaction_output.status != 3 ${returnValidTransactions ? 'AND transaction_output.is_stable = 1 AND transaction_output.is_double_spend = 0' : ''}
+                    )
+                SELECT DISTINCT transaction_id, shard_id
+                FROM transaction_wallet`,
                 [
                     addressKeyIdentifier,
                     addressKeyIdentifier
@@ -490,8 +488,9 @@ export default class Transaction {
     getReceivedTransactionOutputCountByAddressKeyIdentifier(keyIdentifier) {
         return new Promise((resolve, reject) => {
             this.database.get(
-                `SELECT count(*) as transaction_count FROM transaction_output o
-                    WHERE o.address_key_identifier = ?`,
+                `SELECT count(*) as transaction_count
+                 FROM transaction_output o
+                 WHERE o.address_key_identifier = ?`,
                 [
                     keyIdentifier
                 ],
@@ -597,7 +596,7 @@ export default class Transaction {
                 let status;
                 if (!isWalletTransaction) {
                     const expireDate = ntp.now().getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
-                    status = Math.round(expireDate / 1000) < transactionDate ? 1 : 2;
+                    status           = Math.round(expireDate / 1000) < transactionDate ? 1 : 2;
                 }
                 else {
                     status = 1;
@@ -763,7 +762,7 @@ export default class Transaction {
                 let transactionStatus;
                 const transactionStableDate = transaction.stable_date || transaction.transaction_output_list[0].stable_date;
                 if (!isWalletTransaction) {
-                    const expireDate = ntp.now().getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
+                    const expireDate  = ntp.now().getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
                     transactionStatus = transaction.status === 3 ? 3 :
                                         Math.round(expireDate / 1000) >= transactionDate ? 2 : 1;
                 }
@@ -1072,6 +1071,79 @@ export default class Transaction {
         });
     }
 
+    getTransactionObjectFromDB(transactionID) {
+        return this.getTransaction(transactionID)
+                   .then(transaction => {
+
+                       if (!transaction) {
+                           return Promise.reject('transaction_not_found');
+                       }
+
+                       return this.getTransactionOutputs(transactionID)
+                                  .then(outputs => {
+                                      transaction.transaction_output_list = outputs;
+                                      return transaction;
+                                  });
+                   })
+                   .then(transaction => {
+                       return this.getTransactionInputs(transactionID)
+                                  .then(inputs => {
+                                      transaction.transaction_input_list = inputs;
+                                      return transaction;
+                                  });
+                   })
+                   .then(transaction => {
+                       return this.getTransactionSignatures(transactionID)
+                                  .then(signatures => {
+                                      transaction.transaction_signature_list = signatures;
+                                      return transaction;
+                                  });
+                   })
+                   .then(transaction => {
+                       if (![
+                           '0a0',
+                           '0b0',
+                           '0a10',
+                           '0b10',
+                           'la0l',
+                           'lb0l',
+                           'la1l',
+                           'lb1l'
+                       ].includes(transaction.version)) {
+                           return this.getTransactionOutputAttributes(transactionID)
+                                      .then(outputAttributes => {
+                                          transaction['transaction_output_attribute'] = {};
+                                          outputAttributes.forEach(outputAttribute => {
+                                              transaction.transaction_output_attribute[outputAttribute.attribute_type] = JSON.parse(outputAttribute.value);
+                                          });
+                                          return transaction;
+                                      });
+                       }
+                       else {
+                           return Promise.resolve(transaction);
+                       }
+                   })
+                   .then(transaction => {
+                       return this.getTransactionParents(transactionID)
+                                  .then(parents => {
+                                      transaction.transaction_parent_list = parents;
+
+                                      //TODO: check this... some data is missing
+                                      if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
+                                          (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
+                                           !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
+                                           !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0 ||
+                                           !transaction.transaction_parent_list || transaction.transaction_parent_list.length === 0)) {
+                                          console.log('[transaction-object] invalid transaction from database with id', transaction);
+                                          return Promise.reject('transaction_not_found');
+                                      }
+
+                                      return transaction;
+                                  });
+                   })
+                   .catch(() => Promise.resolve(null));
+    }
+
 
     addTransactionSignature(transactionID, shardID, addressBase, signature, status, createDate) {
         if (!createDate) {
@@ -1291,28 +1363,26 @@ export default class Transaction {
     invalidateTransaction(transactionID) {
         return new Promise((resolve, reject) => {
             let sql = `
-                    update transaction_output
-                    set status            = 3,
-                        is_stable         = 1,
-                        stable_date       = CAST(strftime('%s', 'now') AS INTEGER),
-                        is_double_spend   = 0,
-                        double_spend_date = NULL,
-                        is_spent          = 0,
-                        spent_date        = NULL
-                    where transaction_id = "${transactionID}";
+                update transaction_output
+                set status            = 3,
+                    is_stable         = 1,
+                    stable_date       = CAST(strftime('%s', 'now') AS INTEGER),
+                    is_double_spend   = 0,
+                    double_spend_date = NULL,
+                    is_spent          = 0,
+                    spent_date        = NULL
+                where transaction_id = "${transactionID}";
 
-                    update transaction_input
-                    set status            = 3,
-                        is_double_spend   = 0,
-                        double_spend_date = NULL
-                    where transaction_id = "${transactionID}";
+                update transaction_input
+                set status            = 3,
+                    is_double_spend   = 0,
+                    double_spend_date = NULL
+                where transaction_id = "${transactionID}";
 
-                    update 'transaction'
-                    set status      = 3,
-                        is_stable   = 1,
-                        stable_date = CAST(strftime('%s', 'now') AS INTEGER)
-                    where transaction_id = "${transactionID}";
-                `;
+                update 'transaction'
+                set status = 3, is_stable = 1, stable_date = CAST (strftime('%s', 'now') AS INTEGER)
+                where transaction_id = "${transactionID}";
+            `;
             this.database.exec(sql, (err) => {
                 if (err) {
                     return reject();
@@ -1377,17 +1447,24 @@ export default class Transaction {
                 });
         });
     }
+
     listWalletLeafTransactions(addressKeyIdentifier) {
         return new Promise((resolve, reject) => {
-            const sql = `SELECT o.transaction_id FROM transaction_output o
-                         LEFT JOIN transaction_input i ON i.output_transaction_id = o.transaction_id AND i.output_position = o.output_position
-                         WHERE o.address_key_identifier = ? AND i.output_transaction_id IS NULL`;
+            const sql = `SELECT o.transaction_id
+                         FROM transaction_output o
+                                  LEFT JOIN transaction_input i
+                                            ON i.output_transaction_id =
+                                               o.transaction_id AND
+                                               i.output_position =
+                                               o.output_position
+                         WHERE o.address_key_identifier = ?
+                           AND i.output_transaction_id IS NULL`;
             this.database.all(sql, [addressKeyIdentifier], (err, rows) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve(rows);
-                });
+                if (err) {
+                    return reject(err);
+                }
+                resolve(rows);
+            });
         });
     }
 
@@ -1695,7 +1772,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             const insertDate      = Math.floor(Date.now() / 1000) - 30;
             let unstableDateStart = ntp.now().getTime() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60 * 1000;
-            unstableDateStart = Math.floor(unstableDateStart / 1000);
+            unstableDateStart     = Math.floor(unstableDateStart / 1000);
             let sql, params;
             if (!returnHibernatedTransactions) {
                 sql    = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
@@ -1761,8 +1838,7 @@ export default class Transaction {
                   AND output_position = ${doubleSpendInput.output_position};
 
                 UPDATE 'transaction'
-                SET is_stable   = 1,
-                    stable_date = CAST(strftime('%s', 'now') AS INTEGER)
+                SET is_stable = 1, stable_date = CAST (strftime('%s', 'now') AS INTEGER)
                 WHERE transaction_id = "${transactionID}";
             `, err => {
                 if (err) {
@@ -1977,7 +2053,7 @@ export default class Transaction {
                 this.database.exec(`
                     DROP TABLE IF EXISTS transaction_input_chain;
                     CREATE
-                        TEMPORARY TABLE transaction_input_chain AS
+                    TEMPORARY TABLE transaction_input_chain AS
                     WITH RECURSIVE transaction_input_chain (transaction_id, status)
                                        AS (
                             SELECT "${transactionID}", 1
@@ -2734,9 +2810,9 @@ export default class Transaction {
                                         else {
                                             resolve();
                                         }
-                                    })
+                                    });
                             });
-                });
+                    });
             }
         });
     }
