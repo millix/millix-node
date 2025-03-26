@@ -46,11 +46,12 @@ class _K9wxNE4Ved38xhJm extends Endpoint {
 
             return transactionRepository.deleteTransaction(transactionId)
                                         .then(() => {
+                                            peer.transactionSyncRequest(transactionId).catch(_ => _);
                                             return res.status(201).send();
                                         });
         }).catch(e => res.send({
             api_status : 'fail',
-            api_message: `unexpected generic api error: (${e})`
+            api_message: `unexpected generic api error: (${e.message})`
         }));
     }
 

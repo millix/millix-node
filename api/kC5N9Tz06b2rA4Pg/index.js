@@ -35,7 +35,7 @@ class _kC5N9Tz06b2rA4Pg extends Endpoint {
                       unlock();
                       res.send({
                           api_status : 'fail',
-                          api_message: e
+                          api_message: `unexpected generic api error: (${e.message})`
                       });
                   });
         });
