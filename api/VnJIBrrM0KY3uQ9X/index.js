@@ -105,7 +105,20 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                                    console.log(`[api ${this.endpoint}] Storing transaction submitted on API. Hash: ${transaction.transaction_id}`);
                                    const dbTransaction            = _.cloneDeep(transaction);
                                    dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                                   pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, wallet.transactionHasKeyIdentifier(dbTransaction)));
+                                   pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, wallet.transactionHasKeyIdentifier(dbTransaction)))
+                                                                            .then(() => {
+                                                                                // check stored transaction object
+                                                                                return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
+                                                                                                            .then((mDBTransaction) => {
+                                                                                                                if (!walletUtils.isValidTransactionObject(transactionRepository.normalizeTransactionObject(mDBTransaction))) {
+                                                                                                                    throw Error('invalid_transaction_object');
+                                                                                                                }
+                                                                                                            })
+                                                                                                            .catch((e) => {
+                                                                                                                return transactionRepository.deleteTransaction(transaction.transaction_id)
+                                                                                                                                            .then(() => Promise.reject(e));
+                                                                                                            });
+                                                                            });
                                });
                                return pipeline.then(() => transactionList);
                            })

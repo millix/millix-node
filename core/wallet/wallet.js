@@ -1018,6 +1018,19 @@ class Wallet {
                                                  transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
                                                  return transactionRepository.addTransactionFromObject(transaction, hasKeyIdentifier)
                                                                              .then(() => {
+                                                                                 // check stored transaction object
+                                                                                 return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
+                                                                                                             .then((dbTransaction) => {
+                                                                                                                 if(!walletUtils.isValidTransactionObject(transactionRepository.normalizeTransactionObject(dbTransaction))) {
+                                                                                                                     throw Error('invalid_transaction_object');
+                                                                                                                 }
+                                                                                                             })
+                                                                                                             .catch((e) => {
+                                                                                                                 return transactionRepository.deleteTransaction(transaction.transaction_id)
+                                                                                                                            .then(() => Promise.reject(e));
+                                                                                                             });
+                                                                             })
+                                                                             .then(() => {
                                                                                  console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
                                                                                  eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
                                                                                  this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
@@ -1933,7 +1946,20 @@ class Wallet {
                         transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
                         const dbTransaction            = _.cloneDeep(transaction);
                         dbTransaction.transaction_date = new Date(dbTransaction.transaction_date * 1000).toISOString();
-                        pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)));
+                        pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)))
+                                                                 .then(() => {
+                                                                     // check stored transaction object
+                                                                     return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
+                                                                                                 .then((mDBTransaction) => {
+                                                                                                     if (!walletUtils.isValidTransactionObject(transactionRepository.normalizeTransactionObject(mDBTransaction))) {
+                                                                                                         throw Error('invalid_transaction_object');
+                                                                                                     }
+                                                                                                 })
+                                                                                                 .catch((e) => {
+                                                                                                     return transactionRepository.deleteTransaction(transaction.transaction_id)
+                                                                                                                                 .then(() => Promise.reject(e));
+                                                                                                 });
+                                                                 });
                     });
                     return pipeline.then(() => transactionList);
                 })

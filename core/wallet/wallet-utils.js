@@ -619,8 +619,8 @@ class WalletUtils {
     }
 
     isValidTransactionObject(transaction) {
-
-        if (!config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version) ||
+        if (!transaction ||
+            !config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version) ||
             transaction.transaction_input_list.length > config.TRANSACTION_INPUT_MAX ||
             transaction.transaction_output_list.length > config.TRANSACTION_OUTPUT_MAX ||
             transaction.transaction_parent_list.length > config.TRANSACTION_PARENT_MAX ||
@@ -789,8 +789,10 @@ class WalletUtils {
         }
 
         // if burn
-        // 2 outputs (destination and proxy fees) there is no change to a bridge address
-        // more than 2 outputs (destination, [destination(n), change,] and proxy fees) there is a change (last output) and it must be sent to a bridge address
+        // 2 outputs (destination and proxy fees) there is no change to a
+        // bridge address more than 2 outputs (destination, [destination(n),
+        // change,] and proxy fees) there is a change (last output) and it must
+        // be sent to a bridge address
         const burnChange = _.find(transaction.transaction_output_list, {address_version: config.ADDRESS_VERSION_BRIDGE});
         return !burnChange || burnChange.output_position > 0 && burnChange.output_position === transaction.transaction_output_list.length - 2;
     }

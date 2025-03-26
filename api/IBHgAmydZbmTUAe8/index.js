@@ -3,6 +3,7 @@ import peer from '../../net/peer';
 import Endpoint from '../endpoint';
 import _ from 'lodash';
 import walletSync from '../../core/wallet/wallet-sync';
+import transactionDataUtils from '../../core/utils/transaction-data-utils';
 
 
 /**
@@ -171,7 +172,7 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
 
             });
 
-            res.send(transaction);
+            res.send(transactionDataUtils.sortTransactionComponents(transaction));
         }).catch(e => res.send({
             api_status : 'fail',
             api_message: `unexpected generic api error: (${e})`

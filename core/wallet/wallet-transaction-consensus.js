@@ -761,7 +761,7 @@ export class WalletTransactionConsensus {
     }
 
     processTransactionValidationRequest(data, ws) {
-        const nodeVersion             = NodeVersion.fromString(ws.features.version);
+        const nodeVersion             = NodeVersion.fromString(ws.features?.version);
         const minSupportedNodeVersion = new NodeVersion(1, 22, 1);
         if (!nodeVersion || nodeVersion.compareTo(minSupportedNodeVersion) < 0) {
             peer.transactionValidationResponse({
