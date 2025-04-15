@@ -132,6 +132,8 @@ class _XQmpDjEVF691r2gX extends Endpoint {
 
                                 if (!buffer) {
                                     return Promise.reject('invalid buffer');
+                                } else if (buffer.length > 52428800) { // > 50mb
+                                    return Promise.reject('buffer too big');
                                 }
 
                                 const dataType = transactionPartialPayload.transaction_data_type;
