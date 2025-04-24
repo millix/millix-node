@@ -933,7 +933,10 @@ class Wallet {
 
         const hasKeyIdentifier = this.transactionHasKeyIdentifier(transaction);
 
-        if (!hasKeyIdentifier && !this.isProcessingNewTransactionFromNetwork && !this.isRequestedTransaction(transaction.transaction_id)) {
+        if (!this.isProcessingNewTransactionFromNetwork) {
+            delete this._transactionReceivedFromNetwork[transaction.transaction_id];
+            delete this._transactionRequested[transaction.transaction_id];
+            delete this._transactionFundingActiveWallet[transaction.transaction_id];
             walletSync.clearTransactionSync(transaction.transaction_id);
             walletSync.add(transaction.transaction_id, {
                 delay   : 5000,
@@ -1767,11 +1770,11 @@ class Wallet {
         let networkTransactions = _.keys(this._transactionReceivedFromNetwork);
         console.log('[wallet] status (_transactionReceivedFromNetwork:', networkTransactions.length, ' | _transactionValidationRejected:', walletTransactionConsensus.getRejectedTransactionList().size, ' | _activeConsensusRound:', _.keys(this._activeConsensusRound).length + ')');
 
-        if (!this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction']) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+        if (!this._maxBacklogThresholdReached && mutex.getKeyQueuedSize([`transaction_${genesisConfig.genesis_shard_id}`]) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
             this._maxBacklogThresholdReached = true;
             this.lockProcessNewTransaction();
         }
-        else if (this._maxBacklogThresholdReached && mutex.getKeyQueuedSize(['transaction']) <= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+        else if (this._maxBacklogThresholdReached && mutex.getKeyQueuedSize([`transaction_${genesisConfig.genesis_shard_id}`]) <= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
             this._maxBacklogThresholdReached = false;
             this.unlockProcessNewTransaction();
         }
