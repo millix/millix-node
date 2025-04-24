@@ -931,6 +931,11 @@ class Wallet {
             return;
         }
 
+        if (!this._maxBacklogThresholdReached && mutex.getKeyQueuedSize([`transaction_${genesisConfig.genesis_shard_id}`]) >= config.WALLET_TRANSACTION_QUEUE_SIZE_MAX) {
+            this._maxBacklogThresholdReached = true;
+            this.lockProcessNewTransaction();
+        }
+
         const hasKeyIdentifier = this.transactionHasKeyIdentifier(transaction);
 
         if (!this.isProcessingNewTransactionFromNetwork) {
