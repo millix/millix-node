@@ -381,6 +381,9 @@ export class WalletSync {
                     timestamp,
                     attempt,
                     priority
+                }).on('queued', () => {
+                    delete this.queue._tickets[transactionID];
+                    delete this.queue._retries[transactionID];
                 });
             }
         });
@@ -394,7 +397,10 @@ export class WalletSync {
 
             this.pendingTransactions[transactionID] = true;
             delete this.scheduledQueueAdd[transactionID];
-            this.queue.push(data);
+            this.queue.push(data).on('queued', () => {
+                delete this.queue._tickets[transactionID];
+                delete this.queue._retries[transactionID];
+            });
         }, delay);
     }
 
