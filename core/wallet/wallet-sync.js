@@ -163,7 +163,10 @@ export class WalletSync {
                 }, () => {
                     return setTimeout(() => {
                         done();
-                        transactionOutputToQueue.forEach(output => this.transactionSpendWalletQueue.push(output));
+                        transactionOutputToQueue.forEach(output => this.transactionSpendWalletQueue.push(output).on('queued', () => {
+                            delete this.queue._tickets[output.transaction_output_id];
+                            delete this.queue._retries[output.transaction_output_id];
+                        }));
                     }, 60000);
                 });
             });
@@ -322,14 +325,22 @@ export class WalletSync {
         ]);
         for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
             const transactionOutput = transaction.transaction_output_list[outputPosition];
+            const transactionOutputID = `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
             if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
+
                 this.transactionSpendWalletQueue.push({
-                    transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
+                    transaction_output_id: transactionOutputID
+                }).on('queued', () => {
+                    delete this.queue._tickets[transactionOutputID];
+                    delete this.queue._retries[transactionOutputID];
                 });
             }
             else if (isModeFullSync) {
                 this.transactionSpendQueue.push({
-                    transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
+                    transaction_output_id: transactionOutputID
+                }).on('queued', () => {
+                    delete this.queue._tickets[transactionOutputID];
+                    delete this.queue._retries[transactionOutputID];
                 });
             }
         }
@@ -518,7 +529,11 @@ export class WalletSync {
             }, 'transaction_date')
                                         .then(transactionOutputList => {
                                             transactionOutputList.forEach(transactionOutput => {
-                                                this.transactionSpendWalletQueue.push({transaction_output_id: `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`});
+                                                const outputTransactionID = `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`;
+                                                this.transactionSpendWalletQueue.push({transaction_output_id: outputTransactionID}).on('queued', () => {
+                                                    delete this.queue._tickets[outputTransactionID];
+                                                    delete this.queue._retries[outputTransactionID];
+                                                });
                                             });
                                         });
         });
@@ -553,11 +568,17 @@ export class WalletSync {
                                                 if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
                                                     this.transactionSpendWalletQueue.push({
                                                         transaction_output_id: transactionOutputID
+                                                    }).on('queued', () => {
+                                                        delete this.queue._tickets[transactionOutputID];
+                                                        delete this.queue._retries[transactionOutputID];
                                                     });
                                                 }
                                                 else {
                                                     this.transactionSpendQueue.push({
                                                         transaction_output_id: transactionOutputID
+                                                    }).on('queued', () => {
+                                                        delete this.queue._tickets[transactionOutputID];
+                                                        delete this.queue._retries[transactionOutputID];
                                                     });
                                                 }
                                             });

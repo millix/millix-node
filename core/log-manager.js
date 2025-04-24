@@ -3,6 +3,7 @@ import eventBus from './event-bus';
 import mutex from './mutex';
 import ntp from './ntp';
 import moment from 'moment';
+import genesisConfig from './genesis/genesis-config';
 
 
 class LogManager {
@@ -55,11 +56,11 @@ class LogManager {
 
         eventBus.on('node_event_log', data => {
             this.addLog(data, this.getTime());
-            this.setBacklogSize(mutex.getKeyQueuedSize(['transaction']));
+            this.setBacklogSize(mutex.getKeyQueuedSize([`transaction_${genesisConfig.genesis_shard_id}`]));
         });
         eventBus.on('wallet_event_log', data => {
             this.addLog(data, this.getTime());
-            this.setBacklogSize(mutex.getKeyQueuedSize(['transaction']));
+            this.setBacklogSize(mutex.getKeyQueuedSize([`transaction_${genesisConfig.genesis_shard_id}`]));
         });
 
         return Promise.resolve();
