@@ -139,6 +139,9 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
 
             const keyMapFunction = (v, k) => keyMap[k] ? keyMap[k] : k;
 
+            let isDoubleSpend   = undefined;
+            let doubleSpendDate = undefined;
+
             data.forEach(row => {
                 if (!signatures.has(row.address_base)) {
                     signatures.add(row.address_base);
@@ -147,12 +150,19 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
 
                 if (!inputs.has(row.input_position)) {
                     inputs.add(row.input_position);
-                    transaction['transaction_input_list'].push(_.mapKeys(_.pick(row, 'input_position', 'input_output_transaction_id', 'input_output_shard_id', 'input_output_position', 'input_output_transaction_date', 'input_double_spend_date', 'input_is_double_spend', 'input_address', 'input_address_key_identifier', 'input_status', 'input_create_date'), keyMapFunction));
+                    transaction['transaction_input_list'].push(_.mapKeys(_.pick(row, 'input_position', 'input_output_transaction_id', 'input_output_shard_id', 'input_output_position', 'input_output_transaction_date', 'input_double_spend_date', 'input_is_double_spend', 'input_address', 'input_address_key_identifier', 'status', 'input_create_date'), keyMapFunction));
                 }
 
                 if (!outputs.has(row.output_position)) {
                     outputs.add(row.output_position);
-                    transaction['transaction_output_list'].push(_.mapKeys(_.pick(row, 'output_position', 'output_address', 'output_address_key_identifier', 'amount', 'output_stable_date', 'output_is_stable', 'spent_date', 'is_spent', 'output_double_spend_date', 'output_is_double_spend', 'output_status', 'output_create_date'), keyMapFunction));
+                    if (isDoubleSpend === undefined) {
+                        isDoubleSpend   = row.output_is_double_spend;
+                        doubleSpendDate = row.output_double_spend_date;
+                    }
+                    const output             = _.mapKeys(_.pick(row, 'output_position', 'output_address', 'output_address_key_identifier', 'amount', 'stable_date', 'is_stable', 'spent_date', 'is_spent', 'output_double_spend_date', 'output_is_double_spend', 'status', 'output_create_date'), keyMapFunction);
+                    output.is_double_spend   = isDoubleSpend;
+                    output.double_spend_date = doubleSpendDate;
+                    transaction['transaction_output_list'].push(output);
                 }
 
                 if (row.output_attribute_type_id && !outputAttributes.has(row.output_attribute_type_id)) {
