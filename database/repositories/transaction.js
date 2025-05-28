@@ -1064,49 +1064,7 @@ export default class Transaction {
                                      return transaction;
                                  });
                  })
-                 .then(transaction => {
-                     // check transaction data
-                     if (transaction) {
-                         const status          = transaction.status;
-                         const isStable        = transaction.is_stable;
-                         const stableDate      = transaction.stable_date;
-                         const isDoubleSpend   = transaction.transaction_output_list[0].is_double_spend;
-                         const doubleSpendDate = transaction.transaction_output_list[0].double_spend_date;
-                         let updateCache       = false;
-                         for (const input of transaction.transaction_input_list) {
-                             if (input.status !== status) {
-                                 console.log(`[transaction-object] fix transaction input status (${input.transaction_id}:${input.output_position}`);
-                                 input.status = status;
-                                 updateCache  = true;
-                                 database.applyShards(shardID => {
-                                     const transactionRepository = database.getRepository('transaction', shardID);
-                                     return transactionRepository.updateTransactionInput(input.transaction_id, input.input_position, undefined, input.status);
-                                 }).then(_ => _);
-                             }
-                         }
-
-                         for (const output of transaction.transaction_output_list) {
-                             if (output.status !== status || output.is_stable !== isStable || output.is_double_spend !== isDoubleSpend) {
-                                 console.log(`[transaction-object] fix transaction output status (${output.transaction_id}:${output.output_position}`);
-                                 output.status            = status;
-                                 output.is_stable         = isStable;
-                                 output.stable_date       = stableDate;
-                                 output.is_double_spend   = isDoubleSpend;
-                                 output.double_spend_date = doubleSpendDate;
-                                 updateCache              = true;
-                                 database.applyShards(shardID => {
-                                     const transactionRepository = database.getRepository('transaction', shardID);
-                                     return transactionRepository.updateTransactionOutput(output.transaction_id, output.output_position, undefined, output.stable_date, output.double_spend_date, output.status);
-                                 }).then(_ => _);
-                             }
-                         }
-
-                         if (updateCache) {
-                             this.updateTransactionObjectCache(transaction);
-                         }
-                     }
-                     return transaction;
-                 })
+                 .then(transaction => this._verifyTransactionDataConsistency(transaction))
                  .then(transaction => resolve(_.cloneDeep(transaction))) /*TODO: addTransactionFromObject is deleting address from output and input object. that is changing the cachedItem. we should not change the object. now we are creating a clone (refactor)*/
                  .catch(() => {
                      resolve(null);
@@ -1184,9 +1142,53 @@ export default class Transaction {
                                       return transaction;
                                   });
                    })
+                   .then(transaction => this._verifyTransactionDataConsistency(transaction))
                    .catch(() => Promise.resolve(null));
     }
 
+    _verifyTransactionDataConsistency(transaction) {
+        // check transaction data
+        if (transaction) {
+            const status          = transaction.status;
+            const isStable        = transaction.is_stable;
+            const stableDate      = transaction.stable_date;
+            const isDoubleSpend   = transaction.transaction_output_list[0].is_double_spend;
+            const doubleSpendDate = transaction.transaction_output_list[0].double_spend_date;
+            let updateCache       = false;
+            for (const input of transaction.transaction_input_list) {
+                if (input.status !== status) {
+                    console.log(`[transaction-object] fix transaction input status (${input.transaction_id}:${input.output_position}`);
+                    input.status = status;
+                    updateCache  = true;
+                    database.applyShards(shardID => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.updateTransactionInput(input.transaction_id, input.input_position, undefined, input.status);
+                    }).then(_ => _);
+                }
+            }
+
+            for (const output of transaction.transaction_output_list) {
+                if (output.status !== status || output.is_stable !== isStable || output.is_double_spend !== isDoubleSpend) {
+                    console.log(`[transaction-object] fix transaction output status (${output.transaction_id}:${output.output_position}`);
+                    output.status            = status;
+                    output.is_stable         = isStable;
+                    output.stable_date       = stableDate;
+                    output.is_double_spend   = isDoubleSpend;
+                    output.double_spend_date = doubleSpendDate;
+                    updateCache              = true;
+                    database.applyShards(shardID => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.updateTransactionOutput(output.transaction_id, output.output_position, undefined, output.stable_date, output.double_spend_date, output.status);
+                    }).then(_ => _);
+                }
+            }
+
+            if (updateCache) {
+                this.updateTransactionObjectCache(transaction);
+            }
+        }
+        return transaction;
+    }
 
     addTransactionSignature(transactionID, shardID, addressBase, signature, status, createDate) {
         if (!createDate) {
