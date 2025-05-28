@@ -1180,8 +1180,8 @@ export default class Transaction {
             if (updateCache) {
                 this.updateTransactionObjectCache(transaction);
                 async.eachSeries(inputListToUpdate, (input, callback) => {
+                    console.log(`[transaction-object] fix transaction input status (${input.transaction_id}:${input.input_position}`);
                     database.applyShards(shardID => {
-                        console.log(`[transaction-object] fix transaction input status (${input.transaction_id}:${input.input_position}`);
                         const transactionRepository = database.getRepository('transaction', shardID);
                         return transactionRepository.updateTransactionInput(input.transaction_id, input.input_position, undefined, input.status);
                     }).then(() => callback());
