@@ -966,7 +966,7 @@ export class WalletTransactionConsensus {
                         }
                         return database.firstShards(shardID => database.getRepository('transaction', shardID)
                                                                        .getTransactionObject(transactionID));
-                    }).then(transaction => this.resetInputsSpentByTransaction(transaction))
+                    }).then(transaction => this.resetInputsSpentByTransaction(transaction).then(() => this.resetValidTransactionSpendingFromDoubleSpendTransaction(transaction)))
                                    .then(transaction => {
                                        wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier)));
                                        wallet.notifyTransactionChanged([transaction], 'transaction_validation:double_spend');
@@ -1014,7 +1014,7 @@ export class WalletTransactionConsensus {
                                                             return database.firstShards(shardID => database.getRepository('transaction', shardID)
                                                                                                            .getTransactionObject(transactionID));
                                                         })
-                                                        .then(transaction => this.resetInputsSpentByTransaction(transaction))
+                                                        .then(transaction => this.resetInputsSpentByTransaction(transaction).then(() => this.resetValidTransactionSpendingFromInvalidTransaction(transaction)))
                                                         .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
                         }).then(() => {
                             wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier)));
@@ -1082,6 +1082,55 @@ export class WalletTransactionConsensus {
             }
         }
         this._nextConsensusRound(transactionID);
+    }
+
+    resetValidTransactionSpendingFromInvalidTransaction(transaction) {
+        if (!transaction) {
+            return Promise.resolve();
+        }
+
+        return database.applyShards(sharID => database.getRepository('transaction', sharID).listTransactionInput({
+            '+`transaction`.status!'  : 3,
+            '+`transaction`.is_stable': 1,
+            'output_transaction_id'   : transaction.transaction_id
+        })).then(inputs => {
+            return new Promise(resolve => {
+                async.eachSeries(_.uniq(_.map(inputs, i => i.transaction_id)), (transactionID, callback) => {
+                    database.applyShards(shardID => database.getRepository('transaction', shardID).resetTransaction(transactionID, 'reset valid transaction spending from invalid transaction'))
+                            .then(() => callback());
+                }, () => resolve());
+            });
+        });
+    }
+
+    resetValidTransactionSpendingFromDoubleSpendTransaction(transaction) {
+        if (!transaction) {
+            return Promise.resolve();
+        }
+
+        return database.applyShards(sharID => database.getRepository('transaction', sharID).listTransactionInput({
+            '+`transaction`.status!'  : 3,
+            '+`transaction`.is_stable': 1,
+            'output_transaction_id'   : transaction.transaction_id
+        })).then(inputs => {
+            return new Promise(resolve => {
+                async.eachSeries(_.uniq(_.map(inputs, i => i.transaction_id)), (transactionID, callback) => {
+
+                    database.applyShards(sharID => database.getRepository('transaction', sharID).listTransactionOutput({
+                        'transaction_output.is_double_spend': 0,
+                        'transaction_output.transaction_id' : transactionID
+                    })).then(outputs => {
+                        if (outputs.length === 0) {
+                            return;
+                        }
+
+                        return database.applyShards(shardID => database.getRepository('transaction', shardID).resetTransaction(transactionID, 'reset valid transaction spending from double spend transaction'));
+
+                    }).then(() => callback());
+
+                }, () => resolve());
+            });
+        });
     }
 
     resetInputsSpentByTransaction(transaction) {
