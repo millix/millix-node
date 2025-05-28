@@ -1052,6 +1052,28 @@ export class WalletTransactionConsensus {
                         return transactionRepository.updateTransactionAsStable(transactionID)
                                                     .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
                     }).then(() => {
+                        // check data consistency
+                        const inputTransactions = _.uniq(transaction.transaction_input_list.map(i => i.output_transaction_id));
+                        return new Promise(resolve => {
+                            async.eachSeries(inputTransactions, (inputTransactionID, callback) => {
+                                database.firstShards(shardID => {
+                                    const transactionRepository = database.getRepository('transaction', shardID);
+                                    return transactionRepository.getTransactionOutputs(inputTransactionID)
+                                                                .then(outputs => outputs.length > 0 ? Promise.resolve([
+                                                                    outputs[0],
+                                                                    transactionRepository
+                                                                ]) : Promise.reject());
+                                }).then(([output, transactionRepository]) => {
+                                    if (output) {
+                                        if (output.status === 3 || output.is_double_spend === 1) {
+                                            // reset transaction status
+                                            return transactionRepository.resetTransaction(output.transaction_id);
+                                        }
+                                    }
+                                }).then(() => callback());
+                            }, () => resolve());
+                        });
+                    }).then(() => {
                         wallet._checkIfWalletUpdate(new Set(_.map(transaction?.transaction_output_list || [], o => o.address_key_identifier)));
                         wallet.notifyTransactionChanged([transaction], 'transaction_validation:valid');
                     });

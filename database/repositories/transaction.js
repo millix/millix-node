@@ -1064,6 +1064,49 @@ export default class Transaction {
                                      return transaction;
                                  });
                  })
+                 .then(transaction => {
+                     // check transaction data
+                     if (transaction) {
+                         const status          = transaction.status;
+                         const isStable        = transaction.is_stable;
+                         const stableDate      = transaction.stable_date;
+                         const isDoubleSpend   = transaction.transaction_output_list[0].is_double_spend;
+                         const doubleSpendDate = transaction.transaction_output_list[0].double_spend_date;
+                         let updateCache       = false;
+                         for (const input of transaction.transaction_input_list) {
+                             if (input.status !== status) {
+                                 console.log(`[transaction-object] fix transaction input status (${transaction.transaction_id}:${input.output_position}`);
+                                 input.status = status;
+                                 updateCache  = true;
+                                 database.applyShards(shardID => {
+                                     const transactionRepository = database.getRepository('transaction', shardID);
+                                     return transactionRepository.updateTransactionInput(input.transaction_id, input.input_position, undefined, input.status);
+                                 }).then(_ => _);
+                             }
+                         }
+
+                         for (const output of transaction.transaction_output_list) {
+                             if (output.status !== status || output.is_stable !== isStable || output.is_double_spend !== isDoubleSpend) {
+                                 console.log(`[transaction-object] fix transaction input status (${transaction.transaction_id}:${output.output_position}`);
+                                 output.status            = status;
+                                 output.is_stable         = isStable;
+                                 output.stable_date       = stableDate;
+                                 output.is_double_spend   = isDoubleSpend;
+                                 output.double_spend_date = doubleSpendDate;
+                                 updateCache              = true;
+                                 database.applyShards(shardID => {
+                                     const transactionRepository = database.getRepository('transaction', shardID);
+                                     return transactionRepository.updateTransactionOutput(output.transaction_id, output.output_position, undefined, output.stable_date, output.double_spend_date, output.status);
+                                 }).then(_ => _);
+                             }
+                         }
+
+                         if (updateCache) {
+                             this.updateTransactionObjectCache(transaction);
+                         }
+                     }
+                     return transaction;
+                 })
                  .then(transaction => resolve(_.cloneDeep(transaction))) /*TODO: addTransactionFromObject is deleting address from output and input object. that is changing the cachedItem. we should not change the object. now we are creating a clone (refactor)*/
                  .catch(() => {
                      resolve(null);
@@ -1818,7 +1861,7 @@ export default class Transaction {
             this.database.exec(`
                 UPDATE transaction_output
                 SET is_spent          = 1,
-                    is_double_spend   = CAST(strftime('%s', 'now') AS INTEGER),
+                    spent_date        = CAST(strftime('%s', 'now') AS INTEGER),
                     is_double_spend   = 1,
                     double_spend_date = CAST(strftime('%s', 'now') AS INTEGER),
                     is_stable         = 1,
@@ -1850,7 +1893,8 @@ export default class Transaction {
         });
     }
 
-    resetTransaction(transactionID) {
+    resetTransaction(transactionID, cause) {
+        console.log(`[transaction-object] reset transaction (${transactionID}${cause ? `: cause ${cause}` : ''})`);
         return new Promise((resolve) => {
             this.database.serialize(() => {
                 this.database.run('UPDATE transaction_input SET double_spend_date = NULL, is_double_spend = 0, status = 1 WHERE transaction_id = ?', [transactionID], (err) => {
