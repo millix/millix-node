@@ -1063,7 +1063,11 @@ export class WalletTransactionConsensus {
                                                                     outputs[0],
                                                                     transactionRepository
                                                                 ]) : Promise.reject());
-                                }).then(([output, transactionRepository]) => {
+                                }).then(data => {
+                                    if (!data) {
+                                        return;
+                                    }
+                                    const [output, transactionRepository] = data;
                                     if (output) {
                                         if (output.status === 3 || output.is_double_spend === 1) {
                                             // reset transaction status
