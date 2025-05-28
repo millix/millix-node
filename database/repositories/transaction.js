@@ -1075,7 +1075,7 @@ export default class Transaction {
                          let updateCache       = false;
                          for (const input of transaction.transaction_input_list) {
                              if (input.status !== status) {
-                                 console.log(`[transaction-object] fix transaction input status (${transaction.transaction_id}:${input.output_position}`);
+                                 console.log(`[transaction-object] fix transaction input status (${input.transaction_id}:${input.output_position}`);
                                  input.status = status;
                                  updateCache  = true;
                                  database.applyShards(shardID => {
@@ -1087,7 +1087,7 @@ export default class Transaction {
 
                          for (const output of transaction.transaction_output_list) {
                              if (output.status !== status || output.is_stable !== isStable || output.is_double_spend !== isDoubleSpend) {
-                                 console.log(`[transaction-object] fix transaction input status (${transaction.transaction_id}:${output.output_position}`);
+                                 console.log(`[transaction-object] fix transaction output status (${output.transaction_id}:${output.output_position}`);
                                  output.status            = status;
                                  output.is_stable         = isStable;
                                  output.stable_date       = stableDate;
