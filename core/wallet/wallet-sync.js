@@ -306,16 +306,7 @@ export class WalletSync {
             setImmediate: global.setImmediate
         });
 
-        if (!config.MODE_NODE_SYNC_FULL) {
-            return this.updateSyncTransactionSpend();
-        }
-
-        return database.applyShards(shardID => {
-            return database.getRepository('transaction', shardID)
-                           .getMissingInputTransactions();
-        }).then(transactions => { /*add the missing inputs to the sync queue*/
-            transactions.forEach(transaction => this.add(transaction.transaction_id));
-        }).then(() => this.updateSyncTransactionSpend());
+        return this.updateSyncTransactionSpend();
     }
 
     syncTransactionSpendingOutputs(transaction, isModeFullSync) {
@@ -324,8 +315,8 @@ export class WalletSync {
             ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
         ]);
         for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
-            const transactionOutput = transaction.transaction_output_list[outputPosition];
-            const transactionOutputID = `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
+            const transactionOutput   = transaction.transaction_output_list[outputPosition];
+            const transactionOutputID = `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`;
             if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
 
                 this.transactionSpendWalletQueue.push({
@@ -557,11 +548,12 @@ export class WalletSync {
             // add all unspent outputs to transaction
             // spend sync
             const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.listTransactionOutput({
-                is_spent               : 0,
-                is_double_spend        : 0,
-                '`transaction`.status!': 3
-            }, 'transaction_date')
+            return transactionRepository.getMissingInputTransactions().then(transactions => transactions.forEach(transaction => this.add(transaction.transaction_id)))
+                                        .then(() => transactionRepository.listTransactionOutput({
+                                            is_spent               : 0,
+                                            is_double_spend        : 0,
+                                            '`transaction`.status!': 3
+                                        }, 'transaction_date'))
                                         .then(transactionOutputList => {
                                             transactionOutputList.forEach(transactionOutput => {
                                                 const transactionOutputID = `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`;
