@@ -2546,6 +2546,49 @@ export default class Transaction {
         });
     }
 
+    listTransactionsWithKeyIdentifier(keyIdentifier, where, orderBy, limit, shardID, offset) {
+        if (!keyIdentifier) {
+            return Promise.resolve([]);
+        }
+
+        where['address_key_identifier'] = keyIdentifier;
+
+        return new Promise((resolve, reject) => {
+            const {
+                    sql: sqlInput,
+                    parameters: parametersInput
+                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM  transaction_input LEFT JOIN `transaction` USING (transaction_id)', where);
+
+            const {
+                    sql: sqlOutput,
+                    parameters: parametersOutput
+                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM  transaction_input LEFT JOIN `transaction` USING (transaction_id)', where);
+
+            const {
+                      sql,
+                      parameters: parametersUnion
+                  } = Database.buildQuery(`${sqlInput} UNION ${sqlOutput}`, undefined, orderBy, limit, undefined, offset);
+
+
+            const parameters = [...parametersInput, ...parametersOutput, ...parametersUnion];
+            this.database.all(
+                sql,
+                parameters, (err, rows) => {
+                    if (err) {
+                        console.log(err);
+                        return reject(err);
+                    }
+
+                    if (rows) {
+                        _.map(rows, row => row.transaction_date = new Date(row.transaction_date * 1000));
+                    }
+
+                    resolve(rows);
+                }
+            );
+        });
+    }
+
     listTransactionOutputAttributes(where) {
         return new Promise((resolve, reject) => {
             let {
