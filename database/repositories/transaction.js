@@ -2562,7 +2562,7 @@ export default class Transaction {
             const {
                     sql: sqlOutput,
                     parameters: parametersOutput
-                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM  transaction_input LEFT JOIN `transaction` USING (transaction_id)', where);
+                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM  transaction_output LEFT JOIN `transaction` USING (transaction_id)', where);
 
             const {
                       sql,
