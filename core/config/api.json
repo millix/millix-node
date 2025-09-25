@@ -127,6 +127,15 @@
       "enable": true
     },
     {
+      "id": "MC5Crzt68CmDc5cY",
+      "name": "list_transaction_having_key_identifier",
+      "description": "returns a list of transaction records from table transaction having a given key identifier. it returns the newest records by default",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
       "id": "RVBqKlGdk9aEhi5J",
       "name": "sign_transaction",
       "description": "accepts an unsigned transaction payload and private keys to produce a signed version of the transaction_payload_unsigned that is used by API VnJIBrrM0KY3uQ9X to send a transaction",

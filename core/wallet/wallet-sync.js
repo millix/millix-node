@@ -163,7 +163,10 @@ export class WalletSync {
                 }, () => {
                     return setTimeout(() => {
                         done();
-                        transactionOutputToQueue.forEach(output => this.transactionSpendWalletQueue.push(output));
+                        transactionOutputToQueue.forEach(output => this.transactionSpendWalletQueue.push(output).on('queued', () => {
+                            delete this.queue._tickets[output.transaction_output_id];
+                            delete this.queue._retries[output.transaction_output_id];
+                        }));
                     }, 60000);
                 });
             });
@@ -303,16 +306,7 @@ export class WalletSync {
             setImmediate: global.setImmediate
         });
 
-        if (!config.MODE_NODE_SYNC_FULL) {
-            return this.updateSyncTransactionSpend();
-        }
-
-        return database.applyShards(shardID => {
-            return database.getRepository('transaction', shardID)
-                           .getMissingInputTransactions();
-        }).then(transactions => { /*add the missing inputs to the sync queue*/
-            transactions.forEach(transaction => this.add(transaction.transaction_id));
-        }).then(() => this.updateSyncTransactionSpend());
+        return this.updateSyncTransactionSpend();
     }
 
     syncTransactionSpendingOutputs(transaction, isModeFullSync) {
@@ -321,15 +315,23 @@ export class WalletSync {
             ...config.EXTERNAL_WALLET_KEY_IDENTIFIER
         ]);
         for (let outputPosition = 0; outputPosition < transaction.transaction_output_list.length; outputPosition++) {
-            const transactionOutput = transaction.transaction_output_list[outputPosition];
+            const transactionOutput   = transaction.transaction_output_list[outputPosition];
+            const transactionOutputID = `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`;
             if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
+
                 this.transactionSpendWalletQueue.push({
-                    transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
+                    transaction_output_id: transactionOutputID
+                }).on('queued', () => {
+                    delete this.queue._tickets[transactionOutputID];
+                    delete this.queue._retries[transactionOutputID];
                 });
             }
             else if (isModeFullSync) {
                 this.transactionSpendQueue.push({
-                    transaction_output_id: `${transaction.transaction_id}_${transaction.shard_id}_${transactionOutput.output_position}`
+                    transaction_output_id: transactionOutputID
+                }).on('queued', () => {
+                    delete this.queue._tickets[transactionOutputID];
+                    delete this.queue._retries[transactionOutputID];
                 });
             }
         }
@@ -381,6 +383,9 @@ export class WalletSync {
                     timestamp,
                     attempt,
                     priority
+                }).on('queued', () => {
+                    delete this.queue._tickets[transactionID];
+                    delete this.queue._retries[transactionID];
                 });
             }
         });
@@ -394,7 +399,10 @@ export class WalletSync {
 
             this.pendingTransactions[transactionID] = true;
             delete this.scheduledQueueAdd[transactionID];
-            this.queue.push(data);
+            this.queue.push(data).on('queued', () => {
+                delete this.queue._tickets[transactionID];
+                delete this.queue._retries[transactionID];
+            });
         }, delay);
     }
 
@@ -512,7 +520,11 @@ export class WalletSync {
             }, 'transaction_date')
                                         .then(transactionOutputList => {
                                             transactionOutputList.forEach(transactionOutput => {
-                                                this.transactionSpendWalletQueue.push({transaction_output_id: `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`});
+                                                const outputTransactionID = `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`;
+                                                this.transactionSpendWalletQueue.push({transaction_output_id: outputTransactionID}).on('queued', () => {
+                                                    delete this.queue._tickets[outputTransactionID];
+                                                    delete this.queue._retries[outputTransactionID];
+                                                });
                                             });
                                         });
         });
@@ -536,22 +548,29 @@ export class WalletSync {
             // add all unspent outputs to transaction
             // spend sync
             const transactionRepository = database.getRepository('transaction', shardID);
-            return transactionRepository.listTransactionOutput({
-                is_spent               : 0,
-                is_double_spend        : 0,
-                '`transaction`.status!': 3
-            }, 'transaction_date')
+            return transactionRepository.getMissingInputTransactions().then(transactions => transactions.forEach(transaction => this.add(transaction.transaction_id)))
+                                        .then(() => transactionRepository.listTransactionOutput({
+                                            is_spent               : 0,
+                                            is_double_spend        : 0,
+                                            '`transaction`.status!': 3
+                                        }, 'transaction_date'))
                                         .then(transactionOutputList => {
                                             transactionOutputList.forEach(transactionOutput => {
                                                 const transactionOutputID = `${transactionOutput.transaction_id}_${transactionOutput.shard_id}_${transactionOutput.output_position}`;
                                                 if (walletKeyIdentifierSet.has(transactionOutput.address_key_identifier)) {
                                                     this.transactionSpendWalletQueue.push({
                                                         transaction_output_id: transactionOutputID
+                                                    }).on('queued', () => {
+                                                        delete this.queue._tickets[transactionOutputID];
+                                                        delete this.queue._retries[transactionOutputID];
                                                     });
                                                 }
                                                 else {
                                                     this.transactionSpendQueue.push({
                                                         transaction_output_id: transactionOutputID
+                                                    }).on('queued', () => {
+                                                        delete this.queue._tickets[transactionOutputID];
+                                                        delete this.queue._retries[transactionOutputID];
                                                     });
                                                 }
                                             });
