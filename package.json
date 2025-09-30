@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@babel/register": "7.8.3",
+    "@dabh/diagnostics": "^2.0.3",
     "async": "^2.6.2",
     "bindings": "^1.5.0",
     "bitcore-lib": "^8.1.1",
