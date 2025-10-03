@@ -13,12 +13,13 @@ class _w9UTTA7NXnEDUXhe extends Endpoint {
     /**
      * list transaction history for a given wallet
      * @param app
-     * @param req (p0: address_key_identifier<require>)
+     * @param req (p0: address_key_identifier<require>, p1: record_limit=1000)
      * @param res
      * @returns {*}
      */
     handler(app, req, res) {
         let addressKeyIdentifier;
+        let limit;
         if (req.method === 'GET') {
             if (!req.query.p0) {
                 return res.status(400).send({
@@ -28,6 +29,7 @@ class _w9UTTA7NXnEDUXhe extends Endpoint {
             }
             else {
                 addressKeyIdentifier = req.query.p0;
+                limit   = parseInt(req.query.p1) || 1000;
             }
         }
         else {
@@ -39,12 +41,13 @@ class _w9UTTA7NXnEDUXhe extends Endpoint {
             }
             else {
                 addressKeyIdentifier = req.body.p0;
+                limit   = parseInt(req.body.p1) || 1000;
             }
         }
 
         return database.applyShards((shardID) => {
             return database.getRepository('transaction', shardID)
-                           .getTransactionsByAddressKeyIdentifier(addressKeyIdentifier);
+                           .getTransactionsByAddressKeyIdentifier(addressKeyIdentifier, limit);
         }, 'transaction_date desc').then(transactions => {
             res.send(transactions);
         }).catch(e => res.send({
