@@ -451,14 +451,15 @@ export default class Transaction {
         });
     }
 
-    getTransactionsByAddressKeyIdentifier(keyIdentifier) {
+    getTransactionsByAddressKeyIdentifier(keyIdentifier, limit = 1000) {
         return new Promise((resolve, reject) => {
             this.database.all(
                 'WITH transaction_wallet AS ( \
-                SELECT transaction_input.transaction_id, transaction_input.is_double_spend, 1 as withdrawal FROM transaction_input \
-                WHERE transaction_input.address_key_identifier = ? AND transaction_input.status != 3 \
-                UNION SELECT transaction_output.transaction_id, transaction_output.is_double_spend, 0 as withdrawal FROM transaction_output \
-                WHERE transaction_output.address_key_identifier = ? AND transaction_output.status != 3 \
+                SELECT transaction_input.transaction_id, transaction_input.is_double_spend, 1 as withdrawal, `transaction`.transaction_date FROM transaction_input \
+                INNER JOIN `transaction` USING(transaction_id) WHERE transaction_input.address_key_identifier = ?1 AND transaction_input.status != 3 \
+                UNION SELECT transaction_output.transaction_id, transaction_output.is_double_spend, 0 as withdrawal, `transaction`.transaction_date FROM transaction_output \
+                INNER JOIN `transaction` USING(transaction_id) WHERE transaction_output.address_key_identifier = ?1 AND transaction_output.status != 3 \
+                ORDER BY transaction_date LIMIT ?2 \
                 ), \
                 transaction_amount AS ( \
                 SELECT transaction_id, COALESCE(SUM(amount), 0) as amount FROM transaction_output \
@@ -472,7 +473,7 @@ export default class Transaction {
                 ORDER BY t.transaction_date DESC',
                 [
                     keyIdentifier,
-                    keyIdentifier
+                    limit
                 ],
                 (err, rows) => {
                     if (err) {
