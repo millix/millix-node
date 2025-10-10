@@ -29,7 +29,7 @@ export default class Config {
             const {
                       sql,
                       parameters
-                  } = Database.buildUpdate('SELECT * FROM config', where);
+                  } = Database.buildQuery('SELECT * FROM config', where);
             this.database.get(sql, parameters, (err, row) => {
                 if (row) {
                     row['config_name'] = row['config_name'].toUpperCase();
