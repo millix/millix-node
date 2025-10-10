@@ -20,7 +20,7 @@ class _AXVeQ29Zcz5gVxKJ extends Endpoint {
      */
     handler(app, req, res) {
         if (req.method === 'POST') {
-            if (!req.body.p0 || !req.body.p1 || !req.body.p2) {
+            if (!req.body.p0 || !req.body.p1 || req.body.p2 === undefined) {
                 return res.status(400)
                           .send({
                               api_status : 'fail',
