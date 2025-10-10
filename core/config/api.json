@@ -307,6 +307,24 @@
       "enable": true
     },
     {
+      "id": "AXVeQ29Zcz5gVxKJ",
+      "name": "upsert_config",
+      "description": "inserts or updates a config record",
+      "method": "POST",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "NEyHaRrWm5Emw2GZ",
+      "name": "get_config",
+      "description": "gets a config record",
+      "method": "GET",
+      "version_released": "1.2.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "AgsSNTSA0RHmWUkp",
       "name": "list_node_attribute",
       "description": "returns records from table node_attributes.  it returns the newest records by default",

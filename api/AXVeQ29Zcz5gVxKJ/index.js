@@ -3,39 +3,43 @@ import Endpoint from '../endpoint';
 
 
 /**
- * api update_config_value
+ * api upsert_config
  */
-class _LLpSTquu4tZL8Nu5 extends Endpoint {
+class _AXVeQ29Zcz5gVxKJ extends Endpoint {
     constructor() {
-        super('LLpSTquu4tZL8Nu5');
+        super('AXVeQ29Zcz5gVxKJ');
     }
 
     /**
-     * updates table config value field for the indicated config_id record
+     * inserts or updates a config record
      * @param app
-     * @param req (p0: config_id<required>, p1:value<required>)
+     * @param req (p0: config_id<required>, p1: config_name<required>, p2:
+     *     value<required>
      * @param res
      * @returns {*}
      */
     handler(app, req, res) {
         if (req.method === 'POST') {
-            const resultBodyKey = Object.keys(req.body);
-            if (!resultBodyKey.includes('p0') || !req.body.p0 || !resultBodyKey.includes('p1')) {
+            if (!req.body.p0 || !req.body.p1 || !req.body.p2) {
                 return res.status(400)
                           .send({
                               api_status : 'fail',
-                              api_message: `p0<config_id> and p1<config_value> are required`
+                              api_message: `p0<config_id>, p1<config_name>, and p2<value> are required`
                           });
             }
 
-            let configID                  = req.body.p0;
-            let value                     = req.body.p1;
+            const configID   = req.body.p0;
+            const configName = req.body.p1;
+            let value        = req.body.p2;
+
             const configurationRepository = database.getRepository('config');
-            if (typeof value === 'object') {
+
+            let type = typeof value;
+            if (type !== 'string') {
                 value = JSON.stringify(value);
             }
 
-            configurationRepository.updateConfigByID(configID, value)
+            configurationRepository.upsertConfig(configID, configName, value, type)
                                    .then((row) => res.send({
                                        api_status: 'success',
                                        row       : row
@@ -57,4 +61,4 @@ class _LLpSTquu4tZL8Nu5 extends Endpoint {
 }
 
 
-export default new _LLpSTquu4tZL8Nu5();
+export default new _AXVeQ29Zcz5gVxKJ();
