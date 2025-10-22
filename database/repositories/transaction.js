@@ -2558,17 +2558,17 @@ export default class Transaction {
             const {
                     sql: sqlInput,
                     parameters: parametersInput
-                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM  transaction_input LEFT JOIN `transaction` USING (transaction_id)', where);
+                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM  transaction_input LEFT JOIN `transaction` USING (transaction_id)', where, orderBy, limit);
 
             const {
                     sql: sqlOutput,
                     parameters: parametersOutput
-                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM  transaction_output LEFT JOIN `transaction` USING (transaction_id)', where);
+                } = Database.buildQuery('SELECT DISTINCT `transaction`.* FROM  transaction_output LEFT JOIN `transaction` USING (transaction_id)', where, orderBy, limit);
 
             const {
                       sql,
                       parameters: parametersUnion
-                  } = Database.buildQuery(`${sqlInput} UNION ${sqlOutput}`, undefined, orderBy, limit, undefined, offset);
+                  } = Database.buildQuery(`SELECT * FROM (${sqlInput}) UNION SELECT * FROM (${sqlOutput})`, undefined, orderBy, limit, undefined, offset);
 
 
             const parameters = [...parametersInput, ...parametersOutput, ...parametersUnion];
