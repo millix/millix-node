@@ -208,9 +208,10 @@ export class PeerRotation {
 
         return new Promise(resolve => {
             const outboundClients = network.outboundClients;
-            if (outboundClients.length < config.NODE_CONNECTION_OUTBOUND_MAX - 1) {
-                console.log(`[peer-rotation] fill available slots (${outboundClients.length} of ${config.NODE_CONNECTION_OUTBOUND_MAX})`);
-                console.log('[peer-rotation] peer rotation done.');
+            const slots = config.NODE_CONNECTION_OUTBOUND_MAX + network.getExtraOutboundSlotCount()
+            if (outboundClients.length < slots - 1) {
+                console.log(`[peer-rotation] fill available slots: ${outboundClients.length} of ${slots}`);
+                console.log('[peer-rotation] peer rotation done');
                 this._peerRotationStarted = false;
                 network.retryConnectToInactiveNodes();
                 resolve();
@@ -296,7 +297,7 @@ export class PeerRotation {
     doRotationReactive() {
         const outboundClients = network.outboundClients;
 
-        if (outboundClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        if (outboundClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX + network.getExtraOutboundSlotCount()) {
             return this._getOlderPeerNotSupportingCommonShards()
                        .then(peerToDisconnect => peerToDisconnect ? peerToDisconnect : this._getOlderPeer())
                        .then(peerToDisconnect => this._getNewPeerReactive()
@@ -317,7 +318,7 @@ export class PeerRotation {
     doRotationProactive() {
         const outboundClients = network.outboundClients;
         let peerToDisconnect;
-        if (outboundClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX) {
+        if (outboundClients.length >= config.NODE_CONNECTION_OUTBOUND_MAX + network.getExtraOutboundSlotCount()) {
             peerToDisconnect = this._getOlderPeer();
         }
 

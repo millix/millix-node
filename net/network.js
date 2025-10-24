@@ -30,33 +30,9 @@ const WebSocketServer = Server;
 
 class Network {
     constructor() {
-        this._nodeListOnline                       = {};
-        this._nodeList                             = {};
-        this._connectionRegistry                   = {};
-        this._nodeRegistry                         = {};
-        this._inboundRegistry                      = {};
-        this._outboundRegistry                     = {};
-        this._bidirectionalOutboundConnectionCount = 0;
-        this._bidirectionalInboundConnectionCount  = 0;
-        this._wss                                  = null;
-        this.networkInterfaceAddresses             = [];
         this.nodeID                                = null;
         this.nodeIsPublic                          = config.NODE_PUBLIC;
-        this.certificatePem                        = null;
-        this.certificatePrivateKeyPem              = null;
-        this.nodeConnectionID                      = this.generateNewID();
-        this._selfConnectionNode                   = new Set();
-        this._allowedMessageInOutboudConnection    = new Set([
-            'node_attribute_request',
-            'wallet_transaction_sync',
-            'transaction_sync'
-        ]);
-        this.initialized                           = false;
-        this._connectingToInactiveNodes            = false;
-        this._connectingToOnlineNodes              = false;
-        this.dht                                   = null;
-        this.noop                                  = () => {
-        };
+        this.clearState();
     }
 
     get registeredClients() {
@@ -117,8 +93,10 @@ class Network {
 
     // general network functions
     _connectTo(prefix, ipAddress, port, portApi, id) {
-
-        if (this._nodeRegistry[id] && this._nodeRegistry[id][0]) {
+        if(!this.initialized) {
+            return Promise.reject(new Error('network_not_initialized'));
+        }
+        else if (this._nodeRegistry[id] && this._nodeRegistry[id][0]) {
             return Promise.resolve(this._nodeRegistry[id][0]);
         }
         else if (!prefix || !ipAddress || !port || portApi === undefined || id === this.nodeID) {
@@ -340,6 +318,9 @@ class Network {
         return new Promise(resolve => {
             async.eachLimit(_.shuffle(_.keys(this._nodeListOnline)), 4, (nodeURL, callback) => {
                 const node = this._nodeList[nodeURL];
+                if (!node) {
+                    return callback();
+                }
 
                 if (this._nodeListOnline[nodeURL] < Date.now() - 600000) {
                     delete this._nodeListOnline[nodeURL];
@@ -494,7 +475,12 @@ class Network {
                 eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
                 eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, (eventData, _) => {
                     if (!callbackCalled) {
-                        callbackCalled       = true;
+                        callbackCalled = true;
+
+                        if (!this.initialized) {
+                            return resolve('network_not_initialized');
+                        }
+
                         let peerNodeID;
                         const nodeRepository = database.getRepository('node');
 
@@ -599,7 +585,7 @@ class Network {
     _onNodeHandshake(registry, ws) {
         ws.nodeID       = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
-        ws.features   = {...registry.node_feature_set};
+        ws.features     = {...registry.node_feature_set};
         if (ws.nodeID === this.nodeID) {
             ws.duplicated = true;
 
@@ -701,8 +687,12 @@ class Network {
         }
     }
 
+    getExtraOutboundSlotCount() {
+        return this.nodeIsPublic === false ? config.NODE_CONNECTION_INBOUND_MAX : 0;
+    }
+
     hasOutboundConnectionsSlotAvailable() {
-        return _.keys(this._outboundRegistry).length < config.NODE_CONNECTION_OUTBOUND_MAX;
+        return _.keys(this._outboundRegistry).length < config.NODE_CONNECTION_OUTBOUND_MAX + this.getExtraOutboundSlotCount();
     }
 
     _registerWebsocketToNodeID(ws) {
@@ -1047,9 +1037,7 @@ class Network {
     }
 
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
-        this.certificatePem           = certificatePem;
-        this.certificatePrivateKeyPem = certificatePrivateKeyPem;
-        console.log('node id : ', this.nodeID);
+        console.log(`[network] node id: ${this.nodeID}`);
         this.natAPI = new NatAPI();
         this.doPortMapping()
             .catch((e) => {
@@ -1281,6 +1269,25 @@ class Network {
         }
     }
 
+    clearState() {
+        this._nodeListOnline                       = {};
+        this._nodeList                             = {};
+        this._connectionRegistry                   = {};
+        this._nodeRegistry                         = {};
+        this._inboundRegistry                      = {};
+        this._outboundRegistry                     = {};
+        this._bidirectionalOutboundConnectionCount = 0;
+        this._bidirectionalInboundConnectionCount  = 0;
+        this._wss                                  = null;
+        this.networkInterfaceAddresses             = [];
+        this.nodeConnectionID                      = this.generateNewID();
+        this._selfConnectionNode                   = new Set();
+        this.initialized                           = false;
+        this._connectingToInactiveNodes            = false;
+        this._connectingToOnlineNodes              = false;
+        this.dht                                   = null;
+    }
+
     stop() {
         this.initialized = false;
         eventBus.removeAllListeners('node_handshake');
@@ -1293,18 +1300,12 @@ class Network {
         task.removeTask('retry_connect_online_node');
         this.stopWebSocket();
 
-        // clean inbound and outbound registries
-        this._inboundRegistry  = {};
-        this._outboundRegistry = {};
         // disconnect websocket and clean global registry
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
-        this._nodeRegistry       = {};
-        // clean connection registry
-        this._connectionRegistry = {};
         if (this.dht) {
             this.dht.destroy();
-            this.dht = null;
         }
+        this.clearState();
     }
 }
 
