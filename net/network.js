@@ -30,8 +30,8 @@ const WebSocketServer = Server;
 
 class Network {
     constructor() {
-        this.nodeID                                = null;
-        this.nodeIsPublic                          = config.NODE_PUBLIC;
+        this.nodeID       = null;
+        this.nodeIsPublic = config.NODE_PUBLIC;
         this.clearState();
     }
 
@@ -93,7 +93,7 @@ class Network {
 
     // general network functions
     _connectTo(prefix, ipAddress, port, portApi, id) {
-        if(!this.initialized) {
+        if (!this.initialized) {
             return Promise.reject(new Error('network_not_initialized'));
         }
         else if (this._nodeRegistry[id] && this._nodeRegistry[id][0]) {
@@ -729,32 +729,26 @@ class Network {
 
         if (ws.inBound) {
             // check if node is public
-            async.retry({
-                times   : 3,
-                interval: 500
-            }, (callback) => {
-                this._urlCheckConnect(ws.node)
-                    .then(() => callback())
-                    .catch(() => callback(true));
-            }, (err) => {
-                if (err) {
-                    // private node
-                    ws.nodeIsPublic = false;
-                }
-                else {
-                    // public node
-                    ws.nodeIsPublic = true;
-                    if (this._hasToDropPublicNodeConnection()) {
-                        this._dropOldestPublicNodeConnection();
+            this.checkIfCanConnectToURL(ws.node, 3, 500)
+                .then((canConnect) => {
+                    if (!canConnect) {
+                        // private node
+                        ws.nodeIsPublic = false;
                     }
-                }
+                    else {
+                        // public node
+                        ws.nodeIsPublic = true;
+                        if (this._hasToDropPublicNodeConnection()) {
+                            this._dropOldestPublicNodeConnection();
+                        }
+                    }
 
-                const nodeRepository = database.getRepository('node');
-                nodeRepository.addNodeAttribute(ws.nodeID, 'node_connection', JSON.stringify({public: ws.nodeIsPublic}))
-                              .then(_ => _)
-                              .catch(_ => _);
+                    const nodeRepository = database.getRepository('node');
+                    nodeRepository.addNodeAttribute(ws.nodeID, 'node_connection', JSON.stringify({public: ws.nodeIsPublic}))
+                                  .then(_ => _)
+                                  .catch(_ => _);
 
-            });
+                });
         }
 
         console.log('[network] node ' + ws.node + ' registered with node id ' + nodeID);
@@ -927,7 +921,7 @@ class Network {
             if (endpointType === 'wss') {
                 const client      = new WebSocket(url, {
                     rejectUnauthorized: false,
-                    handshakeTimeout  : 10000
+                    handshakeTimeout  : 5000
                 });
                 client.createTime = Date.now();
                 client.once('open', () => {
@@ -955,30 +949,44 @@ class Network {
         });
     }
 
+    checkIfCanConnectToURL(url, retries, interval) {
+        return new Promise((resolve) => {
+            async.retry({
+                times: retries,
+                interval
+            }, (callback) => {
+                this._urlCheckConnect(url)
+                    .then(() => callback())
+                    .catch(() => callback(true));
+            }, (err) => {
+                if (err) {
+                    resolve(false);
+                }
+                else {
+                    resolve(true);
+                }
+            });
+        });
+    }
+
     _onNATCheck(content, ws) {
         const {url} = content;
         console.log('[network] on natcheck', url, 'from', ws.nodeID);
-        async.retry({
-            times   : 10,
-            interval: 500
-        }, (callback) => {
-            this._urlCheckConnect(url)
-                .then(() => callback())
-                .catch(() => callback(true));
-        }, (err) => {
-            if (err) {
-                peer.sendNATCheckResponse({
-                    is_valid_nat: false,
-                    ip          : ws._socket.remoteAddress,
-                    port        : ws._socket.remotePort
-                }, ws);
-            }
-            else {
-                peer.sendNATCheckResponse({
-                    is_valid_nat: true
-                }, ws);
-            }
-        });
+        this.checkIfCanConnectToURL(url, 5, 500)
+            .then(canConnect => {
+                if (canConnect) {
+                    peer.sendNATCheckResponse({
+                        is_valid_nat: true
+                    }, ws);
+                }
+                else {
+                    peer.sendNATCheckResponse({
+                        is_valid_nat: false,
+                        ip          : ws._socket.remoteAddress,
+                        port        : ws._socket.remotePort
+                    }, ws);
+                }
+            });
         console.log('[network natcheck] natcheck connecting to node ' + url);
     }
 
@@ -988,14 +996,7 @@ class Network {
                   endpoint_type: endpointType
               } = content;
         console.log('[network] check if endpoint is reachable', url, 'from', ws.nodeID);
-        async.retry({
-            times   : 10,
-            interval: 500
-        }, (callback) => {
-            this._urlCheckConnect(url, endpointType)
-                .then(() => callback())
-                .catch(() => callback(true));
-        }, _ => _);
+        this.checkIfCanConnectToURL(url, 10, 500).then(_ => _);
     }
 
     doPortMapping() {
@@ -1043,7 +1044,10 @@ class Network {
             .catch((e) => {
                 console.log(`[network] error in nat-pmp ${e}`);
             })
-            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem));
+            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem))
+            .then(() => this.checkIfCanConnectToURL(config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT, 2, 500).then(canConnect => {
+                this.nodeIsPublic = canConnect;
+            }));
 
         this.connectToNodes();
         this.initialized = true;
