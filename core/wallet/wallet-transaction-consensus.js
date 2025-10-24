@@ -1198,7 +1198,7 @@ export class WalletTransactionConsensus {
                 for (let consensusRoundResponseData of consensusData.consensus_round_response) {
                     for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
                         if (!consensusNodeResponseData.response) {
-                            console.log(`[wallet-transaction-consensus] ${transactionID} not validated on node ${nodeID} since ${Math.floor((Date.now() - consensusNodeResponseData.timestamp) / 1000)} seconds ago`)
+                            console.log(`[wallet-transaction-consensus] ${transactionID} was not validated on node ${nodeID} after ${Math.floor((Date.now() - consensusNodeResponseData.timestamp) / 1000)} seconds`)
                         }
                     }
                 }
