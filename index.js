@@ -121,8 +121,7 @@ process.on('SIGINT', async function() {
     }
 }).on('unhandledRejection', (reason, p) => {
     console.error('[millix-node] unhandled rejection at promise:', reason);
-    p.catch(_ => _);
-})
+});
 const checkPIDFile = () => {
     if (!pidFile) {
         console.log('pid file not in use');
