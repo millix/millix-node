@@ -19,8 +19,7 @@ import {NodeVersion} from '../utils/utils';
 
 
 export class WalletTransactionConsensus {
-
-    constructor() {
+    clearState() {
         this._transactionValidationState            = {
             /*[ws.nodeID]: {
              transaction_id: id,
@@ -53,14 +52,18 @@ export class WalletTransactionConsensus {
              }*/
         };
         this._transactionRetryValidation            = new Set();
-        this._transactionValidationNotFound         = new Set();
         this._transactionObjectCache                = {};
         this._runningValidationForWalletTransaction = false;
     }
 
     initialize() {
-        task.scheduleTask('trigger', () => this.doValidateTransaction(), 15000);
+        this.clearState();
+        task.scheduleTask('wallet_transaction_consensus_do_transaction_validation', () => this.doValidateTransaction(), 15000);
         return Promise.resolve();
+    }
+
+    stop() {
+        task.removeTask('wallet_transaction_consensus_do_transaction_validation');
     }
 
     isRunningValidationForWalletTransaction() {

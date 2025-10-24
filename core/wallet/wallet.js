@@ -1029,13 +1029,13 @@ class Wallet {
                                                                                  // check stored transaction object
                                                                                  return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
                                                                                                              .then((dbTransaction) => {
-                                                                                                                 if(!walletUtils.isValidTransactionObject(transactionRepository.normalizeTransactionObject(dbTransaction))) {
+                                                                                                                 if (!walletUtils.isValidTransactionObject(transactionRepository.normalizeTransactionObject(dbTransaction))) {
                                                                                                                      throw Error('invalid_transaction_object');
                                                                                                                  }
                                                                                                              })
                                                                                                              .catch((e) => {
                                                                                                                  return transactionRepository.deleteTransaction(transaction.transaction_id)
-                                                                                                                            .then(() => Promise.reject(e));
+                                                                                                                                             .then(() => Promise.reject(e));
                                                                                                              });
                                                                              })
                                                                              .then(() => {
@@ -1589,7 +1589,7 @@ class Wallet {
             return Promise.resolve();
         }
 
-        return this.aggregateOutputs();
+        return this.aggregateOutputs().catch(_ => _);
     }
 
     _doDAGProgress() {
@@ -2165,6 +2165,7 @@ class Wallet {
     stop() {
         this.initialized = false;
         walletSync.close().then(_ => _).catch(_ => _);
+        walletTransactionConsensus.stop();
         task.removeTask('transaction_propagate');
         task.removeTask('auto_aggregate_transaction');
         eventBus.removeAllListeners('peer_connection_new');
