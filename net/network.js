@@ -30,33 +30,9 @@ const WebSocketServer = Server;
 
 class Network {
     constructor() {
-        this._nodeListOnline                       = {};
-        this._nodeList                             = {};
-        this._connectionRegistry                   = {};
-        this._nodeRegistry                         = {};
-        this._inboundRegistry                      = {};
-        this._outboundRegistry                     = {};
-        this._bidirectionalOutboundConnectionCount = 0;
-        this._bidirectionalInboundConnectionCount  = 0;
-        this._wss                                  = null;
-        this.networkInterfaceAddresses             = [];
-        this.nodeID                                = null;
-        this.nodeIsPublic                          = config.NODE_PUBLIC;
-        this.certificatePem                        = null;
-        this.certificatePrivateKeyPem              = null;
-        this.nodeConnectionID                      = this.generateNewID();
-        this._selfConnectionNode                   = new Set();
-        this._allowedMessageInOutboudConnection    = new Set([
-            'node_attribute_request',
-            'wallet_transaction_sync',
-            'transaction_sync'
-        ]);
-        this.initialized                           = false;
-        this._connectingToInactiveNodes            = false;
-        this._connectingToOnlineNodes              = false;
-        this.dht                                   = null;
-        this.noop                                  = () => {
-        };
+        this.nodeID       = null;
+        this.nodeIsPublic = config.NODE_PUBLIC;
+        this.clearState();
     }
 
     get registeredClients() {
@@ -117,8 +93,10 @@ class Network {
 
     // general network functions
     _connectTo(prefix, ipAddress, port, portApi, id) {
-
-        if (this._nodeRegistry[id] && this._nodeRegistry[id][0]) {
+        if (!this.initialized) {
+            return Promise.reject(new Error('network_not_initialized'));
+        }
+        else if (this._nodeRegistry[id] && this._nodeRegistry[id][0]) {
             return Promise.resolve(this._nodeRegistry[id][0]);
         }
         else if (!prefix || !ipAddress || !port || portApi === undefined || id === this.nodeID) {
@@ -340,6 +318,9 @@ class Network {
         return new Promise(resolve => {
             async.eachLimit(_.shuffle(_.keys(this._nodeListOnline)), 4, (nodeURL, callback) => {
                 const node = this._nodeList[nodeURL];
+                if (!node) {
+                    return callback();
+                }
 
                 if (this._nodeListOnline[nodeURL] < Date.now() - 600000) {
                     delete this._nodeListOnline[nodeURL];
@@ -494,7 +475,12 @@ class Network {
                 eventBus.removeAllListeners('node_handshake_challenge_response:' + this.nodeConnectionID);
                 eventBus.once('node_handshake_challenge_response:' + this.nodeConnectionID, (eventData, _) => {
                     if (!callbackCalled) {
-                        callbackCalled       = true;
+                        callbackCalled = true;
+
+                        if (!this.initialized) {
+                            return resolve('network_not_initialized');
+                        }
+
                         let peerNodeID;
                         const nodeRepository = database.getRepository('node');
 
@@ -599,7 +585,7 @@ class Network {
     _onNodeHandshake(registry, ws) {
         ws.nodeID       = ws.nodeID || registry.node_id;
         ws.connectionID = registry.connection_id;
-        ws.features   = {...registry.node_feature_set};
+        ws.features     = {...registry.node_feature_set};
         if (ws.nodeID === this.nodeID) {
             ws.duplicated = true;
 
@@ -701,8 +687,12 @@ class Network {
         }
     }
 
+    getExtraOutboundSlotCount() {
+        return this.nodeIsPublic === false ? config.NODE_CONNECTION_INBOUND_MAX : 0;
+    }
+
     hasOutboundConnectionsSlotAvailable() {
-        return _.keys(this._outboundRegistry).length < config.NODE_CONNECTION_OUTBOUND_MAX;
+        return _.keys(this._outboundRegistry).length < config.NODE_CONNECTION_OUTBOUND_MAX + this.getExtraOutboundSlotCount();
     }
 
     _registerWebsocketToNodeID(ws) {
@@ -739,32 +729,26 @@ class Network {
 
         if (ws.inBound) {
             // check if node is public
-            async.retry({
-                times   : 3,
-                interval: 500
-            }, (callback) => {
-                this._urlCheckConnect(ws.node)
-                    .then(() => callback())
-                    .catch(() => callback(true));
-            }, (err) => {
-                if (err) {
-                    // private node
-                    ws.nodeIsPublic = false;
-                }
-                else {
-                    // public node
-                    ws.nodeIsPublic = true;
-                    if (this._hasToDropPublicNodeConnection()) {
-                        this._dropOldestPublicNodeConnection();
+            this.checkIfCanConnectToURL(ws.node, 3, 500)
+                .then((canConnect) => {
+                    if (!canConnect) {
+                        // private node
+                        ws.nodeIsPublic = false;
                     }
-                }
+                    else {
+                        // public node
+                        ws.nodeIsPublic = true;
+                        if (this._hasToDropPublicNodeConnection()) {
+                            this._dropOldestPublicNodeConnection();
+                        }
+                    }
 
-                const nodeRepository = database.getRepository('node');
-                nodeRepository.addNodeAttribute(ws.nodeID, 'node_connection', JSON.stringify({public: ws.nodeIsPublic}))
-                              .then(_ => _)
-                              .catch(_ => _);
+                    const nodeRepository = database.getRepository('node');
+                    nodeRepository.addNodeAttribute(ws.nodeID, 'node_connection', JSON.stringify({public: ws.nodeIsPublic}))
+                                  .then(_ => _)
+                                  .catch(_ => _);
 
-            });
+                });
         }
 
         console.log('[network] node ' + ws.node + ' registered with node id ' + nodeID);
@@ -937,7 +921,7 @@ class Network {
             if (endpointType === 'wss') {
                 const client      = new WebSocket(url, {
                     rejectUnauthorized: false,
-                    handshakeTimeout  : 10000
+                    handshakeTimeout  : 5000
                 });
                 client.createTime = Date.now();
                 client.once('open', () => {
@@ -965,30 +949,44 @@ class Network {
         });
     }
 
+    checkIfCanConnectToURL(url, retries, interval) {
+        return new Promise((resolve) => {
+            async.retry({
+                times: retries,
+                interval
+            }, (callback) => {
+                this._urlCheckConnect(url)
+                    .then(() => callback())
+                    .catch(() => callback(true));
+            }, (err) => {
+                if (err) {
+                    resolve(false);
+                }
+                else {
+                    resolve(true);
+                }
+            });
+        });
+    }
+
     _onNATCheck(content, ws) {
         const {url} = content;
         console.log('[network] on natcheck', url, 'from', ws.nodeID);
-        async.retry({
-            times   : 10,
-            interval: 500
-        }, (callback) => {
-            this._urlCheckConnect(url)
-                .then(() => callback())
-                .catch(() => callback(true));
-        }, (err) => {
-            if (err) {
-                peer.sendNATCheckResponse({
-                    is_valid_nat: false,
-                    ip          : ws._socket.remoteAddress,
-                    port        : ws._socket.remotePort
-                }, ws);
-            }
-            else {
-                peer.sendNATCheckResponse({
-                    is_valid_nat: true
-                }, ws);
-            }
-        });
+        this.checkIfCanConnectToURL(url, 5, 500)
+            .then(canConnect => {
+                if (canConnect) {
+                    peer.sendNATCheckResponse({
+                        is_valid_nat: true
+                    }, ws);
+                }
+                else {
+                    peer.sendNATCheckResponse({
+                        is_valid_nat: false,
+                        ip          : ws._socket.remoteAddress,
+                        port        : ws._socket.remotePort
+                    }, ws);
+                }
+            });
         console.log('[network natcheck] natcheck connecting to node ' + url);
     }
 
@@ -998,14 +996,7 @@ class Network {
                   endpoint_type: endpointType
               } = content;
         console.log('[network] check if endpoint is reachable', url, 'from', ws.nodeID);
-        async.retry({
-            times   : 10,
-            interval: 500
-        }, (callback) => {
-            this._urlCheckConnect(url, endpointType)
-                .then(() => callback())
-                .catch(() => callback(true));
-        }, _ => _);
+        this.checkIfCanConnectToURL(url, 10, 500).then(_ => _);
     }
 
     doPortMapping() {
@@ -1047,15 +1038,16 @@ class Network {
     }
 
     _initializeServer(certificatePem, certificatePrivateKeyPem) {
-        this.certificatePem           = certificatePem;
-        this.certificatePrivateKeyPem = certificatePrivateKeyPem;
-        console.log('node id : ', this.nodeID);
+        console.log(`[network] node id: ${this.nodeID}`);
         this.natAPI = new NatAPI();
         this.doPortMapping()
             .catch((e) => {
                 console.log(`[network] error in nat-pmp ${e}`);
             })
-            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem));
+            .then(() => this.startAcceptingConnections(certificatePem, certificatePrivateKeyPem))
+            .then(() => this.checkIfCanConnectToURL(config.WEBSOCKET_PROTOCOL + this.nodePublicIp + ':' + config.NODE_PORT, 2, 500).then(canConnect => {
+                this.nodeIsPublic = canConnect;
+            }));
 
         this.connectToNodes();
         this.initialized = true;
@@ -1281,6 +1273,25 @@ class Network {
         }
     }
 
+    clearState() {
+        this._nodeListOnline                       = {};
+        this._nodeList                             = {};
+        this._connectionRegistry                   = {};
+        this._nodeRegistry                         = {};
+        this._inboundRegistry                      = {};
+        this._outboundRegistry                     = {};
+        this._bidirectionalOutboundConnectionCount = 0;
+        this._bidirectionalInboundConnectionCount  = 0;
+        this._wss                                  = null;
+        this.networkInterfaceAddresses             = [];
+        this.nodeConnectionID                      = this.generateNewID();
+        this._selfConnectionNode                   = new Set();
+        this.initialized                           = false;
+        this._connectingToInactiveNodes            = false;
+        this._connectingToOnlineNodes              = false;
+        this.dht                                   = null;
+    }
+
     stop() {
         this.initialized = false;
         eventBus.removeAllListeners('node_handshake');
@@ -1293,18 +1304,12 @@ class Network {
         task.removeTask('retry_connect_online_node');
         this.stopWebSocket();
 
-        // clean inbound and outbound registries
-        this._inboundRegistry  = {};
-        this._outboundRegistry = {};
         // disconnect websocket and clean global registry
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
-        this._nodeRegistry       = {};
-        // clean connection registry
-        this._connectionRegistry = {};
         if (this.dht) {
             this.dht.destroy();
-            this.dht = null;
         }
+        this.clearState();
     }
 }
 

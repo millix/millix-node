@@ -8,6 +8,7 @@ import genesisConfig from '../../core/genesis/genesis-config';
 import config from '../../core/config/config';
 import cache from '../../core/cache';
 import mutex from '../../core/mutex';
+import walletTransactionConsensus from '../../core/wallet/wallet-transaction-consensus';
 
 
 /**
@@ -16,7 +17,7 @@ import mutex from '../../core/mutex';
 class _rKclyiLtHx0dx55M extends Endpoint {
     constructor() {
         super('rKclyiLtHx0dx55M');
-        this.lastWalletId = "";
+        this.lastWalletId = '';
     }
 
     getCachedIfPresent(key, getter) {
@@ -43,9 +44,9 @@ class _rKclyiLtHx0dx55M extends Endpoint {
      */
     handler(app, req, res) {
         const walletID = wallet.getDefaultActiveWallet();
-        if(this.lastWalletId !== walletID) {
+        if (this.lastWalletId !== walletID) {
             this.lastWalletId = walletID;
-            this.clearCache()
+            this.clearCache();
         }
         database.getRepository('address');
         mutex.lock(['get_stat_summary'], unlock => {
@@ -92,7 +93,8 @@ class _rKclyiLtHx0dx55M extends Endpoint {
                                                                                     transaction_count                : countAllTransactions,
                                                                                     transaction_unstable_count       : countAllUnstableTransactions,
                                                                                     transaction_wallet_count         : transactionCount,
-                                                                                    transaction_wallet_unstable_count: pendingTransactionCount
+                                                                                    transaction_wallet_unstable_count: pendingTransactionCount,
+                                                                                    transaction_validation_count      : walletTransactionConsensus.transactionValidationCount
                                                                                 }
                                                                             });
                                                                         });

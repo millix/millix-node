@@ -19,8 +19,7 @@ import {NodeVersion} from '../utils/utils';
 
 
 export class WalletTransactionConsensus {
-
-    constructor() {
+    clearState() {
         this._transactionValidationState            = {
             /*[ws.nodeID]: {
              transaction_id: id,
@@ -53,14 +52,20 @@ export class WalletTransactionConsensus {
              }*/
         };
         this._transactionRetryValidation            = new Set();
-        this._transactionValidationNotFound         = new Set();
         this._transactionObjectCache                = {};
         this._runningValidationForWalletTransaction = false;
+        this._lastTransactionValidatedTimestamp = undefined;
+        this.transactionValidationCount         = 0;
     }
 
     initialize() {
-        task.scheduleTask('trigger', () => this.doValidateTransaction(), 15000);
+        this.clearState();
+        task.scheduleTask('wallet_transaction_consensus_do_transaction_validation', () => this.doValidateTransaction(), 15000);
         return Promise.resolve();
+    }
+
+    stop() {
+        task.removeTask('wallet_transaction_consensus_do_transaction_validation');
     }
 
     isRunningValidationForWalletTransaction() {
@@ -1033,7 +1038,9 @@ export class WalletTransactionConsensus {
             if (consensusData.consensus_round_validation_count >= config.CONSENSUS_ROUND_VALIDATION_REQUIRED) {
                 console.log('[wallet-transaction-consensus-validation] transaction', transactionID, 'validated during consensus round number', consensusData.consensus_round_count);
                 cache.removeCacheItem('validation', transactionID);
-                consensusData.active = false;
+                consensusData.active                    = false;
+                this._lastTransactionValidatedTimestamp = Date.now();
+                this.transactionValidationCount++;
                 return (() => {
                     if (transaction) {
                         return Promise.resolve(transaction);
@@ -1184,7 +1191,28 @@ export class WalletTransactionConsensus {
         });
     }
 
-    doConsensusTransactionValidationWatchDog() {
+    async doConsensusTransactionValidationWatchDog() {
+
+        if (this._lastTransactionValidatedTimestamp && (Date.now() - this._lastTransactionValidatedTimestamp) >= (config.CONSENSUS_WATCHDOG_WAIT_TIME_MAX * 2)) { // wait at most 2 CONSENSUS_WATCHDOG_WAIT_TIME_MAX without validations before
+            for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
+                for (let consensusRoundResponseData of consensusData.consensus_round_response) {
+                    for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
+                        if (!consensusNodeResponseData.response) {
+                            console.log(`[wallet-transaction-consensus] ${transactionID} was not validated on node ${nodeID} after ${Math.floor((Date.now() - consensusNodeResponseData.timestamp) / 1000)} seconds`)
+                        }
+                    }
+                }
+            }
+            console.log(`[wallet-transaction-consensus] restarting network and consensus processes`)
+            // reset internal state
+            await network.stop();
+            setTimeout(async() => {
+                await network.initialize();
+                this.clearState();
+            }, 5000);
+            return;
+        }
+
         for (let [transactionID, consensusData] of Object.entries(this._consensusRoundState)) {
             if (this._validationWatchDogState[transactionID]) {
                 if ((Date.now() - this._validationWatchDogState[transactionID].timestamp) >= config.CONSENSUS_WATCHDOG_WAIT_TIME_MAX) { // max life is 1.5min
@@ -1222,8 +1250,16 @@ export class WalletTransactionConsensus {
                 delete this._transactionValidationState[nodeID];
             }
         }
+    }
 
-        return Promise.resolve();
+    getActiveConsensusRoundCount() {
+        let consensusCount = 0;
+        for (let k of _.keys(this._consensusRoundState)) {
+            if (this._consensusRoundState[k].active) {
+                consensusCount++;
+            }
+        }
+        return consensusCount;
     }
 
     doValidateTransaction() {
@@ -1233,12 +1269,7 @@ export class WalletTransactionConsensus {
             return Promise.resolve();
         }
 
-        let consensusCount = 0;
-        for (let k of _.keys(this._consensusRoundState)) {
-            if (this._consensusRoundState[k].active) {
-                consensusCount++;
-            }
-        }
+        const consensusCount = this.getActiveConsensusRoundCount();
 
         if (consensusCount >= config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX) {
             console.log('[wallet-transaction-consensus-validation] maximum number of transactions validation running reached : ', config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX, _.keys(this._consensusRoundState));
@@ -1376,12 +1407,15 @@ export class WalletTransactionConsensus {
 
                     if (!pendingTransaction) {
                         console.log('[wallet-transaction-consensus-validation] no pending funds available for validation.');
-                        resolve();
+                        if (this.getActiveConsensusRoundCount() === 0) {
+                            this._lastTransactionValidatedTimestamp = undefined; // we do not have any transaction being validated and none to be validated. clear the timer.
+                        }
+                        reject();
                         return unlock();
                     }
                     else if (this._transactionRetryValidation[transactionID]) {
                         console.log('[wallet-transaction-consensus-validation] already active for transaction ', transactionID);
-                        resolve();
+                        reject();
                         return unlock();
                     }
 
@@ -1435,12 +1469,15 @@ export class WalletTransactionConsensus {
                 active                            : true
             };
 
+            if (this._lastTransactionValidatedTimestamp === undefined && !network.hasOutboundConnectionsSlotAvailable()) { // initialize the timer if no transaction was being validated before
+                this._lastTransactionValidatedTimestamp = Date.now();
+            }
+
             return this._startConsensusRound(pendingTransaction.transaction_id)
                        .then(() => wallet._checkIfWalletUpdate(new Set(_.map(pendingTransaction.transaction_output_list, o => o.address_key_identifier))))
                        .then(() => pendingTransaction.transaction_id)
                        .catch(() => Promise.reject({
-                           transaction_id:
-                           pendingTransaction.transaction_id
+                           transaction_id: pendingTransaction.transaction_id
                        }));
         }).then(transactionID => {
             this._runningValidationForWalletTransaction = false;
@@ -1454,10 +1491,12 @@ export class WalletTransactionConsensus {
                     this.doValidateTransaction();
                 }, 0);
             }
-        }).catch(({transaction_id: transactionID}) => {
+        }).catch((error) => {
             this._runningValidationForWalletTransaction = false;
             delete this._consensusRoundState[lockerID];
-            delete this._consensusRoundState[transactionID];
+            if (error?.transaction_id) {
+                delete this._consensusRoundState[error.transaction_id];
+            }
             return Promise.resolve();
         });
     }

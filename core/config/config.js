@@ -1,8 +1,8 @@
 const const_value_default = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
-    'NODE_MILLIX_BUILD_DATE'    : 1759502270,
-    'NODE_MILLIX_VERSION'       : '1.25.1',
+    'NODE_MILLIX_BUILD_DATE'    : 1761337995,
+    'NODE_MILLIX_VERSION'       : '1.25.2',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
@@ -71,7 +71,7 @@ export const NODE_HOST                                         = 'localhost';
 export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
 export const NODE_NAT_PMP                                      = true;
-export const NODE_NAT_PMP_CHECK                                = false;
+export const NODE_NAT_PMP_CHECK                                = true;
 export const NODE_STORAGE_PORT_CHECK                           = false;
 export const WEBSOCKET_PROTOCOL                                = 'wss://';
 export const RPC_INTERFACE                                     = '0.0.0.0';

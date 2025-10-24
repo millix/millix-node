@@ -61,7 +61,7 @@
     "sqlite3": "^5.1.2",
     "thirty-two": "^1.0.1",
     "utf-8-validate": "^5.0.2",
-    "winston": "^3.7.2",
+    "winston": "3.7.2",
     "ws": "^6.2.1",
     "yargs": "^13.2.2"
   }
