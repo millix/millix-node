@@ -239,7 +239,7 @@ export default class Transaction {
             this.database.all(/* get transaction by wallet output */
                 'SELECT DISTINCT `transaction`.* FROM `transaction` ' +
                 'INNER JOIN transaction_output ON transaction_output.transaction_id = `transaction`.transaction_id ' +
-                'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 ORDER BY transaction_date ASC LIMIT 100',
+                'WHERE transaction_output.address_key_identifier = ?1 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map((_, idx) => `?${idx + 2}`).join(',') + ')' : '') + 'AND transaction_output.is_stable = 0 LIMIT 100',
                 params, (err, rows) => {
                     if (err) {
                         console.log('[database] error', err);

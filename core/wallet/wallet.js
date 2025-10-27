@@ -1791,7 +1791,7 @@ class Wallet {
         let now                    = Date.now();
         const retryTransactionList = walletTransactionConsensus.getRetryTransactionList();
         _.each(_.keys(retryTransactionList), transactionID => {
-            if (retryTransactionList[transactionID] < now - config.CONSENSUS_VALIDATION_RETRY_WAIT_TIME) {
+            if (retryTransactionList[transactionID] < now) {
                 walletTransactionConsensus.removeFromRejectedTransactions(transactionID);
                 walletTransactionConsensus.removeFromRetryTransactions(transactionID);
                 delete this._transactionRequested[transactionID];
