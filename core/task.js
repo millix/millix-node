@@ -1,6 +1,6 @@
 class Task {
     constructor() {
-        this.debug = false;
+        this.debug       = false;
         this.runningTask = {};
     }
 
@@ -19,7 +19,7 @@ class Task {
 
             this.debug && console.log(`[task] running ${taskName}`);
             if (asyncTask) {
-                task().then(() => {
+                task().catch(_ => _).then(() => {
                     if (!self.runningTask[taskName]) {
                         return;
                     }

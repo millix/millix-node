@@ -51,11 +51,11 @@ export class WalletTransactionConsensus {
              timestamp: int
              }*/
         };
-        this._transactionRetryValidation            = new Set();
+        this._transactionRetryValidation            = {};
         this._transactionObjectCache                = {};
         this._runningValidationForWalletTransaction = false;
-        this._lastTransactionValidatedTimestamp = undefined;
-        this.transactionValidationCount         = 0;
+        this._lastTransactionValidatedTimestamp     = undefined;
+        this.transactionValidationCount             = 0;
     }
 
     initialize() {
@@ -988,7 +988,7 @@ export class WalletTransactionConsensus {
                     consensusData.active = false;
                     console.log('[wallet-transaction-consensus-validation] the transaction', transactionID, 'was not validated (due to not found reply) during consensus round number', consensusData.consensus_round_count);
                     this._transactionValidationRejected.add(transactionID);
-                    this._transactionRetryValidation[transactionID] = Date.now(); // allow retry in 30s
+                    this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000; // allow retry in 1 min
                     return database.applyShards(shardID => {
                         const transactionRepository = database.getRepository('transaction', shardID);
                         return transactionRepository.timeoutTransaction(transactionID)
@@ -1198,12 +1198,12 @@ export class WalletTransactionConsensus {
                 for (let consensusRoundResponseData of consensusData.consensus_round_response) {
                     for (let [nodeID, consensusNodeResponseData] of Object.entries(consensusRoundResponseData)) {
                         if (!consensusNodeResponseData.response) {
-                            console.log(`[wallet-transaction-consensus] ${transactionID} was not validated on node ${nodeID} after ${Math.floor((Date.now() - consensusNodeResponseData.timestamp) / 1000)} seconds`)
+                            console.log(`[wallet-transaction-consensus] ${transactionID} was not validated on node ${nodeID} after ${Math.floor((Date.now() - consensusNodeResponseData.timestamp) / 1000)} seconds`);
                         }
                     }
                 }
             }
-            console.log(`[wallet-transaction-consensus] restarting network and consensus processes`)
+            console.log(`[wallet-transaction-consensus] restarting network and consensus processes`);
             // reset internal state
             await network.stop();
             setTimeout(async() => {
@@ -1413,7 +1413,7 @@ export class WalletTransactionConsensus {
                         reject();
                         return unlock();
                     }
-                    else if (this._transactionRetryValidation[transactionID]) {
+                    else if (this._transactionRetryValidation[transactionID] && this._transactionRetryValidation[transactionID] > Date.now()) {
                         console.log('[wallet-transaction-consensus-validation] already active for transaction ', transactionID);
                         reject();
                         return unlock();
@@ -1421,7 +1421,7 @@ export class WalletTransactionConsensus {
 
                     console.log('[wallet-transaction-consensus-validation] starting consensus round for ', transactionID);
 
-                    this._transactionRetryValidation[transactionID] = Date.now();
+                    this._transactionRetryValidation[transactionID] = Date.now() + 60 * 1000;
                     if (isTransactionFundingWallet) {
                         this._runningValidationForWalletTransaction = true;
                     }
