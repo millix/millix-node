@@ -59,9 +59,9 @@ class _WGem8x5aycBqFXWQ extends Endpoint {
                     body.push(chunk);
                 }).on('end', () => {
                     let versionAvailable = Buffer.concat(body).toString().replace(/(\n)/gm, '');
-                    versionAvailable.replace(/[^\d\.\d\.\d\.]/gm, '');
+                    versionAvailable.replace(/[^\d.]/gm, '');
 
-                    const versionRegex = new RegExp(/^\d+\.\d+\.\d+$/, 'gm');
+                    const versionRegex = new RegExp(/^(\d+\.)+\d$/, 'gm');
                     if (!versionRegex.test(versionAvailable)) {
                         versionAvailable = 0;
                     }
