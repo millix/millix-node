@@ -281,7 +281,7 @@ export default class Transaction {
 
     countWalletUnstableTransactions(addressKeyIdentifier) {
         return new Promise((resolve, reject) => {
-            this.database.get(`SELECT COUNT(DISTINCT transaction_id) AS transaction_count
+            this.database.get(`SELECT COUNT(transaction_id) AS transaction_count
                                FROM transaction_output
                                WHERE address_key_identifier = ?1
                                  AND is_stable = 0`,
