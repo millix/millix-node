@@ -281,7 +281,7 @@ export default class Transaction {
 
     countWalletUnstableTransactions(addressKeyIdentifier) {
         return new Promise((resolve, reject) => {
-            this.database.get(`SELECT COUNT(transaction_id) AS transaction_count
+            this.database.get(`SELECT COUNT(*) AS transaction_count
                                FROM transaction_output
                                WHERE address_key_identifier = ?1
                                  AND is_stable = 0`,
@@ -1501,6 +1501,22 @@ export default class Transaction {
                     resolve(rows);
                 });
         });
+    }
+
+    countTransactionOutputs(where) {
+        return new Promise((resolve, reject) => {
+            let {
+                    sql,
+                    parameters
+                } = Database.buildQuery('SELECT count(*) as total FROM `transaction_output`', where);
+            this.database.get(sql,
+                parameters, (err, row) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve(row.total);
+                });
+        })
     }
 
     listWalletLeafTransactions(addressKeyIdentifier) {
