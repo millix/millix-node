@@ -39,20 +39,20 @@ class _wWo8DCcoXVlpczoP extends Endpoint {
                 return Promise.resolve([]);
             }
             return transactionRepository.listTransactionOutput({
-                '`transaction`.transaction_date_begin': req.query.p0,
-                '`transaction`.transaction_date_end'  : req.query.p1,
-                '`transaction`.node_id_origin'        : req.query.p2,
-                '`transaction`.is_stable'             : req.query.p3,
-                '`transaction`.is_parent'             : req.query.p4,
-                '`transaction`.is_timeout'            : req.query.p5,
-                '`transaction`.create_date_begin'     : req.query.p6,
-                '`transaction`.create_date_end'       : req.query.p7,
-                '`transaction`.status'                : req.query.p8,
-                '`transaction`.version'               : req.query.p9,
-                'address_key_identifier'              : req.query.p10,
-                'is_spent'                            : dataType === 'tangled_nft' ? 0 : undefined,
-                'output_position!'                    : -1, //discard fee output
-                '`transaction`.shard_id'              : shardID
+                '`transaction`.transaction_date_begin'  : req.query.p0,
+                '`transaction`.transaction_date_end'    : req.query.p1,
+                '`transaction`.node_id_origin'          : req.query.p2,
+                '`transaction_output`.is_stable'        : req.query.p3,
+                '`transaction`.is_parent'               : req.query.p4,
+                '`transaction`.is_timeout'              : req.query.p5,
+                '`transaction_output`.create_date_begin': req.query.p6,
+                '`transaction_output`.create_date_end'  : req.query.p7,
+                '`transaction`.status'                  : req.query.p8,
+                '`transaction`.version'                 : req.query.p9,
+                'address_key_identifier'                : req.query.p10,
+                'is_spent'                              : dataType === 'tangled_nft' ? 0 : undefined,
+                'output_position!'                      : -1, //discard fee output
+                '`transaction`.shard_id': shardID
             }, orderBy, limit);
         }, orderBy, limit, shardID).then(outputList => {
             const data = outputList.map(output => ({

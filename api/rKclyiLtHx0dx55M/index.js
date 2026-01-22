@@ -20,8 +20,12 @@ class _rKclyiLtHx0dx55M extends Endpoint {
         this.lastWalletId = '';
     }
 
-    getCachedIfPresent(key, getter) {
-        return cache.getCachedIfPresent('api_stats', key, getter, 15000);
+    getCachedIfPresent(key, getter, cacheTime = 15000, onUpdate = null) {
+        return cache.getCachedIfPresent('api_stats', key, getter, cacheTime, onUpdate);
+    }
+
+    refreshCacheTime(key, cacheTime = 15000) {
+        return cache.refreshCacheTime('api_stats', key, cacheTime);
     }
 
     clearCacheItem(key) {
@@ -29,6 +33,7 @@ class _rKclyiLtHx0dx55M extends Endpoint {
     }
 
     clearCache() {
+        cache.removeCacheItem('api_stats', 'wallet_spent_output_count_and_balance');
         cache.removeCacheItem('api_stats', 'wallet_balance');
         cache.removeCacheItem('api_stats', 'count_wallet_total');
         cache.removeCacheItem('api_stats', 'count_wallet_unstable');
@@ -48,18 +53,48 @@ class _rKclyiLtHx0dx55M extends Endpoint {
             this.lastWalletId = walletID;
             this.clearCache();
         }
+        const maxUnstableOutputCount = 100000;
         database.getRepository('address');
         mutex.lock(['get_stat_summary'], unlock => {
-            this.getCachedIfPresent('wallet_balance', () => database.applyShards((shardID) => {
+            this.getCachedIfPresent('wallet_spent_output_count_and_balance', () => database.applyShards((shardID) => {
                 const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, true);
-            }).then(stableBalances => database.applyShards((shardID) => {
-                const transactionRepository = database.getRepository('transaction', shardID);
-                return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
-            }).then(unstableBalances => ([
-                _.sum(stableBalances),
-                _.sum(unstableBalances)
-            ])))).then(([stable, unstable]) => {
+                return transactionRepository.countTransactionOutputs({
+                    address_key_identifier: wallet.defaultKeyIdentifier,
+                    is_spent              : 0,
+                    is_double_spend       : 0,
+                    'status!'             : 3
+                });
+            }).then(unspentOutputCountList => {
+                const unspentOutputCount = _.sum(unspentOutputCountList);
+
+                if (unspentOutputCount <= maxUnstableOutputCount) {
+                    return this.getCachedIfPresent('wallet_balance', () => database.applyShards((shardID) => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, true);
+                    }).then(stableBalances => database.applyShards((shardID) => {
+                        const transactionRepository = database.getRepository('transaction', shardID);
+                        return transactionRepository.getWalletBalance(wallet.defaultKeyIdentifier, false);
+                    }).then(unstableBalances => ([
+                        _.sum(stableBalances),
+                        _.sum(unstableBalances)
+                    ])))).then(([stableBalances, unstableBalances]) => ([
+                        unspentOutputCount,
+                        stableBalances,
+                        unstableBalances
+                    ]));
+                }
+                else {
+                    return [
+                        unspentOutputCount,
+                        0,
+                        0
+                    ];
+                }
+            }), 5 * 60 * 1000, ([unspentOutputCount]) => {
+                if (unspentOutputCount <= maxUnstableOutputCount) {
+                    this.refreshCacheTime('wallet_spent_output_count_and_balance', 15000);
+                }
+            }).then(([unspentOutputCount, stable, unstable]) => {
                 return this.getCachedIfPresent('count_wallet_total', () => wallet.getTransactionCount())
                            .then(transactionCount => {
                                const transactionRepository = database.getRepository('transaction', genesisConfig.genesis_shard_id);
@@ -94,7 +129,8 @@ class _rKclyiLtHx0dx55M extends Endpoint {
                                                                                     transaction_unstable_count       : countAllUnstableTransactions,
                                                                                     transaction_wallet_count         : transactionCount,
                                                                                     transaction_wallet_unstable_count: pendingTransactionCount,
-                                                                                    transaction_validation_count      : walletTransactionConsensus.transactionValidationCount
+                                                                                    transaction_wallet_unspent_count : unspentOutputCount,
+                                                                                    transaction_validation_count     : walletTransactionConsensus.transactionValidationCount
                                                                                 }
                                                                             });
                                                                         });
