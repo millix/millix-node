@@ -1143,6 +1143,13 @@ class Network {
                                            console.log(`[network] dht new node discovered ${node.host}:${node.port}`);
                                        });
 
+                                       this.dht.on('error', err => {
+                                           // without this listener an error
+                                           // event on the dht socket is
+                                           // escalated to an uncaught exception
+                                           console.log('[network] dht error', err);
+                                       });
+
                                        this.dht.listen(config.NODE_PORT_DISCOVERY);
                                        this.dht.on('listening', () => {
                                            const address = this.dht.address();
@@ -1306,10 +1313,20 @@ class Network {
 
         // disconnect websocket and clean global registry
         _.each(_.keys(this._nodeRegistry), id => _.each(this._nodeRegistry[id], ws => ws && ws.close && ws.close()));
-        if (this.dht) {
-            this.dht.destroy();
-        }
+        const dht = this.dht;
         this.clearState();
+        return new Promise(resolve => {
+            if (!dht) {
+                return resolve();
+            }
+            // the udp socket bound to config.NODE_PORT_DISCOVERY is only
+            // released when dht.destroy() calls back. resolve after that so a
+            // following initialize() does not fail with EADDRINUSE
+            dht.destroy(() => {
+                console.log('[network] dht destroyed');
+                resolve();
+            });
+        });
     }
 }
 
