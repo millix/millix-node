@@ -252,6 +252,24 @@ CREATE TABLE node_attribute_type
 );
 CREATE INDEX idx_node_attribute_type_create_date ON node_attribute_type (create_date);
 
+CREATE TABLE cloud_offer
+(
+    offer_id     CHAR(50)    NOT NULL PRIMARY KEY CHECK (length(offer_id) <= 50),
+    node_id      CHAR(34)    NOT NULL CHECK (length(node_id) <= 34),
+    service      CHAR(32)    NOT NULL CHECK (length(service) <= 32),
+    country      CHAR(2)     NOT NULL CHECK (length(country) = 2),
+    city         TEXT        NULL,
+    publish_date INT         NOT NULL CHECK (length(publish_date) <= 10 AND TYPEOF(publish_date) = 'integer'),
+    end_date     INT         NOT NULL CHECK (length(end_date) <= 10 AND TYPEOF(end_date) = 'integer'),
+    offer        TEXT        NOT NULL,
+    status       TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date  INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+);
+CREATE UNIQUE INDEX idx_cloud_offer_node_id_service ON cloud_offer (node_id, service);
+CREATE INDEX idx_cloud_offer_service_country ON cloud_offer (service, country);
+CREATE INDEX idx_cloud_offer_end_date ON cloud_offer (end_date);
+CREATE INDEX idx_cloud_offer_create_date ON cloud_offer (create_date);
+
 -- to be optimized SELECT DISTINCT transactions.*, inputs.address as input_address, outputs.address as output_address, outputs.amount as amount FROM transactions LEFT JOIN outputs on outputs.transaction_id = transactions.transaction_id LEFT JOIN inputs on inputs.transaction_id = transactions.transaction_id WHERE (outputs.address in ( '', '', '') OR inputs.address in ( '', '') AND input_address != output_address
 
 CREATE TABLE config
@@ -350,7 +368,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "23");
+INSERT INTO schema_information (key, value) VALUES ("version", "24");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),

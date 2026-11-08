@@ -807,6 +807,16 @@ export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
 export const NODE_CONNECTION_INBOUND_MAX                       = 60;
 export const NODE_CONNECTION_OUTBOUND_MAX                      = 60;
 export const NODE_CONNECTION_PUBLIC_PERCENT                    = 0.2;
+export const CLOUD_OFFER_SERVICE_LIST                          = [
+    'vpn_exit',
+    'storage_host'
+];
+export const CLOUD_OFFER_DURATION_MAX                          = 7 * 24 * 60 * 60;
+export const CLOUD_OFFER_CLOCK_SKEW_TOLERANCE                  = 60;
+export const CLOUD_OFFER_BROKER_MAX                            = 16;
+export const CLOUD_OFFER_SIZE_MAX                              = 4096;
+export const CLOUD_OFFER_LIST_SIZE_MAX                         = 100;
+export const CLOUD_OFFER_PRUNE_WAIT_TIME                       = 60 * 1000;
 export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
@@ -925,7 +935,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '23';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '24';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -993,6 +1003,13 @@ export default {
     CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX,
     CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET,
     NODE_CONNECTION_PUBLIC_PERCENT,
+    CLOUD_OFFER_SERVICE_LIST,
+    CLOUD_OFFER_DURATION_MAX,
+    CLOUD_OFFER_CLOCK_SKEW_TOLERANCE,
+    CLOUD_OFFER_BROKER_MAX,
+    CLOUD_OFFER_SIZE_MAX,
+    CLOUD_OFFER_LIST_SIZE_MAX,
+    CLOUD_OFFER_PRUNE_WAIT_TIME,
     CONSENSUS_ROUND_NODE_COUNT,
     TRANSACTION_FEE_PROXY,
     TRANSACTION_FEE_NETWORK,

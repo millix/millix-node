@@ -9,9 +9,10 @@ import Job from './job';
 import API from './api';
 import Shard from './shard';
 import Normalization from './normalization';
+import CloudOffer from './cloud-offer';
 
 export {
     Node, Keychain, Config, Wallet, Address,
     Transaction, Schema, Job, API,
-    Shard, Normalization
+    Shard, Normalization, CloudOffer
 };

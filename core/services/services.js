@@ -3,6 +3,7 @@ import network from '../../net/network';
 import server from '../../api/server';
 import peer from '../../net/peer';
 import peerRotation from '../../net/peer-rotation';
+import cloudOffer from '../../net/cloud-offer';
 import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
@@ -43,6 +44,7 @@ class Service {
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
+                         .then(() => cloudOffer.initialize())
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => database.checkup())
@@ -68,6 +70,7 @@ class Service {
         network.stop();
         peer.stop();
         peerRotation.stop();
+        cloudOffer.stop();
         logManager.stop();
         jobEngine.stop();
         fileExchange.close();

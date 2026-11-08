@@ -719,6 +719,24 @@
       "version_released": "1.23.4",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "MjBT5mweE1A02KFB",
+      "name": "publish_cloud_offer",
+      "description": "signs this node's offer for a tangled cloud service (vpn_exit, storage_host) and sends it to its peers. it replaces the node's previous offer for the same service and does not create a transaction",
+      "method": "GET",
+      "version_released": "1.25.7",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "RDnFlREcZqyzH2XL",
+      "name": "list_cloud_offer",
+      "description": "returns the verified tangled cloud offers known by the node that have not ended, filterable by service and country",
+      "method": "GET",
+      "version_released": "1.25.7",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
     }
   ]
 }
