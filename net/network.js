@@ -1114,6 +1114,9 @@ class Network {
                                           }) => {
                                        this.nodePrivateKey = privateKey;
                                        this.nodePublicKey  = base58.encode(publicKey.toBuffer());
+                                       // the vpn exit service serves the same node certificate
+                                       this.certificatePem           = certificatePem;
+                                       this.certificatePrivateKeyPem = certificatePrivateKeyPem;
                                        this.nodeID         = walletUtils.getNodeIdFromPublicKey(this.nodePublicKey);
                                        const nodeIDHash160 = objectHash.getSHA1Buffer(this.nodeID);
                                        this._initializeServer(certificatePem, certificatePrivateKeyPem);

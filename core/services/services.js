@@ -4,6 +4,8 @@ import server from '../../api/server';
 import peer from '../../net/peer';
 import peerRotation from '../../net/peer-rotation';
 import cloudOffer from '../../net/cloud-offer';
+import vpnExit from '../../net/vpn/vpn-exit';
+import vpnClient from '../../net/vpn/vpn-client';
 import walletEscrow from '../wallet/wallet-escrow';
 import jobEngine from '../../job/job-engine';
 import console from '../console';
@@ -47,6 +49,7 @@ class Service {
                          .then(() => peerRotation.initialize())
                          .then(() => cloudOffer.initialize())
                          .then(() => walletEscrow.initialize())
+                         .then(() => vpnExit.initialize())
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => database.checkup())
@@ -73,6 +76,8 @@ class Service {
         peer.stop();
         peerRotation.stop();
         cloudOffer.stop();
+        vpnClient.stop();
+        vpnExit.stop();
         walletEscrow.stop();
         logManager.stop();
         jobEngine.stop();

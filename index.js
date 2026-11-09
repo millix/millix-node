@@ -60,6 +60,14 @@ if (argv.storageReceiverPort) {
     config.NODE_PORT_STORAGE_RECEIVER = argv.storageReceiverPort;
 }
 
+if (argv.vpnPort) {
+    config.NODE_PORT_VPN = argv.vpnPort;
+}
+
+if (argv.vpnExit === 'true') {
+    config.MODE_VPN_EXIT = true;
+}
+
 if (argv.host) {
     config.NODE_HOST = argv.host;
 }

@@ -9,6 +9,7 @@ import objectHash from '../core/crypto/object-hash';
 import ntp from '../core/ntp';
 import task from '../core/task';
 import console from '../core/console';
+import vpnExit from './vpn/vpn-exit';
 
 export const CLOUD_OFFER_VERSION = 1;
 
@@ -26,12 +27,18 @@ const OFFER_KEY_LIST    = [
     'offer_id',
     'signature'
 ].sort();
-const ENDPOINT_KEY_LIST = [
+// optional: escrow, the price of each portion of data for services paid
+// through an escrow (required for vpn_exit)
+const OFFER_OPTIONAL_KEY_LIST    = ['escrow'];
+const ENDPOINT_KEY_LIST          = [
     'node_prefix',
     'node_address',
     'node_port',
     'node_port_api'
 ].sort();
+// optional: service_port, the port of the service itself (required for
+// vpn_exit)
+const ENDPOINT_OPTIONAL_KEY_LIST = ['service_port'];
 
 
 /**
@@ -106,7 +113,7 @@ class CloudOffer {
             };
         }
 
-        if (offer.version !== CLOUD_OFFER_VERSION || !_.isEqual(_.keys(offer).sort(), OFFER_KEY_LIST)) {
+        if (offer.version !== CLOUD_OFFER_VERSION || !_.isEqual(_.without(_.keys(offer), ...OFFER_OPTIONAL_KEY_LIST).sort(), OFFER_KEY_LIST)) {
             return {
                 valid : false,
                 reason: 'offer_invalid_format'
@@ -138,12 +145,27 @@ class CloudOffer {
         }
 
         const endpoint = offer.endpoint;
-        if (!_.isPlainObject(endpoint) || !_.isEqual(_.keys(endpoint).sort(), ENDPOINT_KEY_LIST) ||
+        if (!_.isPlainObject(endpoint) || !_.isEqual(_.without(_.keys(endpoint), ...ENDPOINT_OPTIONAL_KEY_LIST).sort(), ENDPOINT_KEY_LIST) ||
             !this._isNonEmptyString(endpoint.node_prefix, 10) || !this._isNonEmptyString(endpoint.node_address, 255) ||
-            !this._isPositiveInteger(endpoint.node_port) || !this._isPositiveInteger(endpoint.node_port_api)) {
+            !this._isPositiveInteger(endpoint.node_port) || !this._isPositiveInteger(endpoint.node_port_api) ||
+            (endpoint.service_port !== undefined && !this._isPositiveInteger(endpoint.service_port)) ||
+            (offer.service === 'vpn_exit' && endpoint.service_port === undefined)) {
             return {
                 valid : false,
                 reason: 'offer_invalid_endpoint'
+            };
+        }
+
+        const escrowTerms = offer.escrow;
+        if ((escrowTerms !== undefined && (!_.isPlainObject(escrowTerms) || !_.isEqual(_.keys(escrowTerms).sort(), [
+            'portion_amount',
+            'portion_bytes'
+        ]) || !this._isPositiveInteger(escrowTerms.portion_bytes) || escrowTerms.portion_bytes < config.ESCROW_PORTION_BYTES_MIN ||
+                                         !this._isPositiveInteger(escrowTerms.portion_amount))) ||
+            (offer.service === 'vpn_exit' && escrowTerms === undefined)) {
+            return {
+                valid : false,
+                reason: 'offer_invalid_escrow'
             };
         }
 
@@ -215,6 +237,9 @@ class CloudOffer {
         if (!network.initialized || !network.nodePrivateKey) {
             return Promise.reject('network_not_initialized');
         }
+        if (service === 'vpn_exit' && !vpnExit.isRunning()) {
+            return Promise.reject('vpn_exit_not_running');
+        }
 
         const cloudOfferRepository = database.getRepository('cloud_offer');
         return cloudOfferRepository.getOffer(network.nodeID, service)
@@ -226,7 +251,13 @@ class CloudOffer {
                                            createDate = previousOffer.create_date + 1;
                                        }
 
-                                       const body = {
+                                       const endpoint = {
+                                           node_prefix  : config.WEBSOCKET_PROTOCOL,
+                                           node_address : network.nodePublicIp,
+                                           node_port    : config.NODE_PORT,
+                                           node_port_api: config.NODE_PORT_API
+                                       };
+                                       const body     = {
                                            version          : CLOUD_OFFER_VERSION,
                                            node_id          : network.nodeID,
                                            node_public_key  : network.nodePublicKey,
@@ -236,16 +267,18 @@ class CloudOffer {
                                                city   : location.city
                                            }, _.isNil),
                                            upload_speed_kbps: uploadSpeedKbps,
-                                           endpoint         : {
-                                               node_prefix  : config.WEBSOCKET_PROTOCOL,
-                                               node_address : network.nodePublicIp,
-                                               node_port    : config.NODE_PORT,
-                                               node_port_api: config.NODE_PORT_API
-                                           },
+                                           endpoint,
                                            broker_list      : brokerList,
                                            create_date      : createDate,
                                            end_date         : endDate
                                        };
+                                       if (service === 'vpn_exit') {
+                                           endpoint.service_port = config.NODE_PORT_VPN;
+                                           body.escrow           = {
+                                               portion_bytes : config.VPN_ESCROW_PORTION_BYTES,
+                                               portion_amount: config.VPN_ESCROW_PORTION_AMOUNT
+                                           };
+                                       }
 
                                        let offer;
                                        try {

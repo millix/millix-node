@@ -49,6 +49,17 @@ export default class CloudOffer {
         });
     }
 
+    getOfferByID(offerID) {
+        return new Promise((resolve, reject) => {
+            this.database.get('SELECT offer FROM cloud_offer WHERE offer_id = ?', [offerID], (err, row) => {
+                if (err) {
+                    return reject(err.message || err);
+                }
+                resolve(row ? JSON.parse(row.offer) : undefined);
+            });
+        });
+    }
+
     getOffer(nodeID, service) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT offer FROM cloud_offer WHERE node_id = ? AND service = ?', [

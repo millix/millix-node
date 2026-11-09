@@ -25,6 +25,15 @@ const const_value_default = {
     'CONSENSUS_VALIDATION_WAIT_TIME_MAX': 15 * 1000,
     'CONSENSUS_WATCHDOG_WAIT_TIME_MAX'  : 60 * 1000,
 
+    'MODE_VPN_EXIT'              : false,
+    'VPN_RECEIPT_INTERVAL_BYTES' : 1024 * 1024,
+    'VPN_RECEIPT_GAP_BYTES_MAX'  : 50 * 1024 * 1024,
+    'VPN_SESSION_IDLE_TIME_MAX'  : 30 * 60 * 1000,
+    'VPN_SESSION_MAX'            : 32,
+    'VPN_ESCROW_PORTION_BYTES'   : 10 * 1024 * 1024,
+    'VPN_ESCROW_PORTION_AMOUNT'  : 1465, // 150,000 millix per GB, the prototype's pool rate
+    'VPN_ESCROW_UNLOCK_REMAINING_MIN': 60 * 60,
+
     'ESCROW_CLAIM_AMOUNT_MIN'   : 10000,
     'ESCROW_CLAIM_BEFORE_UNLOCK': 30 * 60
 };
@@ -70,6 +79,9 @@ export const NODE_PORT_STORAGE_PROVIDER                        = MODE_TEST_NETWO
 export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
+export const NODE_PORT_VPN_MAIN_NETWORK                        = 10005;
+export const NODE_PORT_VPN_TEST_NETWORK                        = 30005;
+export const NODE_PORT_VPN                                     = MODE_TEST_NETWORK ? NODE_PORT_VPN_TEST_NETWORK : NODE_PORT_VPN_MAIN_NETWORK;
 export const NODE_HOST                                         = 'localhost';
 export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
@@ -827,6 +839,16 @@ export const ESCROW_UNLOCK_DURATION_MAX                        = 30 * 24 * 60 * 
 export const ESCROW_TASK_WAIT_TIME                             = 60 * 1000;
 export const ESCROW_CLAIM_AMOUNT_MIN                           = getConstValue('ESCROW_CLAIM_AMOUNT_MIN');
 export const ESCROW_CLAIM_BEFORE_UNLOCK                        = getConstValue('ESCROW_CLAIM_BEFORE_UNLOCK');
+export const MODE_VPN_EXIT                                     = getConstValue('MODE_VPN_EXIT');
+export const VPN_RECEIPT_INTERVAL_BYTES                        = getConstValue('VPN_RECEIPT_INTERVAL_BYTES');
+export const VPN_RECEIPT_GAP_BYTES_MAX                         = getConstValue('VPN_RECEIPT_GAP_BYTES_MAX');
+export const VPN_SESSION_IDLE_TIME_MAX                         = getConstValue('VPN_SESSION_IDLE_TIME_MAX');
+export const VPN_SESSION_MAX                                   = getConstValue('VPN_SESSION_MAX');
+export const VPN_ESCROW_PORTION_BYTES                          = getConstValue('VPN_ESCROW_PORTION_BYTES');
+export const VPN_ESCROW_PORTION_AMOUNT                         = getConstValue('VPN_ESCROW_PORTION_AMOUNT');
+export const VPN_ESCROW_UNLOCK_REMAINING_MIN                   = getConstValue('VPN_ESCROW_UNLOCK_REMAINING_MIN');
+export const VPN_ALLOWED_PORT_LIST                             = [443];
+export const VPN_AUTH_WAIT_TIME_MAX                            = 60 * 1000;
 export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
@@ -992,6 +1014,7 @@ export default {
     NODE_MILLIX_VERSION,
     NODE_KEY_PATH,
     NODE_PORT_API,
+    NODE_PORT_VPN,
     NODE_CERTIFICATE_KEY_PATH,
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
@@ -1031,6 +1054,16 @@ export default {
     ESCROW_TASK_WAIT_TIME,
     ESCROW_CLAIM_AMOUNT_MIN,
     ESCROW_CLAIM_BEFORE_UNLOCK,
+    MODE_VPN_EXIT,
+    VPN_RECEIPT_INTERVAL_BYTES,
+    VPN_RECEIPT_GAP_BYTES_MAX,
+    VPN_SESSION_IDLE_TIME_MAX,
+    VPN_SESSION_MAX,
+    VPN_ESCROW_PORTION_BYTES,
+    VPN_ESCROW_PORTION_AMOUNT,
+    VPN_ESCROW_UNLOCK_REMAINING_MIN,
+    VPN_ALLOWED_PORT_LIST,
+    VPN_AUTH_WAIT_TIME_MAX,
     CONSENSUS_ROUND_NODE_COUNT,
     TRANSACTION_FEE_PROXY,
     TRANSACTION_FEE_NETWORK,
