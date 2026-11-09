@@ -270,6 +270,25 @@ CREATE INDEX idx_cloud_offer_service_country ON cloud_offer (service, country);
 CREATE INDEX idx_cloud_offer_end_date ON cloud_offer (end_date);
 CREATE INDEX idx_cloud_offer_create_date ON cloud_offer (create_date);
 
+CREATE TABLE escrow
+(
+    escrow_address         CHAR(72)    NOT NULL PRIMARY KEY CHECK (length(escrow_address) <= 72),
+    address_base           CHAR(34)    NOT NULL CHECK (length(address_base) <= 34),
+    role                   CHAR(5)     NOT NULL CHECK (role IN ('payer', 'payee')),
+    node_id                CHAR(34)    NOT NULL CHECK (length(node_id) <= 34),
+    terms                  TEXT        NOT NULL,
+    funding_transaction_id CHAR(50)    NULL CHECK (length(funding_transaction_id) <= 50),
+    receipt                TEXT        NULL,
+    receipt_signature      TEXT        NULL,
+    receipt_total_bytes    INT         NOT NULL DEFAULT 0 CHECK (TYPEOF(receipt_total_bytes) = 'integer'),
+    receipt_sequence       INT         NOT NULL DEFAULT 0 CHECK (TYPEOF(receipt_sequence) = 'integer'),
+    unlock_date            INT         NOT NULL CHECK (length(unlock_date) <= 10 AND TYPEOF(unlock_date) = 'integer'),
+    status                 TINYINT     NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    create_date            INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+);
+CREATE INDEX idx_escrow_role_status ON escrow (role, status);
+CREATE INDEX idx_escrow_create_date ON escrow (create_date);
+
 -- to be optimized SELECT DISTINCT transactions.*, inputs.address as input_address, outputs.address as output_address, outputs.amount as amount FROM transactions LEFT JOIN outputs on outputs.transaction_id = transactions.transaction_id LEFT JOIN inputs on inputs.transaction_id = transactions.transaction_id WHERE (outputs.address in ( '', '', '') OR inputs.address in ( '', '') AND input_address != output_address
 
 CREATE TABLE config
@@ -368,7 +387,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "24");
+INSERT INTO schema_information (key, value) VALUES ("version", "25");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
@@ -379,7 +398,9 @@ VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),
        ("lb0l", 0, 0, "(?<address>.*)(?<version>lb0l)(?<identifier>.*)"),
        ("lcl", 0, 0, "(?<address>.*)(?<version>lcl)(?<identifier>.*)"),
        ("0d0", 1, 0, "(?<address>.*)(?<version>0d0)(?<identifier>.*)"),
-       ("ldl", 0, 0, "(?<address>.*)(?<version>ldl)(?<identifier>.*)");
+       ("ldl", 0, 0, "(?<address>.*)(?<version>ldl)(?<identifier>.*)"),
+       ("0e0", 1, 0, "(?<address>.*)(?<version>0e0)(?<identifier>.*)"),
+       ("lel", 0, 0, "(?<address>.*)(?<version>lel)(?<identifier>.*)");
 
 INSERT INTO normalization (normalization_name, normalization_id)
 VALUES ('mode_debug', 'AK5rcMMbWw5xIfXVdRVL'),

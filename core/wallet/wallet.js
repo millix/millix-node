@@ -1831,7 +1831,7 @@ class Wallet {
         });
     }
 
-    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes = {}, isAggregationTransaction = false) {
+    _tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes = {}, isAggregationTransaction = false, signerAddressBaseList = null) {
         const addressRepository = database.getRepository('address');
         const time              = ntp.now();
 
@@ -1850,7 +1850,7 @@ class Wallet {
                 address_key_identifier: addressKeyIdentifier
             }
         ];
-        return (!isAggregationTransaction ? walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes)
+        return (!isAggregationTransaction ? walletUtils.signTransaction(srcInputs, dstOutputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes, signerAddressBaseList)
                                           : walletUtils.signAggregationTransaction(srcInputs, feeOutputs, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, config.WALLET_AGGREGATION_TRANSACTION_INPUT_COUNT, config.WALLET_AGGREGATION_TRANSACTION_OUTPUT_COUNT, config.WALLET_AGGREGATION_TRANSACTION_MAX))
             .catch(e => Promise.reject({error: e}))
             .then((transactionList) => {
@@ -1897,7 +1897,7 @@ class Wallet {
             });
     };
 
-    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes = {}, isAggregationTransaction = false) {
+    proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction = true, outputAttributes = {}, isAggregationTransaction = false, signerAddressBaseList = null) {
         const transactionRepository = database.getRepository('transaction');
         const proxyErrorList        = [
             'proxy_network_error',
@@ -1911,7 +1911,7 @@ class Wallet {
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {
-                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction, outputAttributes, isAggregationTransaction)
+                                                this._tryProxyTransaction(proxyCandidateData, srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, propagateTransaction, outputAttributes, isAggregationTransaction, signerAddressBaseList)
                                                     .then(transaction => callback({transaction}))
                                                     .catch(e => {
                                                         if (!e
@@ -1938,10 +1938,10 @@ class Wallet {
                                     });
     }
 
-    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, outputAttributes = {}, isAggregationTransaction = false) {
+    signAndStoreTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, outputAttributes = {}, isAggregationTransaction = false, signerAddressBaseList = null) {
         const transactionRepository = database.getRepository('transaction');
         return new Promise((resolve, reject) => {
-            this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, outputAttributes, isAggregationTransaction)
+            this.proxyTransaction(srcInputs, dstOutputs, outputFee, addressAttributeMap, privateKeyMap, transactionVersion, true, outputAttributes, isAggregationTransaction, signerAddressBaseList)
                 .catch(e => {
                     reject(e);
                     return Promise.reject(e);
@@ -1982,7 +1982,10 @@ class Wallet {
                         'address_version',
                         'address_key_identifier'
                     ]);
-                    network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
+                    // escrow inputs are not wallet addresses
+                    if (addressAttributeMap[address.address_base]) {
+                        network.addAddressToDHT(address, base58.decode(addressAttributeMap[address.address_base].key_public).slice(1, 33), Buffer.from(privateKeyMap[address.address_base], 'hex'));
+                    }
                     return transactionList;
                 })
                 .catch(e => console.log('[wallet] error on sign and store transaction', e));

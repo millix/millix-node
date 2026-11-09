@@ -23,7 +23,10 @@ const const_value_default = {
     'CONSENSUS_ROUND_DOUBLE_SPEND_MAX'   : 3,
 
     'CONSENSUS_VALIDATION_WAIT_TIME_MAX': 15 * 1000,
-    'CONSENSUS_WATCHDOG_WAIT_TIME_MAX'  : 60 * 1000
+    'CONSENSUS_WATCHDOG_WAIT_TIME_MAX'  : 60 * 1000,
+
+    'ESCROW_CLAIM_AMOUNT_MIN'   : 10000,
+    'ESCROW_CLAIM_BEFORE_UNLOCK': 30 * 60
 };
 
 let environment;
@@ -817,6 +820,13 @@ export const CLOUD_OFFER_BROKER_MAX                            = 16;
 export const CLOUD_OFFER_SIZE_MAX                              = 4096;
 export const CLOUD_OFFER_LIST_SIZE_MAX                         = 100;
 export const CLOUD_OFFER_PRUNE_WAIT_TIME                       = 60 * 1000;
+export const ESCROW_TERMS_VERSION                              = 1;
+export const ESCROW_RECEIPT_VERSION                            = 1;
+export const ESCROW_PORTION_BYTES_MIN                          = 1024;
+export const ESCROW_UNLOCK_DURATION_MAX                        = 30 * 24 * 60 * 60;
+export const ESCROW_TASK_WAIT_TIME                             = 60 * 1000;
+export const ESCROW_CLAIM_AMOUNT_MIN                           = getConstValue('ESCROW_CLAIM_AMOUNT_MIN');
+export const ESCROW_CLAIM_BEFORE_UNLOCK                        = getConstValue('ESCROW_CLAIM_BEFORE_UNLOCK');
 export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
@@ -843,6 +853,9 @@ export const ADDRESS_VERSION_BRIDGE                            = MODE_TEST_NETWO
 export const ADDRESS_VERSION_NFT_MAIN_NETWORK                  = '0c0';
 export const ADDRESS_VERSION_NFT_TEST_NETWORK                  = 'lcl';
 export const ADDRESS_VERSION_NFT                               = MODE_TEST_NETWORK ? ADDRESS_VERSION_NFT_TEST_NETWORK : ADDRESS_VERSION_NFT_MAIN_NETWORK;
+export const ADDRESS_VERSION_ESCROW_MAIN_NETWORK               = '0e0';
+export const ADDRESS_VERSION_ESCROW_TEST_NETWORK               = 'lel';
+export const ADDRESS_VERSION_ESCROW                            = MODE_TEST_NETWORK ? ADDRESS_VERSION_ESCROW_TEST_NETWORK : ADDRESS_VERSION_ESCROW_MAIN_NETWORK;
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a0',
     '0b0',
@@ -935,7 +948,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '24';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '25';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -965,6 +978,7 @@ export default {
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
     ADDRESS_VERSION_NFT,
+    ADDRESS_VERSION_ESCROW,
     ADDRESS_VERSION_BRIDGE,
     ACTIVE_LANGUAGE_GUID,
     NODE_INITIAL_LIST,
@@ -1010,6 +1024,13 @@ export default {
     CLOUD_OFFER_SIZE_MAX,
     CLOUD_OFFER_LIST_SIZE_MAX,
     CLOUD_OFFER_PRUNE_WAIT_TIME,
+    ESCROW_TERMS_VERSION,
+    ESCROW_RECEIPT_VERSION,
+    ESCROW_PORTION_BYTES_MIN,
+    ESCROW_UNLOCK_DURATION_MAX,
+    ESCROW_TASK_WAIT_TIME,
+    ESCROW_CLAIM_AMOUNT_MIN,
+    ESCROW_CLAIM_BEFORE_UNLOCK,
     CONSENSUS_ROUND_NODE_COUNT,
     TRANSACTION_FEE_PROXY,
     TRANSACTION_FEE_NETWORK,

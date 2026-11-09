@@ -737,6 +737,33 @@
       "version_released": "1.25.7",
       "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
+    },
+    {
+      "id": "3LmpS47AhrUgvysw",
+      "name": "list_escrow",
+      "description": "returns the escrows this node pays into or is paid from, with the amount locked, the amount released, the latest receipt and what can be claimed",
+      "method": "GET",
+      "version_released": "1.25.7",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "7ZsDVit9iFhzZNwC",
+      "name": "claim_escrow",
+      "description": "payee: claims the portions of an escrow earned by its latest receipt. the rest stays locked in the escrow",
+      "method": "GET",
+      "version_released": "1.25.7",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "8RCd8C2m43g7xLIR",
+      "name": "refund_escrow",
+      "description": "payer: after its unlock date, returns what is left in an escrow to this wallet",
+      "method": "GET",
+      "version_released": "1.25.7",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
     }
   ]
 }

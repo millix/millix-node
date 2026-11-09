@@ -10,9 +10,10 @@ import API from './api';
 import Shard from './shard';
 import Normalization from './normalization';
 import CloudOffer from './cloud-offer';
+import Escrow from './escrow';
 
 export {
     Node, Keychain, Config, Wallet, Address,
     Transaction, Schema, Job, API,
-    Shard, Normalization, CloudOffer
+    Shard, Normalization, CloudOffer, Escrow
 };
