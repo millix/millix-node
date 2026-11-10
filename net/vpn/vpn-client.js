@@ -12,8 +12,6 @@ import objectHash from '../../core/crypto/object-hash';
 import signature from '../../core/crypto/signature';
 import ntp from '../../core/ntp';
 import console from '../../core/console';
-import eventBus from '../../core/event-bus';
-import cloudVersion from '../cloud-version';
 import cloudPass, {CLOUD_PASS_VERSION} from '../broker/cloud-pass';
 import passWallet from '../broker/pass-wallet';
 import tls from 'tls';
@@ -337,9 +335,6 @@ class VPNClient {
      * @param passID
      */
     openPassSession(offerID, passID) {
-        if (!cloudVersion.isCloudEnabled()) {
-            return Promise.reject('cloud_version_not_accepted');
-        }
         return Promise.all([
             database.getRepository('cloud_offer').getOfferByID(offerID),
             passWallet.getPass(passID)
@@ -416,9 +411,6 @@ class VPNClient {
     }
 
     openSession(offerID, portionCount, unlockAfter) {
-        if (!cloudVersion.isCloudEnabled()) {
-            return Promise.reject('cloud_version_not_accepted');
-        }
         return database.getRepository('cloud_offer')
                        .getOfferByID(offerID)
                        .then(offer => {
@@ -518,20 +510,6 @@ class VPNClient {
 
     listSession() {
         return _.map([...this.sessionMap.keys()], sessionID => this.getSession(sessionID));
-    }
-
-    _onCloudVersionUpdate({cloud_enabled: isCloudEnabled}) {
-        if (!isCloudEnabled) {
-            [...this.sessionMap.values()].forEach(state => this._onSessionClosed(state, 'cloud_version_not_accepted'));
-        }
-    }
-
-    initialize() {
-        if (!this._cloudVersionListener) {
-            this._cloudVersionListener = this._onCloudVersionUpdate.bind(this);
-            eventBus.on('cloud_version_min_update', this._cloudVersionListener);
-        }
-        return Promise.resolve();
     }
 
     stop() {

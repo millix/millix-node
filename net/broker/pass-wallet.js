@@ -5,7 +5,6 @@ import database from '../../database/database';
 import wallet from '../../core/wallet/wallet';
 import walletUtils from '../../core/wallet/wallet-utils';
 import cloudOffer from '../cloud-offer';
-import cloudVersion from '../cloud-version';
 import cloudPass from './cloud-pass';
 import {requestNodeService} from './node-request';
 import ntp from '../../core/ntp';
@@ -75,9 +74,6 @@ class PassWallet {
      * @param brokerAddress defaults to the first broker of CLOUD_BROKER_LIST
      */
     buyPass(brokerAddress = this.getDefaultBrokerAddress()) {
-        if (!cloudVersion.isCloudEnabled()) {
-            return Promise.reject('cloud_version_not_accepted');
-        }
         if (!brokerAddress) {
             return Promise.reject('broker_not_set');
         }
@@ -139,9 +135,6 @@ class PassWallet {
      * @param brokerAddress defaults to the first broker of CLOUD_BROKER_LIST
      */
     requestTrial(brokerAddress = this.getDefaultBrokerAddress()) {
-        if (!cloudVersion.isCloudEnabled()) {
-            return Promise.reject('cloud_version_not_accepted');
-        }
         if (!brokerAddress) {
             return Promise.reject('broker_not_set');
         }

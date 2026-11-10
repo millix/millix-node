@@ -54,11 +54,7 @@ class _ConfigLoader {
             'ESCROW_TERMS_VERSION',
             'ESCROW_RECEIPT_VERSION',
             'ESCROW_PORTION_BYTES_MIN',
-            'ESCROW_UNLOCK_DURATION_MAX',
-            'CLOUD_AUTHORITY_PUBLIC_KEY',
-            'CLOUD_AUTHORITY_PUBLIC_KEY_MAIN_NETWORK',
-            'CLOUD_AUTHORITY_PUBLIC_KEY_TEST_NETWORK',
-            'CLOUD_NODE_VERSION_MIN'
+            'ESCROW_UNLOCK_DURATION_MAX'
         ]);
     }
 

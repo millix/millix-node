@@ -802,24 +802,6 @@
       "enable": true
     },
     {
-      "id": "tTO0e5B2JpyptfSs",
-      "name": "get_cloud_version_min",
-      "description": "returns the minimum node version for tangled cloud features, the message signed with tangled's key that set it, and whether this node's cloud features are on",
-      "method": "GET",
-      "version_released": "1.26.0",
-      "permission": "{\"require_identity\": true, \"private\": false}",
-      "enable": true
-    },
-    {
-      "id": "ITvNfxeO8gUM1VEh",
-      "name": "add_cloud_version_min",
-      "description": "takes a minimum version message for tangled cloud features signed with tangled's key and, if it is newer than the one this node has, keeps it and sends it to all peers",
-      "method": "GET",
-      "version_released": "1.26.0",
-      "permission": "{\"require_identity\": true, \"private\": true}",
-      "enable": true
-    },
-    {
       "id": "smG9Spe7IIkQ46b0",
       "name": "buy_cloud_pass",
       "description": "pays a broker's pass price from this wallet; the broker's prepaid certificate is fetched once the payment is stable",

@@ -4,7 +4,6 @@ import server from '../../api/server';
 import peer from '../../net/peer';
 import peerRotation from '../../net/peer-rotation';
 import cloudOffer from '../../net/cloud-offer';
-import cloudVersion from '../../net/cloud-version';
 import cloudNotice from '../../net/cloud-notice';
 import vpnExit from '../../net/vpn/vpn-exit';
 import vpnClient from '../../net/vpn/vpn-client';
@@ -52,13 +51,11 @@ class Service {
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
-                         .then(() => cloudVersion.initialize())
                          .then(() => cloudOffer.initialize())
                          .then(() => cloudNotice.initialize())
                          .then(() => walletEscrow.initialize())
                          .then(() => forwardServer.initialize())
                          .then(() => vpnExit.initialize())
-                         .then(() => vpnClient.initialize())
                          .then(() => broker.initialize())
                          .then(() => passWallet.initialize())
                          .then(() => jobEngine.initialize())
@@ -86,7 +83,6 @@ class Service {
         network.stop();
         peer.stop();
         peerRotation.stop();
-        cloudVersion.stop();
         cloudOffer.stop();
         cloudNotice.stop();
         vpnClient.stop();

@@ -5,7 +5,6 @@ import crypto from 'crypto';
 import network from '../network';
 import config from '../../core/config/config';
 import walletUtils from '../../core/wallet/wallet-utils';
-import cloudVersion from '../cloud-version';
 import eventBus from '../../core/event-bus';
 import console from '../../core/console';
 
@@ -434,26 +433,8 @@ class ForwardServer {
         }));
     }
 
-    _onCloudVersionUpdate({cloud_enabled: isCloudEnabled}) {
-        if (!isCloudEnabled && this.server) {
-            console.log('[forward] this node version is below the minimum for cloud features: stopping the forwarding node');
-            this.stop();
-        }
-        else if (isCloudEnabled && !this.server) {
-            this.initialize().catch(_ => _);
-        }
-    }
-
     initialize() {
-        if (!this._cloudVersionListener) {
-            this._cloudVersionListener = this._onCloudVersionUpdate.bind(this);
-            eventBus.on('cloud_version_min_update', this._cloudVersionListener);
-        }
         if (!config.MODE_CLOUD_FORWARD || this.server) {
-            return Promise.resolve();
-        }
-        if (!cloudVersion.isCloudEnabled()) {
-            console.log(`[forward] not started: this node version is below the minimum for cloud features (${cloudVersion.getVersionMin()})`);
             return Promise.resolve();
         }
         if (!network.certificatePem) {

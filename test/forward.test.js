@@ -305,7 +305,6 @@ describe('offers of hosts behind routers', () => {
             version          : CLOUD_OFFER_VERSION,
             node_id          : node.address_base,
             node_public_key  : node.public_key,
-            node_version     : config.NODE_MILLIX_VERSION,
             service          : 'vpn_exit',
             location         : {country: 'US'},
             upload_speed_kbps: 1000,

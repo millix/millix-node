@@ -7,7 +7,6 @@ import wallet from '../core/wallet/wallet';
 import walletUtils from '../core/wallet/wallet-utils';
 import objectHash from '../core/crypto/object-hash';
 import cloudPass from './broker/cloud-pass';
-import cloudVersion from './cloud-version';
 import ntp from '../core/ntp';
 import task from '../core/task';
 import console from '../core/console';
@@ -397,9 +396,6 @@ class CloudNotice {
      * stores it; it spreads once the anchor is stable
      */
     _publish(noticeBody) {
-        if (!cloudVersion.isCloudEnabled()) {
-            return Promise.reject('cloud_version_not_accepted');
-        }
         // check everything but the anchor and the signature first
         const {
                   valid,

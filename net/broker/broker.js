@@ -6,9 +6,7 @@ import database from '../../database/database';
 import wallet from '../../core/wallet/wallet';
 import walletUtils from '../../core/wallet/wallet-utils';
 import cloudPass, {CLOUD_PASS_VERSION} from './cloud-pass';
-import cloudVersion from '../cloud-version';
 import {readJSONBody, sendJSON} from './node-request';
-import eventBus from '../../core/event-bus';
 import mutex from '../../core/mutex';
 import ntp from '../../core/ntp';
 import task from '../../core/task';
@@ -668,26 +666,8 @@ class Broker {
         return !!this.server;
     }
 
-    _onCloudVersionUpdate({cloud_enabled: isCloudEnabled}) {
-        if (!isCloudEnabled && this.server) {
-            console.log('[broker] this node version is below the minimum for cloud features: stopping the broker');
-            this.stop();
-        }
-        else if (isCloudEnabled && !this.server) {
-            this.initialize().catch(_ => _);
-        }
-    }
-
     initialize() {
-        if (!this._cloudVersionListener) {
-            this._cloudVersionListener = this._onCloudVersionUpdate.bind(this);
-            eventBus.on('cloud_version_min_update', this._cloudVersionListener);
-        }
         if (!config.MODE_CLOUD_BROKER || this.server) {
-            return Promise.resolve();
-        }
-        if (!cloudVersion.isCloudEnabled()) {
-            console.log(`[broker] not started: this node version is below the minimum for cloud features (${cloudVersion.getVersionMin()})`);
             return Promise.resolve();
         }
         if (!network.certificatePem) {

@@ -13,7 +13,6 @@ import cloudPass, {CLOUD_PASS_VERSION, GB} from '../net/broker/cloud-pass';
 import broker from '../net/broker/broker';
 import passWallet from '../net/broker/pass-wallet';
 import cloudOffer from '../net/cloud-offer';
-import cloudVersion from '../net/cloud-version';
 import vpnExit from '../net/vpn/vpn-exit';
 import vpnClient from '../net/vpn/vpn-client';
 import * as nodeRequest from '../net/broker/node-request';
@@ -1267,7 +1266,6 @@ describe('user side: trial passes', () => {
     before(() => {
         stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', true, restoreUser);
         stubMethod(config, 'CLOUD_BROKER_TRIAL_DATA_BYTES', TRIAL_BYTES, restoreUser);
-        stubMethod(cloudVersion, 'isCloudEnabled', () => true, restoreUser);
         stubMethod(passWallet, 'getHolderPrivateKey', () => trialHolder.private_key, restoreUser);
         stubMethod(passWallet, 'findBrokerOffer', () => Promise.resolve(brokerOffer), restoreUser);
         stubMethod(network, 'nodeID', brokerNode.address_base, restoreUser);
