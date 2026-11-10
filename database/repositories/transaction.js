@@ -707,13 +707,23 @@ export default class Transaction {
                 });
 
                 transaction.transaction_signature_list.forEach(signature => {
+                    let isInputOrOutputAddress = false;
                     _.each(_.keys(addressList), addressKey => {
                         if (addressKey.startsWith(signature.address_base)) {
-                            let address = addressList[addressKey];
+                            isInputOrOutputAddress = true;
+                            let address            = addressList[addressKey];
                             delete addressList[addressKey];
                             promise = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier, signature.address_attribute));
                         }
                     });
+                    // a signer that is not an input or output address (the
+                    // escrow keys, see escrow.js) still needs its public key
+                    // to normalize the transaction later
+                    if (!isInputOrOutputAddress && signature.address_attribute) {
+                        _.each(_.toPairs(signature.address_attribute), ([attributeName, attributeValue]) => {
+                            promise = promise.then(() => this.addressRepository.upsertAddressAttribute(signature.address_base, attributeName, attributeValue).catch(_ => _));
+                        });
+                    }
                     promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature)
                                                      .catch(err => {
                                                          console.log('[transaction-warn] add transaction signature error', err);

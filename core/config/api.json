@@ -719,6 +719,186 @@
       "version_released": "1.23.4",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "MjBT5mweE1A02KFB",
+      "name": "publish_cloud_offer",
+      "description": "signs this node's offer for a tangled cloud service (vpn_exit, storage_host) and sends it to its peers. it replaces the node's previous offer for the same service and does not create a transaction",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "RDnFlREcZqyzH2XL",
+      "name": "list_cloud_offer",
+      "description": "returns the verified tangled cloud offers known by the node that have not ended, filterable by service and country",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
+    },
+    {
+      "id": "CbAA35mNPELnmndw",
+      "name": "open_vpn_session",
+      "description": "pays portions of data into an escrow for the exit node of a vpn_exit offer, connects to the exit node, proves the pass key and starts a local https proxy on 127.0.0.1",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "uTLPeEFZByM4Uh9W",
+      "name": "list_vpn_session",
+      "description": "returns this node's vpn sessions as a user, with the bytes received and the receipts signed and sent to the exit node",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "0KgPxqibCfmtcKsd",
+      "name": "close_vpn_session",
+      "description": "sends the last receipt and closes a vpn session opened by this node",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "Jz9HHHbxmrYQoavA",
+      "name": "list_vpn_exit_session",
+      "description": "returns the sessions this exit node carries, with the bytes sent, the latest receipt of each pass and the sites visited",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "3LmpS47AhrUgvysw",
+      "name": "list_escrow",
+      "description": "returns the escrows this node pays into or is paid from, with the amount locked, the amount released, the latest receipt and what can be claimed",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "7ZsDVit9iFhzZNwC",
+      "name": "claim_escrow",
+      "description": "payee: claims the portions of an escrow earned by its latest receipt. the rest stays locked in the escrow",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "8RCd8C2m43g7xLIR",
+      "name": "refund_escrow",
+      "description": "payer: after its unlock date, returns what is left in an escrow to this wallet",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "smG9Spe7IIkQ46b0",
+      "name": "buy_cloud_pass",
+      "description": "pays a broker's pass price from this wallet; the broker's prepaid certificate is fetched once the payment is stable",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "qZjHL621I7kAHOTc",
+      "name": "list_cloud_pass",
+      "description": "returns the broker passes this node bought, with their certificates and the pieces fetched so far",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "nvhWGg61OxMCp1lP",
+      "name": "list_cloud_broker_host",
+      "description": "broker: returns the exit nodes this broker pays, with what their receipts earned, what was paid and what is owed, and the payouts",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "X5u7FyA1PyGfE4fi",
+      "name": "pay_cloud_broker_host",
+      "description": "broker: pays the exit nodes owed at least the payout minimum now instead of at the next payout",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "baHGR6wzIc1O41cU",
+      "name": "new_cloud_trial_pass",
+      "description": "asks a broker for its free trial: a prepaid certificate of the broker's trial data without payment, one for this wallet from each broker",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "icSqcOnTkn4QEUGl",
+      "name": "list_cloud_broker_trial_block",
+      "description": "broker: returns whether this broker offers the free trial and the exit nodes the trial does not extend to",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "ccAJMt4WTvh7nyJA",
+      "name": "update_cloud_broker_trial_block",
+      "description": "broker: sets the exit nodes the free trial does not extend to; their trial receipts are not paid while they are on the list",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "na8iJSKHcMSQ2OB6",
+      "name": "get_cloud_broker_report",
+      "description": "broker: returns what this broker earned from passes sold and spent on payouts to exit nodes for trials and passes, with each exit node's trial bytes and payouts",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "XplGSKUo0zHeCIxp",
+      "name": "list_cloud_forward_host",
+      "description": "returns how this node's exit node is reached (directly or through a forwarding node) and, on a forwarding node, the hosts registered with it and the bytes relayed",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "xQyBbnPQM4uKvTXX",
+      "name": "publish_cloud_notice",
+      "description": "signs a user or domain notice with the node key, anchors it with a transaction of this wallet and sends it to all peers once the anchor is stable",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "Dhcd4P0T5CFFhnzY",
+      "name": "list_cloud_notice",
+      "description": "returns the notices this node holds and, for a subject, how many reporting nodes count against this node's threshold",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
     }
   ]
 }

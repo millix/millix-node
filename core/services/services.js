@@ -3,6 +3,14 @@ import network from '../../net/network';
 import server from '../../api/server';
 import peer from '../../net/peer';
 import peerRotation from '../../net/peer-rotation';
+import cloudOffer from '../../net/cloud-offer';
+import cloudNotice from '../../net/cloud-notice';
+import vpnExit from '../../net/vpn/vpn-exit';
+import vpnClient from '../../net/vpn/vpn-client';
+import walletEscrow from '../wallet/wallet-escrow';
+import broker from '../../net/broker/broker';
+import passWallet from '../../net/broker/pass-wallet';
+import {forwardServer} from '../../net/vpn/forward';
 import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
@@ -43,6 +51,13 @@ class Service {
                          .then(() => network.initialize())
                          .then(() => peer.initialize())
                          .then(() => peerRotation.initialize())
+                         .then(() => cloudOffer.initialize())
+                         .then(() => cloudNotice.initialize())
+                         .then(() => walletEscrow.initialize())
+                         .then(() => forwardServer.initialize())
+                         .then(() => vpnExit.initialize())
+                         .then(() => broker.initialize())
+                         .then(() => passWallet.initialize())
                          .then(() => jobEngine.initialize())
                          .then(() => wallet._doUpdateNodeAttribute())
                          .then(() => database.checkup())
@@ -68,6 +83,13 @@ class Service {
         network.stop();
         peer.stop();
         peerRotation.stop();
+        cloudOffer.stop();
+        cloudNotice.stop();
+        vpnClient.stop();
+        vpnExit.stop();
+        broker.stop();
+        forwardServer.stop();
+        walletEscrow.stop();
         logManager.stop();
         jobEngine.stop();
         fileExchange.close();

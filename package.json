@@ -7,7 +7,7 @@
     "start": "babel-node index.js",
     "debug": "babel-node debug index.js",
     "dist": "BABEL_ENV=production webpack --config webpack.prod.config.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --require ./test/setup.js --test --test-force-exit \"test/**/*.test.js\""
   },
   "author": "developer@millix.org",
   "license": "MIT",

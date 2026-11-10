@@ -15,6 +15,7 @@ import signature from '../crypto/signature';
 import node from '../../database/repositories/node';
 import {v4 as uuidv4} from 'uuid';
 import ntp from '../ntp';
+import escrow from './escrow';
 
 
 class WalletUtils {
@@ -605,7 +606,9 @@ class WalletUtils {
     isConsumingExpiredOutputs(inputList, maximumOldestDate) {
         return new Promise(resolve => {
             async.eachSeries(inputList, (input, callback) => {
-                if (maximumOldestDate > input.output_transaction_date) {
+                // escrow outputs are locked until spent by the escrow
+                // rules, they do not expire
+                if (!escrow.isEscrowAddressVersion(input.address_version) && maximumOldestDate > input.output_transaction_date) {
                     // Meaning it
                     // consumed an
                     // expired output
@@ -693,6 +696,11 @@ class WalletUtils {
             }
         }
 
+        // no escrow transaction is valid before the escrow activation date
+        if (escrow.isEscrowTransaction(transaction.transaction_input_list, transaction.transaction_output_list) && !escrow.isActive(transactionDate)) {
+            return false;
+        }
+
 
         // genesis transaction
         if (transaction.transaction_id === genesisConfig.genesis_transaction) {
@@ -763,6 +771,11 @@ class WalletUtils {
             }
         }
 
+        // spending an escrow output must follow the escrow rules
+        if (!escrow.isValidEscrowSpend(transaction, transactionDate)) {
+            return false;
+        }
+
         for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
             const sign                                              = addressSignatureList[i];
             vTransaction.transaction_signature_list[i]['signature'] = sign;
@@ -817,7 +830,12 @@ class WalletUtils {
         return true;
     }
 
-    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes = {}) {
+    /**
+     * @param signerAddressBaseList the addresses that sign the transaction.
+     * defaults to the input addresses. escrow inputs are signed by the escrow
+     * keys instead (see escrow.js).
+     */
+    signTransaction(inputList, outputList, feeOutputList, addressAttributeMap, privateKeyMap, transactionDate, transactionVersion, outputAttributes = {}, signerAddressBaseList = null) {
         if (feeOutputList.length < 1 || !feeOutputList[0].node_id_proxy) {
             // there should be at least one output entry for the proxy (fees).
             return Promise.reject('proxy/output fee information is required');
@@ -847,7 +865,7 @@ class WalletUtils {
             }
             resolve();
         }).then(() => new Promise((resolve, reject) => {
-            const addressBaseList = _.uniq(_.map(inputList, i => i.address_base));
+            const addressBaseList = signerAddressBaseList || _.uniq(_.map(inputList, i => i.address_base));
             const signatureList   = _.map(addressBaseList, addressBase => ({
                 address_base     : addressBase,
                 address_attribute: addressAttributeMap[addressBase]

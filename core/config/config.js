@@ -2,7 +2,7 @@ const const_value_default = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
     'NODE_MILLIX_BUILD_DATE'    : 1769118031,
-    'NODE_MILLIX_VERSION'       : '1.25.6',
+    'NODE_MILLIX_VERSION'       : '1.26.0',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
@@ -23,7 +23,62 @@ const const_value_default = {
     'CONSENSUS_ROUND_DOUBLE_SPEND_MAX'   : 3,
 
     'CONSENSUS_VALIDATION_WAIT_TIME_MAX': 15 * 1000,
-    'CONSENSUS_WATCHDOG_WAIT_TIME_MAX'  : 60 * 1000
+    'CONSENSUS_WATCHDOG_WAIT_TIME_MAX'  : 60 * 1000,
+
+    'MODE_VPN_EXIT'              : false,
+    'VPN_RECEIPT_INTERVAL_BYTES' : 1024 * 1024,
+    'VPN_RECEIPT_GAP_BYTES_MAX'  : 50 * 1024 * 1024,
+    'VPN_SESSION_IDLE_TIME_MAX'  : 30 * 60 * 1000,
+    'VPN_SESSION_MAX'            : 32,
+    'VPN_ESCROW_PORTION_BYTES'   : 10 * 1024 * 1024,
+    'VPN_ESCROW_PORTION_AMOUNT'  : 1465, // 150,000 millix per GB, the prototype's pool rate
+    'VPN_ESCROW_UNLOCK_REMAINING_MIN': 60 * 60,
+
+    'ESCROW_CLAIM_AMOUNT_MIN'   : 10000,
+    'ESCROW_CLAIM_BEFORE_UNLOCK': 30 * 60,
+    // null: the network's default below
+    'ESCROW_ACTIVATION_DATE'    : null,
+
+    // brokers (net/broker/broker.js). CLOUD_BROKER_LIST holds the brokers
+    // this node knows as {address, public_key}; the first one sells this
+    // node its passes. tangled's broker is to be added before release.
+    'MODE_CLOUD_BROKER'               : false,
+    'CLOUD_BROKER_LIST'               : [],
+    'CLOUD_BROKER_PASS_PRICE'         : 5000000,
+    'CLOUD_BROKER_PASS_DATA_BYTES'    : 25 * 1024 * 1024 * 1024,
+    'CLOUD_BROKER_PASS_PIECE_BYTES'   : 1024 * 1024 * 1024,
+    'CLOUD_BROKER_PASS_DURATION'      : 7 * 24 * 60 * 60,
+    'CLOUD_BROKER_POOL_RATE'          : 150000, // millix per GB paid to exit nodes
+    'CLOUD_BROKER_PAYOUT_INTERVAL'    : 60 * 60,
+    'CLOUD_BROKER_PAYOUT_AMOUNT_MIN'  : 10000,
+    'CLOUD_BROKER_REPORT_INTERVAL'    : 5 * 60,
+    'CLOUD_PASS_PAYMENT_WAIT_TIME_MAX': 10 * 60,
+    // a broker's free trial: a prepaid certificate of
+    // CLOUD_BROKER_TRIAL_DATA_BYTES for each holder key, without payment.
+    // the broker pays exit nodes for trial traffic at its pool rate, from
+    // its own funds. null: on for tangled's default broker (the first of
+    // CLOUD_BROKER_LIST), off for other brokers
+    'CLOUD_BROKER_TRIAL_ENABLED'      : null,
+    'CLOUD_BROKER_TRIAL_DATA_BYTES'   : 500 * 1024 * 1024,
+
+    // reaching exit nodes behind routers (net/vpn/forward.js).
+    // VPN_EXIT_FORWARD: auto registers with a forwarding node and keeps the
+    // registration when the forwarding node cannot reach the exit node's
+    // port; always uses forwarding without opening a port; never only
+    // listens. CLOUD_FORWARD_NODE_ID picks the forwarding node (null: the
+    // newest vpn_forward offer).
+    'MODE_CLOUD_FORWARD'         : false,
+    'VPN_EXIT_FORWARD'           : 'auto',
+    'CLOUD_FORWARD_NODE_ID'      : null,
+    'CLOUD_FORWARD_RETRY_WAIT_TIME': 30,
+
+    // notices between nodes (net/cloud-notice.js): each node's own
+    // threshold of reporting nodes, how long a node must have been a host
+    // for its notices to count, and whether the exit node reports patterns
+    // it sees by itself (each report costs an anchor transaction fee)
+    'CLOUD_NOTICE_THRESHOLD'   : 3,
+    'CLOUD_NOTICE_HOST_AGE_MIN': 7 * 24 * 60 * 60,
+    'CLOUD_NOTICE_AUTO'        : true
 };
 
 let environment;
@@ -67,6 +122,15 @@ export const NODE_PORT_STORAGE_PROVIDER                        = MODE_TEST_NETWO
 export const NODE_PORT_DISCOVERY                               = MODE_TEST_NETWORK ? NODE_PORT_DISCOVERY_TEST_NETWORK : NODE_PORT_DISCOVERY_MAIN_NETWORK;
 export const NODE_PORT                                         = MODE_TEST_NETWORK ? NODE_PORT_TEST_NETWORK : NODE_PORT_MAIN_NETWORK;
 export const NODE_PORT_API                                     = 5500;
+export const NODE_PORT_VPN_MAIN_NETWORK                        = 10005;
+export const NODE_PORT_VPN_TEST_NETWORK                        = 30005;
+export const NODE_PORT_VPN                                     = MODE_TEST_NETWORK ? NODE_PORT_VPN_TEST_NETWORK : NODE_PORT_VPN_MAIN_NETWORK;
+export const NODE_PORT_BROKER_MAIN_NETWORK                     = 10006;
+export const NODE_PORT_BROKER_TEST_NETWORK                     = 30006;
+export const NODE_PORT_BROKER                                  = MODE_TEST_NETWORK ? NODE_PORT_BROKER_TEST_NETWORK : NODE_PORT_BROKER_MAIN_NETWORK;
+export const NODE_PORT_FORWARD_MAIN_NETWORK                    = 10007;
+export const NODE_PORT_FORWARD_TEST_NETWORK                    = 30007;
+export const NODE_PORT_FORWARD                                 = MODE_TEST_NETWORK ? NODE_PORT_FORWARD_TEST_NETWORK : NODE_PORT_FORWARD_MAIN_NETWORK;
 export const NODE_HOST                                         = 'localhost';
 export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
@@ -807,6 +871,96 @@ export const TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN              = 10;
 export const NODE_CONNECTION_INBOUND_MAX                       = 60;
 export const NODE_CONNECTION_OUTBOUND_MAX                      = 60;
 export const NODE_CONNECTION_PUBLIC_PERCENT                    = 0.2;
+export const CLOUD_OFFER_SERVICE_LIST                          = [
+    'vpn_exit',
+    'storage_host',
+    'broker',
+    'vpn_forward'
+];
+export const CLOUD_OFFER_DURATION_MAX                          = 7 * 24 * 60 * 60;
+export const CLOUD_OFFER_CLOCK_SKEW_TOLERANCE                  = 60;
+export const CLOUD_OFFER_BROKER_MAX                            = 16;
+export const CLOUD_OFFER_SIZE_MAX                              = 4096;
+export const CLOUD_OFFER_LIST_SIZE_MAX                         = 100;
+export const CLOUD_OFFER_PRUNE_WAIT_TIME                       = 60 * 1000;
+// escrow transactions are valid from this transaction date on. nodes from
+// ESCROW_NODE_VERSION_MIN on know the escrow rules: after activation an
+// escrow transaction is only proxied, validated and propagated through them.
+export const ESCROW_ACTIVATION_DATE_MAIN_NETWORK               = 1798761600; // 2027-01-01 00:00 utc
+export const ESCROW_ACTIVATION_DATE_TEST_NETWORK               = 1796083200; // 2026-12-01 00:00 utc
+export const ESCROW_ACTIVATION_DATE                            = getConstValue('ESCROW_ACTIVATION_DATE') ?? (MODE_TEST_NETWORK ? ESCROW_ACTIVATION_DATE_TEST_NETWORK : ESCROW_ACTIVATION_DATE_MAIN_NETWORK);
+export const ESCROW_NODE_VERSION_MIN                           = '1.26.0';
+export const ESCROW_TERMS_VERSION                              = 1;
+export const MODE_CLOUD_BROKER                                 = getConstValue('MODE_CLOUD_BROKER');
+export const CLOUD_BROKER_LIST                                 = getConstValue('CLOUD_BROKER_LIST');
+export const CLOUD_BROKER_PASS_PRICE                           = getConstValue('CLOUD_BROKER_PASS_PRICE');
+export const CLOUD_BROKER_PASS_DATA_BYTES                      = getConstValue('CLOUD_BROKER_PASS_DATA_BYTES');
+export const CLOUD_BROKER_PASS_PIECE_BYTES                     = getConstValue('CLOUD_BROKER_PASS_PIECE_BYTES');
+export const CLOUD_BROKER_PASS_DURATION                        = getConstValue('CLOUD_BROKER_PASS_DURATION');
+export const CLOUD_BROKER_POOL_RATE                            = getConstValue('CLOUD_BROKER_POOL_RATE');
+export const CLOUD_BROKER_PAYOUT_INTERVAL                      = getConstValue('CLOUD_BROKER_PAYOUT_INTERVAL');
+export const CLOUD_BROKER_PAYOUT_AMOUNT_MIN                    = getConstValue('CLOUD_BROKER_PAYOUT_AMOUNT_MIN');
+export const CLOUD_BROKER_REPORT_INTERVAL                      = getConstValue('CLOUD_BROKER_REPORT_INTERVAL');
+export const CLOUD_PASS_PAYMENT_WAIT_TIME_MAX                  = getConstValue('CLOUD_PASS_PAYMENT_WAIT_TIME_MAX');
+export const CLOUD_BROKER_TRIAL_ENABLED                        = getConstValue('CLOUD_BROKER_TRIAL_ENABLED');
+export const CLOUD_BROKER_TRIAL_DATA_BYTES                     = getConstValue('CLOUD_BROKER_TRIAL_DATA_BYTES');
+// one payout transaction pays up to 126 exit nodes: 127 outputs and the fee
+export const CLOUD_BROKER_PAYOUT_OUTPUT_MAX                    = TRANSACTION_OUTPUT_MAX - 1;
+export const CLOUD_BROKER_REPORT_RECEIPT_MAX                   = 100;
+export const CLOUD_PASS_PIECE_COUNT_MAX                        = 1000;
+export const CLOUD_PASS_DURATION_MAX                           = 31 * 24 * 60 * 60;
+export const MODE_CLOUD_FORWARD                                = getConstValue('MODE_CLOUD_FORWARD');
+export const VPN_EXIT_FORWARD                                  = getConstValue('VPN_EXIT_FORWARD');
+export const CLOUD_FORWARD_NODE_ID                             = getConstValue('CLOUD_FORWARD_NODE_ID');
+export const CLOUD_FORWARD_RETRY_WAIT_TIME                     = getConstValue('CLOUD_FORWARD_RETRY_WAIT_TIME');
+export const CLOUD_FORWARD_HOST_MAX                            = 256;
+export const CLOUD_FORWARD_PENDING_MAX                         = 16;
+export const CLOUD_FORWARD_WAIT_TIME_MAX                       = 10 * 1000;
+export const CLOUD_PUNCH_TIME_MAX                              = 3 * 1000;
+export const CLOUD_NOTICE_THRESHOLD                            = getConstValue('CLOUD_NOTICE_THRESHOLD');
+export const CLOUD_NOTICE_HOST_AGE_MIN                         = getConstValue('CLOUD_NOTICE_HOST_AGE_MIN');
+export const CLOUD_NOTICE_AUTO                                 = getConstValue('CLOUD_NOTICE_AUTO');
+export const CLOUD_NOTICE_DURATION_MAX                         = 30 * 24 * 60 * 60;
+export const CLOUD_NOTICE_PATTERN_LIST                         = [
+    'unreceipted_gap',
+    'private_address_probe',
+    'abuse_complaint'
+];
+export const CLOUD_NOTICE_NUMBER_KEY_LIST                      = [
+    'bytes_sent',
+    'bytes_receipted',
+    'refused_count',
+    'tunnel_count',
+    'duration'
+];
+export const CLOUD_NOTICE_THREAT_LIST                          = [
+    'malware',
+    'phishing',
+    'botnet',
+    'spam',
+    'abuse'
+];
+export const CLOUD_NOTICE_PRIVATE_PROBE_MIN                    = 20;
+export const CLOUD_NOTICE_ANCHOR_AMOUNT                        = 1;
+export const CLOUD_NOTICE_SIZE_MAX                             = 8192;
+export const CLOUD_NOTICE_LIST_SIZE_MAX                        = 100;
+export const CLOUD_NOTICE_TASK_WAIT_TIME                       = 60 * 1000;
+export const ESCROW_RECEIPT_VERSION                            = 1;
+export const ESCROW_PORTION_BYTES_MIN                          = 1024;
+export const ESCROW_UNLOCK_DURATION_MAX                        = 30 * 24 * 60 * 60;
+export const ESCROW_TASK_WAIT_TIME                             = 60 * 1000;
+export const ESCROW_CLAIM_AMOUNT_MIN                           = getConstValue('ESCROW_CLAIM_AMOUNT_MIN');
+export const ESCROW_CLAIM_BEFORE_UNLOCK                        = getConstValue('ESCROW_CLAIM_BEFORE_UNLOCK');
+export const MODE_VPN_EXIT                                     = getConstValue('MODE_VPN_EXIT');
+export const VPN_RECEIPT_INTERVAL_BYTES                        = getConstValue('VPN_RECEIPT_INTERVAL_BYTES');
+export const VPN_RECEIPT_GAP_BYTES_MAX                         = getConstValue('VPN_RECEIPT_GAP_BYTES_MAX');
+export const VPN_SESSION_IDLE_TIME_MAX                         = getConstValue('VPN_SESSION_IDLE_TIME_MAX');
+export const VPN_SESSION_MAX                                   = getConstValue('VPN_SESSION_MAX');
+export const VPN_ESCROW_PORTION_BYTES                          = getConstValue('VPN_ESCROW_PORTION_BYTES');
+export const VPN_ESCROW_PORTION_AMOUNT                         = getConstValue('VPN_ESCROW_PORTION_AMOUNT');
+export const VPN_ESCROW_UNLOCK_REMAINING_MIN                   = getConstValue('VPN_ESCROW_UNLOCK_REMAINING_MIN');
+export const VPN_ALLOWED_PORT_LIST                             = [443];
+export const VPN_AUTH_WAIT_TIME_MAX                            = 60 * 1000;
 export const HEARTBEAT_TIMEOUT                                 = 10 * 1000;
 export const HEARTBEAT_RESPONSE_TIMEOUT                        = 60 * 1000;
 export const WALLET_STARTUP_ADDRESS_BALANCE_SCAN_COUNT         = 100;
@@ -833,6 +987,9 @@ export const ADDRESS_VERSION_BRIDGE                            = MODE_TEST_NETWO
 export const ADDRESS_VERSION_NFT_MAIN_NETWORK                  = '0c0';
 export const ADDRESS_VERSION_NFT_TEST_NETWORK                  = 'lcl';
 export const ADDRESS_VERSION_NFT                               = MODE_TEST_NETWORK ? ADDRESS_VERSION_NFT_TEST_NETWORK : ADDRESS_VERSION_NFT_MAIN_NETWORK;
+export const ADDRESS_VERSION_ESCROW_MAIN_NETWORK               = '0e0';
+export const ADDRESS_VERSION_ESCROW_TEST_NETWORK               = 'lel';
+export const ADDRESS_VERSION_ESCROW                            = MODE_TEST_NETWORK ? ADDRESS_VERSION_ESCROW_TEST_NETWORK : ADDRESS_VERSION_ESCROW_MAIN_NETWORK;
 export const WALLET_TRANSACTION_SUPPORTED_VERSION_MAIN_NETWORK = [
     '0a0',
     '0b0',
@@ -925,7 +1082,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '23';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '28';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -955,6 +1112,7 @@ export default {
     WEBSOCKET_PROTOCOL,
     RPC_INTERFACE,
     ADDRESS_VERSION_NFT,
+    ADDRESS_VERSION_ESCROW,
     ADDRESS_VERSION_BRIDGE,
     ACTIVE_LANGUAGE_GUID,
     NODE_INITIAL_LIST,
@@ -968,6 +1126,9 @@ export default {
     NODE_MILLIX_VERSION,
     NODE_KEY_PATH,
     NODE_PORT_API,
+    NODE_PORT_VPN,
+    NODE_PORT_BROKER,
+    NODE_PORT_FORWARD,
     NODE_CERTIFICATE_KEY_PATH,
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
@@ -993,6 +1154,69 @@ export default {
     CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX,
     CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET,
     NODE_CONNECTION_PUBLIC_PERCENT,
+    CLOUD_OFFER_SERVICE_LIST,
+    CLOUD_OFFER_DURATION_MAX,
+    CLOUD_OFFER_CLOCK_SKEW_TOLERANCE,
+    CLOUD_OFFER_BROKER_MAX,
+    CLOUD_OFFER_SIZE_MAX,
+    CLOUD_OFFER_LIST_SIZE_MAX,
+    CLOUD_OFFER_PRUNE_WAIT_TIME,
+    ESCROW_ACTIVATION_DATE,
+    ESCROW_NODE_VERSION_MIN,
+    ESCROW_TERMS_VERSION,
+    MODE_CLOUD_BROKER,
+    CLOUD_BROKER_LIST,
+    CLOUD_BROKER_PASS_PRICE,
+    CLOUD_BROKER_PASS_DATA_BYTES,
+    CLOUD_BROKER_PASS_PIECE_BYTES,
+    CLOUD_BROKER_PASS_DURATION,
+    CLOUD_BROKER_POOL_RATE,
+    CLOUD_BROKER_PAYOUT_INTERVAL,
+    CLOUD_BROKER_PAYOUT_AMOUNT_MIN,
+    CLOUD_BROKER_REPORT_INTERVAL,
+    CLOUD_PASS_PAYMENT_WAIT_TIME_MAX,
+    CLOUD_BROKER_TRIAL_ENABLED,
+    CLOUD_BROKER_TRIAL_DATA_BYTES,
+    CLOUD_BROKER_PAYOUT_OUTPUT_MAX,
+    CLOUD_BROKER_REPORT_RECEIPT_MAX,
+    CLOUD_PASS_PIECE_COUNT_MAX,
+    CLOUD_PASS_DURATION_MAX,
+    MODE_CLOUD_FORWARD,
+    VPN_EXIT_FORWARD,
+    CLOUD_FORWARD_NODE_ID,
+    CLOUD_FORWARD_RETRY_WAIT_TIME,
+    CLOUD_FORWARD_HOST_MAX,
+    CLOUD_FORWARD_PENDING_MAX,
+    CLOUD_FORWARD_WAIT_TIME_MAX,
+    CLOUD_PUNCH_TIME_MAX,
+    CLOUD_NOTICE_THRESHOLD,
+    CLOUD_NOTICE_HOST_AGE_MIN,
+    CLOUD_NOTICE_AUTO,
+    CLOUD_NOTICE_DURATION_MAX,
+    CLOUD_NOTICE_PATTERN_LIST,
+    CLOUD_NOTICE_NUMBER_KEY_LIST,
+    CLOUD_NOTICE_THREAT_LIST,
+    CLOUD_NOTICE_PRIVATE_PROBE_MIN,
+    CLOUD_NOTICE_ANCHOR_AMOUNT,
+    CLOUD_NOTICE_SIZE_MAX,
+    CLOUD_NOTICE_LIST_SIZE_MAX,
+    CLOUD_NOTICE_TASK_WAIT_TIME,
+    ESCROW_RECEIPT_VERSION,
+    ESCROW_PORTION_BYTES_MIN,
+    ESCROW_UNLOCK_DURATION_MAX,
+    ESCROW_TASK_WAIT_TIME,
+    ESCROW_CLAIM_AMOUNT_MIN,
+    ESCROW_CLAIM_BEFORE_UNLOCK,
+    MODE_VPN_EXIT,
+    VPN_RECEIPT_INTERVAL_BYTES,
+    VPN_RECEIPT_GAP_BYTES_MAX,
+    VPN_SESSION_IDLE_TIME_MAX,
+    VPN_SESSION_MAX,
+    VPN_ESCROW_PORTION_BYTES,
+    VPN_ESCROW_PORTION_AMOUNT,
+    VPN_ESCROW_UNLOCK_REMAINING_MIN,
+    VPN_ALLOWED_PORT_LIST,
+    VPN_AUTH_WAIT_TIME_MAX,
     CONSENSUS_ROUND_NODE_COUNT,
     TRANSACTION_FEE_PROXY,
     TRANSACTION_FEE_NETWORK,
