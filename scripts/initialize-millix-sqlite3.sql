@@ -297,9 +297,12 @@ CREATE TABLE cloud_broker_certificate
     certificate            TEXT        NOT NULL,
     piece_issued_count     INT         NOT NULL DEFAULT 0 CHECK (TYPEOF(piece_issued_count) = 'integer'),
     end_date               INT         NOT NULL CHECK (length(end_date) <= 10 AND TYPEOF(end_date) = 'integer'),
-    create_date            INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    create_date            INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    is_trial               TINYINT     NOT NULL DEFAULT 0 CHECK (is_trial IN (0, 1)),
+    payment_amount         BIGINT      NULL CHECK (payment_amount IS NULL OR TYPEOF(payment_amount) = 'integer')
 );
 CREATE INDEX idx_cloud_broker_certificate_create_date ON cloud_broker_certificate (create_date);
+CREATE INDEX idx_cloud_broker_certificate_is_trial ON cloud_broker_certificate (is_trial);
 
 CREATE TABLE cloud_broker_receipt
 (
@@ -322,7 +325,8 @@ CREATE TABLE cloud_broker_host
     payout_address CHAR(72)    NOT NULL CHECK (length(payout_address) <= 72),
     amount_paid    BIGINT      NOT NULL DEFAULT 0 CHECK (TYPEOF(amount_paid) = 'integer'),
     update_date    INT         NOT NULL CHECK (length(update_date) <= 10 AND TYPEOF(update_date) = 'integer'),
-    create_date    INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    create_date    INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    amount_paid_trial BIGINT   NOT NULL DEFAULT 0 CHECK (TYPEOF(amount_paid_trial) = 'integer')
 );
 
 CREATE TABLE cloud_broker_payout
@@ -331,9 +335,16 @@ CREATE TABLE cloud_broker_payout
     node_id        CHAR(34)    NOT NULL CHECK (length(node_id) <= 34),
     amount         BIGINT      NOT NULL CHECK (TYPEOF(amount) = 'integer'),
     create_date    INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    amount_trial   BIGINT      NOT NULL DEFAULT 0 CHECK (TYPEOF(amount_trial) = 'integer'),
     PRIMARY KEY (transaction_id, node_id)
 );
 CREATE INDEX idx_cloud_broker_payout_node_id ON cloud_broker_payout (node_id);
+
+CREATE TABLE cloud_broker_trial_block
+(
+    node_id     CHAR(34)    NOT NULL PRIMARY KEY CHECK (length(node_id) <= 34),
+    create_date INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+);
 
 CREATE TABLE cloud_pass
 (
@@ -487,7 +498,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "27");
+INSERT INTO schema_information (key, value) VALUES ("version", "28");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),

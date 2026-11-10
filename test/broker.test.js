@@ -1,5 +1,6 @@
 import {after, before, beforeEach, describe, test} from 'node:test';
 import assert from 'node:assert/strict';
+import _ from 'lodash';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -12,6 +13,7 @@ import cloudPass, {CLOUD_PASS_VERSION, GB} from '../net/broker/cloud-pass';
 import broker from '../net/broker/broker';
 import passWallet from '../net/broker/pass-wallet';
 import cloudOffer from '../net/cloud-offer';
+import cloudVersion from '../net/cloud-version';
 import vpnExit from '../net/vpn/vpn-exit';
 import vpnClient from '../net/vpn/vpn-client';
 import * as nodeRequest from '../net/broker/node-request';
@@ -795,6 +797,454 @@ describe('user side: passes', () => {
         assert.equal(receiptEntry.body.receipt.total_bytes, PIECE_BYTES / 2 + 1);
         assert.equal(receiptEntry.body.receipt.piece_index, 1);
         assert.equal(cloudPass.isValidReceipt(pass.certificate, receiptEntry.body.receipt, receiptEntry.body.signature, exitNode.address_base), true);
+    });
+});
+
+function trialRequest(trialHolder, signer = trialHolder) {
+    return {
+        holder_public_key: trialHolder.public_key,
+        signature        : cloudPass.signHolderMessage({
+            trial_holder_public_key: trialHolder.public_key,
+            broker_node_id         : brokerNode.address_base
+        }, signer.private_key)
+    };
+}
+
+async function issueTrial(trialHolder = newKey()) {
+    const {certificate} = await asBroker(() => broker.issueTrialCertificate(trialRequest(trialHolder)));
+    return certificate;
+}
+
+function issueTrialPiece(certificate, pieceIndex, trialHolder) {
+    return asBroker(() => broker.issuePiece(pieceRequest(certificate, pieceIndex, trialHolder))).then(({piece}) => piece);
+}
+
+/**
+ * a report of one exit node, received as if dated seconds later
+ */
+async function addReportLater(seconds, report) {
+    const brokerNow = broker._now;
+    broker._now     = () => brokerNow.call(broker) + seconds;
+    try {
+        return await broker.addReport(report);
+    }
+    finally {
+        broker._now = brokerNow;
+    }
+}
+
+const TRIAL_BYTES = 2 * PIECE_BYTES;
+
+describe('broker: free trial', () => {
+    const restoreTrial = [];
+    const trialHolder  = newKey();
+    before(() => {
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', true, restoreTrial);
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_DATA_BYTES', TRIAL_BYTES, restoreTrial);
+    });
+    after(() => restoreTrial.reverse().forEach(fn => fn()));
+
+    test('by default a trial is 500 MB, one piece below the 1 GB pass piece', () => {
+        const defaultBytes = 500 * 1024 * 1024;
+        assert.equal(cloudPass.getTrialPieceBytes(defaultBytes, GB), defaultBytes);
+        assert.equal(cloudPass.isValidTrialSize(defaultBytes, GB), true);
+        // larger trials are pieces of the pass piece size
+        assert.equal(cloudPass.getTrialPieceBytes(2 * GB, GB), GB);
+        assert.equal(cloudPass.isValidTrialSize(1.5 * GB, GB), false);
+    });
+
+    test('issues a trial certificate without payment, marked as a trial, once per holder key', async() => {
+        const {certificate} = await broker.issueTrialCertificate(trialRequest(trialHolder));
+        assert.deepEqual(cloudPass.verifyCertificate(certificate, now()), {valid: true});
+        assert.equal(certificate.trial, true);
+        assert.equal(cloudPass.isTrialCertificate(certificate), true);
+        assert.equal(certificate.holder_public_key, trialHolder.public_key);
+        assert.equal(certificate.funding_transaction_id, cloudPass.getTrialID(trialHolder.public_key));
+        assert.equal(certificate.data_bytes, TRIAL_BYTES);
+        assert.equal(certificate.piece_bytes, PIECE_BYTES);
+        assert.equal(certificate.piece_count, 2);
+        const record = await brokerRepository.getCertificate(certificate.certificate_id);
+        assert.equal(record.is_trial, 1);
+        assert.equal(record.payment_amount, null);
+        // the same key gets the same certificate again
+        assert.deepEqual((await broker.issueTrialCertificate(trialRequest(trialHolder))).certificate, certificate);
+        // its pieces are issued like a pass's
+        assert.equal(cloudPass.isValidPiece(certificate, (await broker.issuePiece(pieceRequest(certificate, 0, trialHolder))).piece), true);
+    });
+
+    test('a pass certificate is not a trial and stores what its payment paid', async() => {
+        const transactionID = newTransactionID();
+        addPayment(transactionID, {amount: 6000000});
+        const {certificate} = await broker.issueCertificate(certificateRequest(transactionID));
+        assert.equal(cloudPass.isTrialCertificate(certificate), false);
+        assert.equal(certificate.trial, undefined);
+        const record = await brokerRepository.getCertificate(certificate.certificate_id);
+        assert.equal(record.is_trial, 0);
+        assert.equal(record.payment_amount, 6000000);
+    });
+
+    test('refuses a trial request not signed by the holder key, and a trial when the broker offers none', async() => {
+        await assert.rejects(broker.issueTrialCertificate(trialRequest(newKey(), attacker)), error => error === 'trial_request_invalid');
+        const restoreOff = [];
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', false, restoreOff);
+        try {
+            await assert.rejects(broker.issueTrialCertificate(trialRequest(newKey())), error => error === 'trial_not_offered');
+        }
+        finally {
+            restoreOff.forEach(fn => fn());
+        }
+    });
+
+    test('refuses a certificate marked trial other than true', () => {
+        const body = certificateBody({trial: false});
+        assert.equal(cloudPass.verifyCertificate(cloudPass.signCertificate(body, brokerKey.private_key), now()).reason, 'certificate_invalid_format');
+        assert.equal(cloudPass.verifyCertificate(cloudPass.signCertificate(certificateBody({trial: 1}), brokerKey.private_key), now()).reason, 'certificate_invalid_format');
+    });
+
+    test('with CLOUD_BROKER_TRIAL_ENABLED null, tangled\'s default broker offers the trial and other brokers do not', () => {
+        const restoreDefault = [];
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', null, restoreDefault);
+        try {
+            stubMethod(config, 'CLOUD_BROKER_LIST', [{address: brokerAddress, public_key: brokerKey.public_key}], restoreDefault);
+            assert.equal(broker.isTrialOffered(), true);
+            stubMethod(config, 'CLOUD_BROKER_LIST', [{address: fullAddress(attacker), public_key: attacker.public_key}], restoreDefault);
+            assert.equal(broker.isTrialOffered(), false);
+            stubMethod(config, 'CLOUD_BROKER_LIST', [], restoreDefault);
+            assert.equal(broker.isTrialOffered(), false);
+        }
+        finally {
+            restoreDefault.reverse().forEach(fn => fn());
+        }
+    });
+
+    test('the terms carry trial_data_bytes only when the trial is offered, and verify either way', () => {
+        const terms = broker.getTerms();
+        assert.equal(terms.trial_data_bytes, TRIAL_BYTES);
+        assert.equal(cloudPass.isValidBrokerTerms(terms, brokerNode.address_base), true);
+        const restoreOff = [];
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', false, restoreOff);
+        try {
+            const termsWithoutTrial = broker.getTerms();
+            assert.equal('trial_data_bytes' in termsWithoutTrial, false);
+            assert.equal(cloudPass.isValidBrokerTerms(termsWithoutTrial, brokerNode.address_base), true);
+        }
+        finally {
+            restoreOff.forEach(fn => fn());
+        }
+        // a trial size that is not whole pieces is refused
+        const {signature, ...body} = terms;
+        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms({...body, trial_data_bytes: PIECE_BYTES + 1}, brokerNode.address_base, brokerKey.private_key), brokerNode.address_base), false);
+    });
+});
+
+describe('broker: trial payouts and the block list', () => {
+    const restoreOwn    = [];
+    const exitA         = newKey();
+    const exitB         = newKey();
+    const sentList      = [];
+    let ownRepository, passP1, passP2, passP3, trialT1, trialT2, trialT3;
+    const trialHolderList = [newKey(), newKey(), newKey()];
+    const rate            = 150000;
+    const amountOf        = bytes => cloudPass.getPayoutAmount(bytes, rate);
+
+    async function issuePass(amount) {
+        const transactionID = newTransactionID();
+        addPayment(transactionID, {amount});
+        return (await broker.issueCertificate(certificateRequest(transactionID))).certificate;
+    }
+
+    before(async() => {
+        // a broker of its own, so the figures are exact
+        const database   = await openCloudDatabase();
+        ownRepository = new CloudBrokerRepository(database);
+        restoreOwn.push(stubRepositories({
+            cloud_broker: ownRepository,
+            cloud_pass  : new CloudPassRepository(database),
+            cloud_notice: new CloudNoticeRepository(database),
+            transaction : {
+                getTransactionObject : transactionID => paymentMap.has(transactionID) ? Promise.resolve(paymentMap.get(transactionID).transaction) : Promise.reject('transaction_not_found'),
+                listTransactionOutput: where => Promise.resolve((paymentMap.get(where['transaction_output.transaction_id'])?.output_list || [])
+                    .filter(output => output.address === where['transaction_output.address']))
+            }
+        }));
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', true, restoreOwn);
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_DATA_BYTES', TRIAL_BYTES, restoreOwn);
+        stubMethod(wallet, 'addTransaction', (outputList, fee) => {
+            sentList.push({outputList, fee});
+            return Promise.resolve([{transaction_id: `${sentList.length}`.padStart(50, 'X')}]);
+        }, restoreOwn);
+        stubMethod(broker, 'server', {}, restoreOwn);
+
+        passP1 = await issuePass(5000000);
+        passP2 = await issuePass(6000000);
+        passP3 = await issuePass(5000000);
+        trialT1 = await issueTrial(trialHolderList[0]);
+        trialT2 = await issueTrial(trialHolderList[1]);
+        trialT3 = await issueTrial(trialHolderList[2]);
+    });
+    after(() => {
+        broker.server = null;
+        restoreOwn.reverse().forEach(fn => fn());
+    });
+
+    function lastPayout() {
+        return sentList[sentList.length - 1];
+    }
+
+    test('pays exit nodes for trial receipts in the normal payout, recorded as trial', async() => {
+        // exit A carries both trials in full; exit B carries a pass and,
+        // later, trial data that the trial no longer covers
+        await broker.addReport(hostReport(exitA, [
+            receiptFor(trialT1, exitA.address_base, TRIAL_BYTES, 1, trialHolderList[0]),
+            receiptFor(trialT2, exitA.address_base, TRIAL_BYTES, 1, trialHolderList[1])
+        ]));
+        await broker.addReport(hostReport(exitB, [receiptFor(passP1, exitB.address_base, PIECE_BYTES, 1)]));
+        await addReportLater(10, hostReport(exitB, [receiptFor(trialT1, exitB.address_base, PIECE_BYTES, 1, trialHolderList[0])]));
+
+        const hostList = _.keyBy(await broker.listHost(), 'node_id');
+        assert.equal(hostList[exitA.address_base].amount_owed, 2 * amountOf(TRIAL_BYTES));
+        assert.equal(hostList[exitA.address_base].amount_owed_trial, 2 * amountOf(TRIAL_BYTES));
+        assert.equal(hostList[exitB.address_base].amount_owed, amountOf(PIECE_BYTES));
+        assert.equal(hostList[exitB.address_base].amount_owed_trial, 0);
+
+        await broker.doPayout();
+        assert.equal(sentList.length, 1);
+        assert.deepEqual(_.sortBy(lastPayout().outputList.map(output => output.amount)), _.sortBy([2 * amountOf(TRIAL_BYTES), amountOf(PIECE_BYTES)]));
+        const payoutList = _.keyBy(await ownRepository.listPayout(), 'node_id');
+        assert.equal(payoutList[exitA.address_base].amount, 2 * amountOf(TRIAL_BYTES));
+        assert.equal(payoutList[exitA.address_base].amount_trial, 2 * amountOf(TRIAL_BYTES));
+        assert.equal(payoutList[exitB.address_base].amount_trial, 0);
+        assert.ok((await broker.listHost()).every(host => host.amount_owed === 0));
+    });
+
+    test('refuses a block list that is not node ids', async() => {
+        await assert.rejects(broker.setTrialBlockList('x'), error => error === 'node_id_list_invalid');
+        await assert.rejects(broker.setTrialBlockList([exitA.address_base, 'not a node id']), error => error === 'node_id_list_invalid');
+        assert.deepEqual(await broker.listTrialBlock(), []);
+    });
+
+    test('holds back the trial receipts of an exit node on the block list, its pass receipts still paid', async() => {
+        const trialBlockList = await broker.setTrialBlockList([exitA.address_base, exitA.address_base]);
+        assert.deepEqual(trialBlockList.map(entry => entry.node_id), [exitA.address_base]);
+        await broker.addReport(hostReport(exitA, [
+            receiptFor(trialT3, exitA.address_base, PIECE_BYTES, 1, trialHolderList[2]),
+            receiptFor(passP2, exitA.address_base, PIECE_BYTES, 1)
+        ]));
+        const hostA = _.find(await broker.listHost(), {node_id: exitA.address_base});
+        assert.equal(hostA.is_trial_blocked, true);
+        assert.equal(hostA.amount_owed, amountOf(PIECE_BYTES));
+        assert.equal(hostA.amount_owed_trial, 0);
+        assert.equal(hostA.amount_withheld_trial, amountOf(PIECE_BYTES));
+    });
+
+    test('pays a blocked exit node its pass receipts only, and what was held back once it is off the list', async() => {
+        await broker.doPayout();
+        assert.equal(sentList.length, 2);
+        assert.deepEqual(lastPayout().outputList.map(output => output.amount), [amountOf(PIECE_BYTES)]);
+        const payoutA = _.filter(await ownRepository.listPayout(), {node_id: exitA.address_base});
+        assert.deepEqual(_.sortBy(payoutA.map(payout => payout.amount_trial)), [0, 2 * amountOf(TRIAL_BYTES)]);
+
+        await broker.setTrialBlockList([]);
+        await broker.doPayout();
+        assert.equal(sentList.length, 3);
+        assert.deepEqual(lastPayout().outputList.map(output => output.amount), [amountOf(PIECE_BYTES)]);
+        const hostA = _.find(await broker.listHost(), {node_id: exitA.address_base});
+        assert.equal(hostA.amount_paid_trial, 2 * amountOf(TRIAL_BYTES) + amountOf(PIECE_BYTES));
+        assert.equal(hostA.amount_withheld_trial, 0);
+        assert.ok((await broker.listHost()).every(host => host.amount_owed === 0));
+    });
+});
+
+describe('exit node: trial certificates', () => {
+    const restoreExit = [];
+    const trialHolder = newKey();
+    let trialCertificate, trialPiece, passCertificate, passPiece, statusRequestList, isBrokerReachable;
+
+    before(async() => {
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', true, restoreExit);
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_DATA_BYTES', TRIAL_BYTES, restoreExit);
+        trialCertificate = await issueTrial(trialHolder);
+        trialPiece       = await issueTrialPiece(trialCertificate, 0, trialHolder);
+        passCertificate  = await issueCertificate();
+        passPiece        = await issuePiece(passCertificate, 0);
+        stubMethod(network, 'nodeID', exitNode.address_base, restoreExit);
+        stubMethod(network, 'nodePublicKey', exitNode.public_key, restoreExit);
+        stubMethod(network, 'nodePrivateKey', exitNode.node_private_key, restoreExit);
+        exitOffer = {
+            end_date   : now() + 3600,
+            broker_list: [
+                {
+                    address   : brokerAddress,
+                    public_key: brokerKey.public_key
+                }
+            ]
+        };
+        stubMethod(cloudOffer, 'listOffers', () => Promise.resolve([
+            {
+                node_id : brokerNode.address_base,
+                endpoint: {node_address: '127.0.0.1', service_port: 1},
+                broker  : {address: brokerAddress}
+            }
+        ]), restoreExit);
+        stubMethod(cloudOffer, 'verifyOffer', () => ({valid: true}), restoreExit);
+        stubMethod(nodeRequest, 'requestNodeService', (endpoint, nodeID, method, requestPath, body) => {
+            statusRequestList.push({nodeID, requestPath, body});
+            return isBrokerReachable ? broker.getTrialStatus(body) : Promise.reject('node_unreachable');
+        }, restoreExit);
+    });
+    after(async() => {
+        await asBroker(() => broker.setTrialBlockList([]));
+        restoreExit.reverse().forEach(fn => fn());
+    });
+    beforeEach(async() => {
+        await asBroker(() => broker.setTrialBlockList([]));
+        vpnExit.sessionMap.clear();
+        vpnExit.trialStatusMap.clear();
+        statusRequestList = [];
+        isBrokerReachable = true;
+    });
+
+    function sessionState() {
+        const state = {
+            session_id         : Math.random().toString(16).slice(2),
+            session            : {close: () => undefined, destroy: () => undefined, destroyed: true},
+            challenge          : 'c'.repeat(64),
+            authenticated      : false,
+            bytes_sent         : 0,
+            bytes_received     : 0,
+            receipt_total_bytes: 0,
+            receipt_sequence   : 0,
+            site_list          : new Set(),
+            closed             : false
+        };
+        vpnExit.sessionMap.set(state.session_id, state);
+        return state;
+    }
+
+    function passBody(state, certificate, piece, signer) {
+        return {
+            pass               : {
+                certificate,
+                piece
+            },
+            challenge_signature: cloudPass.signHolderMessage({
+                challenge: state.challenge,
+                node_id  : exitNode.address_base
+            }, signer.private_key)
+        };
+    }
+
+    test('accepts a trial certificate when the broker says its trial extends to this node, asking once', async() => {
+        const state = sessionState();
+        await vpnExit._authenticate(state, passBody(state, trialCertificate, trialPiece, trialHolder));
+        assert.equal(state.authenticated, true);
+        assert.equal(state.bytes_covered, PIECE_BYTES);
+        assert.equal(statusRequestList.length, 1);
+        assert.equal(statusRequestList[0].nodeID, brokerNode.address_base);
+        assert.equal(statusRequestList[0].requestPath, '/broker/trial/status');
+        vpnExit._closeSession(state, 'test');
+        const second = sessionState();
+        await vpnExit._authenticate(second, passBody(second, trialCertificate, trialPiece, trialHolder));
+        assert.equal(statusRequestList.length, 1);
+        vpnExit._closeSession(second, 'test');
+    });
+
+    test('a blocked exit node refuses the trial certificate and still accepts passes', async() => {
+        await asBroker(() => broker.setTrialBlockList([exitNode.address_base]));
+        const state = sessionState();
+        await assert.rejects(vpnExit._authenticate(state, passBody(state, trialCertificate, trialPiece, trialHolder)), error => error === 'trial_not_extended');
+        assert.equal(state.authenticated, false);
+        const passState = sessionState();
+        await vpnExit._authenticate(passState, passBody(passState, passCertificate, passPiece, holder));
+        assert.equal(passState.authenticated, true);
+        vpnExit._closeSession(passState, 'test');
+        // the broker was asked about the trial only
+        assert.equal(statusRequestList.length, 1);
+    });
+
+    test('keeps the broker\'s answer for CLOUD_BROKER_REPORT_INTERVAL', async() => {
+        await asBroker(() => broker.setTrialBlockList([exitNode.address_base]));
+        const state = sessionState();
+        await assert.rejects(vpnExit._authenticate(state, passBody(state, trialCertificate, trialPiece, trialHolder)), error => error === 'trial_not_extended');
+        await asBroker(() => broker.setTrialBlockList([]));
+        await assert.rejects(vpnExit._authenticate(state, passBody(state, trialCertificate, trialPiece, trialHolder)), error => error === 'trial_not_extended');
+        const exitNow = vpnExit._now;
+        vpnExit._now  = () => exitNow.call(vpnExit) + config.CLOUD_BROKER_REPORT_INTERVAL;
+        try {
+            await vpnExit._authenticate(state, passBody(state, trialCertificate, trialPiece, trialHolder));
+        }
+        finally {
+            vpnExit._now = exitNow;
+        }
+        assert.equal(state.authenticated, true);
+        assert.equal(statusRequestList.length, 2);
+        vpnExit._closeSession(state, 'test');
+    });
+
+    test('accepts the trial when the broker cannot be asked: the broker decides what it pays', async() => {
+        await asBroker(() => broker.setTrialBlockList([exitNode.address_base]));
+        isBrokerReachable = false;
+        const state       = sessionState();
+        await vpnExit._authenticate(state, passBody(state, trialCertificate, trialPiece, trialHolder));
+        assert.equal(state.authenticated, true);
+        assert.equal(vpnExit.trialStatusMap.size, 0);
+        vpnExit._closeSession(state, 'test');
+    });
+
+    test('the broker answers only a status request signed by the node key, dated now', async() => {
+        const request = cloudPass.signNodeRequest(exitNode.address_base, exitNode.public_key, now(), exitNode.node_private_key);
+        assert.deepEqual(await broker.getTrialStatus(request), {trial_offered: true, trial_extended: true});
+        await assert.rejects(broker.getTrialStatus(cloudPass.signNodeRequest(exitNode.address_base, exitNode.public_key, now(), attacker.node_private_key)),
+            error => error === 'trial_status_request_invalid');
+        await assert.rejects(broker.getTrialStatus(cloudPass.signNodeRequest(exitNode.address_base, exitNode.public_key, now() - 3600, exitNode.node_private_key)),
+            error => error === 'trial_status_request_invalid');
+        await assert.rejects(broker.getTrialStatus({...request, node_id: otherExit.address_base}), error => error === 'trial_status_request_invalid');
+    });
+});
+
+describe('user side: trial passes', () => {
+    const restoreUser = [];
+    const trialHolder = newKey();
+    let requestList, brokerOffer;
+
+    before(() => {
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', true, restoreUser);
+        stubMethod(config, 'CLOUD_BROKER_TRIAL_DATA_BYTES', TRIAL_BYTES, restoreUser);
+        stubMethod(cloudVersion, 'isCloudEnabled', () => true, restoreUser);
+        stubMethod(passWallet, 'getHolderPrivateKey', () => trialHolder.private_key, restoreUser);
+        stubMethod(passWallet, 'findBrokerOffer', () => Promise.resolve(brokerOffer), restoreUser);
+        stubMethod(network, 'nodeID', brokerNode.address_base, restoreUser);
+        stubMethod(passWallet, '_brokerRequest', (offer, requestPath, body) => {
+            requestList.push(requestPath);
+            return requestPath === '/broker/trial' ? broker.issueTrialCertificate(body) : broker.issuePiece(body);
+        }, restoreUser);
+    });
+    after(() => restoreUser.reverse().forEach(fn => fn()));
+    beforeEach(() => {
+        requestList = [];
+        brokerOffer = {
+            node_id: brokerNode.address_base,
+            broker : broker.getTerms()
+        };
+    });
+
+    test('refuses a trial from a broker whose terms offer none', async() => {
+        brokerOffer.broker = _.omit(brokerOffer.broker, ['trial_data_bytes']);
+        await assert.rejects(passWallet.requestTrial(brokerAddress), error => error === 'trial_not_offered');
+        assert.deepEqual(requestList, []);
+        assert.equal((await passWallet.getPass(passWallet.getTrialPassID(brokerAddress))).status, 'failed');
+    });
+
+    test('gets the trial certificate and its first piece, then keeps the active trial', async() => {
+        const pass = await passWallet.requestTrial(brokerAddress);
+        assert.equal(pass.pass_id, passWallet.getTrialPassID(brokerAddress));
+        assert.equal(pass.status, 'active');
+        assert.equal(pass.certificate.trial, true);
+        assert.equal(pass.certificate.holder_public_key, trialHolder.public_key);
+        assert.deepEqual(pass.piece_list.map(piece => piece.piece_index), [0]);
+        assert.deepEqual(requestList, ['/broker/trial', '/broker/piece']);
+        assert.deepEqual(await passWallet.requestTrial(brokerAddress), pass);
+        assert.equal(requestList.length, 2);
     });
 });
 

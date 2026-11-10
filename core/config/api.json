@@ -856,6 +856,33 @@
       "enable": true
     },
     {
+      "id": "baHGR6wzIc1O41cU",
+      "name": "new_cloud_trial_pass",
+      "description": "asks a broker for its free trial: a prepaid certificate of the broker's trial data without payment, one for this wallet from each broker",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "icSqcOnTkn4QEUGl",
+      "name": "list_cloud_broker_trial_block",
+      "description": "broker: returns whether this broker offers the free trial and the exit nodes the trial does not extend to",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "ccAJMt4WTvh7nyJA",
+      "name": "update_cloud_broker_trial_block",
+      "description": "broker: sets the exit nodes the free trial does not extend to; their trial receipts are not paid while they are on the list",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "XplGSKUo0zHeCIxp",
       "name": "list_cloud_forward_host",
       "description": "returns how this node's exit node is reached (directly or through a forwarding node) and, on a forwarding node, the hosts registered with it and the bytes relayed",

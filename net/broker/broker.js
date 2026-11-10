@@ -33,6 +33,12 @@ const BODY_SIZE_MAX = 64 * 1024;
  *   piece; pieces are issued in order.
  * - POST /broker/report {report}: an exit node's latest receipts, signed by
  *   its node key, with the address to pay.
+ * - POST /broker/trial {holder_public_key, signature}: when the broker
+ *   offers a free trial, returns the trial certificate of the holder key
+ *   (the same one for every request about that key).
+ * - POST /broker/trial/status {node_id, node_public_key, request_date,
+ *   signature}: tells an exit node, by a request signed by its node key,
+ *   whether the trial extends to it.
  * - GET /broker/terms: the signed terms.
  *
  * every CLOUD_BROKER_PAYOUT_INTERVAL the broker pays each exit node what its
@@ -41,6 +47,14 @@ const BODY_SIZE_MAX = 64 * 1024;
  * total: when exit nodes receipt more, the earliest receipts are paid first.
  * one transaction pays up to CLOUD_BROKER_PAYOUT_OUTPUT_MAX - 1 exit nodes;
  * the broker pays the fee and each exit node gets its full amount.
+ *
+ * the free trial (CLOUD_BROKER_TRIAL_ENABLED) is a certificate of
+ * CLOUD_BROKER_TRIAL_DATA_BYTES marked as a trial, issued without payment.
+ * its receipts are paid in the same payouts at the same pool rate, from the
+ * broker's own funds. the trial does not extend to the exit nodes of the
+ * trial block list: they refuse trial certificates once the broker tells
+ * them, and while an exit node is on the list the broker holds back what its
+ * trial receipts earned (paid if it is taken off the list).
  */
 class Broker {
     constructor() {
@@ -74,9 +88,18 @@ class Broker {
         };
     }
 
+    /**
+     * whether this broker offers the free trial: CLOUD_BROKER_TRIAL_ENABLED,
+     * or when it is null, whether this broker is tangled's default broker
+     * (the first of CLOUD_BROKER_LIST)
+     */
+    isTrialOffered() {
+        return config.CLOUD_BROKER_TRIAL_ENABLED ?? (this.getBrokerKey().address === config.CLOUD_BROKER_LIST[0]?.address);
+    }
+
     getTerms() {
         const brokerKey = this.getBrokerKey();
-        return cloudPass.signBrokerTerms({
+        const terms     = {
             address         : brokerKey.address,
             public_key      : brokerKey.public_key,
             pass_price      : config.CLOUD_BROKER_PASS_PRICE,
@@ -85,12 +108,29 @@ class Broker {
             pass_duration   : config.CLOUD_BROKER_PASS_DURATION,
             pool_rate       : config.CLOUD_BROKER_POOL_RATE,
             payout_interval : config.CLOUD_BROKER_PAYOUT_INTERVAL
-        }, network.nodeID, brokerKey.private_key);
+        };
+        if (this.isTrialOffered()) {
+            terms.trial_data_bytes = config.CLOUD_BROKER_TRIAL_DATA_BYTES;
+        }
+        return cloudPass.signBrokerTerms(terms, network.nodeID, brokerKey.private_key);
+    }
+
+    /**
+     * the outputs of a transaction that pay an address
+     */
+    _listPaymentOutput(transactionID, address) {
+        return database.applyShards(shardID => database.getRepository('transaction', shardID)
+                                                       .listTransactionOutput({
+                                                           'transaction_output.transaction_id': transactionID,
+                                                           'transaction_output.address'       : address
+                                                       }))
+                       .then(outputList => _.uniqBy(outputList, 'output_position'));
     }
 
     /**
      * checks that the transaction paid the pass price to the broker for this
      * holder key and is stable
+     * @return {Promise<number>} the amount it paid the broker
      */
     _verifyPassPayment(fundingTransactionID, holderPublicKey, brokerKey) {
         return database.firstShards(shardID => {
@@ -117,13 +157,8 @@ class Broker {
                 return Promise.reject('payment_not_for_this_pass');
             }
 
-            return database.applyShards(shardID => database.getRepository('transaction', shardID)
-                                                           .listTransactionOutput({
-                                                               'transaction_output.transaction_id': fundingTransactionID,
-                                                               'transaction_output.address'       : brokerKey.address
-                                                           }))
+            return this._listPaymentOutput(fundingTransactionID, brokerKey.address)
                            .then(outputList => {
-                               outputList = _.uniqBy(outputList, 'output_position');
                                if (_.some(outputList, output => output.is_double_spend === 1 || output.status === 3 || output.transaction_status === 3)) {
                                    return Promise.reject('payment_invalid');
                                }
@@ -133,8 +168,69 @@ class Broker {
                                if (!_.every(outputList, output => output.is_stable === 1)) {
                                    return Promise.reject('payment_not_stable');
                                }
-                               return transaction;
+                               return _.sum(_.map(outputList, output => output.amount));
                            });
+        });
+    }
+
+    /**
+     * the certificate funded by fundingID (a payment, or the trial id of a
+     * holder key), issued once
+     * @param fundingID
+     * @param holderPublicKey
+     * @param isTrial
+     * @param verifyFunding resolves with the amount paid (null for a trial)
+     * before the certificate is first issued
+     */
+    _issueCertificateOnce(fundingID, holderPublicKey, isTrial, verifyFunding) {
+        const brokerKey             = this.getBrokerKey();
+        const cloudBrokerRepository = database.getRepository('cloud_broker');
+        return new Promise((resolve, reject) => {
+            mutex.lock([`cloud_broker_certificate_${fundingID}`], unlock => {
+                cloudBrokerRepository.getCertificateByFundingTransaction(fundingID)
+                                     .then(record => {
+                                         if (record) {
+                                             return record.certificate.holder_public_key === holderPublicKey ? record.certificate : Promise.reject(isTrial ? 'trial_request_invalid' : 'certificate_request_invalid');
+                                         }
+                                         return verifyFunding()
+                                             .then(paymentAmount => {
+                                                 const now        = this._now();
+                                                 const dataBytes  = isTrial ? config.CLOUD_BROKER_TRIAL_DATA_BYTES : config.CLOUD_BROKER_PASS_DATA_BYTES;
+                                                 const pieceBytes = isTrial ? cloudPass.getTrialPieceBytes(dataBytes, config.CLOUD_BROKER_PASS_PIECE_BYTES) : config.CLOUD_BROKER_PASS_PIECE_BYTES;
+                                                 const certificatePrivateKey = cloudPass.deriveCertificatePrivateKey(brokerKey.private_key, fundingID);
+                                                 const body       = {
+                                                     version               : CLOUD_PASS_VERSION,
+                                                     broker_address        : brokerKey.address,
+                                                     broker_public_key     : brokerKey.public_key,
+                                                     certificate_public_key: cloudPass.getPublicKey(certificatePrivateKey),
+                                                     holder_public_key     : holderPublicKey,
+                                                     funding_transaction_id: fundingID,
+                                                     data_bytes            : dataBytes,
+                                                     piece_bytes           : pieceBytes,
+                                                     piece_count           : dataBytes / pieceBytes,
+                                                     start_date            : now,
+                                                     end_date              : now + config.CLOUD_BROKER_PASS_DURATION
+                                                 };
+                                                 if (isTrial) {
+                                                     body.trial = true;
+                                                 }
+                                                 const certificate = cloudPass.signCertificate(body, brokerKey.private_key);
+                                                 return cloudBrokerRepository.addCertificate(certificate, paymentAmount)
+                                                                             .then(() => {
+                                                                                 console.log(`[broker] issued ${isTrial ? 'trial ' : ''}certificate ${certificate.certificate_id} for ${isTrial ? 'holder key' : 'payment'} ${isTrial ? holderPublicKey : fundingID}`);
+                                                                                 return certificate;
+                                                                             });
+                                             });
+                                     })
+                                     .then(certificate => {
+                                         unlock();
+                                         resolve({certificate});
+                                     })
+                                     .catch(error => {
+                                         unlock();
+                                         reject(error);
+                                     });
+            });
         });
     }
 
@@ -152,49 +248,66 @@ class Broker {
             return Promise.reject('certificate_request_invalid');
         }
 
-        const brokerKey            = this.getBrokerKey();
-        const cloudBrokerRepository = database.getRepository('cloud_broker');
-        return new Promise((resolve, reject) => {
-            mutex.lock([`cloud_broker_certificate_${fundingTransactionID}`], unlock => {
-                cloudBrokerRepository.getCertificateByFundingTransaction(fundingTransactionID)
-                                     .then(record => {
-                                         if (record) {
-                                             return record.certificate.holder_public_key === holderPublicKey ? record.certificate : Promise.reject('certificate_request_invalid');
-                                         }
-                                         return this._verifyPassPayment(fundingTransactionID, holderPublicKey, brokerKey)
-                                                    .then(() => {
-                                                        const now         = this._now();
-                                                        const certificatePrivateKey = cloudPass.deriveCertificatePrivateKey(brokerKey.private_key, fundingTransactionID);
-                                                        const certificate = cloudPass.signCertificate({
-                                                            version               : CLOUD_PASS_VERSION,
-                                                            broker_address        : brokerKey.address,
-                                                            broker_public_key     : brokerKey.public_key,
-                                                            certificate_public_key: cloudPass.getPublicKey(certificatePrivateKey),
-                                                            holder_public_key     : holderPublicKey,
-                                                            funding_transaction_id: fundingTransactionID,
-                                                            data_bytes            : config.CLOUD_BROKER_PASS_DATA_BYTES,
-                                                            piece_bytes           : config.CLOUD_BROKER_PASS_PIECE_BYTES,
-                                                            piece_count           : config.CLOUD_BROKER_PASS_DATA_BYTES / config.CLOUD_BROKER_PASS_PIECE_BYTES,
-                                                            start_date            : now,
-                                                            end_date              : now + config.CLOUD_BROKER_PASS_DURATION
-                                                        }, brokerKey.private_key);
-                                                        return cloudBrokerRepository.addCertificate(certificate)
-                                                                                    .then(() => {
-                                                                                        console.log(`[broker] issued certificate ${certificate.certificate_id} for payment ${fundingTransactionID}`);
-                                                                                        return certificate;
-                                                                                    });
-                                                    });
-                                     })
-                                     .then(certificate => {
-                                         unlock();
-                                         resolve({certificate});
-                                     })
-                                     .catch(error => {
-                                         unlock();
-                                         reject(error);
-                                     });
-            });
-        });
+        const brokerKey = this.getBrokerKey();
+        return this._issueCertificateOnce(fundingTransactionID, holderPublicKey, false,
+            () => this._verifyPassPayment(fundingTransactionID, holderPublicKey, brokerKey));
+    }
+
+    /**
+     * the trial certificate of a holder key, issued once: a second request
+     * for the key returns the same certificate, even once it has expired
+     */
+    issueTrialCertificate(body) {
+        const holderPublicKey = body?.holder_public_key;
+        if (!this.isTrialOffered()) {
+            return Promise.reject('trial_not_offered');
+        }
+        if (typeof holderPublicKey !== 'string' ||
+            !cloudPass.isValidHolderMessage({
+                trial_holder_public_key: holderPublicKey,
+                broker_node_id         : network.nodeID
+            }, body.signature, holderPublicKey)) {
+            return Promise.reject('trial_request_invalid');
+        }
+        return this._issueCertificateOnce(cloudPass.getTrialID(holderPublicKey), holderPublicKey, true, () => Promise.resolve(null));
+    }
+
+    /**
+     * tells an exit node whether the trial extends to it
+     */
+    getTrialStatus(body) {
+        if (!cloudPass.isValidNodeRequest(body, this._now())) {
+            return Promise.reject('trial_status_request_invalid');
+        }
+        return database.getRepository('cloud_broker')
+                       .isTrialBlocked(body.node_id)
+                       .then(isBlocked => ({
+                           trial_offered : this.isTrialOffered(),
+                           trial_extended: !isBlocked
+                       }));
+    }
+
+    /**
+     * the exit nodes the trial does not extend to
+     */
+    listTrialBlock() {
+        return database.getRepository('cloud_broker').listTrialBlock();
+    }
+
+    /**
+     * replaces the trial block list
+     * @param nodeIDList the node ids of the exit nodes
+     */
+    setTrialBlockList(nodeIDList) {
+        if (!Array.isArray(nodeIDList) || !_.every(nodeIDList, nodeID => typeof nodeID === 'string' && walletUtils.isValidAddress(nodeID))) {
+            return Promise.reject('node_id_list_invalid');
+        }
+        return database.getRepository('cloud_broker')
+                       .setTrialBlockList(_.uniq(nodeIDList), this._now())
+                       .then(() => {
+                           console.log(`[broker] the trial does not extend to ${_.uniq(nodeIDList).length} exit nodes`);
+                           return this.listTrialBlock();
+                       });
     }
 
     /**
@@ -272,23 +385,46 @@ class Broker {
                      });
     }
 
+    _newEarned() {
+        return {
+            certificate_count: 0,
+            bytes_receipted  : 0,
+            bytes_payable    : 0,
+            amount_earned    : 0,
+            last_receipt_date: null
+        };
+    }
+
     /**
-     * what each exit node has earned from its receipts. a certificate pays
-     * at most its data in total; when exit nodes receipt more, the earliest
-     * receipts are paid first.
-     * @return {Promise<Object>} node id: amount earned
+     * what each exit node's receipts earned, for passes and for trials. a
+     * certificate pays at most its data in total; when exit nodes receipt
+     * more, the earliest receipts are paid first. bytes_payable is what
+     * counts within that.
+     * @return {Promise<Object>} node id: {pass, trial}
      */
-    getEarnedAmountByNode() {
+    _getEarnedByNode() {
         return database.getRepository('cloud_broker')
                        .listReceiptWithCertificate()
                        .then(receiptList => {
                            const earned = {};
                            _.each(_.groupBy(receiptList, 'certificate_id'), certificateReceiptList => {
                                let bytesLeft = certificateReceiptList[0].data_bytes;
+                               const type    = certificateReceiptList[0].is_trial === 1 ? 'trial' : 'pass';
                                _.sortBy(certificateReceiptList, ['first_receipt_date', 'node_id']).forEach(receipt => {
-                                   const bytesPaid       = Math.min(receipt.total_bytes, bytesLeft);
+                                   const bytesPaid = Math.min(receipt.total_bytes, bytesLeft);
                                    bytesLeft -= bytesPaid;
-                                   earned[receipt.node_id] = (earned[receipt.node_id] || 0) + cloudPass.getPayoutAmount(bytesPaid, config.CLOUD_BROKER_POOL_RATE);
+                                   if (!earned[receipt.node_id]) {
+                                       earned[receipt.node_id] = {
+                                           pass : this._newEarned(),
+                                           trial: this._newEarned()
+                                       };
+                                   }
+                                   const entry = earned[receipt.node_id][type];
+                                   entry.certificate_count++;
+                                   entry.bytes_receipted += receipt.total_bytes;
+                                   entry.bytes_payable += bytesPaid;
+                                   entry.amount_earned += cloudPass.getPayoutAmount(bytesPaid, config.CLOUD_BROKER_POOL_RATE);
+                                   entry.last_receipt_date = Math.max(entry.last_receipt_date || 0, receipt.update_date);
                                });
                            });
                            return earned;
@@ -296,17 +432,48 @@ class Broker {
     }
 
     /**
-     * exit nodes with what they earned, were paid and are owed
+     * what each exit node has earned from its receipts, passes and trials
+     * @return {Promise<Object>} node id: amount earned
+     */
+    getEarnedAmountByNode() {
+        return this._getEarnedByNode()
+                   .then(earned => _.mapValues(earned, ({pass, trial}) => pass.amount_earned + trial.amount_earned));
+    }
+
+    /**
+     * exit nodes with what they earned, were paid and are owed. what the
+     * trial receipts of an exit node on the trial block list earned is held
+     * back (amount_withheld_trial) while it is on the list.
      */
     listHost() {
         return Promise.all([
-            this.getEarnedAmountByNode(),
-            database.getRepository('cloud_broker').listHost()
-        ]).then(([earned, hostList]) => hostList.map(host => ({
-            ...host,
-            amount_earned: earned[host.node_id] || 0,
-            amount_owed  : Math.max(0, (earned[host.node_id] || 0) - host.amount_paid)
-        })));
+            this._getEarnedByNode(),
+            database.getRepository('cloud_broker').listHost(),
+            this.listTrialBlock()
+        ]).then(([earned, hostList, trialBlockList]) => {
+            const trialBlockSet = new Set(_.map(trialBlockList, 'node_id'));
+            return hostList.map(host => {
+                const {
+                          pass,
+                          trial
+                      }              = earned[host.node_id] || {
+                    pass : this._newEarned(),
+                    trial: this._newEarned()
+                };
+                const isTrialBlocked = trialBlockSet.has(host.node_id);
+                const amountOwedPass = Math.max(0, pass.amount_earned - (host.amount_paid - host.amount_paid_trial));
+                const amountDueTrial = Math.max(0, trial.amount_earned - host.amount_paid_trial);
+                return {
+                    ...host,
+                    amount_earned        : pass.amount_earned + trial.amount_earned,
+                    amount_earned_trial  : trial.amount_earned,
+                    amount_owed          : amountOwedPass + (isTrialBlocked ? 0 : amountDueTrial),
+                    amount_owed_trial    : isTrialBlocked ? 0 : amountDueTrial,
+                    amount_withheld_trial: isTrialBlocked ? amountDueTrial : 0,
+                    is_trial_blocked     : isTrialBlocked
+                };
+            });
+        });
     }
 
     /**
@@ -348,8 +515,9 @@ class Broker {
                                 transactionList.push(transaction);
                                 console.log(`[broker] paid ${batch.length} exit nodes ${_.sum(_.map(batch, 'amount_owed'))} in transaction ${transaction.transaction_id}`);
                                 return database.getRepository('cloud_broker').addPayout(transaction.transaction_id, batch.map(host => ({
-                                    node_id: host.node_id,
-                                    amount : host.amount_owed
+                                    node_id     : host.node_id,
+                                    amount      : host.amount_owed,
+                                    amount_trial: host.amount_owed_trial
                                 })), this._now());
                             });
                         }), Promise.resolve());
@@ -366,9 +534,11 @@ class Broker {
     _onRequest(request, response) {
         const route = `${request.method} ${request.url}`;
         const handlerMap = {
-            'POST /broker/certificate': body => this.issueCertificate(body),
-            'POST /broker/piece'      : body => this.issuePiece(body),
-            'POST /broker/report'     : body => this.addReport(body?.report)
+            'POST /broker/certificate' : body => this.issueCertificate(body),
+            'POST /broker/piece'       : body => this.issuePiece(body),
+            'POST /broker/report'      : body => this.addReport(body?.report),
+            'POST /broker/trial'       : body => this.issueTrialCertificate(body),
+            'POST /broker/trial/status': body => this.getTrialStatus(body)
         };
         if (route === 'GET /broker/terms') {
             return sendJSON(response, 200, {terms: this.getTerms()});
@@ -413,7 +583,8 @@ class Broker {
             return Promise.reject('node_certificate_not_found');
         }
         if (cloudPass.getPayoutAmount(config.CLOUD_BROKER_PASS_DATA_BYTES, config.CLOUD_BROKER_POOL_RATE) > config.CLOUD_BROKER_PASS_PRICE ||
-            config.CLOUD_BROKER_PASS_DATA_BYTES % config.CLOUD_BROKER_PASS_PIECE_BYTES !== 0) {
+            config.CLOUD_BROKER_PASS_DATA_BYTES % config.CLOUD_BROKER_PASS_PIECE_BYTES !== 0 ||
+            !cloudPass.isValidTrialSize(config.CLOUD_BROKER_TRIAL_DATA_BYTES, config.CLOUD_BROKER_PASS_PIECE_BYTES)) {
             return Promise.reject('broker_terms_invalid');
         }
 

@@ -199,14 +199,14 @@ export function setEscrowActivationDate(date) {
 }
 
 /**
- * an in-memory database with the tables of migrations 26 (broker) and 27
- * (notices), for the real cloud_broker, cloud_pass and cloud_notice
- * repositories. it answers like the node's database pool
+ * an in-memory database with the tables of migrations 26 (broker), 27
+ * (notices) and 28 (broker trials), for the real cloud_broker, cloud_pass
+ * and cloud_notice repositories. it answers like the node's database pool
  * (database/pool/pool.js): callbacks get (err, data) and no statement
  * context, so a run does not tell how many rows it changed.
  */
 export function openCloudDatabase() {
-    const tableSQL = [26, 27].map(version => {
+    const tableSQL = [26, 27, 28].map(version => {
         const migration = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'migration', `schema-update-${version}.sql`), 'utf8');
         return migration.substring(migration.indexOf('BEGIN TRANSACTION;') + 'BEGIN TRANSACTION;'.length, migration.indexOf('UPDATE schema_information'));
     }).join('\n');

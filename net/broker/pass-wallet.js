@@ -11,10 +11,12 @@ import {requestNodeService} from './node-request';
 import ntp from '../../core/ntp';
 import console from '../../core/console';
 
-export const PASS_STATUS_PAYING = 'paying';
-export const PASS_STATUS_PAID   = 'paid';
-export const PASS_STATUS_ACTIVE = 'active';
-export const PASS_STATUS_FAILED = 'failed';
+export const PASS_STATUS_PAYING     = 'paying';
+export const PASS_STATUS_PAID       = 'paid';
+export const PASS_STATUS_ACTIVE     = 'active';
+export const PASS_STATUS_FAILED     = 'failed';
+// a trial asked of the broker
+export const PASS_STATUS_REQUESTING = 'requesting';
 
 const CERTIFICATE_RETRY_WAIT_TIME = 5000;
 
@@ -27,6 +29,10 @@ const CERTIFICATE_RETRY_WAIT_TIME = 5000;
  * the broker for the prepaid certificate until the payment is stable. the
  * holder key is derived from this wallet's first key and the pass id, so it
  * is never stored.
+ *
+ * a broker's free trial is a pass whose id is derived from the broker
+ * address: this wallet has one trial holder key for each broker, and the
+ * broker issues one trial certificate for a holder key.
  */
 class PassWallet {
     constructor() {
@@ -120,6 +126,87 @@ class PassWallet {
                    .catch(error => passRepository.updatePass(passID, {status: PASS_STATUS_FAILED})
                                                  .catch(_ => _)
                                                  .then(() => Promise.reject(error?.error || error)));
+    }
+
+    getTrialPassID(brokerAddress) {
+        return crypto.createHash('sha256').update(`tangled-cloud-trial:${brokerAddress}`).digest('hex').substring(0, 32);
+    }
+
+    /**
+     * asks a broker for its free trial certificate, then fetches the first
+     * piece. once this wallet's trial from the broker is active it is
+     * returned as it is.
+     * @param brokerAddress defaults to the first broker of CLOUD_BROKER_LIST
+     */
+    requestTrial(brokerAddress = this.getDefaultBrokerAddress()) {
+        if (!cloudVersion.isCloudEnabled()) {
+            return Promise.reject('cloud_version_not_accepted');
+        }
+        if (!brokerAddress) {
+            return Promise.reject('broker_not_set');
+        }
+
+        const passRepository = database.getRepository('cloud_pass');
+        const passID         = this.getTrialPassID(brokerAddress);
+        return passRepository.getPass(passID)
+                             .then(pass => {
+                                 if (pass?.status === PASS_STATUS_ACTIVE) {
+                                     return pass;
+                                 }
+                                 if (this._certificateRequestSet.has(passID)) {
+                                     return Promise.reject('certificate_request_in_progress');
+                                 }
+                                 this._certificateRequestSet.add(passID);
+                                 const holderPrivateKey = this.getHolderPrivateKey(passID);
+                                 const holderPublicKey  = cloudPass.getPublicKey(holderPrivateKey);
+                                 return (pass ? passRepository.updatePass(passID, {status: PASS_STATUS_REQUESTING}) : passRepository.addPass(passID, brokerAddress, holderPublicKey, PASS_STATUS_REQUESTING))
+                                     .then(() => this.findBrokerOffer(brokerAddress))
+                                     .then(offer => {
+                                         if (!offer.broker.trial_data_bytes) {
+                                             return Promise.reject('trial_not_offered');
+                                         }
+                                         return this._brokerRequest(offer, '/broker/trial', {
+                                             holder_public_key: holderPublicKey,
+                                             signature        : cloudPass.signHolderMessage({
+                                                 trial_holder_public_key: holderPublicKey,
+                                                 broker_node_id         : offer.node_id
+                                             }, holderPrivateKey)
+                                         });
+                                     })
+                                     .then(({certificate}) => {
+                                         const {
+                                                   valid,
+                                                   reason
+                                               } = cloudPass.verifyCertificate(certificate, this._now());
+                                         if (!valid) {
+                                             // certificate_expired: this
+                                             // wallet's trial was used
+                                             return Promise.reject(reason);
+                                         }
+                                         if (!cloudPass.isTrialCertificate(certificate) || certificate.holder_public_key !== holderPublicKey ||
+                                             certificate.broker_address !== brokerAddress || certificate.funding_transaction_id !== cloudPass.getTrialID(holderPublicKey)) {
+                                             return Promise.reject('certificate_not_for_this_pass');
+                                         }
+                                         return passRepository.updatePass(passID, {
+                                             certificate_id: certificate.certificate_id,
+                                             certificate,
+                                             status        : PASS_STATUS_ACTIVE
+                                         });
+                                     })
+                                     .then(() => this.getPiece(passID, 0))
+                                     .then(() => {
+                                         console.log(`[pass-wallet] trial pass ${passID} of broker ${brokerAddress} is active`);
+                                         this._certificateRequestSet.delete(passID);
+                                         return this.getPass(passID);
+                                     })
+                                     .catch(error => {
+                                         this._certificateRequestSet.delete(passID);
+                                         console.log(`[pass-wallet] no trial for pass ${passID}: ${error?.error || error}`);
+                                         return passRepository.updatePass(passID, {status: PASS_STATUS_FAILED})
+                                                              .catch(_ => _)
+                                                              .then(() => Promise.reject(error?.error || error));
+                                     });
+                             });
     }
 
     /**

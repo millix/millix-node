@@ -68,12 +68,19 @@ const TLS_HANDSHAKE_RECORD = 0x16;
  * the latest receipt of each certificate is sent to its broker every
  * CLOUD_BROKER_REPORT_INTERVAL, in a report signed by the node key naming
  * this wallet's address for the payout.
+ *
+ * a trial certificate is refused when its broker says its trial does not
+ * extend to this node (the broker would not pay its trial receipts). the
+ * broker's answer is kept for CLOUD_BROKER_REPORT_INTERVAL; when the broker
+ * cannot be asked the trial is accepted.
  */
 class VPNExit {
     constructor() {
-        this.server      = null;
-        this.sessionMap  = new Map();
-        this.forwardHost = null;
+        this.server         = null;
+        this.sessionMap     = new Map();
+        this.forwardHost    = null;
+        // broker address: {trial_extended, check_date}
+        this.trialStatusMap = new Map();
     }
 
     _now() {
@@ -353,7 +360,15 @@ class VPNExit {
                            // nor certificates enough hosts reported
                            return cloudNotice.isCertificateNoticed(certificate.certificate_id);
                        })
-                       .then(isNoticed => isNoticed ? Promise.reject('pass_noticed') : cloudPassRepository.addVPNCertificate(certificate))
+                       .then(isNoticed => {
+                           if (isNoticed) {
+                               return Promise.reject('pass_noticed');
+                           }
+                           // a trial certificate only where its broker
+                           // extends the trial
+                           return cloudPass.isTrialCertificate(certificate) ? this._isTrialExtended(certificate.broker_address) : true;
+                       })
+                       .then(isExtended => isExtended ? cloudPassRepository.addVPNCertificate(certificate) : Promise.reject('trial_not_extended'))
                        .then(() => cloudPassRepository.getVPNCertificate(certificate.certificate_id))
                        .then(record => {
                            const pieceIndexList = _.sortBy(_.uniq([...record.piece_index_list, piece.piece_index]));
@@ -433,6 +448,42 @@ class VPNExit {
                        }));
     }
 
+    /**
+     * the newest valid broker offer of a broker
+     */
+    _findBrokerOffer(brokerAddress) {
+        return cloudOffer.listOffers({service: 'broker'}, 'create_date desc', 1000)
+                         .then(offerList => _.find(offerList, offer => offer.broker?.address === brokerAddress && cloudOffer.verifyOffer(offer).valid))
+                         .then(offer => offer || Promise.reject('broker_offer_not_found'));
+    }
+
+    /**
+     * whether a broker's trial extends to this node, as the broker answers a
+     * request signed by the node key
+     */
+    _isTrialExtended(brokerAddress) {
+        const now    = this._now();
+        const status = this.trialStatusMap.get(brokerAddress);
+        if (status && now - status.check_date < config.CLOUD_BROKER_REPORT_INTERVAL) {
+            return Promise.resolve(status.trial_extended);
+        }
+        return this._findBrokerOffer(brokerAddress)
+                   .then(offer => requestNodeService(offer.endpoint, offer.node_id, 'POST', '/broker/trial/status',
+                       cloudPass.signNodeRequest(network.nodeID, network.nodePublicKey, now, network.nodePrivateKey)))
+                   .then(({trial_extended: isExtended}) => {
+                       isExtended = isExtended !== false;
+                       this.trialStatusMap.set(brokerAddress, {
+                           trial_extended: isExtended,
+                           check_date    : now
+                       });
+                       return isExtended;
+                   })
+                   .catch(error => {
+                       console.log(`[vpn-exit] trial status not known from broker ${brokerAddress}: ${error?.error || error}`);
+                       return true;
+                   });
+    }
+
     _getPayoutAddress() {
         const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
         return `${wallet.defaultKeyIdentifier}${addressVersion}${wallet.defaultKeyIdentifier}`;
@@ -446,31 +497,25 @@ class VPNExit {
         const cloudPassRepository = database.getRepository('cloud_pass');
         return cloudPassRepository.listUnreportedVPNCertificate()
                                   .then(recordList => Promise.all(_.map(_.groupBy(recordList, 'broker_address'), (brokerRecordList, brokerAddress) =>
-                                      cloudOffer.listOffers({service: 'broker'}, 'create_date desc', 1000)
-                                                .then(offerList => _.find(offerList, offer => offer.broker?.address === brokerAddress && cloudOffer.verifyOffer(offer).valid))
-                                                .then(offer => {
-                                                    if (!offer) {
-                                                        return Promise.reject('broker_offer_not_found');
-                                                    }
-                                                    return _.chunk(brokerRecordList, config.CLOUD_BROKER_REPORT_RECEIPT_MAX).reduce((pipeline, chunk) => pipeline.then(() => {
-                                                        const report = cloudPass.signHostReport({
-                                                            node_id        : network.nodeID,
-                                                            node_public_key: network.nodePublicKey,
-                                                            payout_address : this._getPayoutAddress(),
-                                                            report_date    : this._now(),
-                                                            receipt_list   : chunk.map(record => ({
-                                                                certificate_id: record.certificate_id,
-                                                                receipt       : record.receipt,
-                                                                signature     : record.receipt_signature
-                                                            }))
-                                                        }, network.nodePrivateKey);
-                                                        return requestNodeService(offer.endpoint, offer.node_id, 'POST', '/broker/report', {report})
-                                                            .then(({receipt_list: resultList}) => Promise.all(_.filter(resultList, result => ['accepted', 'receipt_not_newer'].includes(result.status))
-                                                                                                             .map(result => cloudPassRepository.updateVPNCertificateReported(result.certificate_id, result.sequence))));
-                                                    }), Promise.resolve());
-                                                })
-                                                .then(() => console.log(`[vpn-exit] reported ${brokerRecordList.length} receipts to broker ${brokerAddress}`))
-                                                .catch(error => console.log(`[vpn-exit] receipts not reported to broker ${brokerAddress}: ${error}`)))));
+                                      this._findBrokerOffer(brokerAddress)
+                                          .then(offer => _.chunk(brokerRecordList, config.CLOUD_BROKER_REPORT_RECEIPT_MAX).reduce((pipeline, chunk) => pipeline.then(() => {
+                                              const report = cloudPass.signHostReport({
+                                                  node_id        : network.nodeID,
+                                                  node_public_key: network.nodePublicKey,
+                                                  payout_address : this._getPayoutAddress(),
+                                                  report_date    : this._now(),
+                                                  receipt_list   : chunk.map(record => ({
+                                                      certificate_id: record.certificate_id,
+                                                      receipt       : record.receipt,
+                                                      signature     : record.receipt_signature
+                                                  }))
+                                              }, network.nodePrivateKey);
+                                              return requestNodeService(offer.endpoint, offer.node_id, 'POST', '/broker/report', {report})
+                                                  .then(({receipt_list: resultList}) => Promise.all(_.filter(resultList, result => ['accepted', 'receipt_not_newer'].includes(result.status))
+                                                                                                   .map(result => cloudPassRepository.updateVPNCertificateReported(result.certificate_id, result.sequence))));
+                                          }), Promise.resolve()))
+                                          .then(() => console.log(`[vpn-exit] reported ${brokerRecordList.length} receipts to broker ${brokerAddress}`))
+                                          .catch(error => console.log(`[vpn-exit] receipts not reported to broker ${brokerAddress}: ${error}`)))));
     }
 
     _onReceipt(state, body) {

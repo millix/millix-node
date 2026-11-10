@@ -25,6 +25,11 @@ const CERTIFICATE_KEY_LIST = [
     'certificate_id',
     'broker_signature'
 ].sort();
+// a trial certificate also carries trial: true
+const CERTIFICATE_TRIAL_KEY_LIST = [
+    ...CERTIFICATE_KEY_LIST,
+    'trial'
+].sort();
 const PIECE_KEY_LIST       = [
     'version',
     'certificate_id',
@@ -51,6 +56,18 @@ const BROKER_TERMS_KEY_LIST = [
     'pass_duration',
     'pool_rate',
     'payout_interval',
+    'signature'
+].sort();
+// the terms of a broker that offers a free trial also carry
+// trial_data_bytes
+const BROKER_TERMS_TRIAL_KEY_LIST = [
+    ...BROKER_TERMS_KEY_LIST,
+    'trial_data_bytes'
+].sort();
+const NODE_REQUEST_KEY_LIST = [
+    'node_id',
+    'node_public_key',
+    'request_date',
     'signature'
 ].sort();
 const HOST_REPORT_KEY_LIST  = [
@@ -87,6 +104,12 @@ export const GB = 1024 * 1024 * 1024;
  *
  * the broker pays each exit node for the receipted bytes at its pool rate,
  * never more than a certificate's data in total across exit nodes.
+ *
+ * a broker may offer a free trial: a certificate marked trial: true that no
+ * payment funds. its funding_transaction_id is the trial id, a hash of the
+ * holder key, so a holder key gets one trial certificate. pieces and
+ * receipts work as for a pass; the broker pays exit nodes for trial traffic
+ * from its own funds.
  */
 class CloudPass {
 
@@ -151,6 +174,32 @@ class CloudPass {
     }
 
     /**
+     * the id that takes the place of the funding transaction in the trial
+     * certificate of a holder key
+     */
+    getTrialID(holderPublicKey) {
+        return objectHash.getCHash288({trial_holder_public_key: holderPublicKey});
+    }
+
+    isTrialCertificate(certificate) {
+        return certificate?.trial === true;
+    }
+
+    /**
+     * a trial is one piece when it is smaller than a pass piece, else pieces
+     * of the pass piece size
+     */
+    getTrialPieceBytes(trialDataBytes, passPieceBytes) {
+        return Math.min(trialDataBytes, passPieceBytes);
+    }
+
+    isValidTrialSize(trialDataBytes, passPieceBytes) {
+        const pieceBytes = this.getTrialPieceBytes(trialDataBytes, passPieceBytes);
+        return this._isPositiveInteger(trialDataBytes) && this._isPositiveInteger(passPieceBytes) &&
+               trialDataBytes % pieceBytes === 0 && trialDataBytes / pieceBytes <= config.CLOUD_PASS_PIECE_COUNT_MAX;
+    }
+
+    /**
      * the broker's terms, as its broker offer carries them, signed by the
      * broker key together with the node id that serves them
      */
@@ -166,7 +215,8 @@ class CloudPass {
 
     isValidBrokerTerms(terms, nodeID) {
         return _.isPlainObject(terms) &&
-               _.isEqual(_.keys(terms).sort(), BROKER_TERMS_KEY_LIST) &&
+               (_.isEqual(_.keys(terms).sort(), BROKER_TERMS_KEY_LIST) ||
+                _.isEqual(_.keys(terms).sort(), BROKER_TERMS_TRIAL_KEY_LIST) && this.isValidTrialSize(terms.trial_data_bytes, terms.pass_piece_bytes)) &&
                this._isPublicKey(terms.public_key) &&
                this.isAddressOfPublicKey(terms.address, terms.public_key) &&
                this._isPositiveInteger(terms.pass_price) &&
@@ -218,7 +268,8 @@ class CloudPass {
      * @return {{valid: boolean, reason?: string}}
      */
     verifyCertificate(certificate, now) {
-        if (!_.isPlainObject(certificate) || !_.isEqual(_.keys(certificate).sort(), CERTIFICATE_KEY_LIST) ||
+        if (!_.isPlainObject(certificate) ||
+            !(_.isEqual(_.keys(certificate).sort(), CERTIFICATE_KEY_LIST) || _.isEqual(_.keys(certificate).sort(), CERTIFICATE_TRIAL_KEY_LIST) && certificate.trial === true) ||
             certificate.version !== CLOUD_PASS_VERSION ||
             !this._isPublicKey(certificate.broker_public_key) || !this._isPublicKey(certificate.certificate_public_key) ||
             !this._isPublicKey(certificate.holder_public_key) || typeof certificate.funding_transaction_id !== 'string' ||
@@ -377,6 +428,34 @@ class CloudPass {
         }
 
         return {valid: true};
+    }
+
+    /**
+     * an exit node's request to a broker about itself (whether the broker's
+     * trial extends to it), signed by its node key
+     */
+    signNodeRequest(nodeID, nodePublicKey, requestDate, nodePrivateKey) {
+        const body = {
+            node_id        : nodeID,
+            node_public_key: nodePublicKey,
+            request_date   : requestDate
+        };
+        return {
+            ...body,
+            signature: walletUtils.signMessage(nodePrivateKey, body)
+        };
+    }
+
+    /**
+     * @param request
+     * @param now unix time in seconds: the request must be dated within
+     * CLOUD_OFFER_CLOCK_SKEW_TOLERANCE of it
+     */
+    isValidNodeRequest(request, now) {
+        return _.isPlainObject(request) && _.isEqual(_.keys(request).sort(), NODE_REQUEST_KEY_LIST) &&
+               this._isPositiveInteger(request.request_date) && Math.abs(request.request_date - now) <= config.CLOUD_OFFER_CLOCK_SKEW_TOLERANCE &&
+               typeof request.signature === 'string' &&
+               walletUtils.isValidNodeIdentity(request.node_id, request.node_public_key, _.omit(request, ['signature']), request.signature);
     }
 }
 

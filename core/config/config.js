@@ -58,6 +58,13 @@ const const_value_default = {
     'CLOUD_BROKER_PAYOUT_AMOUNT_MIN'  : 10000,
     'CLOUD_BROKER_REPORT_INTERVAL'    : 5 * 60,
     'CLOUD_PASS_PAYMENT_WAIT_TIME_MAX': 10 * 60,
+    // a broker's free trial: a prepaid certificate of
+    // CLOUD_BROKER_TRIAL_DATA_BYTES for each holder key, without payment.
+    // the broker pays exit nodes for trial traffic at its pool rate, from
+    // its own funds. null: on for tangled's default broker (the first of
+    // CLOUD_BROKER_LIST), off for other brokers
+    'CLOUD_BROKER_TRIAL_ENABLED'      : null,
+    'CLOUD_BROKER_TRIAL_DATA_BYTES'   : 500 * 1024 * 1024,
 
     // reaching exit nodes behind routers (net/vpn/forward.js).
     // VPN_EXIT_FORWARD: auto registers with a forwarding node and keeps the
@@ -908,6 +915,8 @@ export const CLOUD_BROKER_PAYOUT_INTERVAL                      = getConstValue('
 export const CLOUD_BROKER_PAYOUT_AMOUNT_MIN                    = getConstValue('CLOUD_BROKER_PAYOUT_AMOUNT_MIN');
 export const CLOUD_BROKER_REPORT_INTERVAL                      = getConstValue('CLOUD_BROKER_REPORT_INTERVAL');
 export const CLOUD_PASS_PAYMENT_WAIT_TIME_MAX                  = getConstValue('CLOUD_PASS_PAYMENT_WAIT_TIME_MAX');
+export const CLOUD_BROKER_TRIAL_ENABLED                        = getConstValue('CLOUD_BROKER_TRIAL_ENABLED');
+export const CLOUD_BROKER_TRIAL_DATA_BYTES                     = getConstValue('CLOUD_BROKER_TRIAL_DATA_BYTES');
 // one payout transaction pays up to 126 exit nodes: 127 outputs and the fee
 export const CLOUD_BROKER_PAYOUT_OUTPUT_MAX                    = TRANSACTION_OUTPUT_MAX - 1;
 export const CLOUD_BROKER_REPORT_RECEIPT_MAX                   = 100;
@@ -1086,7 +1095,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '27';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '28';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -1181,6 +1190,8 @@ export default {
     CLOUD_BROKER_PAYOUT_AMOUNT_MIN,
     CLOUD_BROKER_REPORT_INTERVAL,
     CLOUD_PASS_PAYMENT_WAIT_TIME_MAX,
+    CLOUD_BROKER_TRIAL_ENABLED,
+    CLOUD_BROKER_TRIAL_DATA_BYTES,
     CLOUD_BROKER_PAYOUT_OUTPUT_MAX,
     CLOUD_BROKER_REPORT_RECEIPT_MAX,
     CLOUD_PASS_PIECE_COUNT_MAX,
