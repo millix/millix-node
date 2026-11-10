@@ -226,7 +226,10 @@ class CloudNotice {
                            if (version.charAt(1) !== 'a' || !(versionNumber >= 3) || !Array.isArray(noticeIDList) || !noticeIDList.includes(notice.notice_id)) {
                                return Promise.reject('notice_anchor_invalid');
                            }
-                           const anchorDate = transaction.transaction_date;
+                           // the transaction repository gives the date as a
+                           // Date
+                           const transactionDate = transaction.transaction_date;
+                           const anchorDate      = transactionDate instanceof Date ? Math.floor(transactionDate.getTime() / 1000) : transactionDate;
                            if (!Number.isInteger(anchorDate) || anchorDate < notice.create_date - config.CLOUD_OFFER_CLOCK_SKEW_TOLERANCE) {
                                return Promise.reject('notice_anchor_invalid');
                            }
@@ -283,7 +286,10 @@ class CloudNotice {
                                                                                                                       }
                                                                                                                       return now - row.create_date > NOTICE_PENDING_TIME_MAX ? cloudNoticeRepository.removeNotice(row.notice_id).then(() => newList) : newList;
                                                                                                                   })
-                                                                                                                  .catch(() => cloudNoticeRepository.removeNotice(row.notice_id).then(() => newList))), Promise.resolve([])))
+                                                                                                                  .catch(reason => {
+                                                                                                                      console.log(`[cloud-notice] notice ${row.notice_id} dropped: ${reason}`);
+                                                                                                                      return cloudNoticeRepository.removeNotice(row.notice_id).then(() => newList);
+                                                                                                                  })), Promise.resolve([])))
                                     .then(newList => {
                                         this.propagateNoticeList(newList);
                                         return cloudNoticeRepository.removeExpiredNotice(now).then(() => newList);

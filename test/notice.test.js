@@ -99,14 +99,15 @@ function domainNotice(node, domain = 'malware.example.com', options) {
 const anchorMap = new Map();
 
 /**
- * a stable anchor transaction listing the notice ids
+ * a stable anchor transaction listing the notice ids, as the transaction
+ * repository returns it (the date as a Date)
  */
 function anchor(noticeList, {transactionDate = now(), isStable = 1, version = VERSION.transaction_signed, listed = true} = {}) {
     const anchorID = noticeList[0].anchor_transaction_id;
     anchorMap.set(anchorID, {
         transaction_id              : anchorID,
         version,
-        transaction_date            : transactionDate,
+        transaction_date            : new Date(transactionDate * 1000),
         is_stable                   : isStable,
         transaction_output_attribute: {transaction_output_metadata: {cloud_notice: listed ? noticeList.map(notice => notice.notice_id) : ['x']}}
     });
@@ -206,6 +207,13 @@ describe('notice anchor', () => {
         const anchorDate = now() + 5;
         anchor([notice], {transactionDate: anchorDate});
         assert.equal(await cloudNotice.checkAnchor(notice), anchorDate);
+    });
+
+    test('an anchor dated in seconds is read the same way', async() => {
+        const notice = domainNotice(reporterList[0]);
+        anchor([notice]);
+        anchorMap.get(notice.anchor_transaction_id).transaction_date = now();
+        assert.equal(await cloudNotice.checkAnchor(notice), now());
     });
 
     test('a missing anchor is asked of the network and the notice waits', async() => {
