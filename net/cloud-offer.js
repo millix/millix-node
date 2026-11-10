@@ -401,8 +401,14 @@ class CloudOffer {
                        });
     }
 
+    /**
+     * the stored offers, without those of nodes below the minimum version
+     * for cloud features
+     */
     listOffers(where, orderBy, limit) {
-        return database.getRepository('cloud_offer').listOffers(where, orderBy, limit);
+        return database.getRepository('cloud_offer')
+                       .listOffers(where, orderBy, limit)
+                       .then(offerList => offerList.filter(offer => cloudVersion.isVersionAccepted(offer.node_version)));
     }
 
     sendOfferList(offerList, ws) {

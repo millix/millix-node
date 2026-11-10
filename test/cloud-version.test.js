@@ -61,6 +61,14 @@ function signedOffer(nodeVersion) {
 
 const restore     = [];
 const configStore = new Map();
+const configRepositoryStub = {
+    getConfig   : name => Promise.resolve(configStore.has(name) ? {
+        config_name: name,
+        value      : configStore.get(name)
+    } : undefined),
+    addConfig   : (name, value) => Promise.resolve(configStore.set(name, value)),
+    updateConfig: (name, value) => Promise.resolve(configStore.set(name, value))
+};
 
 function stubMethod(object, name, value) {
     const original = object[name];
@@ -70,16 +78,7 @@ function stubMethod(object, name, value) {
 
 before(() => {
     stubMethod(config, 'CLOUD_AUTHORITY_PUBLIC_KEY', tangled.public_key);
-    restore.push(stubRepositories({
-        config: {
-            getConfig   : name => Promise.resolve(configStore.has(name) ? {
-                config_name: name,
-                value      : configStore.get(name)
-            } : undefined),
-            addConfig   : (name, value) => Promise.resolve(configStore.set(name, value)),
-            updateConfig: (name, value) => Promise.resolve(configStore.set(name, value))
-        }
-    }));
+    restore.push(stubRepositories({config: configRepositoryStub}));
 });
 after(() => restore.reverse().forEach(fn => fn()));
 beforeEach(() => {
@@ -247,6 +246,21 @@ describe('obeying the minimum version', () => {
         }
         finally {
             vpnClient.sessionMap.delete('s');
+        }
+    });
+
+    test('stored offers of nodes below the minimum are no longer listed', async() => {
+        const restoreRepositories = stubRepositories({
+            config     : configRepositoryStub,
+            cloud_offer: {listOffers: () => Promise.resolve([signedOffer(config.NODE_MILLIX_VERSION), signedOffer('1.27.0')])}
+        });
+        try {
+            assert.equal((await cloudOffer.listOffers()).length, 2);
+            await cloudVersion.addMessage(versionMessage('1.27.0'));
+            assert.deepEqual((await cloudOffer.listOffers()).map(offer => offer.node_version), ['1.27.0']);
+        }
+        finally {
+            restoreRepositories();
         }
     });
 
