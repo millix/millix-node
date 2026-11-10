@@ -197,6 +197,9 @@ class VPNExit {
         }
 
         const now = this._now();
+        if (!escrow.isActive(now)) {
+            return Promise.reject('escrow_not_active');
+        }
         if (terms.payee_public_key !== network.nodePublicKey) {
             return Promise.reject('pass_not_for_this_node');
         }

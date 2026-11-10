@@ -696,6 +696,11 @@ class WalletUtils {
             }
         }
 
+        // no escrow transaction is valid before the escrow activation date
+        if (escrow.isEscrowTransaction(transaction.transaction_input_list, transaction.transaction_output_list) && !escrow.isActive(transactionDate)) {
+            return false;
+        }
+
 
         // genesis transaction
         if (transaction.transaction_id === genesisConfig.genesis_transaction) {

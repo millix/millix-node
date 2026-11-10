@@ -24,6 +24,7 @@ import cache from '../cache';
 import fileExchange from '../storage/file-exchange';
 import fileSync from '../storage/file-sync';
 import utils, {NodeVersion} from '../utils/utils';
+import escrow from './escrow';
 import request from 'request';
 
 export const WALLET_MODE = {
@@ -1906,8 +1907,10 @@ class Wallet {
             'proxy_connection_state_invalid',
             'proxy_time_limit_exceed'
         ];
+        // escrow transactions go only through nodes that know the escrow
+        // rules
         const minNodeVersion        = new NodeVersion(1, 22, 1);
-        return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(_.filter(network.registeredClients, ws => NodeVersion.ofNullable(NodeVersion.fromString(ws.features.version)).compareTo(minNodeVersion) >= 0), ws => ws.nodeID)))
+        return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(_.filter(network.registeredClients, ws => escrow.isNodeVersionAccepted(ws, srcInputs, dstOutputs, minNodeVersion)), ws => ws.nodeID)))
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
                                             async.eachSeries(proxyCandidates, (proxyCandidateData, callback) => {

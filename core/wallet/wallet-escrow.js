@@ -119,6 +119,9 @@ class WalletEscrow {
         if (escrow.getAddressFromPublicKey(payeePublicKey) !== payeeNodeID) {
             return Promise.reject('escrow_invalid_payee');
         }
+        if (!escrow.isActive(this._now())) {
+            return Promise.reject('escrow_not_active');
+        }
 
         let terms, escrowAddress, passPublicKey;
         try {

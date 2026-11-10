@@ -2,7 +2,7 @@ const const_value_default = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
     'NODE_MILLIX_BUILD_DATE'    : 1769118031,
-    'NODE_MILLIX_VERSION'       : '1.25.6',
+    'NODE_MILLIX_VERSION'       : '1.26.0',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
@@ -35,7 +35,9 @@ const const_value_default = {
     'VPN_ESCROW_UNLOCK_REMAINING_MIN': 60 * 60,
 
     'ESCROW_CLAIM_AMOUNT_MIN'   : 10000,
-    'ESCROW_CLAIM_BEFORE_UNLOCK': 30 * 60
+    'ESCROW_CLAIM_BEFORE_UNLOCK': 30 * 60,
+    // null: the network's default below
+    'ESCROW_ACTIVATION_DATE'    : null
 };
 
 let environment;
@@ -832,6 +834,13 @@ export const CLOUD_OFFER_BROKER_MAX                            = 16;
 export const CLOUD_OFFER_SIZE_MAX                              = 4096;
 export const CLOUD_OFFER_LIST_SIZE_MAX                         = 100;
 export const CLOUD_OFFER_PRUNE_WAIT_TIME                       = 60 * 1000;
+// escrow transactions are valid from this transaction date on. nodes from
+// ESCROW_NODE_VERSION_MIN on know the escrow rules: after activation an
+// escrow transaction is only proxied, validated and propagated through them.
+export const ESCROW_ACTIVATION_DATE_MAIN_NETWORK               = 1798761600; // 2027-01-01 00:00 utc
+export const ESCROW_ACTIVATION_DATE_TEST_NETWORK               = 1796083200; // 2026-12-01 00:00 utc
+export const ESCROW_ACTIVATION_DATE                            = getConstValue('ESCROW_ACTIVATION_DATE') ?? (MODE_TEST_NETWORK ? ESCROW_ACTIVATION_DATE_TEST_NETWORK : ESCROW_ACTIVATION_DATE_MAIN_NETWORK);
+export const ESCROW_NODE_VERSION_MIN                           = '1.26.0';
 export const ESCROW_TERMS_VERSION                              = 1;
 export const ESCROW_RECEIPT_VERSION                            = 1;
 export const ESCROW_PORTION_BYTES_MIN                          = 1024;
@@ -1047,6 +1056,8 @@ export default {
     CLOUD_OFFER_SIZE_MAX,
     CLOUD_OFFER_LIST_SIZE_MAX,
     CLOUD_OFFER_PRUNE_WAIT_TIME,
+    ESCROW_ACTIVATION_DATE,
+    ESCROW_NODE_VERSION_MIN,
     ESCROW_TERMS_VERSION,
     ESCROW_RECEIPT_VERSION,
     ESCROW_PORTION_BYTES_MIN,

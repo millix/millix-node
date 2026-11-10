@@ -14,6 +14,7 @@ import {
     newKey,
     newNonce,
     now,
+    setEscrowActivationDate,
     stubRepositories,
     VERSION,
     walletAddress
@@ -90,9 +91,15 @@ function spend({outputList, signerList, entry, version, transactionDate = startD
     });
 }
 
-let restoreRepositories;
-before(() => restoreRepositories = stubRepositories());
-after(() => restoreRepositories());
+let restoreRepositories, restoreActivationDate;
+before(() => {
+    restoreRepositories   = stubRepositories();
+    restoreActivationDate = setEscrowActivationDate(0);
+});
+after(() => {
+    restoreRepositories();
+    restoreActivationDate();
+});
 
 
 describe('escrow address', () => {

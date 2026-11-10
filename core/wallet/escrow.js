@@ -4,6 +4,7 @@ import config from '../config/config';
 import walletUtils from './wallet-utils';
 import objectHash from '../crypto/object-hash';
 import signature from '../crypto/signature';
+import {NodeVersion} from '../utils/utils';
 
 const TERMS_KEY_LIST   = [
     'version',
@@ -48,6 +49,13 @@ export const ESCROW_ACTION_CLOSE  = 'close';
  *
  * these rules run in walletUtils.isValidTransactionObject, so every node
  * applies them when it verifies a transaction.
+ *
+ * activation: a transaction that funds or spends an escrow is invalid when
+ * dated before ESCROW_ACTIVATION_DATE. nodes before ESCROW_NODE_VERSION_MIN
+ * reject the escrow address version, so up to activation every node agrees
+ * that no escrow transaction is valid. from activation on, escrow
+ * transactions are proxied, validated and propagated only through nodes
+ * whose handshake version is at least ESCROW_NODE_VERSION_MIN.
  */
 class Escrow {
 
@@ -66,6 +74,34 @@ class Escrow {
 
     isEscrowAddressVersion(addressVersion) {
         return addressVersion === config.ADDRESS_VERSION_ESCROW;
+    }
+
+    /**
+     * true if an input or an output of the transaction is an escrow address
+     */
+    isEscrowTransaction(inputList = [], outputList = []) {
+        return _.some(inputList, input => this.isEscrowAddressVersion(input.address_version)) ||
+               _.some(outputList, output => this.isEscrowAddressVersion(output.address_version));
+    }
+
+    isActive(transactionDate) {
+        return transactionDate >= config.ESCROW_ACTIVATION_DATE;
+    }
+
+    /**
+     * the lowest handshake version of a node that may proxy, validate or
+     * receive a transaction with these inputs and outputs
+     */
+    getNodeVersionMin(inputList, outputList, nodeVersionMin) {
+        return this.isEscrowTransaction(inputList, outputList) ? NodeVersion.fromString(config.ESCROW_NODE_VERSION_MIN) : nodeVersionMin;
+    }
+
+    /**
+     * true if the peer's handshake version is high enough for a transaction
+     * with these inputs and outputs
+     */
+    isNodeVersionAccepted(ws, inputList, outputList, nodeVersionMin = new NodeVersion(0, 0, 0)) {
+        return NodeVersion.ofNullable(NodeVersion.fromString(ws?.features?.version)).compareTo(this.getNodeVersionMin(inputList, outputList, nodeVersionMin)) >= 0;
     }
 
     isValidTerms(terms) {

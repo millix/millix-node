@@ -184,6 +184,17 @@ export function isValidTransaction(transaction) {
     return walletUtils.isValidTransactionObject(JSON.parse(JSON.stringify(transaction)));
 }
 
+/**
+ * sets the escrow activation date (0: escrow transactions are valid at any
+ * date)
+ * @return {function} restores the configured date
+ */
+export function setEscrowActivationDate(date) {
+    const activationDate          = config.ESCROW_ACTIVATION_DATE;
+    config.ESCROW_ACTIVATION_DATE = date;
+    return () => config.ESCROW_ACTIVATION_DATE = activationDate;
+}
+
 export function newNonce() {
     return crypto.randomBytes(16).toString('hex');
 }

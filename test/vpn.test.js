@@ -13,7 +13,7 @@ import escrow from '../core/wallet/escrow';
 import walletEscrow from '../core/wallet/wallet-escrow';
 import objectHash from '../core/crypto/object-hash';
 import signature from '../core/crypto/signature';
-import {escrowInput, newKey, newNonce, now, stubRepositories} from './helper';
+import {escrowInput, newKey, newNonce, now, setEscrowActivationDate, stubRepositories} from './helper';
 
 const exitNode = newKey();
 const pass     = newKey();
@@ -44,6 +44,7 @@ function stubMethod(object, name, value, restoreList = restore) {
 before(() => {
     stubMethod(network, 'nodeID', exitNode.address_base);
     stubMethod(network, 'nodePublicKey', exitNode.public_key);
+    restore.push(setEscrowActivationDate(0));
 });
 after(() => restore.reverse().forEach(fn => fn()));
 

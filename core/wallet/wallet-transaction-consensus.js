@@ -16,6 +16,7 @@ import cache from '../cache';
 import walletSync from './wallet-sync';
 import mutex from '../mutex';
 import {NodeVersion} from '../utils/utils';
+import escrow from './escrow';
 
 
 export class WalletTransactionConsensus {
@@ -572,11 +573,14 @@ export class WalletTransactionConsensus {
 
     }
 
-    _selectNodesForConsensusRound(numberOfNodes = config.CONSENSUS_ROUND_NODE_COUNT, excludeNodeSet = new Set()) {
+    _selectNodesForConsensusRound(numberOfNodes = config.CONSENSUS_ROUND_NODE_COUNT, excludeNodeSet = new Set(), transaction = null) {
+        // escrow transactions are validated only by nodes that know the
+        // escrow rules
         const minSupportedNodeVersion = new NodeVersion(1, 22, 1);
         return _.sampleSize(_.filter(network.registeredClients, ws => {
             const nodeVersion = NodeVersion.fromString(ws.features.version);
-            return ws.nodeConnectionReady && !excludeNodeSet.has(ws.nodeID) && nodeVersion && nodeVersion.compareTo(minSupportedNodeVersion) >= 0;
+            return ws.nodeConnectionReady && !excludeNodeSet.has(ws.nodeID) && nodeVersion && nodeVersion.compareTo(minSupportedNodeVersion) >= 0 &&
+                   (!transaction || escrow.isNodeVersionAccepted(ws, transaction.transaction_input_list, transaction.transaction_output_list));
         }), numberOfNodes);
     }
 
@@ -660,7 +664,7 @@ export class WalletTransactionConsensus {
                     for (let i = 0; i < consensusData.consensus_round_count + 1; i++) {
                         consensusNodeIDList = consensusNodeIDList.concat(_.keys(consensusData.consensus_round_response[i]));
                     }
-                    const [selectedWS] = this._selectNodesForConsensusRound(1, new Set(consensusNodeIDList));
+                    const [selectedWS] = this._selectNodesForConsensusRound(1, new Set(consensusNodeIDList), transaction);
 
                     if (!selectedWS) {
                         console.log('[wallet-transaction-consensus-validation] no node ready for this consensus round');
