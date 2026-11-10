@@ -10,6 +10,7 @@ import ntp from '../core/ntp';
 import task from '../core/task';
 import console from '../core/console';
 import vpnExit from './vpn/vpn-exit';
+import cloudVersion from './cloud-version';
 
 export const CLOUD_OFFER_VERSION = 1;
 
@@ -17,6 +18,7 @@ const OFFER_KEY_LIST    = [
     'version',
     'node_id',
     'node_public_key',
+    'node_version',
     'service',
     'location',
     'upload_speed_kbps',
@@ -117,6 +119,15 @@ class CloudOffer {
             return {
                 valid : false,
                 reason: 'offer_invalid_format'
+            };
+        }
+
+        // offers from nodes below the minimum version for cloud features
+        // do not count
+        if (!cloudVersion.isVersionAccepted(offer.node_version)) {
+            return {
+                valid : false,
+                reason: 'offer_node_version_not_accepted'
             };
         }
 
@@ -237,6 +248,9 @@ class CloudOffer {
         if (!network.initialized || !network.nodePrivateKey) {
             return Promise.reject('network_not_initialized');
         }
+        if (!cloudVersion.isCloudEnabled()) {
+            return Promise.reject('cloud_version_not_accepted');
+        }
         if (service === 'vpn_exit' && !vpnExit.isRunning()) {
             return Promise.reject('vpn_exit_not_running');
         }
@@ -261,6 +275,7 @@ class CloudOffer {
                                            version          : CLOUD_OFFER_VERSION,
                                            node_id          : network.nodeID,
                                            node_public_key  : network.nodePublicKey,
+                                           node_version     : config.NODE_MILLIX_VERSION,
                                            service,
                                            location         : _.omitBy({
                                                country: location.country,

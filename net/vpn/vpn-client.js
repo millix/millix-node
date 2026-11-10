@@ -12,6 +12,8 @@ import objectHash from '../../core/crypto/object-hash';
 import signature from '../../core/crypto/signature';
 import ntp from '../../core/ntp';
 import console from '../../core/console';
+import eventBus from '../../core/event-bus';
+import cloudVersion from '../cloud-version';
 
 const {
           HTTP2_HEADER_METHOD,
@@ -222,6 +224,9 @@ class VPNClient {
      * @param unlockAfter seconds until the payer can take back what is unused
      */
     openSession(offerID, portionCount, unlockAfter) {
+        if (!cloudVersion.isCloudEnabled()) {
+            return Promise.reject('cloud_version_not_accepted');
+        }
         return database.getRepository('cloud_offer')
                        .getOfferByID(offerID)
                        .then(offer => {
@@ -337,6 +342,20 @@ class VPNClient {
 
     listSession() {
         return _.map([...this.sessionMap.keys()], sessionID => this.getSession(sessionID));
+    }
+
+    _onCloudVersionUpdate({cloud_enabled: isCloudEnabled}) {
+        if (!isCloudEnabled) {
+            [...this.sessionMap.values()].forEach(state => this._onSessionClosed(state, 'cloud_version_not_accepted'));
+        }
+    }
+
+    initialize() {
+        if (!this._cloudVersionListener) {
+            this._cloudVersionListener = this._onCloudVersionUpdate.bind(this);
+            eventBus.on('cloud_version_min_update', this._cloudVersionListener);
+        }
+        return Promise.resolve();
     }
 
     stop() {

@@ -37,7 +37,12 @@ const const_value_default = {
     'ESCROW_CLAIM_AMOUNT_MIN'   : 10000,
     'ESCROW_CLAIM_BEFORE_UNLOCK': 30 * 60,
     // null: the network's default below
-    'ESCROW_ACTIVATION_DATE'    : null
+    'ESCROW_ACTIVATION_DATE'    : null,
+
+    // the public key of tangled's key that signs the minimum version for
+    // cloud features (net/cloud-version.js). null: the network's default
+    // below
+    'CLOUD_AUTHORITY_PUBLIC_KEY': null
 };
 
 let environment;
@@ -828,6 +833,14 @@ export const CLOUD_OFFER_SERVICE_LIST                          = [
     'vpn_exit',
     'storage_host'
 ];
+// tangled's public key for the minimum version message. to be filled in by
+// tangled before release: while it is null no message is accepted and the
+// minimum stays CLOUD_NODE_VERSION_MIN.
+export const CLOUD_AUTHORITY_PUBLIC_KEY_MAIN_NETWORK           = null;
+export const CLOUD_AUTHORITY_PUBLIC_KEY_TEST_NETWORK           = null;
+export const CLOUD_AUTHORITY_PUBLIC_KEY                        = getConstValue('CLOUD_AUTHORITY_PUBLIC_KEY') ?? (MODE_TEST_NETWORK ? CLOUD_AUTHORITY_PUBLIC_KEY_TEST_NETWORK : CLOUD_AUTHORITY_PUBLIC_KEY_MAIN_NETWORK);
+// the minimum version for cloud features until a signed message raises it
+export const CLOUD_NODE_VERSION_MIN                            = '1.26.0';
 export const CLOUD_OFFER_DURATION_MAX                          = 7 * 24 * 60 * 60;
 export const CLOUD_OFFER_CLOCK_SKEW_TOLERANCE                  = 60;
 export const CLOUD_OFFER_BROKER_MAX                            = 16;
@@ -1049,6 +1062,8 @@ export default {
     CONSENSUS_VALIDATION_PARALLEL_REQUEST_MAX,
     CONSENSUS_VALIDATION_INPUT_TRANSACTION_RESET,
     NODE_CONNECTION_PUBLIC_PERCENT,
+    CLOUD_AUTHORITY_PUBLIC_KEY,
+    CLOUD_NODE_VERSION_MIN,
     CLOUD_OFFER_SERVICE_LIST,
     CLOUD_OFFER_DURATION_MAX,
     CLOUD_OFFER_CLOCK_SKEW_TOLERANCE,

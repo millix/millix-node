@@ -29,6 +29,7 @@ function offerBody(overrides = {}) {
         version          : CLOUD_OFFER_VERSION,
         node_id          : node.address_base,
         node_public_key  : node.public_key,
+        node_version     : config.NODE_MILLIX_VERSION,
         service          : 'storage_host',
         location         : {
             country: 'US',

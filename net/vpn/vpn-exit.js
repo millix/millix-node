@@ -11,6 +11,8 @@ import objectHash from '../../core/crypto/object-hash';
 import signature from '../../core/crypto/signature';
 import {resolvePublicAddress} from './address-filter';
 import ntp from '../../core/ntp';
+import eventBus from '../../core/event-bus';
+import cloudVersion from '../cloud-version';
 import console from '../../core/console';
 
 const {
@@ -396,8 +398,26 @@ class VPNExit {
         return !!this.server;
     }
 
+    _onCloudVersionUpdate({cloud_enabled: isCloudEnabled}) {
+        if (!isCloudEnabled && this.server) {
+            console.log('[vpn-exit] this node version is below the minimum for cloud features: stopping the exit node');
+            this.stop();
+        }
+        else if (isCloudEnabled && !this.server) {
+            this.initialize().catch(_ => _);
+        }
+    }
+
     initialize() {
+        if (!this._cloudVersionListener) {
+            this._cloudVersionListener = this._onCloudVersionUpdate.bind(this);
+            eventBus.on('cloud_version_min_update', this._cloudVersionListener);
+        }
         if (!config.MODE_VPN_EXIT || this.server) {
+            return Promise.resolve();
+        }
+        if (!cloudVersion.isCloudEnabled()) {
+            console.log(`[vpn-exit] not started: this node version is below the minimum for cloud features (${cloudVersion.getVersionMin()})`);
             return Promise.resolve();
         }
         if (!network.certificatePem) {
