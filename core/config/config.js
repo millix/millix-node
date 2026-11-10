@@ -68,7 +68,15 @@ const const_value_default = {
     'MODE_CLOUD_FORWARD'         : false,
     'VPN_EXIT_FORWARD'           : 'auto',
     'CLOUD_FORWARD_NODE_ID'      : null,
-    'CLOUD_FORWARD_RETRY_WAIT_TIME': 30
+    'CLOUD_FORWARD_RETRY_WAIT_TIME': 30,
+
+    // notices between nodes (net/cloud-notice.js): each node's own
+    // threshold of reporting nodes, how long a node must have been a host
+    // for its notices to count, and whether the exit node reports patterns
+    // it sees by itself (each report costs an anchor transaction fee)
+    'CLOUD_NOTICE_THRESHOLD'   : 3,
+    'CLOUD_NOTICE_HOST_AGE_MIN': 7 * 24 * 60 * 60,
+    'CLOUD_NOTICE_AUTO'        : true
 };
 
 let environment;
@@ -913,6 +921,34 @@ export const CLOUD_FORWARD_HOST_MAX                            = 256;
 export const CLOUD_FORWARD_PENDING_MAX                         = 16;
 export const CLOUD_FORWARD_WAIT_TIME_MAX                       = 10 * 1000;
 export const CLOUD_PUNCH_TIME_MAX                              = 3 * 1000;
+export const CLOUD_NOTICE_THRESHOLD                            = getConstValue('CLOUD_NOTICE_THRESHOLD');
+export const CLOUD_NOTICE_HOST_AGE_MIN                         = getConstValue('CLOUD_NOTICE_HOST_AGE_MIN');
+export const CLOUD_NOTICE_AUTO                                 = getConstValue('CLOUD_NOTICE_AUTO');
+export const CLOUD_NOTICE_DURATION_MAX                         = 30 * 24 * 60 * 60;
+export const CLOUD_NOTICE_PATTERN_LIST                         = [
+    'unreceipted_gap',
+    'private_address_probe',
+    'abuse_complaint'
+];
+export const CLOUD_NOTICE_NUMBER_KEY_LIST                      = [
+    'bytes_sent',
+    'bytes_receipted',
+    'refused_count',
+    'tunnel_count',
+    'duration'
+];
+export const CLOUD_NOTICE_THREAT_LIST                          = [
+    'malware',
+    'phishing',
+    'botnet',
+    'spam',
+    'abuse'
+];
+export const CLOUD_NOTICE_PRIVATE_PROBE_MIN                    = 20;
+export const CLOUD_NOTICE_ANCHOR_AMOUNT                        = 1;
+export const CLOUD_NOTICE_SIZE_MAX                             = 8192;
+export const CLOUD_NOTICE_LIST_SIZE_MAX                        = 100;
+export const CLOUD_NOTICE_TASK_WAIT_TIME                       = 60 * 1000;
 export const ESCROW_RECEIPT_VERSION                            = 1;
 export const ESCROW_PORTION_BYTES_MIN                          = 1024;
 export const ESCROW_UNLOCK_DURATION_MAX                        = 30 * 24 * 60 * 60;
@@ -1050,7 +1086,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '26';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '27';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -1157,6 +1193,18 @@ export default {
     CLOUD_FORWARD_PENDING_MAX,
     CLOUD_FORWARD_WAIT_TIME_MAX,
     CLOUD_PUNCH_TIME_MAX,
+    CLOUD_NOTICE_THRESHOLD,
+    CLOUD_NOTICE_HOST_AGE_MIN,
+    CLOUD_NOTICE_AUTO,
+    CLOUD_NOTICE_DURATION_MAX,
+    CLOUD_NOTICE_PATTERN_LIST,
+    CLOUD_NOTICE_NUMBER_KEY_LIST,
+    CLOUD_NOTICE_THREAT_LIST,
+    CLOUD_NOTICE_PRIVATE_PROBE_MIN,
+    CLOUD_NOTICE_ANCHOR_AMOUNT,
+    CLOUD_NOTICE_SIZE_MAX,
+    CLOUD_NOTICE_LIST_SIZE_MAX,
+    CLOUD_NOTICE_TASK_WAIT_TIME,
     ESCROW_RECEIPT_VERSION,
     ESCROW_PORTION_BYTES_MIN,
     ESCROW_UNLOCK_DURATION_MAX,

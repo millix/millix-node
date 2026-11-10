@@ -3,6 +3,9 @@
 // walletUtils.signTransaction. nothing here opens a database or a socket.
 import _ from 'lodash';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import sqlite3 from 'sqlite3';
 import base58 from 'bs58';
 import config from '../core/config/config';
 import database from '../database/database';
@@ -193,6 +196,20 @@ export function setEscrowActivationDate(date) {
     const activationDate          = config.ESCROW_ACTIVATION_DATE;
     config.ESCROW_ACTIVATION_DATE = date;
     return () => config.ESCROW_ACTIVATION_DATE = activationDate;
+}
+
+/**
+ * an in-memory database with the tables of migrations 26 (broker) and 27
+ * (notices), for the real cloud_broker, cloud_pass and cloud_notice
+ * repositories
+ */
+export function openCloudDatabase() {
+    const tableSQL = [26, 27].map(version => {
+        const migration = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'migration', `schema-update-${version}.sql`), 'utf8');
+        return migration.substring(migration.indexOf('BEGIN TRANSACTION;') + 'BEGIN TRANSACTION;'.length, migration.indexOf('UPDATE schema_information'));
+    }).join('\n');
+    const database = new sqlite3.Database(':memory:');
+    return new Promise((resolve, reject) => database.exec(tableSQL, err => err ? reject(err) : resolve(database)));
 }
 
 export function newNonce() {

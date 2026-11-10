@@ -4,7 +4,6 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import https from 'https';
-import sqlite3 from 'sqlite3';
 import config from '../core/config/config';
 import network from '../net/network';
 import wallet from '../core/wallet/wallet';
@@ -18,7 +17,8 @@ import vpnClient from '../net/vpn/vpn-client';
 import * as nodeRequest from '../net/broker/node-request';
 import CloudBrokerRepository from '../database/repositories/cloud-broker';
 import CloudPassRepository from '../database/repositories/cloud-pass';
-import {fullAddress, newKey, now, stubRepositories, VERSION} from './helper';
+import CloudNoticeRepository from '../database/repositories/cloud-notice';
+import {fullAddress, newKey, now, openCloudDatabase, stubRepositories, VERSION} from './helper';
 
 const brokerKey  = newKey();
 const brokerNode = newKey();
@@ -42,16 +42,6 @@ function stubMethod(object, name, value, restoreList = restore) {
         writable    : true
     });
     restoreList.push(() => descriptor ? Object.defineProperty(object, name, descriptor) : delete object[name]);
-}
-
-/**
- * the broker tables of migration 26 in an in-memory database
- */
-function openDatabase() {
-    const migration = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'migration', 'schema-update-26.sql'), 'utf8');
-    const tableSQL  = migration.substring(migration.indexOf('BEGIN TRANSACTION;') + 'BEGIN TRANSACTION;'.length, migration.indexOf('UPDATE schema_information'));
-    const database  = new sqlite3.Database(':memory:');
-    return new Promise((resolve, reject) => database.exec(tableSQL, err => err ? reject(err) : resolve(database)));
 }
 
 function certificateBody(overrides = {}, certificateKey = newKey()) {
@@ -105,12 +95,13 @@ let brokerRepository, passRepository;
 const paymentMap = new Map();
 
 before(async() => {
-    const database   = await openDatabase();
+    const database   = await openCloudDatabase();
     brokerRepository = new CloudBrokerRepository(database);
     passRepository   = new CloudPassRepository(database);
     restore.push(stubRepositories({
         cloud_broker: brokerRepository,
         cloud_pass  : passRepository,
+        cloud_notice: new CloudNoticeRepository(database),
         transaction : {
             getTransactionObject : transactionID => paymentMap.has(transactionID) ? Promise.resolve(paymentMap.get(transactionID).transaction) : Promise.reject('transaction_not_found'),
             listTransactionOutput: where => Promise.resolve((paymentMap.get(where['transaction_output.transaction_id'])?.output_list || [])

@@ -5,6 +5,7 @@ import peer from '../../net/peer';
 import peerRotation from '../../net/peer-rotation';
 import cloudOffer from '../../net/cloud-offer';
 import cloudVersion from '../../net/cloud-version';
+import cloudNotice from '../../net/cloud-notice';
 import vpnExit from '../../net/vpn/vpn-exit';
 import vpnClient from '../../net/vpn/vpn-client';
 import walletEscrow from '../wallet/wallet-escrow';
@@ -53,6 +54,7 @@ class Service {
                          .then(() => peerRotation.initialize())
                          .then(() => cloudVersion.initialize())
                          .then(() => cloudOffer.initialize())
+                         .then(() => cloudNotice.initialize())
                          .then(() => walletEscrow.initialize())
                          .then(() => forwardServer.initialize())
                          .then(() => vpnExit.initialize())
@@ -86,6 +88,7 @@ class Service {
         peerRotation.stop();
         cloudVersion.stop();
         cloudOffer.stop();
+        cloudNotice.stop();
         vpnClient.stop();
         vpnExit.stop();
         broker.stop();

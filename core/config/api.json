@@ -863,6 +863,24 @@
       "version_released": "1.26.0",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "xQyBbnPQM4uKvTXX",
+      "name": "publish_cloud_notice",
+      "description": "signs a user or domain notice with the node key, anchors it with a transaction of this wallet and sends it to all peers once the anchor is stable",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "Dhcd4P0T5CFFhnzY",
+      "name": "list_cloud_notice",
+      "description": "returns the notices this node holds and, for a subject, how many reporting nodes count against this node's threshold",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": false}",
+      "enable": true
     }
   ]
 }

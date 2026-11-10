@@ -365,6 +365,30 @@ CREATE TABLE cloud_vpn_certificate
 );
 CREATE INDEX idx_cloud_vpn_certificate_reported ON cloud_vpn_certificate (receipt_sequence, reported_sequence);
 
+CREATE TABLE cloud_notice
+(
+    notice_id             CHAR(50)    NOT NULL PRIMARY KEY CHECK (length(notice_id) <= 50),
+    notice_type           CHAR(6)     NOT NULL CHECK (notice_type IN ('user', 'domain')),
+    node_id               CHAR(34)    NOT NULL CHECK (length(node_id) <= 34),
+    subject               CHAR(300)   NOT NULL CHECK (length(subject) <= 300),
+    notice                TEXT        NOT NULL,
+    anchor_transaction_id CHAR(50)    NOT NULL CHECK (length(anchor_transaction_id) <= 50),
+    anchor_date           INT         NULL CHECK (anchor_date IS NULL OR (length(anchor_date) <= 10 AND TYPEOF(anchor_date) = 'integer')),
+    status                TINYINT     NOT NULL DEFAULT 0 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
+    end_date              INT         NOT NULL CHECK (length(end_date) <= 10 AND TYPEOF(end_date) = 'integer'),
+    create_date           INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+);
+CREATE INDEX idx_cloud_notice_subject ON cloud_notice (subject, status);
+CREATE INDEX idx_cloud_notice_status ON cloud_notice (status);
+CREATE INDEX idx_cloud_notice_end_date ON cloud_notice (end_date);
+
+CREATE TABLE cloud_host
+(
+    node_id          CHAR(34)    NOT NULL PRIMARY KEY CHECK (length(node_id) <= 34),
+    first_offer_date INT         NOT NULL CHECK (length(first_offer_date) <= 10 AND TYPEOF(first_offer_date) = 'integer'),
+    last_offer_date  INT         NOT NULL CHECK (length(last_offer_date) <= 10 AND TYPEOF(last_offer_date) = 'integer')
+);
+
 -- to be optimized SELECT DISTINCT transactions.*, inputs.address as input_address, outputs.address as output_address, outputs.amount as amount FROM transactions LEFT JOIN outputs on outputs.transaction_id = transactions.transaction_id LEFT JOIN inputs on inputs.transaction_id = transactions.transaction_id WHERE (outputs.address in ( '', '', '') OR inputs.address in ( '', '') AND input_address != output_address
 
 CREATE TABLE config
@@ -463,7 +487,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "26");
+INSERT INTO schema_information (key, value) VALUES ("version", "27");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),

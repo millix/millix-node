@@ -8,7 +8,7 @@ import wallet from '../core/wallet/wallet';
 import console from '../core/console';
 import path from 'path';
 import async from 'async';
-import {Address, API, CloudBroker, CloudOffer, CloudPass, Config, Escrow, Job, Keychain, Node, Normalization, Schema, Shard as ShardRepository, Wallet} from './repositories/repositories';
+import {Address, API, CloudBroker, CloudNotice, CloudOffer, CloudPass, Config, Escrow, Job, Keychain, Node, Normalization, Schema, Shard as ShardRepository, Wallet} from './repositories/repositories';
 import Shard from './shard';
 import _ from 'lodash';
 import eventBus from '../core/event-bus';
@@ -282,6 +282,7 @@ export class Database {
         this.repositories['escrow']        = new Escrow(this.databaseMillix);
         this.repositories['cloud_broker']  = new CloudBroker(this.databaseMillix);
         this.repositories['cloud_pass']    = new CloudPass(this.databaseMillix);
+        this.repositories['cloud_notice']  = new CloudNotice(this.databaseMillix);
 
         // initialize shard 0 (root)
         const dbShard            = new Shard();

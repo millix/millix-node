@@ -14,6 +14,7 @@ import cloudVersion from './cloud-version';
 import broker from './broker/broker';
 import cloudPass from './broker/cloud-pass';
 import {forwardServer} from './vpn/forward';
+import cloudNotice from './cloud-notice';
 
 export const CLOUD_OFFER_VERSION = 1;
 
@@ -378,6 +379,7 @@ class CloudOffer {
                                                                           return Promise.reject('offer_not_stored');
                                                                       }
                                                                       console.log(`[cloud-offer] published offer ${offer.offer_id} for service ${service}`);
+                                                                      cloudNotice.recordHost(offer).catch(_ => _);
                                                                       this.propagateOfferList([offer]);
                                                                       return offer;
                                                                   });
@@ -469,6 +471,9 @@ class CloudOffer {
                                                                           if (stored) {
                                                                               console.log(`[cloud-offer] new offer ${offer.offer_id} from node ${offer.node_id} for service ${offer.service} received from node ${ws.nodeID}`);
                                                                               newOfferList.push(offer);
+                                                                              // how long a node has been a host
+                                                                              // counts for its notices
+                                                                              return cloudNotice.recordHost(offer);
                                                                           }
                                                                       });
                                        })

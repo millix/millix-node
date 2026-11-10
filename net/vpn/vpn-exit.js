@@ -19,6 +19,7 @@ import cloudPass from '../broker/cloud-pass';
 import {requestNodeService} from '../broker/node-request';
 import task from '../../core/task';
 import {ForwardHost} from './forward';
+import cloudNotice from '../cloud-notice';
 import console from '../../core/console';
 
 const {
@@ -125,6 +126,14 @@ class VPNExit {
         state.closed       = true;
         state.close_reason = reason;
         console.log(`[vpn-exit] session ${state.session_id} closed: ${reason}. sent ${state.bytes_sent} bytes, receipted ${state.receipt_total_bytes}`);
+        if (reason === 'unreceipted_gap' && state.pass_type === 'certificate') {
+            // a notice for other exit nodes, with a receipt as proof that
+            // this node carried the certificate
+            cloudNotice.autoNotice(state.certificate, 'unreceipted_gap', {
+                bytes_sent     : state.bytes_sent,
+                bytes_receipted: state.receipt_total_bytes
+            }, state.receipt, state.receipt_signature);
+        }
         this.sessionMap.delete(state.session_id);
         try {
             state.session.close();
@@ -341,8 +350,10 @@ class VPNExit {
                            })) {
                                return Promise.reject('broker_not_accepted');
                            }
-                           return cloudPassRepository.addVPNCertificate(certificate);
+                           // nor certificates enough hosts reported
+                           return cloudNotice.isCertificateNoticed(certificate.certificate_id);
                        })
+                       .then(isNoticed => isNoticed ? Promise.reject('pass_noticed') : cloudPassRepository.addVPNCertificate(certificate))
                        .then(() => cloudPassRepository.getVPNCertificate(certificate.certificate_id))
                        .then(record => {
                            const pieceIndexList = _.sortBy(_.uniq([...record.piece_index_list, piece.piece_index]));
@@ -413,6 +424,7 @@ class VPNExit {
         state.receipt_total_bytes = receipt.total_bytes;
         state.receipt_sequence    = receipt.sequence;
         state.receipt             = receipt;
+        state.receipt_signature   = body.signature;
         return database.getRepository('cloud_pass')
                        .updateVPNCertificateReceipt(state.certificate.certificate_id, receipt, body.signature)
                        .then(() => ({
@@ -513,7 +525,9 @@ class VPNExit {
             return this._respond(stream, 403, {error: 'https_only'});
         }
 
-        resolvePublicAddress(host)
+        cloudNotice.isDomainNoticed(host)
+            .catch(() => false)
+            .then(isNoticed => isNoticed ? Promise.reject('domain_noticed') : resolvePublicAddress(host))
             .then(({address}) => {
                 if (state.closed || stream.destroyed) {
                     return;
@@ -562,6 +576,15 @@ class VPNExit {
             .catch(error => {
                 console.log(`[vpn-exit] session ${state.session_id} refused ${host}:${port}: ${error}`);
                 this._respond(stream, 403, {error});
+                if (error === 'private_address') {
+                    state.private_refused_count = (state.private_refused_count || 0) + 1;
+                    if (state.private_refused_count === config.CLOUD_NOTICE_PRIVATE_PROBE_MIN && state.pass_type === 'certificate') {
+                        cloudNotice.autoNotice(state.certificate, 'private_address_probe', {
+                            refused_count: state.private_refused_count,
+                            duration     : this._now() - state.connect_date
+                        }, state.receipt, state.receipt_signature);
+                    }
+                }
             });
     }
 
