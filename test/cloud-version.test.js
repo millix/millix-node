@@ -11,6 +11,8 @@ import cloudVersion from '../net/cloud-version';
 import cloudOffer, {CLOUD_OFFER_VERSION} from '../net/cloud-offer';
 import vpnExit from '../net/vpn/vpn-exit';
 import vpnClient from '../net/vpn/vpn-client';
+import brokerService from '../net/broker/broker';
+import {forwardServer} from '../net/vpn/forward';
 import walletUtils from '../core/wallet/wallet-utils';
 import objectHash from '../core/crypto/object-hash';
 import {fullAddress, newKey, now, stubRepositories} from './helper';
@@ -212,6 +214,21 @@ describe('obeying the minimum version', () => {
         finally {
             config.MODE_VPN_EXIT = modeVPNExit;
             vpnExit.server       = null;
+        }
+    });
+
+    test('the broker and the forwarding node stop when the minimum rises above this node', () => {
+        for (const service of [brokerService, forwardServer]) {
+            let stopped    = false;
+            service.server = {close: () => stopped = true};
+            try {
+                service._onCloudVersionUpdate({cloud_enabled: false});
+                assert.equal(stopped, true);
+                assert.equal(service.isRunning(), false);
+            }
+            finally {
+                service.server = null;
+            }
         }
     });
 

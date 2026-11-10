@@ -434,7 +434,21 @@ class ForwardServer {
         }));
     }
 
+    _onCloudVersionUpdate({cloud_enabled: isCloudEnabled}) {
+        if (!isCloudEnabled && this.server) {
+            console.log('[forward] this node version is below the minimum for cloud features: stopping the forwarding node');
+            this.stop();
+        }
+        else if (isCloudEnabled && !this.server) {
+            this.initialize().catch(_ => _);
+        }
+    }
+
     initialize() {
+        if (!this._cloudVersionListener) {
+            this._cloudVersionListener = this._onCloudVersionUpdate.bind(this);
+            eventBus.on('cloud_version_min_update', this._cloudVersionListener);
+        }
         if (!config.MODE_CLOUD_FORWARD || this.server) {
             return Promise.resolve();
         }
