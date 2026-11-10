@@ -201,7 +201,9 @@ export function setEscrowActivationDate(date) {
 /**
  * an in-memory database with the tables of migrations 26 (broker) and 27
  * (notices), for the real cloud_broker, cloud_pass and cloud_notice
- * repositories
+ * repositories. it answers like the node's database pool
+ * (database/pool/pool.js): callbacks get (err, data) and no statement
+ * context, so a run does not tell how many rows it changed.
  */
 export function openCloudDatabase() {
     const tableSQL = [26, 27].map(version => {
@@ -209,7 +211,9 @@ export function openCloudDatabase() {
         return migration.substring(migration.indexOf('BEGIN TRANSACTION;') + 'BEGIN TRANSACTION;'.length, migration.indexOf('UPDATE schema_information'));
     }).join('\n');
     const database = new sqlite3.Database(':memory:');
-    return new Promise((resolve, reject) => database.exec(tableSQL, err => err ? reject(err) : resolve(database)));
+    const pool     = {};
+    ['run', 'get', 'all'].forEach(type => pool[type] = (sql, parameters, callback) => database[type](sql, parameters, (err, data) => callback.call(undefined, err, type === 'run' ? undefined : data)));
+    return new Promise((resolve, reject) => database.exec(tableSQL, err => err ? reject(err) : resolve(pool)));
 }
 
 export function newNonce() {

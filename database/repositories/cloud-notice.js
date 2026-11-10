@@ -11,12 +11,7 @@ export default class CloudNotice {
 
     _run(sql, parameters) {
         return new Promise((resolve, reject) => {
-            this.database.run(sql, parameters, function(err) {
-                if (err) {
-                    return reject(err.message || err);
-                }
-                resolve(this.changes);
-            });
+            this.database.run(sql, parameters, err => err ? reject(err.message || err) : resolve());
         });
     }
 
@@ -42,6 +37,11 @@ export default class CloudNotice {
      * @return {Promise<boolean>} true if the notice was new
      */
     addNotice(notice, subject) {
+        return this.getNotice(notice.notice_id)
+                   .then(stored => stored ? false : this._insertNotice(notice, subject).then(() => true));
+    }
+
+    _insertNotice(notice, subject) {
         return this._run('INSERT OR IGNORE INTO cloud_notice (notice_id, notice_type, node_id, subject, notice, anchor_transaction_id, end_date) VALUES (?,?,?,?,?,?,?)', [
             notice.notice_id,
             notice.notice_type,
@@ -50,7 +50,7 @@ export default class CloudNotice {
             JSON.stringify(notice),
             notice.anchor_transaction_id,
             notice.end_date
-        ]).then(changes => changes > 0);
+        ]);
     }
 
     getNotice(noticeID) {

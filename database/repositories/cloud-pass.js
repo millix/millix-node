@@ -12,12 +12,7 @@ export default class CloudPass {
 
     _run(sql, parameters) {
         return new Promise((resolve, reject) => {
-            this.database.run(sql, parameters, function(err) {
-                if (err) {
-                    return reject(err.message || err);
-                }
-                resolve(this.changes);
-            });
+            this.database.run(sql, parameters, err => err ? reject(err.message || err) : resolve());
         });
     }
 
@@ -119,7 +114,7 @@ export default class CloudPass {
             receipt.sequence,
             certificateID,
             receipt.sequence
-        ]).then(changes => changes > 0);
+        ]);
     }
 
     listUnreportedVPNCertificate() {

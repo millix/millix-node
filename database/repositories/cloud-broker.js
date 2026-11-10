@@ -12,12 +12,7 @@ export default class CloudBroker {
 
     _run(sql, parameters) {
         return new Promise((resolve, reject) => {
-            this.database.run(sql, parameters, function(err) {
-                if (err) {
-                    return reject(err.message || err);
-                }
-                resolve(this.changes);
-            });
+            this.database.run(sql, parameters, err => err ? reject(err.message || err) : resolve());
         });
     }
 
@@ -87,6 +82,16 @@ export default class CloudBroker {
      * @return {Promise<boolean>}
      */
     upsertReceipt(certificateID, nodeID, receipt, receiptSignature, now) {
+        return this.getReceipt(certificateID, nodeID)
+                   .then(stored => {
+                       if (stored && (stored.sequence >= receipt.sequence || stored.total_bytes > receipt.total_bytes)) {
+                           return false;
+                       }
+                       return this._upsertReceipt(certificateID, nodeID, receipt, receiptSignature, now).then(() => true);
+                   });
+    }
+
+    _upsertReceipt(certificateID, nodeID, receipt, receiptSignature, now) {
         return this._run(`INSERT INTO cloud_broker_receipt (certificate_id, node_id, piece_index, total_bytes, sequence, receipt, receipt_signature, first_receipt_date, update_date)
                           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
                           ON CONFLICT (certificate_id, node_id) DO UPDATE SET piece_index = ?3, total_bytes = ?4, sequence = ?5, receipt = ?6, receipt_signature = ?7, update_date = ?8
@@ -99,7 +104,7 @@ export default class CloudBroker {
             JSON.stringify(receipt),
             receiptSignature,
             now
-        ]).then(changes => changes > 0);
+        ]);
     }
 
     /**
