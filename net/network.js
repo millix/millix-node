@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
 import walletUtils from '../core/wallet/wallet-utils';
+import escrow from '../core/wallet/escrow';
 import objectHash from '../core/crypto/object-hash';
 import wallet from '../core/wallet/wallet';
 import https from 'https';
@@ -599,6 +600,13 @@ class Network {
         }
         else if (!!registry.node_network_test !== config.MODE_TEST_NETWORK) {
             console.log('[network] closing connection from main network');
+            ws.terminate();
+            return;
+        }
+        else if (!escrow.isNodeVersionAccepted(ws)) {
+            // from the escrow activation on, older nodes cannot follow the
+            // ledger
+            console.log(`[network] closing connection from node ${ws.nodeID} of version ${ws.features.version}: below ${config.ESCROW_NODE_VERSION_MIN} after the escrow activation`);
             ws.terminate();
             return;
         }

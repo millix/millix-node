@@ -5,6 +5,7 @@ import walletUtils from './wallet-utils';
 import objectHash from '../crypto/object-hash';
 import signature from '../crypto/signature';
 import {NodeVersion} from '../utils/utils';
+import ntp from '../ntp';
 
 const TERMS_KEY_LIST   = [
     'version',
@@ -53,9 +54,12 @@ export const ESCROW_ACTION_CLOSE  = 'close';
  * activation: a transaction that funds or spends an escrow is invalid when
  * dated before ESCROW_ACTIVATION_DATE. nodes before ESCROW_NODE_VERSION_MIN
  * reject the escrow address version, so up to activation every node agrees
- * that no escrow transaction is valid. from activation on, escrow
- * transactions are proxied, validated and propagated only through nodes
- * whose handshake version is at least ESCROW_NODE_VERSION_MIN.
+ * that no escrow transaction is valid, and nothing changes for older nodes.
+ * from activation on, older nodes cannot follow escrow spends: an output an
+ * escrow transaction spent still looks unspent to them. so from then on
+ * nodes refuse older nodes everything: no transaction is proxied, validated
+ * or propagated through them, and their connections are closed at the
+ * handshake (isNodeVersionAccepted).
  */
 class Escrow {
 
@@ -88,19 +92,24 @@ class Escrow {
         return transactionDate >= config.ESCROW_ACTIVATION_DATE;
     }
 
+    _now() {
+        return Math.floor(ntp.now().getTime() / 1000);
+    }
+
     /**
      * the lowest handshake version of a node that may proxy, validate or
-     * receive a transaction with these inputs and outputs
+     * receive a transaction with these inputs and outputs: from activation
+     * on, ESCROW_NODE_VERSION_MIN for every transaction
      */
     getNodeVersionMin(inputList, outputList, nodeVersionMin) {
-        return this.isEscrowTransaction(inputList, outputList) ? NodeVersion.fromString(config.ESCROW_NODE_VERSION_MIN) : nodeVersionMin;
+        return this.isActive(this._now()) || this.isEscrowTransaction(inputList, outputList) ? NodeVersion.fromString(config.ESCROW_NODE_VERSION_MIN) : nodeVersionMin;
     }
 
     /**
      * true if the peer's handshake version is high enough for a transaction
-     * with these inputs and outputs
+     * with these inputs and outputs (or, without them, for any transaction)
      */
-    isNodeVersionAccepted(ws, inputList, outputList, nodeVersionMin = new NodeVersion(0, 0, 0)) {
+    isNodeVersionAccepted(ws, inputList = [], outputList = [], nodeVersionMin = new NodeVersion(0, 0, 0)) {
         return NodeVersion.ofNullable(NodeVersion.fromString(ws?.features?.version)).compareTo(this.getNodeVersionMin(inputList, outputList, nodeVersionMin)) >= 0;
     }
 

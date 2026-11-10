@@ -147,80 +147,133 @@ describe('escrow activation (transaction rules)', () => {
     });
 });
 
-describe('escrow activation (handshake version)', () => {
-    test(`escrow transactions need a node from ${config.ESCROW_NODE_VERSION_MIN}`, () => {
-        assert.equal(escrow.isNodeVersionAccepted(oldNode, [], [escrowOutput]), false);
-        assert.equal(escrow.isNodeVersionAccepted(unknownNode, [], [escrowOutput]), false);
-        assert.equal(escrow.isNodeVersionAccepted(newNode, [], [escrowOutput]), true);
-        assert.equal(escrow.isNodeVersionAccepted(nextNode, [escrowInput(escrowAddress, 1)], []), true);
+function normalTransaction() {
+    const key = newKey();
+    return buildTransaction({
+        inputList : [escrowInput(walletAddress(key), 2000)],
+        outputList: [{...walletAddress(payerWallet), amount: 1000}],
+        signerList: [key],
+        version   : VERSION.transaction
     });
+}
+
+function proxyCandidateList(inputList, outputList) {
+    let candidateList;
+    const restoreRepositories = stubRepositories({
+        transaction: {
+            getPeersAsProxyCandidate: nodeIDList => {
+                candidateList = nodeIDList;
+                return Promise.resolve([]);
+            }
+        }
+    });
+    return wallet.proxyTransaction(inputList, outputList, {amount: 1000}, {}, {}, VERSION.transaction)
+                 .catch(_ => _)
+                 .then(() => {
+                     restoreRepositories();
+                     return new Set(candidateList);
+                 });
+}
+
+describe('before the escrow activation nothing changes for older nodes', () => {
+    let restoreDate;
+    before(() => restoreDate = setEscrowActivationDate(now() + 3600));
+    after(() => restoreDate());
 
     test('other transactions accept any version', () => {
         const output = {...walletAddress(payerWallet), amount: 1};
         assert.equal(escrow.isNodeVersionAccepted(oldNode, [], [output]), true);
         assert.equal(escrow.isNodeVersionAccepted(unknownNode, [], [output]), true);
+        assert.equal(escrow.isNodeVersionAccepted(oldNode), true);
     });
 
-    test('consensus rounds pick only new nodes to validate an escrow transaction', () => {
-        const transaction = funding(now());
-        for (let i = 0; i < 20; i++) {
-            const selected = walletTransactionConsensus._selectNodesForConsensusRound(4, new Set(), transaction);
-            assert.deepEqual(new Set(selected), new Set([newNode, nextNode]));
-        }
-    });
-
-    test('consensus rounds for other transactions keep old nodes', () => {
-        const key         = newKey();
-        const transaction = buildTransaction({
-            inputList : [escrowInput(walletAddress(key), 2000)],
-            outputList: [{...walletAddress(payerWallet), amount: 1000}],
-            signerList: [key],
-            version   : VERSION.transaction
-        });
-        const selected    = walletTransactionConsensus._selectNodesForConsensusRound(4, new Set(), transaction);
+    test('consensus rounds keep old nodes', () => {
+        const selected = walletTransactionConsensus._selectNodesForConsensusRound(4, new Set(), normalTransaction());
         // nodes that sent no version are left out as before
         assert.deepEqual(new Set(selected), new Set([oldNode, newNode, nextNode]));
     });
 
-    test('an escrow transaction is propagated only to new nodes', () => {
+    test('transactions are propagated to every node', () => {
         [oldNode, newNode, nextNode, unknownNode].forEach(ws => ws.sent = []);
-        peer.transactionSend(funding(now()));
-        assert.deepEqual([oldNode, newNode, nextNode, unknownNode].map(ws => ws.sent.length), [0, 1, 1, 0]);
-        peer.transactionSendToNode(funding(now()), oldNode);
-        assert.equal(oldNode.sent.length, 0);
-    });
-
-    test('other transactions are propagated to every node', () => {
-        [oldNode, newNode, nextNode, unknownNode].forEach(ws => ws.sent = []);
-        const key = newKey();
-        peer.transactionSend(buildTransaction({
-            inputList : [escrowInput(walletAddress(key), 2000)],
-            outputList: [{...walletAddress(payerWallet), amount: 1000}],
-            signerList: [key],
-            version   : VERSION.transaction
-        }));
+        peer.transactionSend(normalTransaction());
         assert.deepEqual([oldNode, newNode, nextNode, unknownNode].map(ws => ws.sent.length), [1, 1, 1, 1]);
     });
 
-    test('an escrow transaction is proxied only through new nodes', async() => {
-        let candidateList;
-        const restoreRepositories = stubRepositories({
-            transaction: {
-                getPeersAsProxyCandidate: nodeIDList => {
-                    candidateList = nodeIDList;
-                    return Promise.resolve([]);
-                }
+    test('transactions are proxied through old nodes too', async() => {
+        assert.deepEqual(await proxyCandidateList([escrowInput(walletAddress(payerWallet), 201000)], [{...walletAddress(payee), amount: 200000}]),
+            new Set([oldNode.nodeID, newNode.nodeID, nextNode.nodeID]));
+    });
+
+    test('escrow transactions would still need new nodes (they are invalid before activation anyway)', () => {
+        assert.equal(escrow.isNodeVersionAccepted(oldNode, [], [escrowOutput]), false);
+    });
+});
+
+describe('from the escrow activation on older nodes are refused everything', () => {
+    test(`every transaction needs a node from ${config.ESCROW_NODE_VERSION_MIN}`, () => {
+        const output = {...walletAddress(payerWallet), amount: 1};
+        assert.equal(escrow.isNodeVersionAccepted(oldNode, [], [escrowOutput]), false);
+        assert.equal(escrow.isNodeVersionAccepted(oldNode, [], [output]), false);
+        assert.equal(escrow.isNodeVersionAccepted(unknownNode), false);
+        assert.equal(escrow.isNodeVersionAccepted(newNode, [], [output]), true);
+        assert.equal(escrow.isNodeVersionAccepted(nextNode, [escrowInput(escrowAddress, 1)], []), true);
+    });
+
+    test('consensus rounds pick only new nodes, for escrow and other transactions', () => {
+        for (const transaction of [funding(now()), normalTransaction()]) {
+            for (let i = 0; i < 10; i++) {
+                assert.deepEqual(new Set(walletTransactionConsensus._selectNodesForConsensusRound(4, new Set(), transaction)), new Set([newNode, nextNode]));
             }
-        });
+        }
+    });
+
+    test('transactions are propagated only to new nodes', () => {
+        for (const transaction of [funding(now()), normalTransaction()]) {
+            [oldNode, newNode, nextNode, unknownNode].forEach(ws => ws.sent = []);
+            peer.transactionSend(transaction);
+            assert.deepEqual([oldNode, newNode, nextNode, unknownNode].map(ws => ws.sent.length), [0, 1, 1, 0]);
+            peer.transactionSendToNode(transaction, oldNode);
+            assert.equal(oldNode.sent.length, 0);
+        }
+    });
+
+    test('transactions are proxied only through new nodes', async() => {
+        assert.deepEqual(await proxyCandidateList([escrowInput(walletAddress(payerWallet), 201000)], [escrowOutput]), new Set([newNode.nodeID, nextNode.nodeID]));
+        assert.deepEqual(await proxyCandidateList([escrowInput(walletAddress(payerWallet), 201000)], [{...walletAddress(payee), amount: 200000}]), new Set([newNode.nodeID, nextNode.nodeID]));
+    });
+
+    test('a node below the version is disconnected at the handshake, a new node is registered', () => {
+        const registeredList = [];
+        const register       = network._registerWebsocketToNodeID;
+        network._registerWebsocketToNodeID = ws => {
+            registeredList.push(ws);
+            return false;
+        };
         try {
-            await wallet.proxyTransaction([escrowInput(walletAddress(payerWallet), 201000)], [escrowOutput], {amount: 1000}, {}, {}, VERSION.transaction).catch(_ => _);
-            assert.deepEqual(new Set(candidateList), new Set([newNode.nodeID, nextNode.nodeID]));
-            await wallet.proxyTransaction([escrowInput(walletAddress(payerWallet), 201000)], [{...walletAddress(payee), amount: 200000}], {amount: 1000}, {}, {}, VERSION.transaction).catch(_ => _);
-            assert.deepEqual(new Set(candidateList), new Set([oldNode.nodeID, newNode.nodeID, nextNode.nodeID]));
+            const handshake = version => {
+                const ws = {
+                    terminated: false,
+                    terminate() {
+                        this.terminated = true;
+                    }
+                };
+                network._onNodeHandshake({
+                    node_id          : newKey().address_base,
+                    connection_id    : 'connection',
+                    node_network_test: config.MODE_TEST_NETWORK,
+                    node_feature_set : {version}
+                }, ws);
+                return ws;
+            };
+            const old  = handshake('1.25.6');
+            assert.equal(old.terminated, true);
+            assert.equal(registeredList.includes(old), false);
+            const next = handshake(config.ESCROW_NODE_VERSION_MIN);
+            assert.equal(next.terminated, false);
+            assert.equal(registeredList.includes(next), true);
         }
         finally {
-            restoreRepositories();
-            restore.push(stubRepositories());
+            network._registerWebsocketToNodeID = register;
         }
     });
 });
