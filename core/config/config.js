@@ -57,7 +57,18 @@ const const_value_default = {
     'CLOUD_BROKER_PAYOUT_INTERVAL'    : 60 * 60,
     'CLOUD_BROKER_PAYOUT_AMOUNT_MIN'  : 10000,
     'CLOUD_BROKER_REPORT_INTERVAL'    : 5 * 60,
-    'CLOUD_PASS_PAYMENT_WAIT_TIME_MAX': 10 * 60
+    'CLOUD_PASS_PAYMENT_WAIT_TIME_MAX': 10 * 60,
+
+    // reaching exit nodes behind routers (net/vpn/forward.js).
+    // VPN_EXIT_FORWARD: auto registers with a forwarding node and keeps the
+    // registration when the forwarding node cannot reach the exit node's
+    // port; always uses forwarding without opening a port; never only
+    // listens. CLOUD_FORWARD_NODE_ID picks the forwarding node (null: the
+    // newest vpn_forward offer).
+    'MODE_CLOUD_FORWARD'         : false,
+    'VPN_EXIT_FORWARD'           : 'auto',
+    'CLOUD_FORWARD_NODE_ID'      : null,
+    'CLOUD_FORWARD_RETRY_WAIT_TIME': 30
 };
 
 let environment;
@@ -107,6 +118,9 @@ export const NODE_PORT_VPN                                     = MODE_TEST_NETWO
 export const NODE_PORT_BROKER_MAIN_NETWORK                     = 10006;
 export const NODE_PORT_BROKER_TEST_NETWORK                     = 30006;
 export const NODE_PORT_BROKER                                  = MODE_TEST_NETWORK ? NODE_PORT_BROKER_TEST_NETWORK : NODE_PORT_BROKER_MAIN_NETWORK;
+export const NODE_PORT_FORWARD_MAIN_NETWORK                    = 10007;
+export const NODE_PORT_FORWARD_TEST_NETWORK                    = 30007;
+export const NODE_PORT_FORWARD                                 = MODE_TEST_NETWORK ? NODE_PORT_FORWARD_TEST_NETWORK : NODE_PORT_FORWARD_MAIN_NETWORK;
 export const NODE_HOST                                         = 'localhost';
 export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
@@ -850,7 +864,8 @@ export const NODE_CONNECTION_PUBLIC_PERCENT                    = 0.2;
 export const CLOUD_OFFER_SERVICE_LIST                          = [
     'vpn_exit',
     'storage_host',
-    'broker'
+    'broker',
+    'vpn_forward'
 ];
 // tangled's public key for the minimum version message. to be filled in by
 // tangled before release: while it is null no message is accepted and the
@@ -890,6 +905,14 @@ export const CLOUD_BROKER_PAYOUT_OUTPUT_MAX                    = TRANSACTION_OUT
 export const CLOUD_BROKER_REPORT_RECEIPT_MAX                   = 100;
 export const CLOUD_PASS_PIECE_COUNT_MAX                        = 1000;
 export const CLOUD_PASS_DURATION_MAX                           = 31 * 24 * 60 * 60;
+export const MODE_CLOUD_FORWARD                                = getConstValue('MODE_CLOUD_FORWARD');
+export const VPN_EXIT_FORWARD                                  = getConstValue('VPN_EXIT_FORWARD');
+export const CLOUD_FORWARD_NODE_ID                             = getConstValue('CLOUD_FORWARD_NODE_ID');
+export const CLOUD_FORWARD_RETRY_WAIT_TIME                     = getConstValue('CLOUD_FORWARD_RETRY_WAIT_TIME');
+export const CLOUD_FORWARD_HOST_MAX                            = 256;
+export const CLOUD_FORWARD_PENDING_MAX                         = 16;
+export const CLOUD_FORWARD_WAIT_TIME_MAX                       = 10 * 1000;
+export const CLOUD_PUNCH_TIME_MAX                              = 3 * 1000;
 export const ESCROW_RECEIPT_VERSION                            = 1;
 export const ESCROW_PORTION_BYTES_MIN                          = 1024;
 export const ESCROW_UNLOCK_DURATION_MAX                        = 30 * 24 * 60 * 60;
@@ -1073,6 +1096,7 @@ export default {
     NODE_PORT_API,
     NODE_PORT_VPN,
     NODE_PORT_BROKER,
+    NODE_PORT_FORWARD,
     NODE_CERTIFICATE_KEY_PATH,
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
@@ -1125,6 +1149,14 @@ export default {
     CLOUD_BROKER_REPORT_RECEIPT_MAX,
     CLOUD_PASS_PIECE_COUNT_MAX,
     CLOUD_PASS_DURATION_MAX,
+    MODE_CLOUD_FORWARD,
+    VPN_EXIT_FORWARD,
+    CLOUD_FORWARD_NODE_ID,
+    CLOUD_FORWARD_RETRY_WAIT_TIME,
+    CLOUD_FORWARD_HOST_MAX,
+    CLOUD_FORWARD_PENDING_MAX,
+    CLOUD_FORWARD_WAIT_TIME_MAX,
+    CLOUD_PUNCH_TIME_MAX,
     ESCROW_RECEIPT_VERSION,
     ESCROW_PORTION_BYTES_MIN,
     ESCROW_UNLOCK_DURATION_MAX,

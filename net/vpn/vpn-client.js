@@ -16,6 +16,8 @@ import eventBus from '../../core/event-bus';
 import cloudVersion from '../cloud-version';
 import cloudPass, {CLOUD_PASS_VERSION} from '../broker/cloud-pass';
 import passWallet from '../broker/pass-wallet';
+import tls from 'tls';
+import {connectBySimultaneousOpen, connectThroughForward} from './forward';
 
 const {
           HTTP2_HEADER_METHOD,
@@ -82,18 +84,60 @@ class VPNClient {
         });
     }
 
+    /**
+     * connects to the exit node of an offer: directly, or, for an exit node
+     * behind a router, by simultaneous connect through its forwarding node
+     * and else through the forwarding node itself
+     * @return {Promise<{session, route}>}
+     */
     _connect(offer) {
+        const forward = offer.endpoint.forward;
+        if (!forward) {
+            return this._connectSession(offer).then(session => ({
+                session,
+                route: 'direct'
+            }));
+        }
+        return connectBySimultaneousOpen(forward, offer.node_id)
+            .then(socket => this._connectSession(offer, socket).then(session => ({
+                session,
+                route: 'punch'
+            })))
+            .catch(error => {
+                console.log(`[vpn-client] simultaneous connect to exit node ${offer.node_id} failed (${error}): connecting through forwarding node ${forward.node_id}`);
+                return connectThroughForward(forward, offer.node_id)
+                    .then(socket => this._connectSession(offer, socket))
+                    .then(session => ({
+                        session,
+                        route: 'forward'
+                    }));
+            });
+    }
+
+    /**
+     * the http/2 session with the exit node, over socket when given (a
+     * punched or forwarded connection) or a new connection
+     */
+    _connectSession(offer, socket) {
         return new Promise((resolve, reject) => {
             const {
                       node_address: address,
                       service_port: port
                   }       = offer.endpoint;
-            const session = http2.connect(`https://${address}:${port}`, {
+            const tlsOptions = {
                 // the exit node is identified by the node id its certificate
                 // carries, checked below, not by a certificate authority
                 rejectUnauthorized : false,
                 checkServerIdentity: () => undefined
-            });
+            };
+            const session = http2.connect(`https://${address}:${port}`, socket ? {
+                ...tlsOptions,
+                createConnection: () => tls.connect({
+                    ...tlsOptions,
+                    socket,
+                    ALPNProtocols: ['h2']
+                })
+            } : tlsOptions);
             session.on('error', error => reject(error.message || error));
             session.on('connect', (_, socket) => {
                 let nodeID;
@@ -345,8 +389,9 @@ class VPNClient {
     _startSession(state, offer) {
         this.sessionMap.set(state.session_id, state);
         return this._connect(offer)
-                   .then(session => {
+                   .then(({session, route}) => {
                        state.session = session;
+                       state.route   = route;
                        session.on('close', () => this._onSessionClosed(state, 'connection_closed'));
                        return this._authenticate(state);
                    })
@@ -450,6 +495,7 @@ class VPNClient {
             ..._.pick(state, [
                 'session_id',
                 'pass_type',
+                'route',
                 'pass_id',
                 'offer_id',
                 'node_id',

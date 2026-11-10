@@ -18,6 +18,7 @@ import cloudOffer from '../cloud-offer';
 import cloudPass from '../broker/cloud-pass';
 import {requestNodeService} from '../broker/node-request';
 import task from '../../core/task';
+import {ForwardHost} from './forward';
 import console from '../../core/console';
 
 const {
@@ -69,8 +70,9 @@ const TLS_HANDSHAKE_RECORD = 0x16;
  */
 class VPNExit {
     constructor() {
-        this.server     = null;
-        this.sessionMap = new Map();
+        this.server      = null;
+        this.sessionMap  = new Map();
+        this.forwardHost = null;
     }
 
     _now() {
@@ -587,6 +589,93 @@ class VPNExit {
         return !!this.server;
     }
 
+    /**
+     * a connection that reached this exit node through its forwarding node
+     * or by simultaneous connect, served as if the client had connected
+     * directly
+     */
+    acceptConnection(socket, route) {
+        if (!this.server) {
+            return socket.destroy();
+        }
+        socket.vpnRoute = route;
+        this.server.emit('connection', socket);
+    }
+
+    /**
+     * the forwarding node in this exit node's offer: set when clients
+     * cannot reach this node directly
+     */
+    getForwardEndpoint() {
+        const forwardHost = this.forwardHost;
+        if (!forwardHost || !forwardHost.registered || forwardHost.reachable) {
+            return null;
+        }
+        return forwardHost.forward_endpoint;
+    }
+
+    _findForwardEndpoint() {
+        return cloudOffer.listOffers({service: 'vpn_forward'}, 'create_date desc', 1000)
+                         .then(offerList => _.find(offerList, offer => offer.node_id !== network.nodeID &&
+                                                                     (!config.CLOUD_FORWARD_NODE_ID || offer.node_id === config.CLOUD_FORWARD_NODE_ID) &&
+                                                                     cloudOffer.verifyOffer(offer).valid))
+                         .then(offer => offer ? {
+                             node_id     : offer.node_id,
+                             node_address: offer.endpoint.node_address,
+                             service_port: offer.endpoint.service_port
+                         } : Promise.reject('forward_offer_not_found'));
+    }
+
+    /**
+     * registers with a forwarding node. in auto mode the registration is kept
+     * only when the forwarding node cannot reach this node's port.
+     */
+    _startForward() {
+        if (!this.server || config.VPN_EXIT_FORWARD === 'never' || this.forwardHost) {
+            return Promise.resolve();
+        }
+        const retry = () => {
+            if (this.server && !this._forwardRetryTimer) {
+                this._forwardRetryTimer = setTimeout(() => {
+                    this._forwardRetryTimer = null;
+                    this._startForward();
+                }, config.CLOUD_FORWARD_RETRY_WAIT_TIME * 1000);
+            }
+        };
+        return this._findForwardEndpoint()
+                   .then(forwardEndpoint => {
+                       const forwardHost = new ForwardHost(forwardEndpoint, config.NODE_PORT_VPN, (socket, route) => this.acceptConnection(socket, route));
+                       this.forwardHost  = forwardHost;
+                       return forwardHost.register()
+                                         .then(({reachable}) => {
+                                             if (reachable && config.VPN_EXIT_FORWARD === 'auto') {
+                                                 console.log(`[vpn-exit] forwarding node ${forwardEndpoint.node_id} reaches this exit node directly: no forwarding needed`);
+                                                 forwardHost.stop();
+                                                 return;
+                                             }
+                                             forwardHost.reachable = false;
+                                             console.log(`[vpn-exit] clients reach this exit node through forwarding node ${forwardEndpoint.node_id}`);
+                                             eventBus.emit('vpn_exit_forward_update', this.getForwardEndpoint());
+                                             eventBus.once('cloud_forward_host_closed', closedHost => {
+                                                 if (closedHost === forwardHost && this.forwardHost === forwardHost && !forwardHost.stopped) {
+                                                     console.log(`[vpn-exit] forwarding node ${forwardEndpoint.node_id} closed the registration`);
+                                                     this.forwardHost = null;
+                                                     eventBus.emit('vpn_exit_forward_update', null);
+                                                     retry();
+                                                 }
+                                             });
+                                         })
+                                         .catch(error => {
+                                             this.forwardHost = null;
+                                             return Promise.reject(error);
+                                         });
+                   })
+                   .catch(error => {
+                       console.log(`[vpn-exit] no forwarding node: ${error}`);
+                       retry();
+                   });
+    }
+
     _onCloudVersionUpdate({cloud_enabled: isCloudEnabled}) {
         if (!isCloudEnabled && this.server) {
             console.log('[vpn-exit] this node version is below the minimum for cloud features: stopping the exit node');
@@ -623,19 +712,39 @@ class VPNExit {
             this.server.on('session', session => this._onSession(session));
             this.server.on('stream', (stream, headers) => this._onStream(stream, headers));
             this.server.on('error', error => console.log(`[vpn-exit] server error: ${error.message}`));
+            const onReady = () => {
+                task.scheduleTask('vpn_exit_receipt_report', this.reportReceipts.bind(this), config.CLOUD_BROKER_REPORT_INTERVAL * 1000, true);
+                this._startForward();
+                resolve();
+            };
+            if (config.VPN_EXIT_FORWARD === 'always') {
+                // no open port: every client comes through the forwarding
+                // node
+                console.log('[vpn-exit] exit node reached only through a forwarding node');
+                return onReady();
+            }
             this.server.listen(config.NODE_PORT_VPN, config.NODE_BIND_IP, () => {
                 console.log(`[vpn-exit] exit node listening on port ${config.NODE_PORT_VPN}`);
-                task.scheduleTask('vpn_exit_receipt_report', this.reportReceipts.bind(this), config.CLOUD_BROKER_REPORT_INTERVAL * 1000, true);
-                resolve();
+                onReady();
             });
         });
     }
 
     stop() {
         task.removeTask('vpn_exit_receipt_report');
+        clearTimeout(this._forwardRetryTimer);
+        this._forwardRetryTimer = null;
+        if (this.forwardHost) {
+            this.forwardHost.stop();
+            this.forwardHost = null;
+        }
         if (this.server) {
             [...this.sessionMap.values()].forEach(state => this._closeSession(state, 'node_stop'));
-            this.server.close();
+            try {
+                this.server.close();
+            }
+            catch (e) {
+            }
             this.server = null;
         }
     }

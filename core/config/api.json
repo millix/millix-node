@@ -854,6 +854,15 @@
       "version_released": "1.26.0",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "XplGSKUo0zHeCIxp",
+      "name": "list_cloud_forward_host",
+      "description": "returns how this node's exit node is reached (directly or through a forwarding node) and, on a forwarding node, the hosts registered with it and the bytes relayed",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
     }
   ]
 }

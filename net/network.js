@@ -1034,6 +1034,18 @@ class Network {
               privatePort: config.NODE_PORT_STORAGE_RECEIVER,
               protocol   : 'TCP',
               description: 'millix storage receiver'
+          }).catch(_ => _))
+          .then(() => config.MODE_VPN_EXIT && config.VPN_EXIT_FORWARD !== 'always' && portMapper({
+              publicPort : config.NODE_PORT_VPN,
+              privatePort: config.NODE_PORT_VPN,
+              protocol   : 'TCP',
+              description: 'tangled cloud vpn exit'
+          }).catch(_ => _))
+          .then(() => config.MODE_CLOUD_FORWARD && portMapper({
+              publicPort : config.NODE_PORT_FORWARD,
+              privatePort: config.NODE_PORT_FORWARD,
+              protocol   : 'TCP',
+              description: 'tangled cloud forwarding'
           }).catch(_ => _));
     }
 

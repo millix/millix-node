@@ -76,6 +76,18 @@ if (argv.cloudBroker === 'true') {
     config.MODE_CLOUD_BROKER = true;
 }
 
+if (argv.forwardPort) {
+    config.NODE_PORT_FORWARD = argv.forwardPort;
+}
+
+if (argv.cloudForward === 'true') {
+    config.MODE_CLOUD_FORWARD = true;
+}
+
+if (['auto', 'always', 'never'].includes(argv.vpnExitForward)) {
+    config.VPN_EXIT_FORWARD = argv.vpnExitForward;
+}
+
 if (argv.host) {
     config.NODE_HOST = argv.host;
 }

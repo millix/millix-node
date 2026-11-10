@@ -10,6 +10,7 @@ import vpnClient from '../../net/vpn/vpn-client';
 import walletEscrow from '../wallet/wallet-escrow';
 import broker from '../../net/broker/broker';
 import passWallet from '../../net/broker/pass-wallet';
+import {forwardServer} from '../../net/vpn/forward';
 import jobEngine from '../../job/job-engine';
 import console from '../console';
 import logManager from '../log-manager';
@@ -53,6 +54,7 @@ class Service {
                          .then(() => cloudVersion.initialize())
                          .then(() => cloudOffer.initialize())
                          .then(() => walletEscrow.initialize())
+                         .then(() => forwardServer.initialize())
                          .then(() => vpnExit.initialize())
                          .then(() => vpnClient.initialize())
                          .then(() => broker.initialize())
@@ -87,6 +89,7 @@ class Service {
         vpnClient.stop();
         vpnExit.stop();
         broker.stop();
+        forwardServer.stop();
         walletEscrow.stop();
         logManager.stop();
         jobEngine.stop();

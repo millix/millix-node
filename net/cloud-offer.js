@@ -13,6 +13,7 @@ import vpnExit from './vpn/vpn-exit';
 import cloudVersion from './cloud-version';
 import broker from './broker/broker';
 import cloudPass from './broker/cloud-pass';
+import {forwardServer} from './vpn/forward';
 
 export const CLOUD_OFFER_VERSION = 1;
 
@@ -45,8 +46,13 @@ const ENDPOINT_KEY_LIST          = [
     'node_port_api'
 ].sort();
 // optional: service_port, the port of the service itself (required for
-// vpn_exit and broker)
-const ENDPOINT_OPTIONAL_KEY_LIST = ['service_port'];
+// vpn_exit, broker and vpn_forward); forward, the forwarding node
+// {node_id, node_address, service_port} of a host that cannot be reached
+// directly
+const ENDPOINT_OPTIONAL_KEY_LIST = [
+    'service_port',
+    'forward'
+];
 
 
 /**
@@ -97,6 +103,15 @@ class CloudOffer {
         catch (e) {
             return false;
         }
+    }
+
+    _isValidForward(forward, nodeID) {
+        return _.isPlainObject(forward) && _.isEqual(_.keys(forward).sort(), [
+                'node_address',
+                'node_id',
+                'service_port'
+            ]) && walletUtils.isValidAddress(forward.node_id) && forward.node_id !== nodeID &&
+               this._isNonEmptyString(forward.node_address, 255) && this._isPositiveInteger(forward.service_port);
     }
 
     /**
@@ -166,7 +181,8 @@ class CloudOffer {
             !this._isNonEmptyString(endpoint.node_prefix, 10) || !this._isNonEmptyString(endpoint.node_address, 255) ||
             !this._isPositiveInteger(endpoint.node_port) || !this._isPositiveInteger(endpoint.node_port_api) ||
             (endpoint.service_port !== undefined && !this._isPositiveInteger(endpoint.service_port)) ||
-            (['vpn_exit', 'broker'].includes(offer.service) && endpoint.service_port === undefined)) {
+            (['vpn_exit', 'broker', 'vpn_forward'].includes(offer.service) && endpoint.service_port === undefined) ||
+            (endpoint.forward !== undefined && !this._isValidForward(endpoint.forward, offer.node_id))) {
             return {
                 valid : false,
                 reason: 'offer_invalid_endpoint'
@@ -273,6 +289,9 @@ class CloudOffer {
         if (service === 'broker' && !broker.isRunning()) {
             return Promise.reject('broker_not_running');
         }
+        if (service === 'vpn_forward' && !forwardServer.isRunning()) {
+            return Promise.reject('forward_not_running');
+        }
 
         const cloudOfferRepository = database.getRepository('cloud_offer');
         return cloudOfferRepository.getOffer(network.nodeID, service)
@@ -308,10 +327,20 @@ class CloudOffer {
                                        };
                                        if (service === 'vpn_exit') {
                                            endpoint.service_port = config.NODE_PORT_VPN;
+                                           // behind a router: clients reach
+                                           // this node through its
+                                           // forwarding node
+                                           const forward         = vpnExit.getForwardEndpoint();
+                                           if (forward) {
+                                               endpoint.forward = forward;
+                                           }
                                            body.escrow           = {
                                                portion_bytes : config.VPN_ESCROW_PORTION_BYTES,
                                                portion_amount: config.VPN_ESCROW_PORTION_AMOUNT
                                            };
+                                       }
+                                       else if (service === 'vpn_forward') {
+                                           endpoint.service_port = config.NODE_PORT_FORWARD;
                                        }
                                        else if (service === 'broker') {
                                            endpoint.service_port = config.NODE_PORT_BROKER;
@@ -353,6 +382,21 @@ class CloudOffer {
                                                                       return offer;
                                                                   });
                                    });
+    }
+
+    /**
+     * publishes this node's offer for a service again with the same terms,
+     * for example when the way to reach the node changed
+     */
+    republishOffer(service) {
+        return database.getRepository('cloud_offer')
+                       .getOffer(network.nodeID, service)
+                       .then(offer => {
+                           if (!offer || offer.end_date <= this._now()) {
+                               return null;
+                           }
+                           return this.publishOffer(service, offer.location, offer.upload_speed_kbps, offer.broker_list, offer.end_date);
+                       });
     }
 
     listOffers(where, orderBy, limit) {
@@ -452,12 +496,16 @@ class CloudOffer {
         this._newPeerConnectionListener = this._onNewPeerConnection.bind(this);
         eventBus.on('cloud_offer_list', this._onOfferList.bind(this));
         eventBus.on('peer_connection_new', this._newPeerConnectionListener);
+        eventBus.on('vpn_exit_forward_update', () => this.republishOffer('vpn_exit')
+                                                         .then(offer => offer && console.log(`[cloud-offer] vpn_exit offer published again: ${offer.endpoint.forward ? `through forwarding node ${offer.endpoint.forward.node_id}` : 'direct'}`))
+                                                         .catch(error => console.log(`[cloud-offer] vpn_exit offer not published again: ${error}`)));
         task.scheduleTask('cloud_offer_prune', this._pruneExpiredOffers.bind(this), config.CLOUD_OFFER_PRUNE_WAIT_TIME, true);
         return Promise.resolve();
     }
 
     stop() {
         eventBus.removeAllListeners('cloud_offer_list');
+        eventBus.removeAllListeners('vpn_exit_forward_update');
         if (this._newPeerConnectionListener) {
             eventBus.removeListener('peer_connection_new', this._newPeerConnectionListener);
             this._newPeerConnectionListener = null;
