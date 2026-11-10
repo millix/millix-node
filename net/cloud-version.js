@@ -1,8 +1,9 @@
 import _ from 'lodash';
+import fs from 'fs';
+import path from 'path';
 import network from './network';
 import eventBus from '../core/event-bus';
 import config from '../core/config/config';
-import database from '../database/database';
 import objectHash from '../core/crypto/object-hash';
 import signature from '../core/crypto/signature';
 import {NodeVersion} from '../core/utils/utils';
@@ -18,8 +19,9 @@ const MESSAGE_KEY_LIST = [
     'create_date',
     'signature'
 ].sort();
-// the stored message, in the config table
-const CONFIG_NAME      = 'CLOUD_VERSION_MIN_MESSAGE';
+// the stored message, in the data folder (the config table is rewritten
+// from the code at every start)
+const MESSAGE_FILE_NAME = 'cloud_version_min.json';
 
 
 /**
@@ -45,6 +47,10 @@ class CloudVersion {
 
     _getNetworkName() {
         return config.MODE_TEST_NETWORK ? 'test' : 'main';
+    }
+
+    _getMessagePath() {
+        return path.join(config.DATABASE_CONNECTION.FOLDER, MESSAGE_FILE_NAME);
     }
 
     getMessageBody(message) {
@@ -172,11 +178,10 @@ class CloudVersion {
             cloud_enabled: this.isCloudEnabled()
         });
 
-        const configRepository = database.getRepository('config');
-        const value            = JSON.stringify(message);
-        return configRepository.getConfig(CONFIG_NAME)
-                               .then(row => row ? configRepository.updateConfig(CONFIG_NAME, value, 'object') : configRepository.addConfig(CONFIG_NAME, value, 'object'))
-                               .then(() => true);
+        const messagePath = this._getMessagePath();
+        return fs.promises.writeFile(`${messagePath}.tmp`, JSON.stringify(message))
+                 .then(() => fs.promises.rename(`${messagePath}.tmp`, messagePath))
+                 .then(() => true);
     }
 
     sendMessage(ws) {
@@ -220,18 +225,14 @@ class CloudVersion {
         this._newPeerConnectionListener = this._onNewPeerConnection.bind(this);
         eventBus.on('cloud_version_min', this._onMessage.bind(this));
         eventBus.on('peer_connection_new', this._newPeerConnectionListener);
-        return database.getRepository('config')
-                       .getConfig(CONFIG_NAME)
-                       .then(row => {
-                           if (!row) {
-                               return;
-                           }
-                           const message = JSON.parse(row.value);
-                           if (this.verifyMessage(message).valid) {
-                               this.message = message;
-                           }
-                       })
-                       .catch(_ => _)
+        return fs.promises.readFile(this._getMessagePath(), 'utf8')
+                 .then(data => {
+                     const message = JSON.parse(data);
+                     if (this.verifyMessage(message).valid) {
+                         this.message = message;
+                     }
+                 })
+                 .catch(_ => _)
                        .then(() => console.log(`[cloud-version] minimum version for cloud features ${this.getVersionMin()}, cloud features ${this.isCloudEnabled() ? 'on' : 'off'}`));
     }
 

@@ -59,16 +59,9 @@ function signedOffer(nodeVersion) {
     };
 }
 
-const restore     = [];
-const configStore = new Map();
-const configRepositoryStub = {
-    getConfig   : name => Promise.resolve(configStore.has(name) ? {
-        config_name: name,
-        value      : configStore.get(name)
-    } : undefined),
-    addConfig   : (name, value) => Promise.resolve(configStore.set(name, value)),
-    updateConfig: (name, value) => Promise.resolve(configStore.set(name, value))
-};
+const restore    = [];
+// the data folder the message is stored in
+const dataFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'cloud-version-data-'));
 
 function stubMethod(object, name, value) {
     const original = object[name];
@@ -78,12 +71,17 @@ function stubMethod(object, name, value) {
 
 before(() => {
     stubMethod(config, 'CLOUD_AUTHORITY_PUBLIC_KEY', tangled.public_key);
-    restore.push(stubRepositories({config: configRepositoryStub}));
+    restore.push(stubRepositories());
+    stubMethod(config.DATABASE_CONNECTION, 'FOLDER', dataFolder);
+    restore.push(() => fs.rmSync(dataFolder, {
+        recursive: true,
+        force    : true
+    }));
 });
 after(() => restore.reverse().forEach(fn => fn()));
 beforeEach(() => {
     cloudVersion.message = null;
-    configStore.clear();
+    fs.rmSync(path.join(dataFolder, 'cloud_version_min.json'), {force: true});
 });
 
 
@@ -169,13 +167,21 @@ describe('obeying the minimum version', () => {
         }
     });
 
-    test('the message is stored and loaded again on restart', async() => {
+    test('the message is stored in the data folder and loaded again on restart', async() => {
         const message = versionMessage('1.30.0');
         await cloudVersion.addMessage(message);
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataFolder, 'cloud_version_min.json'), 'utf8')), message);
         cloudVersion.message = null;
         await cloudVersion.initialize();
         cloudVersion.stop();
         assert.deepEqual(cloudVersion.message, message);
+    });
+
+    test('a stored message that does not verify is not loaded', async() => {
+        fs.writeFileSync(path.join(dataFolder, 'cloud_version_min.json'), JSON.stringify(versionMessage('9.0.0', now(), attacker)));
+        await cloudVersion.initialize();
+        cloudVersion.stop();
+        assert.equal(cloudVersion.message, null);
     });
 
     test('below the minimum a node publishes no offer and opens no vpn session', async() => {
@@ -251,7 +257,6 @@ describe('obeying the minimum version', () => {
 
     test('stored offers of nodes below the minimum are no longer listed', async() => {
         const restoreRepositories = stubRepositories({
-            config     : configRepositoryStub,
             cloud_offer: {listOffers: () => Promise.resolve([signedOffer(config.NODE_MILLIX_VERSION), signedOffer('1.27.0')])}
         });
         try {

@@ -41,7 +41,24 @@ class _ConfigLoader {
             'NODE_PUBLIC',
             'NODE_DNS_SERVER',
             'MODE_STORAGE_SYNC',
-            'SHARD_ZERO_NAME'
+            'SHARD_ZERO_NAME',
+            // rules every node must apply alike: never loaded from the
+            // config table
+            'ADDRESS_VERSION_ESCROW',
+            'ADDRESS_VERSION_ESCROW_MAIN_NETWORK',
+            'ADDRESS_VERSION_ESCROW_TEST_NETWORK',
+            'ESCROW_ACTIVATION_DATE',
+            'ESCROW_ACTIVATION_DATE_MAIN_NETWORK',
+            'ESCROW_ACTIVATION_DATE_TEST_NETWORK',
+            'ESCROW_NODE_VERSION_MIN',
+            'ESCROW_TERMS_VERSION',
+            'ESCROW_RECEIPT_VERSION',
+            'ESCROW_PORTION_BYTES_MIN',
+            'ESCROW_UNLOCK_DURATION_MAX',
+            'CLOUD_AUTHORITY_PUBLIC_KEY',
+            'CLOUD_AUTHORITY_PUBLIC_KEY_MAIN_NETWORK',
+            'CLOUD_AUTHORITY_PUBLIC_KEY_TEST_NETWORK',
+            'CLOUD_NODE_VERSION_MIN'
         ]);
     }
 
