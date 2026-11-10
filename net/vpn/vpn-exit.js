@@ -6,6 +6,7 @@ import network from '../network';
 import config from '../../core/config/config';
 import escrow from '../../core/wallet/escrow';
 import walletEscrow from '../../core/wallet/wallet-escrow';
+import wallet from '../../core/wallet/wallet';
 import database from '../../database/database';
 import objectHash from '../../core/crypto/object-hash';
 import signature from '../../core/crypto/signature';
@@ -13,6 +14,10 @@ import {resolvePublicAddress} from './address-filter';
 import ntp from '../../core/ntp';
 import eventBus from '../../core/event-bus';
 import cloudVersion from '../cloud-version';
+import cloudOffer from '../cloud-offer';
+import cloudPass from '../broker/cloud-pass';
+import {requestNodeService} from '../broker/node-request';
+import task from '../../core/task';
 import console from '../../core/console';
 
 const {
@@ -41,7 +46,12 @@ const TLS_HANDSHAKE_RECORD = 0x16;
  * - GET /vpn/challenge returns a random challenge.
  * - POST /vpn/session {pass: {terms, funding_transaction_id},
  *   challenge_signature} proves the client holds the pass key of an escrow
- *   that pays this node.
+ *   that pays this node. or, with a broker pass, POST /vpn/session {pass:
+ *   {certificate, piece}, challenge_signature}: a prepaid certificate of a
+ *   broker this node's offer accepts, one of its pieces, and the challenge
+ *   signed by the holder key.
+ * - POST /vpn/piece {piece} adds the next piece of the certificate: each
+ *   piece this node has seen covers piece_bytes.
  * - CONNECT host:443 opens a tunnel to a site. only port 443 is accepted, the
  *   first bytes from the client must start a tls handshake, and sites whose
  *   name points to a private or local address are refused. the exit node
@@ -50,8 +60,12 @@ const TLS_HANDSHAKE_RECORD = 0x16;
  *   pass key with the running total of bytes received and a sequence.
  *
  * the session closes when the bytes sent run ahead of the receipts by more
- * than VPN_RECEIPT_GAP_BYTES_MAX, when the escrow's data is used up or after
- * VPN_SESSION_IDLE_TIME_MAX without traffic.
+ * than VPN_RECEIPT_GAP_BYTES_MAX, when the escrow's data (or the pieces seen)
+ * is used up or after VPN_SESSION_IDLE_TIME_MAX without traffic.
+ *
+ * the latest receipt of each certificate is sent to its broker every
+ * CLOUD_BROKER_REPORT_INTERVAL, in a report signed by the node key naming
+ * this wallet's address for the payout.
  */
 class VPNExit {
     constructor() {
@@ -175,7 +189,13 @@ class VPNExit {
         }
         else if (method === 'POST' && path === '/vpn/receipt') {
             return this._readBody(stream)
-                       .then(body => this._onReceipt(state, body))
+                       .then(body => state.pass_type === 'certificate' ? this._onCertificateReceipt(state, body) : this._onReceipt(state, body))
+                       .then(result => this._respond(stream, 200, result))
+                       .catch(error => this._respond(stream, 403, {error: error?.message || error}));
+        }
+        else if (method === 'POST' && path === '/vpn/piece') {
+            return this._readBody(stream)
+                       .then(body => this._onPiece(state, body))
                        .then(result => this._respond(stream, 200, result))
                        .catch(error => this._respond(stream, 403, {error: error?.message || error}));
         }
@@ -191,6 +211,9 @@ class VPNExit {
         }
         if (!state.challenge) {
             return Promise.reject('challenge_not_found');
+        }
+        if (body?.pass?.certificate) {
+            return this._authenticateCertificate(state, body);
         }
 
         const terms = body?.pass?.terms;
@@ -252,6 +275,7 @@ class VPNExit {
             return walletEscrow.addPayeeEscrow(terms, fundingTransactionID);
         }).then(escrowRecord => {
             state.authenticated       = true;
+            state.pass_type           = 'escrow';
             state.challenge           = null;
             state.escrow_record       = escrowRecord;
             state.pass_public_key     = terms.payer_public_key;
@@ -271,6 +295,168 @@ class VPNExit {
                 receipt_gap_max    : config.VPN_RECEIPT_GAP_BYTES_MAX
             };
         });
+    }
+
+    /**
+     * a broker pass: a prepaid certificate of a broker this node's vpn_exit
+     * offer accepts, one of its pieces and the challenge signed by the
+     * holder key
+     */
+    _authenticateCertificate(state, body) {
+        const {
+                  certificate,
+                  piece
+              }   = body.pass;
+        const now = this._now();
+        const {
+                  valid,
+                  reason
+              }   = cloudPass.verifyCertificate(certificate, now);
+        if (!valid) {
+            return Promise.reject(reason);
+        }
+        if (!cloudPass.isValidPiece(certificate, piece)) {
+            return Promise.reject('piece_invalid');
+        }
+        if (!cloudPass.isValidHolderMessage({
+            challenge: state.challenge,
+            node_id  : network.nodeID
+        }, body.challenge_signature, certificate.holder_public_key)) {
+            return Promise.reject('challenge_signature_invalid');
+        }
+        if (_.some([...this.sessionMap.values()], other => other !== state && other.authenticated && other.certificate?.certificate_id === certificate.certificate_id)) {
+            return Promise.reject('pass_already_connected');
+        }
+
+        const cloudPassRepository = database.getRepository('cloud_pass');
+        return database.getRepository('cloud_offer')
+                       .getOffer(network.nodeID, 'vpn_exit')
+                       .then(offer => {
+                           // this node accepts the brokers its offer lists
+                           if (!offer || offer.end_date <= now || !_.some(offer.broker_list, {
+                               address   : certificate.broker_address,
+                               public_key: certificate.broker_public_key
+                           })) {
+                               return Promise.reject('broker_not_accepted');
+                           }
+                           return cloudPassRepository.addVPNCertificate(certificate);
+                       })
+                       .then(() => cloudPassRepository.getVPNCertificate(certificate.certificate_id))
+                       .then(record => {
+                           const pieceIndexList = _.sortBy(_.uniq([...record.piece_index_list, piece.piece_index]));
+                           return cloudPassRepository.updateVPNCertificatePieceList(certificate.certificate_id, pieceIndexList)
+                                                     .then(() => [
+                                                         record,
+                                                         pieceIndexList
+                                                     ]);
+                       })
+                       .then(([record, pieceIndexList]) => {
+                           const bytesCovered = pieceIndexList.length * certificate.piece_bytes;
+                           if (record.receipt_total_bytes >= bytesCovered) {
+                               return Promise.reject('pass_data_used');
+                           }
+                           state.authenticated       = true;
+                           state.pass_type           = 'certificate';
+                           state.challenge           = null;
+                           state.certificate         = certificate;
+                           state.piece_index_list    = pieceIndexList;
+                           state.pass_public_key     = certificate.holder_public_key;
+                           state.bytes_covered       = bytesCovered;
+                           // a session continues from the certificate's
+                           // latest receipt at this node
+                           state.bytes_sent          = record.receipt_total_bytes;
+                           state.receipt_total_bytes = record.receipt_total_bytes;
+                           state.receipt_sequence    = record.receipt_sequence;
+                           console.log(`[vpn-exit] session ${state.session_id} accepted certificate ${certificate.certificate_id} of broker ${certificate.broker_address}`);
+                           return {
+                               session_id         : state.session_id,
+                               certificate_id     : certificate.certificate_id,
+                               bytes_covered      : state.bytes_covered,
+                               receipt_total_bytes: state.receipt_total_bytes,
+                               receipt_sequence   : state.receipt_sequence,
+                               receipt_gap_max    : config.VPN_RECEIPT_GAP_BYTES_MAX
+                           };
+                       });
+    }
+
+    _onPiece(state, body) {
+        if (!state.authenticated || state.pass_type !== 'certificate') {
+            return Promise.reject('session_not_authenticated');
+        }
+        const piece = body?.piece;
+        if (!cloudPass.isValidPiece(state.certificate, piece)) {
+            return Promise.reject('piece_invalid');
+        }
+        state.piece_index_list = _.sortBy(_.uniq([...state.piece_index_list, piece.piece_index]));
+        state.bytes_covered    = state.piece_index_list.length * state.certificate.piece_bytes;
+        return database.getRepository('cloud_pass')
+                       .updateVPNCertificatePieceList(state.certificate.certificate_id, state.piece_index_list)
+                       .then(() => ({bytes_covered: state.bytes_covered}));
+    }
+
+    _onCertificateReceipt(state, body) {
+        if (!state.authenticated) {
+            return Promise.reject('session_not_authenticated');
+        }
+        const receipt = body?.receipt;
+        if (!_.isPlainObject(receipt) || !Number.isInteger(receipt.total_bytes) || receipt.total_bytes > state.bytes_sent) {
+            // a receipt cannot cover more than this node sent
+            return Promise.reject('receipt_total_invalid');
+        }
+        if (receipt.sequence <= state.receipt_sequence || receipt.total_bytes < state.receipt_total_bytes ||
+            !cloudPass.isValidReceipt(state.certificate, receipt, body.signature, network.nodeID)) {
+            return Promise.reject('receipt_not_accepted');
+        }
+
+        state.receipt_total_bytes = receipt.total_bytes;
+        state.receipt_sequence    = receipt.sequence;
+        state.receipt             = receipt;
+        return database.getRepository('cloud_pass')
+                       .updateVPNCertificateReceipt(state.certificate.certificate_id, receipt, body.signature)
+                       .then(() => ({
+                           receipt_total_bytes: state.receipt_total_bytes,
+                           receipt_sequence   : state.receipt_sequence
+                       }));
+    }
+
+    _getPayoutAddress() {
+        const addressVersion = database.getRepository('address').getDefaultAddressVersion().version;
+        return `${wallet.defaultKeyIdentifier}${addressVersion}${wallet.defaultKeyIdentifier}`;
+    }
+
+    /**
+     * sends the latest receipt of every certificate not yet reported to its
+     * broker
+     */
+    reportReceipts() {
+        const cloudPassRepository = database.getRepository('cloud_pass');
+        return cloudPassRepository.listUnreportedVPNCertificate()
+                                  .then(recordList => Promise.all(_.map(_.groupBy(recordList, 'broker_address'), (brokerRecordList, brokerAddress) =>
+                                      cloudOffer.listOffers({service: 'broker'}, 'create_date desc', 1000)
+                                                .then(offerList => _.find(offerList, offer => offer.broker?.address === brokerAddress && cloudOffer.verifyOffer(offer).valid))
+                                                .then(offer => {
+                                                    if (!offer) {
+                                                        return Promise.reject('broker_offer_not_found');
+                                                    }
+                                                    return _.chunk(brokerRecordList, config.CLOUD_BROKER_REPORT_RECEIPT_MAX).reduce((pipeline, chunk) => pipeline.then(() => {
+                                                        const report = cloudPass.signHostReport({
+                                                            node_id        : network.nodeID,
+                                                            node_public_key: network.nodePublicKey,
+                                                            payout_address : this._getPayoutAddress(),
+                                                            report_date    : this._now(),
+                                                            receipt_list   : chunk.map(record => ({
+                                                                certificate_id: record.certificate_id,
+                                                                receipt       : record.receipt,
+                                                                signature     : record.receipt_signature
+                                                            }))
+                                                        }, network.nodePrivateKey);
+                                                        return requestNodeService(offer.endpoint, offer.node_id, 'POST', '/broker/report', {report})
+                                                            .then(({receipt_list: resultList}) => Promise.all(_.filter(resultList, result => ['accepted', 'receipt_not_newer'].includes(result.status))
+                                                                                                             .map(result => cloudPassRepository.updateVPNCertificateReported(result.certificate_id, result.sequence))));
+                                                    }), Promise.resolve());
+                                                })
+                                                .then(() => console.log(`[vpn-exit] reported ${brokerRecordList.length} receipts to broker ${brokerAddress}`))
+                                                .catch(error => console.log(`[vpn-exit] receipts not reported to broker ${brokerAddress}: ${error}`)))));
     }
 
     _onReceipt(state, body) {
@@ -381,7 +567,10 @@ class VPNExit {
         return _.map([...this.sessionMap.values()], state => ({
             session_id         : state.session_id,
             authenticated      : state.authenticated,
+            pass_type          : state.pass_type,
             escrow_address     : state.escrow_record?.escrow_address,
+            certificate_id     : state.certificate?.certificate_id,
+            broker_address     : state.certificate?.broker_address,
             pass_public_key    : state.pass_public_key,
             bytes_sent         : state.bytes_sent,
             bytes_received     : state.bytes_received,
@@ -436,12 +625,14 @@ class VPNExit {
             this.server.on('error', error => console.log(`[vpn-exit] server error: ${error.message}`));
             this.server.listen(config.NODE_PORT_VPN, config.NODE_BIND_IP, () => {
                 console.log(`[vpn-exit] exit node listening on port ${config.NODE_PORT_VPN}`);
+                task.scheduleTask('vpn_exit_receipt_report', this.reportReceipts.bind(this), config.CLOUD_BROKER_REPORT_INTERVAL * 1000, true);
                 resolve();
             });
         });
     }
 
     stop() {
+        task.removeTask('vpn_exit_receipt_report');
         if (this.server) {
             [...this.sessionMap.values()].forEach(state => this._closeSession(state, 'node_stop'));
             this.server.close();

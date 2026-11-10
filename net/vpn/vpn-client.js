@@ -14,6 +14,8 @@ import ntp from '../../core/ntp';
 import console from '../../core/console';
 import eventBus from '../../core/event-bus';
 import cloudVersion from '../cloud-version';
+import cloudPass, {CLOUD_PASS_VERSION} from '../broker/cloud-pass';
+import passWallet from '../broker/pass-wallet';
 
 const {
           HTTP2_HEADER_METHOD,
@@ -30,7 +32,10 @@ const RECEIPT_HISTORY_MAX = 20;
 /**
  * the user side of the tangled cloud vpn.
  *
- * opening a session against an offer funds an escrow for the exit node,
+ * a session is paid either with a broker pass (a prepaid certificate whose
+ * pieces are fetched from the broker as the data is used, before the exit
+ * node runs out of covered data) or with an escrow. opening a session with
+ * an escrow funds an escrow for the exit node,
  * connects to the exit node over tls, checks that its certificate carries
  * the offer's node id, proves the pass key and starts a local proxy on
  * 127.0.0.1. the local proxy carries only CONNECT requests (https), each in
@@ -106,7 +111,47 @@ class VPNClient {
         });
     }
 
+    _authenticateCertificate(state) {
+        const holderPrivateKey = passWallet.getHolderPrivateKey(state.pass_id);
+        return this._request(state.session, 'GET', '/vpn/challenge')
+                   .then(({challenge, node_id: nodeID}) => this._request(state.session, 'POST', '/vpn/session', {
+                       pass               : {
+                           certificate: state.certificate,
+                           piece      : state.piece
+                       },
+                       challenge_signature: cloudPass.signHolderMessage({
+                           challenge,
+                           node_id: nodeID
+                       }, holderPrivateKey)
+                   }));
+    }
+
+    /**
+     * a broker pass: hands the exit node the next piece of the certificate
+     * before the data it covers runs out
+     */
+    _sendNextPiece(state) {
+        if (state.piece_request || state.closed) {
+            return;
+        }
+        const pieceIndex = state.piece.piece_index + 1;
+        if (pieceIndex >= state.certificate.piece_count) {
+            return;
+        }
+        state.piece_request = passWallet.getPiece(state.pass_id, pieceIndex)
+                                        .then(piece => this._request(state.session, 'POST', '/vpn/piece', {piece})
+                                                           .then(result => {
+                                                               state.piece         = piece;
+                                                               state.bytes_covered = result.bytes_covered;
+                                                           }))
+                                        .catch(error => console.log(`[vpn-client] session ${state.session_id} next piece not sent: ${error}`))
+                                        .then(() => state.piece_request = null);
+    }
+
     _authenticate(state) {
+        if (state.pass_type === 'certificate') {
+            return this._authenticateCertificate(state);
+        }
         const passPrivateKey = walletEscrow.getPassPrivateKey(state.terms.nonce);
         const startTime      = Date.now();
         const tryAuthenticate = () => this._request(state.session, 'GET', '/vpn/challenge')
@@ -138,15 +183,30 @@ class VPNClient {
         if (state.closed || state.bytes_received <= state.receipt_total_bytes) {
             return;
         }
-        const receipt = {
-            version            : config.ESCROW_RECEIPT_VERSION,
-            escrow_address_base: state.escrow_address_base,
-            node_id            : state.node_id,
-            total_bytes        : state.bytes_received,
-            sequence           : state.receipt_sequence + 1,
-            receipt_date       : this._now()
-        };
-        const receiptSignature    = escrow.signReceipt(receipt, walletEscrow.getPassPrivateKey(state.terms.nonce));
+        let receipt, receiptSignature;
+        if (state.pass_type === 'certificate') {
+            receipt          = {
+                version       : CLOUD_PASS_VERSION,
+                certificate_id: state.certificate.certificate_id,
+                node_id       : state.node_id,
+                piece_index   : state.piece.piece_index,
+                total_bytes   : state.bytes_received,
+                sequence      : state.receipt_sequence + 1,
+                receipt_date  : this._now()
+            };
+            receiptSignature = cloudPass.signReceipt(receipt, passWallet.getHolderPrivateKey(state.pass_id));
+        }
+        else {
+            receipt          = {
+                version            : config.ESCROW_RECEIPT_VERSION,
+                escrow_address_base: state.escrow_address_base,
+                node_id            : state.node_id,
+                total_bytes        : state.bytes_received,
+                sequence           : state.receipt_sequence + 1,
+                receipt_date       : this._now()
+            };
+            receiptSignature = escrow.signReceipt(receipt, walletEscrow.getPassPrivateKey(state.terms.nonce));
+        }
         state.receipt_total_bytes = receipt.total_bytes;
         state.receipt_sequence    = receipt.sequence;
         state.receipt_list.push({
@@ -169,6 +229,10 @@ class VPNClient {
         state.bytes_received += byteCount;
         if (state.bytes_received - state.receipt_total_bytes >= config.VPN_RECEIPT_INTERVAL_BYTES) {
             this._sendReceipt(state);
+        }
+        // fetch the next piece when half of the last one is used
+        if (state.pass_type === 'certificate' && state.bytes_covered - state.bytes_received < state.certificate.piece_bytes / 2) {
+            this._sendNextPiece(state);
         }
     }
 
@@ -223,6 +287,89 @@ class VPNClient {
      * @param portionCount how many portions of data to pay into the escrow
      * @param unlockAfter seconds until the payer can take back what is unused
      */
+    /**
+     * opens a session with a broker pass this node bought
+     * @param offerID a vpn_exit offer that accepts the pass's broker
+     * @param passID
+     */
+    openPassSession(offerID, passID) {
+        if (!cloudVersion.isCloudEnabled()) {
+            return Promise.reject('cloud_version_not_accepted');
+        }
+        return Promise.all([
+            database.getRepository('cloud_offer').getOfferByID(offerID),
+            passWallet.getPass(passID)
+        ]).then(([offer, pass]) => {
+            if (!offer) {
+                return Promise.reject('offer_not_found');
+            }
+            const {
+                      valid,
+                      reason
+                  } = cloudOffer.verifyOffer(offer);
+            if (!valid) {
+                return Promise.reject(reason);
+            }
+            if (offer.service !== 'vpn_exit' || !offer.endpoint.service_port) {
+                return Promise.reject('offer_not_vpn_exit');
+            }
+            if (!pass || pass.status !== 'active' || pass.piece_list.length === 0) {
+                return Promise.reject('pass_not_active');
+            }
+            if (!_.some(offer.broker_list, {
+                address   : pass.certificate.broker_address,
+                public_key: pass.certificate.broker_public_key
+            })) {
+                return Promise.reject('broker_not_accepted_by_exit_node');
+            }
+            const state = {
+                session_id         : crypto.randomBytes(8).toString('hex'),
+                pass_type          : 'certificate',
+                offer_id           : offer.offer_id,
+                node_id            : offer.node_id,
+                pass_id            : passID,
+                certificate        : pass.certificate,
+                piece              : _.last(pass.piece_list),
+                bytes_received     : 0,
+                receipt_total_bytes: 0,
+                receipt_sequence   : 0,
+                receipt_list       : [],
+                status             : 'connecting',
+                create_date        : this._now(),
+                closed             : false
+            };
+            return this._startSession(state, offer);
+        });
+    }
+
+    _startSession(state, offer) {
+        this.sessionMap.set(state.session_id, state);
+        return this._connect(offer)
+                   .then(session => {
+                       state.session = session;
+                       session.on('close', () => this._onSessionClosed(state, 'connection_closed'));
+                       return this._authenticate(state);
+                   })
+                   .then(result => {
+                       state.exit_session_id     = result.session_id;
+                       state.bytes_covered       = result.bytes_covered;
+                       state.bytes_received      = result.receipt_total_bytes;
+                       state.receipt_total_bytes = result.receipt_total_bytes;
+                       state.receipt_sequence    = result.receipt_sequence;
+                       return this._startLocalProxy(state);
+                   })
+                   .then(port => {
+                       state.local_proxy_port = port;
+                       state.status           = 'connected';
+                       console.log(`[vpn-client] session ${state.session_id} connected to exit node ${state.node_id}, local proxy on 127.0.0.1:${port}`);
+                       return this.getSession(state.session_id);
+                   })
+                   .catch(error => {
+                       this._onSessionClosed(state, `${error}`);
+                       return Promise.reject(error);
+                   });
+    }
+
     openSession(offerID, portionCount, unlockAfter) {
         if (!cloudVersion.isCloudEnabled()) {
             return Promise.reject('cloud_version_not_accepted');
@@ -253,6 +400,7 @@ class VPNClient {
                            const escrowAddress = escrow.getEscrowAddress(escrowData.terms);
                            const state         = {
                                session_id            : crypto.randomBytes(8).toString('hex'),
+                               pass_type             : 'escrow',
                                offer_id              : offer.offer_id,
                                node_id               : offer.node_id,
                                terms                 : escrowData.terms,
@@ -267,31 +415,7 @@ class VPNClient {
                                create_date           : this._now(),
                                closed                : false
                            };
-                           this.sessionMap.set(state.session_id, state);
-                           return this._connect(offer)
-                                      .then(session => {
-                                          state.session = session;
-                                          session.on('close', () => this._onSessionClosed(state, 'connection_closed'));
-                                          return this._authenticate(state);
-                                      })
-                                      .then(result => {
-                                          state.exit_session_id     = result.session_id;
-                                          state.bytes_covered       = result.bytes_covered;
-                                          state.bytes_received      = result.receipt_total_bytes;
-                                          state.receipt_total_bytes = result.receipt_total_bytes;
-                                          state.receipt_sequence    = result.receipt_sequence;
-                                          return this._startLocalProxy(state);
-                                      })
-                                      .then(port => {
-                                          state.local_proxy_port = port;
-                                          state.status           = 'connected';
-                                          console.log(`[vpn-client] session ${state.session_id} connected to exit node ${state.node_id}, local proxy on 127.0.0.1:${port}`);
-                                          return this.getSession(state.session_id);
-                                      })
-                                      .catch(error => {
-                                          this._onSessionClosed(state, `${error}`);
-                                          return Promise.reject(error);
-                                      });
+                           return this._startSession(state, offer);
                        });
     }
 
@@ -322,22 +446,28 @@ class VPNClient {
         if (!state) {
             return null;
         }
-        return _.pick(state, [
-            'session_id',
-            'offer_id',
-            'node_id',
-            'escrow_address',
-            'funding_transaction_id',
-            'local_proxy_port',
-            'bytes_received',
-            'bytes_covered',
-            'receipt_total_bytes',
-            'receipt_sequence',
-            'receipt_list',
-            'status',
-            'close_reason',
-            'create_date'
-        ]);
+        return {
+            ..._.pick(state, [
+                'session_id',
+                'pass_type',
+                'pass_id',
+                'offer_id',
+                'node_id',
+                'escrow_address',
+                'funding_transaction_id',
+                'local_proxy_port',
+                'bytes_received',
+                'bytes_covered',
+                'receipt_total_bytes',
+                'receipt_sequence',
+                'receipt_list',
+                'status',
+                'close_reason',
+                'create_date'
+            ]),
+            certificate_id: state.certificate?.certificate_id,
+            piece_index   : state.piece?.piece_index
+        };
     }
 
     listSession() {

@@ -818,6 +818,42 @@
       "version_released": "1.26.0",
       "permission": "{\"require_identity\": true, \"private\": true}",
       "enable": true
+    },
+    {
+      "id": "smG9Spe7IIkQ46b0",
+      "name": "buy_cloud_pass",
+      "description": "pays a broker's pass price from this wallet; the broker's prepaid certificate is fetched once the payment is stable",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "qZjHL621I7kAHOTc",
+      "name": "list_cloud_pass",
+      "description": "returns the broker passes this node bought, with their certificates and the pieces fetched so far",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "nvhWGg61OxMCp1lP",
+      "name": "list_cloud_broker_host",
+      "description": "broker: returns the exit nodes this broker pays, with what their receipts earned, what was paid and what is owed, and the payouts",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "X5u7FyA1PyGfE4fi",
+      "name": "pay_cloud_broker_host",
+      "description": "broker: pays the exit nodes owed at least the payout minimum now instead of at the next payout",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
     }
   ]
 }

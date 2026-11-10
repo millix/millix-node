@@ -42,7 +42,22 @@ const const_value_default = {
     // the public key of tangled's key that signs the minimum version for
     // cloud features (net/cloud-version.js). null: the network's default
     // below
-    'CLOUD_AUTHORITY_PUBLIC_KEY': null
+    'CLOUD_AUTHORITY_PUBLIC_KEY': null,
+
+    // brokers (net/broker/broker.js). CLOUD_BROKER_LIST holds the brokers
+    // this node knows as {address, public_key}; the first one sells this
+    // node its passes. tangled's broker is to be added before release.
+    'MODE_CLOUD_BROKER'               : false,
+    'CLOUD_BROKER_LIST'               : [],
+    'CLOUD_BROKER_PASS_PRICE'         : 5000000,
+    'CLOUD_BROKER_PASS_DATA_BYTES'    : 25 * 1024 * 1024 * 1024,
+    'CLOUD_BROKER_PASS_PIECE_BYTES'   : 1024 * 1024 * 1024,
+    'CLOUD_BROKER_PASS_DURATION'      : 7 * 24 * 60 * 60,
+    'CLOUD_BROKER_POOL_RATE'          : 150000, // millix per GB paid to exit nodes
+    'CLOUD_BROKER_PAYOUT_INTERVAL'    : 60 * 60,
+    'CLOUD_BROKER_PAYOUT_AMOUNT_MIN'  : 10000,
+    'CLOUD_BROKER_REPORT_INTERVAL'    : 5 * 60,
+    'CLOUD_PASS_PAYMENT_WAIT_TIME_MAX': 10 * 60
 };
 
 let environment;
@@ -89,6 +104,9 @@ export const NODE_PORT_API                                     = 5500;
 export const NODE_PORT_VPN_MAIN_NETWORK                        = 10005;
 export const NODE_PORT_VPN_TEST_NETWORK                        = 30005;
 export const NODE_PORT_VPN                                     = MODE_TEST_NETWORK ? NODE_PORT_VPN_TEST_NETWORK : NODE_PORT_VPN_MAIN_NETWORK;
+export const NODE_PORT_BROKER_MAIN_NETWORK                     = 10006;
+export const NODE_PORT_BROKER_TEST_NETWORK                     = 30006;
+export const NODE_PORT_BROKER                                  = MODE_TEST_NETWORK ? NODE_PORT_BROKER_TEST_NETWORK : NODE_PORT_BROKER_MAIN_NETWORK;
 export const NODE_HOST                                         = 'localhost';
 export const NODE_HOST_FORCE                                   = false;
 export const NODE_BIND_IP                                      = '0.0.0.0';
@@ -831,7 +849,8 @@ export const NODE_CONNECTION_OUTBOUND_MAX                      = 60;
 export const NODE_CONNECTION_PUBLIC_PERCENT                    = 0.2;
 export const CLOUD_OFFER_SERVICE_LIST                          = [
     'vpn_exit',
-    'storage_host'
+    'storage_host',
+    'broker'
 ];
 // tangled's public key for the minimum version message. to be filled in by
 // tangled before release: while it is null no message is accepted and the
@@ -855,6 +874,22 @@ export const ESCROW_ACTIVATION_DATE_TEST_NETWORK               = 1796083200; // 
 export const ESCROW_ACTIVATION_DATE                            = getConstValue('ESCROW_ACTIVATION_DATE') ?? (MODE_TEST_NETWORK ? ESCROW_ACTIVATION_DATE_TEST_NETWORK : ESCROW_ACTIVATION_DATE_MAIN_NETWORK);
 export const ESCROW_NODE_VERSION_MIN                           = '1.26.0';
 export const ESCROW_TERMS_VERSION                              = 1;
+export const MODE_CLOUD_BROKER                                 = getConstValue('MODE_CLOUD_BROKER');
+export const CLOUD_BROKER_LIST                                 = getConstValue('CLOUD_BROKER_LIST');
+export const CLOUD_BROKER_PASS_PRICE                           = getConstValue('CLOUD_BROKER_PASS_PRICE');
+export const CLOUD_BROKER_PASS_DATA_BYTES                      = getConstValue('CLOUD_BROKER_PASS_DATA_BYTES');
+export const CLOUD_BROKER_PASS_PIECE_BYTES                     = getConstValue('CLOUD_BROKER_PASS_PIECE_BYTES');
+export const CLOUD_BROKER_PASS_DURATION                        = getConstValue('CLOUD_BROKER_PASS_DURATION');
+export const CLOUD_BROKER_POOL_RATE                            = getConstValue('CLOUD_BROKER_POOL_RATE');
+export const CLOUD_BROKER_PAYOUT_INTERVAL                      = getConstValue('CLOUD_BROKER_PAYOUT_INTERVAL');
+export const CLOUD_BROKER_PAYOUT_AMOUNT_MIN                    = getConstValue('CLOUD_BROKER_PAYOUT_AMOUNT_MIN');
+export const CLOUD_BROKER_REPORT_INTERVAL                      = getConstValue('CLOUD_BROKER_REPORT_INTERVAL');
+export const CLOUD_PASS_PAYMENT_WAIT_TIME_MAX                  = getConstValue('CLOUD_PASS_PAYMENT_WAIT_TIME_MAX');
+// one payout transaction pays up to 126 exit nodes: 127 outputs and the fee
+export const CLOUD_BROKER_PAYOUT_OUTPUT_MAX                    = TRANSACTION_OUTPUT_MAX - 1;
+export const CLOUD_BROKER_REPORT_RECEIPT_MAX                   = 100;
+export const CLOUD_PASS_PIECE_COUNT_MAX                        = 1000;
+export const CLOUD_PASS_DURATION_MAX                           = 31 * 24 * 60 * 60;
 export const ESCROW_RECEIPT_VERSION                            = 1;
 export const ESCROW_PORTION_BYTES_MIN                          = 1024;
 export const ESCROW_UNLOCK_DURATION_MAX                        = 30 * 24 * 60 * 60;
@@ -992,7 +1027,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '25';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '26';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -1037,6 +1072,7 @@ export default {
     NODE_KEY_PATH,
     NODE_PORT_API,
     NODE_PORT_VPN,
+    NODE_PORT_BROKER,
     NODE_CERTIFICATE_KEY_PATH,
     NODE_CERTIFICATE_PATH,
     DATABASE_ENGINE,
@@ -1074,6 +1110,21 @@ export default {
     ESCROW_ACTIVATION_DATE,
     ESCROW_NODE_VERSION_MIN,
     ESCROW_TERMS_VERSION,
+    MODE_CLOUD_BROKER,
+    CLOUD_BROKER_LIST,
+    CLOUD_BROKER_PASS_PRICE,
+    CLOUD_BROKER_PASS_DATA_BYTES,
+    CLOUD_BROKER_PASS_PIECE_BYTES,
+    CLOUD_BROKER_PASS_DURATION,
+    CLOUD_BROKER_POOL_RATE,
+    CLOUD_BROKER_PAYOUT_INTERVAL,
+    CLOUD_BROKER_PAYOUT_AMOUNT_MIN,
+    CLOUD_BROKER_REPORT_INTERVAL,
+    CLOUD_PASS_PAYMENT_WAIT_TIME_MAX,
+    CLOUD_BROKER_PAYOUT_OUTPUT_MAX,
+    CLOUD_BROKER_REPORT_RECEIPT_MAX,
+    CLOUD_PASS_PIECE_COUNT_MAX,
+    CLOUD_PASS_DURATION_MAX,
     ESCROW_RECEIPT_VERSION,
     ESCROW_PORTION_BYTES_MIN,
     ESCROW_UNLOCK_DURATION_MAX,

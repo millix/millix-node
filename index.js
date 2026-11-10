@@ -68,6 +68,14 @@ if (argv.vpnExit === 'true') {
     config.MODE_VPN_EXIT = true;
 }
 
+if (argv.brokerPort) {
+    config.NODE_PORT_BROKER = argv.brokerPort;
+}
+
+if (argv.cloudBroker === 'true') {
+    config.MODE_CLOUD_BROKER = true;
+}
+
 if (argv.host) {
     config.NODE_HOST = argv.host;
 }

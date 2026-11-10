@@ -11,19 +11,30 @@ class _CbAA35mNPELnmndw extends Endpoint {
     }
 
     /**
-     * opens a vpn session through the exit node of an offer. it pays
-     * portion_count portions of data into an escrow for the exit node,
-     * connects to the exit node, proves the pass key and starts a local https
-     * proxy on 127.0.0.1. what is not earned by the exit node returns to
-     * this wallet after unlock_after seconds.
+     * opens a vpn session through the exit node of an offer and starts a
+     * local https proxy on 127.0.0.1. with p3 pass_id it uses a broker pass
+     * bought with buy_cloud_pass. otherwise it pays portion_count portions of
+     * data into an escrow for the exit node; what is not earned by the exit
+     * node returns to this wallet after unlock_after seconds.
      * @param app
-     * @param req (p0: offer_id<required>, p1: portion_count<required>, p2:
-     *     unlock_after=86400)
+     * @param req (p0: offer_id<required>, p1: portion_count<required without
+     *     p3>, p2: unlock_after=86400, p3: pass_id)
      * @param res
      * @returns {*}
      */
     handler(app, req, res) {
         const offerID      = req.query.p0;
+        if (offerID && req.query.p3) {
+            return vpnClient.openPassSession(offerID, req.query.p3)
+                            .then(session => res.send({
+                                api_status: 'success',
+                                session
+                            }))
+                            .catch(e => res.send({
+                                api_status : 'fail',
+                                api_message: `${e?.error || e}`
+                            }));
+        }
         const portionCount = parseInt(req.query.p1);
         const unlockAfter  = req.query.p2 !== undefined ? parseInt(req.query.p2) : 86400;
         if (!offerID || !(portionCount > 0) || !(unlockAfter > 0)) {

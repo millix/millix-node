@@ -11,6 +11,8 @@ import task from '../core/task';
 import console from '../core/console';
 import vpnExit from './vpn/vpn-exit';
 import cloudVersion from './cloud-version';
+import broker from './broker/broker';
+import cloudPass from './broker/cloud-pass';
 
 export const CLOUD_OFFER_VERSION = 1;
 
@@ -30,8 +32,12 @@ const OFFER_KEY_LIST    = [
     'signature'
 ].sort();
 // optional: escrow, the price of each portion of data for services paid
-// through an escrow (required for vpn_exit)
-const OFFER_OPTIONAL_KEY_LIST    = ['escrow'];
+// through an escrow (required for vpn_exit); broker, the terms of a broker
+// signed by the broker key (required for broker)
+const OFFER_OPTIONAL_KEY_LIST    = [
+    'escrow',
+    'broker'
+];
 const ENDPOINT_KEY_LIST          = [
     'node_prefix',
     'node_address',
@@ -39,7 +45,7 @@ const ENDPOINT_KEY_LIST          = [
     'node_port_api'
 ].sort();
 // optional: service_port, the port of the service itself (required for
-// vpn_exit)
+// vpn_exit and broker)
 const ENDPOINT_OPTIONAL_KEY_LIST = ['service_port'];
 
 
@@ -160,7 +166,7 @@ class CloudOffer {
             !this._isNonEmptyString(endpoint.node_prefix, 10) || !this._isNonEmptyString(endpoint.node_address, 255) ||
             !this._isPositiveInteger(endpoint.node_port) || !this._isPositiveInteger(endpoint.node_port_api) ||
             (endpoint.service_port !== undefined && !this._isPositiveInteger(endpoint.service_port)) ||
-            (offer.service === 'vpn_exit' && endpoint.service_port === undefined)) {
+            (['vpn_exit', 'broker'].includes(offer.service) && endpoint.service_port === undefined)) {
             return {
                 valid : false,
                 reason: 'offer_invalid_endpoint'
@@ -177,6 +183,16 @@ class CloudOffer {
             return {
                 valid : false,
                 reason: 'offer_invalid_escrow'
+            };
+        }
+
+        // a broker offer carries the broker's terms signed by the broker key
+        // for this node
+        if ((offer.broker !== undefined || offer.service === 'broker') &&
+            (offer.service !== 'broker' || !cloudPass.isValidBrokerTerms(offer.broker, offer.node_id))) {
+            return {
+                valid : false,
+                reason: 'offer_invalid_broker'
             };
         }
 
@@ -254,6 +270,9 @@ class CloudOffer {
         if (service === 'vpn_exit' && !vpnExit.isRunning()) {
             return Promise.reject('vpn_exit_not_running');
         }
+        if (service === 'broker' && !broker.isRunning()) {
+            return Promise.reject('broker_not_running');
+        }
 
         const cloudOfferRepository = database.getRepository('cloud_offer');
         return cloudOfferRepository.getOffer(network.nodeID, service)
@@ -293,6 +312,15 @@ class CloudOffer {
                                                portion_bytes : config.VPN_ESCROW_PORTION_BYTES,
                                                portion_amount: config.VPN_ESCROW_PORTION_AMOUNT
                                            };
+                                       }
+                                       else if (service === 'broker') {
+                                           endpoint.service_port = config.NODE_PORT_BROKER;
+                                           try {
+                                               body.broker = broker.getTerms();
+                                           }
+                                           catch (e) {
+                                               return Promise.reject(e.message || e);
+                                           }
                                        }
 
                                        let offer;
