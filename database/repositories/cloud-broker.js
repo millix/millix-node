@@ -62,6 +62,17 @@ export default class CloudBroker {
         ]);
     }
 
+    /**
+     * the certificates without their records, oldest first
+     */
+    listCertificate(where, orderBy = 'create_date asc', limit) {
+        const {
+                  sql,
+                  parameters
+              } = Database.buildQuery('SELECT certificate_id, funding_transaction_id, holder_public_key, is_trial, payment_amount, piece_issued_count, end_date, create_date FROM cloud_broker_certificate', where, orderBy, limit);
+        return this._all(sql, parameters);
+    }
+
     getCertificate(certificateID) {
         return this._get('SELECT * FROM cloud_broker_certificate WHERE certificate_id = ?', [certificateID]).then(row => this._parseCertificate(row));
     }
@@ -170,6 +181,35 @@ export default class CloudBroker {
                 now,
                 payment.node_id
             ])), Promise.resolve());
+    }
+
+    /**
+     * what the payouts paid each exit node in total and for trial traffic
+     */
+    listPayoutSummaryByNode() {
+        return this._all(`SELECT node_id, SUM(amount) AS amount, SUM(amount_trial) AS amount_trial, COUNT(transaction_id) AS payout_count, MAX(create_date) AS last_payout_date
+                          FROM cloud_broker_payout
+                          GROUP BY node_id`, []);
+    }
+
+    /**
+     * how many trial certificates and pass certificates exit nodes
+     * receipted
+     * @return {Promise<{trial: number, pass: number}>}
+     */
+    countReceiptedCertificate() {
+        return this._all(`SELECT cloud_broker_certificate.is_trial, COUNT(DISTINCT cloud_broker_receipt.certificate_id) AS certificate_count
+                          FROM cloud_broker_receipt
+                                   INNER JOIN cloud_broker_certificate ON cloud_broker_receipt.certificate_id = cloud_broker_certificate.certificate_id
+                          GROUP BY cloud_broker_certificate.is_trial`, [])
+                   .then(rows => ({
+                       trial: rows.find(row => row.is_trial === 1)?.certificate_count || 0,
+                       pass : rows.find(row => row.is_trial === 0)?.certificate_count || 0
+                   }));
+    }
+
+    countPayoutTransaction() {
+        return this._get('SELECT COUNT(DISTINCT transaction_id) AS transaction_count FROM cloud_broker_payout', []).then(row => row.transaction_count);
     }
 
     listTrialBlock() {

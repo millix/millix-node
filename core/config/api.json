@@ -883,6 +883,15 @@
       "enable": true
     },
     {
+      "id": "na8iJSKHcMSQ2OB6",
+      "name": "get_cloud_broker_report",
+      "description": "broker: returns what this broker earned from passes sold and spent on payouts to exit nodes for trials and passes, with each exit node's trial bytes and payouts",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "XplGSKUo0zHeCIxp",
       "name": "list_cloud_forward_host",
       "description": "returns how this node's exit node is reached (directly or through a forwarding node) and, on a forwarding node, the hosts registered with it and the bytes relayed",

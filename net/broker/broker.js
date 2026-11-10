@@ -477,6 +477,117 @@ class Broker {
     }
 
     /**
+     * what a pass paid the broker: stored when the certificate was issued,
+     * or read from its payment for a certificate issued before that
+     * @return {Promise<number|null>} null when the payment is not found
+     */
+    _getPassPaymentAmount(certificate, brokerAddress) {
+        if (certificate.payment_amount !== null) {
+            return Promise.resolve(certificate.payment_amount);
+        }
+        return this._listPaymentOutput(certificate.funding_transaction_id, brokerAddress)
+                   .then(outputList => outputList.length > 0 ? _.sum(_.map(outputList, output => output.amount)) : null)
+                   .catch(() => null);
+    }
+
+    /**
+     * what this broker earned and spent, from its own records: the passes it
+     * sold (what their payments paid it), what the exit nodes' receipts
+     * earned for passes and for trials, and what its payouts paid them. each
+     * exit node shows its trial certificates, bytes and payouts, the exit
+     * nodes carrying the most trial bytes first. payout fees are not
+     * counted: payout_transaction_count says how many were paid.
+     */
+    getReport() {
+        const cloudBrokerRepository = database.getRepository('cloud_broker');
+        const brokerAddress         = this.getBrokerKey().address;
+        return Promise.all([
+            this.listHost(),
+            this._getEarnedByNode(),
+            cloudBrokerRepository.listCertificate(),
+            cloudBrokerRepository.listPayoutSummaryByNode(),
+            this.listTrialBlock(),
+            cloudBrokerRepository.countReceiptedCertificate(),
+            cloudBrokerRepository.countPayoutTransaction()
+        ]).then(([hostList, earned, certificateList, payoutSummaryList, trialBlockList, receiptedCount, payoutTransactionCount]) => {
+            const passList = _.filter(certificateList, certificate => certificate.is_trial !== 1);
+            return Promise.all(passList.map(certificate => this._getPassPaymentAmount(certificate, brokerAddress)))
+                          .then(paymentAmountList => {
+                              const payoutByNode     = _.keyBy(payoutSummaryList, 'node_id');
+                              const trialBlockByNode = _.keyBy(trialBlockList, 'node_id');
+                              const reportHostList   = _.orderBy(hostList.map(host => {
+                                  const {
+                                            pass,
+                                            trial
+                                        }                = earned[host.node_id] || {
+                                      pass : this._newEarned(),
+                                      trial: this._newEarned()
+                                  };
+                                  const payout           = payoutByNode[host.node_id] || {};
+                                  const amountPaid       = payout.amount || 0;
+                                  const amountPaidTrial  = payout.amount_trial || 0;
+                                  return {
+                                      node_id         : host.node_id,
+                                      payout_address  : host.payout_address,
+                                      is_trial_blocked: host.is_trial_blocked,
+                                      trial_block_date: trialBlockByNode[host.node_id]?.create_date || null,
+                                      trial           : {
+                                          ...trial,
+                                          amount_paid    : amountPaidTrial,
+                                          amount_owed    : host.amount_owed_trial,
+                                          amount_withheld: host.amount_withheld_trial
+                                      },
+                                      pass            : {
+                                          ...pass,
+                                          amount_paid: amountPaid - amountPaidTrial,
+                                          amount_owed: host.amount_owed - host.amount_owed_trial
+                                      },
+                                      amount_paid     : amountPaid,
+                                      payout_count    : payout.payout_count || 0,
+                                      last_payout_date: payout.last_payout_date || null,
+                                      create_date     : host.create_date
+                                  };
+                              }), [host => host.trial.bytes_receipted, 'node_id'], ['desc', 'asc']);
+
+                              const sumOf = (type, field) => _.sum(_.map(reportHostList, host => host[type][field]));
+                              const spent = _.mapValues({
+                                  trial: ['bytes_receipted', 'bytes_payable', 'amount_earned', 'amount_paid', 'amount_owed', 'amount_withheld'],
+                                  pass : ['bytes_receipted', 'bytes_payable', 'amount_earned', 'amount_paid', 'amount_owed']
+                              }, (fieldList, type) => _.fromPairs(fieldList.map(field => [field, sumOf(type, field)])));
+                              const amountSold = _.sum(_.filter(paymentAmountList, amount => amount !== null));
+                              return {
+                                  broker_address: brokerAddress,
+                                  report_date   : this._now(),
+                                  trial         : {
+                                      offered   : this.isTrialOffered(),
+                                      data_bytes: config.CLOUD_BROKER_TRIAL_DATA_BYTES
+                                  },
+                                  earned        : {
+                                      pass_count                  : passList.length,
+                                      pass_receipted_count        : receiptedCount.pass,
+                                      pass_payment_amount         : amountSold,
+                                      pass_payment_not_found_count: _.filter(paymentAmountList, amount => amount === null).length
+                                  },
+                                  spent         : {
+                                      trial                   : {
+                                          certificate_count          : certificateList.length - passList.length,
+                                          certificate_receipted_count: receiptedCount.trial,
+                                          ...spent.trial
+                                      },
+                                      pass                    : spent.pass,
+                                      amount_paid             : spent.trial.amount_paid + spent.pass.amount_paid,
+                                      payout_transaction_count: payoutTransactionCount
+                                  },
+                                  // what passes sold, less what the payouts
+                                  // paid exit nodes for passes and trials
+                                  net_amount    : amountSold - spent.trial.amount_paid - spent.pass.amount_paid,
+                                  host_list     : reportHostList
+                              };
+                          });
+        });
+    }
+
+    /**
      * pays the exit nodes owed at least CLOUD_BROKER_PAYOUT_AMOUNT_MIN, in
      * transactions of up to CLOUD_BROKER_PAYOUT_OUTPUT_MAX - 1 exit nodes
      * (the last output returns the change)

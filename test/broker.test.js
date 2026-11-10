@@ -937,7 +937,7 @@ describe('broker: free trial', () => {
     });
 });
 
-describe('broker: trial payouts and the block list', () => {
+describe('broker: trial payouts, the block list and the report', () => {
     const restoreOwn    = [];
     const exitA         = newKey();
     const exitB         = newKey();
@@ -978,6 +978,8 @@ describe('broker: trial payouts and the block list', () => {
         passP1 = await issuePass(5000000);
         passP2 = await issuePass(6000000);
         passP3 = await issuePass(5000000);
+        // a pass issued before the payment amount was stored
+        await ownRepository._run('UPDATE cloud_broker_certificate SET payment_amount = NULL WHERE certificate_id = ?', [passP3.certificate_id]);
         trialT1 = await issueTrial(trialHolderList[0]);
         trialT2 = await issueTrial(trialHolderList[1]);
         trialT3 = await issueTrial(trialHolderList[2]);
@@ -1037,6 +1039,60 @@ describe('broker: trial payouts and the block list', () => {
         assert.equal(hostA.amount_withheld_trial, amountOf(PIECE_BYTES));
     });
 
+    test('the report shows what passes sold and what trials and passes cost, per exit node, from the records', async() => {
+        const report = await broker.getReport();
+        assert.equal(report.broker_address, brokerAddress);
+        assert.deepEqual(report.trial, {offered: true, data_bytes: TRIAL_BYTES});
+        // earned: what the three payments paid, one read from its payment
+        assert.deepEqual(report.earned, {
+            pass_count                  : 3,
+            pass_receipted_count        : 2,
+            pass_payment_amount         : 5000000 + 6000000 + 5000000,
+            pass_payment_not_found_count: 0
+        });
+        assert.deepEqual(report.spent.trial, {
+            certificate_count          : 3,
+            certificate_receipted_count: 3,
+            bytes_receipted            : 2 * TRIAL_BYTES + PIECE_BYTES + PIECE_BYTES,
+            bytes_payable              : 2 * TRIAL_BYTES + PIECE_BYTES,
+            amount_earned              : 2 * amountOf(TRIAL_BYTES) + amountOf(PIECE_BYTES),
+            amount_paid                : 2 * amountOf(TRIAL_BYTES),
+            amount_owed                : 0,
+            amount_withheld            : amountOf(PIECE_BYTES)
+        });
+        assert.deepEqual(report.spent.pass, {
+            bytes_receipted: 2 * PIECE_BYTES,
+            bytes_payable  : 2 * PIECE_BYTES,
+            amount_earned  : 2 * amountOf(PIECE_BYTES),
+            amount_paid    : amountOf(PIECE_BYTES),
+            amount_owed    : amountOf(PIECE_BYTES)
+        });
+        assert.equal(report.spent.amount_paid, 2 * amountOf(TRIAL_BYTES) + amountOf(PIECE_BYTES));
+        assert.equal(report.spent.payout_transaction_count, 1);
+        assert.equal(report.net_amount, 16000000 - 2 * amountOf(TRIAL_BYTES) - amountOf(PIECE_BYTES));
+
+        // the exit node carrying the most trial data comes first
+        const [hostA, hostB] = report.host_list;
+        assert.equal(hostA.node_id, exitA.address_base);
+        assert.equal(hostA.is_trial_blocked, true);
+        assert.ok(hostA.trial_block_date > 0);
+        assert.equal(hostA.trial.certificate_count, 3);
+        assert.equal(hostA.trial.bytes_receipted, 2 * TRIAL_BYTES + PIECE_BYTES);
+        assert.equal(hostA.trial.amount_paid, 2 * amountOf(TRIAL_BYTES));
+        assert.equal(hostA.trial.amount_withheld, amountOf(PIECE_BYTES));
+        assert.equal(hostA.pass.amount_owed, amountOf(PIECE_BYTES));
+        assert.equal(hostA.payout_count, 1);
+        assert.equal(hostB.node_id, exitB.address_base);
+        assert.equal(hostB.is_trial_blocked, false);
+        assert.equal(hostB.trial.bytes_receipted, PIECE_BYTES);
+        // the trial was used up at exit A first: exit B's trial bytes earn
+        // nothing
+        assert.equal(hostB.trial.bytes_payable, 0);
+        assert.equal(hostB.trial.amount_earned, 0);
+        assert.equal(hostB.pass.amount_paid, amountOf(PIECE_BYTES));
+        assert.equal(hostB.amount_paid, amountOf(PIECE_BYTES));
+    });
+
     test('pays a blocked exit node its pass receipts only, and what was held back once it is off the list', async() => {
         await broker.doPayout();
         assert.equal(sentList.length, 2);
@@ -1048,9 +1104,10 @@ describe('broker: trial payouts and the block list', () => {
         await broker.doPayout();
         assert.equal(sentList.length, 3);
         assert.deepEqual(lastPayout().outputList.map(output => output.amount), [amountOf(PIECE_BYTES)]);
-        const hostA = _.find(await broker.listHost(), {node_id: exitA.address_base});
-        assert.equal(hostA.amount_paid_trial, 2 * amountOf(TRIAL_BYTES) + amountOf(PIECE_BYTES));
-        assert.equal(hostA.amount_withheld_trial, 0);
+        const report = await broker.getReport();
+        assert.equal(report.spent.trial.amount_paid, 2 * amountOf(TRIAL_BYTES) + amountOf(PIECE_BYTES));
+        assert.equal(report.spent.trial.amount_withheld, 0);
+        assert.equal(report.spent.payout_transaction_count, 3);
         assert.ok((await broker.listHost()).every(host => host.amount_owed === 0));
     });
 });
