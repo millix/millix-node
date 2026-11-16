@@ -39,6 +39,7 @@ const terms         = {
     nonce           : newNonce()
 };
 const escrowAddress = escrow.getEscrowAddress(terms);
+const copyID        = newNonce();
 
 function receipt(totalBytes, signer = payer, overrides = {}) {
     const body = {
@@ -50,6 +51,31 @@ function receipt(totalBytes, signer = payer, overrides = {}) {
         receipt_date       : startDate,
         ...overrides
     };
+    return {
+        receipt          : body,
+        receipt_signature: escrow.signReceipt(body, signer.private_key)
+    };
+}
+
+/**
+ * a storage receipt for portionCount portions proven: the receipt with the
+ * file copy, the period covered and the amount earned
+ */
+function storageReceipt(portionCount, overrides = {}, signer = payer) {
+    const body = {
+        version            : config.ESCROW_RECEIPT_VERSION,
+        escrow_address_base: escrowAddress.address_base,
+        node_id            : payee.address_base,
+        copy_id            : copyID,
+        period_start       : startDate,
+        period_end         : startDate + portionCount * 300,
+        total_bytes        : portionCount * terms.portion_bytes,
+        total_amount       : portionCount * terms.portion_amount,
+        sequence           : portionCount + 1,
+        receipt_date       : startDate + portionCount * 300,
+        ...overrides
+    };
+    Object.keys(body).forEach(key => body[key] === undefined && delete body[key]);
     return {
         receipt          : body,
         receipt_signature: escrow.signReceipt(body, signer.private_key)
@@ -263,6 +289,103 @@ describe('escrow spend rules (walletUtils.isValidTransactionObject)', () => {
         const maximumOldestDate = now() - config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN * 60;
         assert.ok(!await walletUtils.isConsumingExpiredOutputs([escrowInput(escrowAddress, 1, weekAgo)], maximumOldestDate));
         assert.equal(await walletUtils.isConsumingExpiredOutputs([escrowInput(walletAddress(other), 1, weekAgo)], maximumOldestDate), true);
+    });
+});
+
+describe('storage receipt', () => {
+    function isValid({receipt: body, receipt_signature}, addressBase = escrowAddress.address_base, receiptTerms = terms) {
+        return escrow.isValidReceipt(receiptTerms, body, receipt_signature, addressBase);
+    }
+
+    test('is valid for its escrow, its payee and the payer key, with the copy, the period and the amount its total earns', () => {
+        assert.equal(isValid(storageReceipt(5)), true);
+        assert.equal(escrow.isStorageReceipt(storageReceipt(5).receipt), true);
+        // a first receipt, which names the copy and has earned nothing
+        assert.equal(isValid(storageReceipt(0)), true);
+        // all 10 portions, and a total beyond them: the amount stops at
+        // the escrow's
+        assert.equal(isValid(storageReceipt(10)), true);
+        assert.equal(isValid(storageReceipt(11, {total_amount: terms.amount})), true);
+        // half a portion more earns nothing more
+        assert.equal(isValid(storageReceipt(5, {total_bytes: 5 * terms.portion_bytes + 51200})), true);
+    });
+
+    test('a receipt for data carried is still valid, and is not a storage receipt', () => {
+        assert.equal(isValid(receipt(512000)), true);
+        assert.equal(escrow.isStorageReceipt(receipt(512000).receipt), false);
+        assert.equal(escrow.isStorageReceipt(null), false);
+    });
+
+    for (const [name, build] of [
+        ['signed by another key', () => storageReceipt(5, {}, other)],
+        ['signed by the payee itself', () => storageReceipt(5, {}, payee)],
+        ['for another escrow', () => storageReceipt(5, {escrow_address_base: other.address_base})],
+        ['for another node', () => storageReceipt(5, {node_id: other.address_base})],
+        ['whose amount is more than its total earns', () => storageReceipt(5, {total_amount: 6 * terms.portion_amount})],
+        ['whose amount is less than its total earns', () => storageReceipt(5, {total_amount: 4 * terms.portion_amount})],
+        ['whose amount is more than the escrow', () => storageReceipt(11)],
+        ['without the copy', () => storageReceipt(5, {copy_id: undefined})],
+        ['without the amount', () => storageReceipt(5, {total_amount: undefined})],
+        ['without the period', () => storageReceipt(5, {period_start: undefined, period_end: undefined})],
+        ['with a copy id that is not 16 hex bytes', () => storageReceipt(5, {copy_id: 'copy-1'})],
+        ['with a copy id that is not text', () => storageReceipt(5, {copy_id: 15601})],
+        ['with a period that ends before it starts', () => storageReceipt(5, {period_end: startDate - 1})],
+        ['with a period start that is not a date', () => storageReceipt(5, {period_start: 0})],
+        ['with a period end that is not an integer', () => storageReceipt(5, {period_end: startDate + 0.5})],
+        ['with a negative total', () => storageReceipt(5, {total_bytes: -terms.portion_bytes, total_amount: 0})],
+        ['with a sequence of 0', () => storageReceipt(5, {sequence: 0})],
+        ['with an extra field', () => storageReceipt(5, {note: 'x'})]
+    ]) {
+        test(`refuses a receipt ${name}`, () => assert.equal(isValid(build()), false));
+    }
+
+    test('refuses a receipt changed after signing', () => {
+        const raised = storageReceipt(5);
+        Object.assign(raised.receipt, {
+            total_bytes : 10 * terms.portion_bytes,
+            total_amount: 10 * terms.portion_amount
+        });
+        assert.equal(isValid(raised), false);
+        const moved           = storageReceipt(5);
+        moved.receipt.copy_id = newNonce();
+        assert.equal(isValid(moved), false);
+        const extended              = storageReceipt(5);
+        extended.receipt.period_end += 3600;
+        assert.equal(isValid(extended), false);
+    });
+
+    test('refuses a receipt under other terms', () => {
+        assert.equal(isValid(storageReceipt(5), escrowAddress.address_base, {...terms, payee_public_key: other.public_key}), false);
+        assert.equal(isValid(storageReceipt(5), escrowAddress.address_base, {...terms, payer_public_key: other.public_key}), false);
+        // twice the price: the amount is no longer what the total earns
+        assert.equal(isValid(storageReceipt(5), escrowAddress.address_base, {...terms, portion_amount: 40000, amount: 400000}), false);
+    });
+
+    describe('claim (walletUtils.isValidTransactionObject)', () => {
+        for (const [name, expected, build] of [
+            ['payee signs, 5 proven portions, rest back to the escrow', true,
+                () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(5)}})],
+            ['all 10 portions proven, nothing back to the escrow', true,
+                () => spend({outputList: [walletOutput(199000)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(10)}})],
+            ['takes 1 portion more than the receipt', false,
+                () => spend({outputList: [walletOutput(119000), escrowOutput(80000)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(5)}})],
+            ['the first receipt, which earned nothing, takes a portion', false,
+                () => spend({outputList: [walletOutput(19000), escrowOutput(180000)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(0)}})],
+            ['a receipt whose period moved on while its amount did not takes the portions of that time', false,
+                () => spend({outputList: [walletOutput(159000), escrowOutput(40000)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(5, {period_end: startDate + 8 * 300, sequence: 9})}})],
+            ['receipt amount raised above what its total earns', false,
+                () => spend({outputList: [walletOutput(199000)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(5, {total_amount: 200000})}})],
+            ['receipt signed by the payee itself', false,
+                () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(5, {}, payee)}})],
+            ['receipt for another escrow', false,
+                () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(5, {escrow_address_base: other.address_base})}})],
+            ['signed by a third key, not the payee', false,
+                () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [other], entry: {action: 'claim', ...storageReceipt(5)}})],
+            ['returns the rest to a wallet address instead of the escrow', false,
+                () => spend({outputList: [walletOutput(99000), walletOutput(100000, payerWallet)], signerList: [payee], entry: {action: 'claim', ...storageReceipt(5)}})]
+        ]) {
+            test(`${expected ? 'accepts' : 'refuses'} a claim: ${name}`, () => assert.equal(isValidTransaction(build()), expected));
+        }
     });
 });
 

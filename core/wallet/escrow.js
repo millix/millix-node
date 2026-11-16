@@ -25,6 +25,15 @@ const RECEIPT_KEY_LIST = [
     'sequence',
     'receipt_date'
 ].sort();
+// a storage receipt is a receipt that also names the file copy, the period
+// it covers and the amount earned so far (net/cloud-storage.js)
+const STORAGE_RECEIPT_KEY_LIST = [
+    ...RECEIPT_KEY_LIST,
+    'copy_id',
+    'period_start',
+    'period_end',
+    'total_amount'
+].sort();
 
 export const ESCROW_ACTION_CLAIM  = 'claim';
 export const ESCROW_ACTION_REFUND = 'refund';
@@ -47,6 +56,13 @@ export const ESCROW_ACTION_CLOSE  = 'close';
  *   earned must go back to the same escrow address.
  * - refund: signed by the payer key, dated at or after the unlock date.
  * - close: signed by both keys, any outputs.
+ *
+ * a receipt states the running total of bytes the payer acknowledges, and
+ * earns whole portions of it. for data carried (the vpn) these are the bytes
+ * received. for data kept (storage) they are the bytes the payee proved it
+ * holds: a storage receipt is the same receipt with the file copy, the
+ * period covered and the amount earned, which must be what its total earns
+ * by the terms. both kinds release an escrow by the same claim.
  *
  * these rules run in walletUtils.isValidTransactionObject, so every node
  * applies them when it verifies a transaction.
@@ -167,10 +183,25 @@ class Escrow {
         return signature.sign(objectHash.getHashBuffer(receipt), privateKeyBuffer);
     }
 
+    isStorageReceipt(receipt) {
+        return _.isPlainObject(receipt) && _.isEqual(_.keys(receipt).sort(), STORAGE_RECEIPT_KEY_LIST);
+    }
+
+    /**
+     * the fields a storage receipt adds: the copy, a period that does not
+     * end before it starts, and the amount its total earns by the terms
+     */
+    _isValidStorageReceipt(terms, receipt) {
+        return typeof receipt.copy_id === 'string' && /^[0-9a-f]{32}$/.test(receipt.copy_id) &&
+               this._isPositiveInteger(receipt.period_start) &&
+               Number.isInteger(receipt.period_end) && receipt.period_end >= receipt.period_start &&
+               receipt.total_amount === this.getEarnedAmount(terms, receipt.total_bytes);
+    }
+
     isValidReceipt(terms, receipt, receiptSignature, addressBase) {
         try {
             return _.isPlainObject(receipt) &&
-                   _.isEqual(_.keys(receipt).sort(), RECEIPT_KEY_LIST) &&
+                   (_.isEqual(_.keys(receipt).sort(), RECEIPT_KEY_LIST) || (this.isStorageReceipt(receipt) && this._isValidStorageReceipt(terms, receipt))) &&
                    receipt.version === config.ESCROW_RECEIPT_VERSION &&
                    receipt.escrow_address_base === addressBase &&
                    receipt.node_id === this.getAddressFromPublicKey(terms.payee_public_key) &&
