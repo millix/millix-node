@@ -802,6 +802,33 @@
       "enable": true
     },
     {
+      "id": "onJxcn9lHFnayYXJ",
+      "name": "open_cloud_storage_escrow",
+      "description": "renter: locks the rent of one rental period of a file copy in an escrow for the host of a storage_host offer, and returns the terms and the first receipt for the host. the host earns the rent by receipts signed after passed proofs; the rest returns to this wallet after the unlock date",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "FsiAYlpbIWdpHTTc",
+      "name": "sign_cloud_storage_receipt",
+      "description": "renter: signs the next receipt of a storage escrow after a proof. a passed proof earns the host the proof intervals that ended since the proof before it, a missed proof earns nothing",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
+      "id": "Jlffu44k4b6BxvDU",
+      "name": "add_cloud_storage_receipt",
+      "description": "host: takes a storage receipt signed by a renter. the first receipt of a funded escrow that pays this node records the escrow and ties it to the copy; the escrow is claimed with the latest receipt",
+      "method": "GET",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
+    },
+    {
       "id": "smG9Spe7IIkQ46b0",
       "name": "buy_cloud_pass",
       "description": "pays a broker's pass price from this wallet; the broker's prepaid certificate is fetched once the payment is stable",
