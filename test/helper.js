@@ -202,14 +202,16 @@ export function setEscrowActivationDate(date) {
  * an in-memory database with the tables of migrations 26 (broker), 27
  * (notices) and 28 (broker trials), for the real cloud_broker, cloud_pass
  * and cloud_notice repositories, or of the migrations in versionList (24:
- * offers). it answers like the node's database pool
+ * offers, 25: escrows, without its address versions, which
+ * stubRepositories loads). it answers like the node's database pool
  * (database/pool/pool.js): callbacks get (err, data) and no statement
  * context, so a run does not tell how many rows it changed.
  */
 export function openCloudDatabase(versionList = [26, 27, 28]) {
     const tableSQL = versionList.map(version => {
         const migration = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'migration', `schema-update-${version}.sql`), 'utf8');
-        return migration.substring(migration.indexOf('BEGIN TRANSACTION;') + 'BEGIN TRANSACTION;'.length, migration.indexOf('UPDATE schema_information'));
+        return migration.substring(migration.indexOf('BEGIN TRANSACTION;') + 'BEGIN TRANSACTION;'.length, migration.indexOf('UPDATE schema_information'))
+                        .replace(/INSERT OR REPLACE INTO address_version[^;]*;/g, '');
     }).join('\n');
     const database = new sqlite3.Database(':memory:');
     const pool     = {};

@@ -34,6 +34,18 @@ const const_value_default = {
     'VPN_ESCROW_PORTION_AMOUNT'  : 1465, // 150,000 millix per GB, the prototype's pool rate
     'VPN_ESCROW_UNLOCK_REMAINING_MIN': 60 * 60,
 
+    // storage paid through an escrow (net/cloud-storage.js). the renter's
+    // storage service asks a proof of each copy every
+    // CLOUD_STORAGE_PROOF_INTERVAL seconds; a passed proof pays the proof
+    // intervals that ended since the proof before it, at most
+    // CLOUD_STORAGE_PROOF_PORTION_MAX (proofs run a little late, never
+    // early). the escrow unlocks CLOUD_STORAGE_ESCROW_UNLOCK_AFTER seconds
+    // after the rental period, so the host can claim the last receipt
+    // before the renter takes the rest back.
+    'CLOUD_STORAGE_PROOF_INTERVAL'     : 5 * 60,
+    'CLOUD_STORAGE_PROOF_PORTION_MAX'  : 2,
+    'CLOUD_STORAGE_ESCROW_UNLOCK_AFTER': 60 * 60,
+
     'ESCROW_CLAIM_AMOUNT_MIN'   : 10000,
     'ESCROW_CLAIM_BEFORE_UNLOCK': 30 * 60,
     // null: the network's default below
@@ -887,6 +899,12 @@ export const CLOUD_OFFER_PRUNE_WAIT_TIME                       = 60 * 1000;
 // decimal GB the storage service counts in
 export const CLOUD_STORAGE_GB_BYTES                            = 1000 * 1000 * 1000;
 export const CLOUD_STORAGE_RENTAL_PERIOD_MAX                   = 30 * 24 * 60 * 60;
+// the bytes one storage proof checks: a storage escrow pays a portion for
+// each
+export const CLOUD_STORAGE_PROOF_BYTES                         = 1024;
+export const CLOUD_STORAGE_PROOF_INTERVAL                      = getConstValue('CLOUD_STORAGE_PROOF_INTERVAL');
+export const CLOUD_STORAGE_PROOF_PORTION_MAX                   = getConstValue('CLOUD_STORAGE_PROOF_PORTION_MAX');
+export const CLOUD_STORAGE_ESCROW_UNLOCK_AFTER                 = getConstValue('CLOUD_STORAGE_ESCROW_UNLOCK_AFTER');
 // escrow transactions are valid from this transaction date on. nodes from
 // ESCROW_NODE_VERSION_MIN on know the escrow rules: after activation an
 // escrow transaction is only proxied, validated and propagated through them.
@@ -1167,6 +1185,10 @@ export default {
     CLOUD_OFFER_PRUNE_WAIT_TIME,
     CLOUD_STORAGE_GB_BYTES,
     CLOUD_STORAGE_RENTAL_PERIOD_MAX,
+    CLOUD_STORAGE_PROOF_BYTES,
+    CLOUD_STORAGE_PROOF_INTERVAL,
+    CLOUD_STORAGE_PROOF_PORTION_MAX,
+    CLOUD_STORAGE_ESCROW_UNLOCK_AFTER,
     ESCROW_ACTIVATION_DATE,
     ESCROW_NODE_VERSION_MIN,
     ESCROW_TERMS_VERSION,
