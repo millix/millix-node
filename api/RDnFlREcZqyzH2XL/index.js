@@ -22,6 +22,12 @@ class _RDnFlREcZqyzH2XL extends Endpoint {
      * returns the verified tangled cloud offers known by the node that have
      * not ended. each offer carries its signature so the caller can verify it
      * again.
+     *
+     * a storage_host offer that can be paid and used carries
+     * endpoint.service_port (the port of the storage service) and storage
+     * {price_gb_hour, price_fetch_gb, address, free_gb, accept_new,
+     * rental_period_min}. a storage_host offer without storage was signed by
+     * an older node: it is listed as it was signed and names the node only.
      * @param app
      * @param req (p0: service, p1: country (ISO 3166-1 alpha-2), p2:
      *     order_by="create_date desc", p3: record_limit=1000)

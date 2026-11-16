@@ -883,6 +883,10 @@ export const CLOUD_OFFER_BROKER_MAX                            = 16;
 export const CLOUD_OFFER_SIZE_MAX                              = 4096;
 export const CLOUD_OFFER_LIST_SIZE_MAX                         = 100;
 export const CLOUD_OFFER_PRUNE_WAIT_TIME                       = 60 * 1000;
+// storage host offers: prices are for a GB of CLOUD_STORAGE_GB_BYTES, the
+// decimal GB the storage service counts in
+export const CLOUD_STORAGE_GB_BYTES                            = 1000 * 1000 * 1000;
+export const CLOUD_STORAGE_RENTAL_PERIOD_MAX                   = 30 * 24 * 60 * 60;
 // escrow transactions are valid from this transaction date on. nodes from
 // ESCROW_NODE_VERSION_MIN on know the escrow rules: after activation an
 // escrow transaction is only proxied, validated and propagated through them.
@@ -1161,6 +1165,8 @@ export default {
     CLOUD_OFFER_SIZE_MAX,
     CLOUD_OFFER_LIST_SIZE_MAX,
     CLOUD_OFFER_PRUNE_WAIT_TIME,
+    CLOUD_STORAGE_GB_BYTES,
+    CLOUD_STORAGE_RENTAL_PERIOD_MAX,
     ESCROW_ACTIVATION_DATE,
     ESCROW_NODE_VERSION_MIN,
     ESCROW_TERMS_VERSION,

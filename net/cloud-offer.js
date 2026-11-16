@@ -33,10 +33,12 @@ const OFFER_KEY_LIST    = [
 ].sort();
 // optional: escrow, the price of each portion of data for services paid
 // through an escrow (required for vpn_exit); broker, the terms of a broker
-// signed by the broker key (required for broker)
+// signed by the broker key (required for broker); storage, the terms of a
+// storage host (see STORAGE_KEY_LIST)
 const OFFER_OPTIONAL_KEY_LIST    = [
     'escrow',
-    'broker'
+    'broker',
+    'storage'
 ];
 const ENDPOINT_KEY_LIST          = [
     'node_prefix',
@@ -45,13 +47,31 @@ const ENDPOINT_KEY_LIST          = [
     'node_port_api'
 ].sort();
 // optional: service_port, the port of the service itself (required for
-// vpn_exit, broker and vpn_forward); forward, the forwarding node
-// {node_id, node_address, service_port} of a host that cannot be reached
-// directly
+// vpn_exit, broker and vpn_forward, and for storage_host with its storage
+// terms); forward, the forwarding node {node_id, node_address,
+// service_port} of a host that cannot be reached directly
 const ENDPOINT_OPTIONAL_KEY_LIST = [
     'service_port',
     'forward'
 ];
+// the terms of a storage host, all required when storage is present:
+// price_gb_hour, millix for a GB (CLOUD_STORAGE_GB_BYTES) kept an hour,
+// integer above 0; price_fetch_gb, millix for a GB fetched, integer from 0
+// (fetches are free); address, the wallet address to pay, a full address
+// (base, version, key identifier) that is not an escrow address; free_gb,
+// the whole GB still on offer, integer from 0; accept_new, whether the host
+// takes new files, true or false; rental_period_min, the shortest rental in
+// seconds, integer from 1 to CLOUD_STORAGE_RENTAL_PERIOD_MAX. the storage
+// service listens on the endpoint's service_port (1 to 65535), not on a
+// node port.
+const STORAGE_KEY_LIST           = [
+    'price_gb_hour',
+    'price_fetch_gb',
+    'address',
+    'free_gb',
+    'accept_new',
+    'rental_period_min'
+].sort();
 
 
 /**
@@ -59,6 +79,11 @@ const ENDPOINT_OPTIONAL_KEY_LIST = [
  * service it offers (vpn exit node, storage host). offers are immutable: to
  * change its terms a node publishes a new offer for the same service, which
  * replaces the older one. an offer past its end date stops counting.
+ *
+ * a storage_host offer signed before the storage terms existed has no
+ * storage key and no service port. it is still verified, stored, listed and
+ * sent on, so a network of older and newer nodes keeps working, but it
+ * names the node only: it cannot be paid or used (isNodeOnly).
  *
  * offers travel over the peer websocket connections: a node sends the offers
  * it knows to every new peer, and forwards every offer that is new to it to
@@ -102,6 +127,51 @@ class CloudOffer {
         catch (e) {
             return false;
         }
+    }
+
+    _isNonNegativeInteger(value) {
+        return Number.isSafeInteger(value) && value >= 0;
+    }
+
+    /**
+     * a wallet address that can be paid: its base and key identifier are
+     * addresses of this network and its version is not the escrow's
+     */
+    _isWalletAddress(address) {
+        if (!this._isNonEmptyString(address)) {
+            return false;
+        }
+
+        try {
+            const {
+                      address: addressBase,
+                      version,
+                      identifier
+                  } = database.getRepository('address').getAddressComponent(address);
+            return version !== config.ADDRESS_VERSION_ESCROW && walletUtils.isValidAddress(addressBase) && walletUtils.isValidAddress(identifier);
+        }
+        catch (e) {
+            return false;
+        }
+    }
+
+    _isValidStorage(storage) {
+        return _.isPlainObject(storage) && _.isEqual(_.keys(storage).sort(), STORAGE_KEY_LIST) &&
+               this._isNonNegativeInteger(storage.price_gb_hour) && storage.price_gb_hour > 0 &&
+               this._isNonNegativeInteger(storage.price_fetch_gb) &&
+               this._isWalletAddress(storage.address) &&
+               this._isNonNegativeInteger(storage.free_gb) &&
+               typeof storage.accept_new === 'boolean' &&
+               this._isNonNegativeInteger(storage.rental_period_min) && storage.rental_period_min > 0 &&
+               storage.rental_period_min <= config.CLOUD_STORAGE_RENTAL_PERIOD_MAX;
+    }
+
+    /**
+     * true for a storage_host offer without storage terms: it names the
+     * node only and cannot be paid or used
+     */
+    isNodeOnly(offer) {
+        return offer.service === 'storage_host' && offer.storage === undefined;
     }
 
     _isValidForward(forward, nodeID) {
@@ -172,6 +242,7 @@ class CloudOffer {
             !this._isPositiveInteger(endpoint.node_port) || !this._isPositiveInteger(endpoint.node_port_api) ||
             (endpoint.service_port !== undefined && !this._isPositiveInteger(endpoint.service_port)) ||
             (['vpn_exit', 'broker', 'vpn_forward'].includes(offer.service) && endpoint.service_port === undefined) ||
+            (offer.storage !== undefined && (endpoint.service_port === undefined || endpoint.service_port > 65535)) ||
             (endpoint.forward !== undefined && !this._isValidForward(endpoint.forward, offer.node_id))) {
             return {
                 valid : false,
@@ -189,6 +260,15 @@ class CloudOffer {
             return {
                 valid : false,
                 reason: 'offer_invalid_escrow'
+            };
+        }
+
+        // only a storage host offer carries storage terms. without them it
+        // is an offer of an older node, accepted as it is
+        if (offer.storage !== undefined && (offer.service !== 'storage_host' || !this._isValidStorage(offer.storage))) {
+            return {
+                valid : false,
+                reason: 'offer_invalid_storage'
             };
         }
 
@@ -264,11 +344,18 @@ class CloudOffer {
      * @param uploadSpeedKbps
      * @param brokerList [{address, public_key}]
      * @param endDate unix time in seconds
+     * @param storage storage_host only, required: {service_port,
+     *     price_gb_hour, price_fetch_gb, address, free_gb, accept_new,
+     *     rental_period_min}
      * @return {Promise<Object>} the signed offer
      */
-    publishOffer(service, location, uploadSpeedKbps, brokerList, endDate) {
+    publishOffer(service, location, uploadSpeedKbps, brokerList, endDate, storage) {
         if (!network.initialized || !network.nodePrivateKey) {
             return Promise.reject('network_not_initialized');
+        }
+        // this node signs no storage offer that cannot be paid or used
+        if ((service === 'storage_host') !== _.isPlainObject(storage)) {
+            return Promise.reject('offer_invalid_storage');
         }
         if (service === 'vpn_exit' && !vpnExit.isRunning()) {
             return Promise.reject('vpn_exit_not_running');
@@ -328,6 +415,14 @@ class CloudOffer {
                                        else if (service === 'vpn_forward') {
                                            endpoint.service_port = config.NODE_PORT_FORWARD;
                                        }
+                                       else if (service === 'storage_host') {
+                                           // the storage service is not
+                                           // part of the node: its port
+                                           // and terms come from the
+                                           // caller
+                                           _.assign(endpoint, _.pick(storage, ['service_port']));
+                                           body.storage = _.omit(storage, ['service_port']);
+                                       }
                                        else if (service === 'broker') {
                                            endpoint.service_port = config.NODE_PORT_BROKER;
                                            try {
@@ -382,7 +477,10 @@ class CloudOffer {
                            if (!offer || offer.end_date <= this._now()) {
                                return null;
                            }
-                           return this.publishOffer(service, offer.location, offer.upload_speed_kbps, offer.broker_list, offer.end_date);
+                           return this.publishOffer(service, offer.location, offer.upload_speed_kbps, offer.broker_list, offer.end_date, offer.storage && {
+                               ...offer.storage,
+                               service_port: offer.endpoint.service_port
+                           });
                        });
     }
 
