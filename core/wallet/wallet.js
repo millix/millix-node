@@ -458,7 +458,14 @@ class Wallet {
         });
     }
 
-    aggregateOutputs(outputList) {
+    /**
+     * @param outputList the outputs to aggregate; the wallet's free outputs
+     * when not given
+     * @param outputCountMin aggregates only when there are at least this many
+     * outputs (the auto aggregation passes
+     * WALLET_AGGREGATION_AUTO_OUTPUT_MIN)
+     */
+    aggregateOutputs(outputList, outputCountMin = 0) {
         return this.processTransaction(() => {
             return utils.orElsePromise(outputList, () => database.applyShards((shardID) => {
                 const transactionRepository = database.getRepository('transaction', shardID);
@@ -472,6 +479,9 @@ class Wallet {
                         error: 'insufficient_balance',
                         data : {balance_stable: 0}
                     });
+                }
+                if (outputs.length < outputCountMin) {
+                    return Promise.reject({error: 'aggregation_not_required'});
                 }
                 outputs = _.orderBy(outputs, ['amount'], [config.WALLET_AGGREGATION_CONSUME_SMALLER_FIRST ? 'asc' : 'desc']);
 
@@ -1589,7 +1599,7 @@ class Wallet {
             return Promise.resolve();
         }
 
-        return this.aggregateOutputs().catch(_ => _);
+        return this.aggregateOutputs(undefined, config.WALLET_AGGREGATION_AUTO_OUTPUT_MIN).catch(_ => _);
     }
 
     _doDAGProgress() {
