@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import async from 'async';
 import peer from './peer';
 import walletUtils from '../core/wallet/wallet-utils';
+import escrow from '../core/wallet/escrow';
 import objectHash from '../core/crypto/object-hash';
 import wallet from '../core/wallet/wallet';
 import https from 'https';
@@ -602,6 +603,13 @@ class Network {
             ws.terminate();
             return;
         }
+        else if (!escrow.isNodeVersionAccepted(ws)) {
+            // from the escrow activation on, older nodes cannot follow the
+            // ledger
+            console.log(`[network] closing connection from node ${ws.nodeID} of version ${ws.features.version}: below ${config.ESCROW_NODE_VERSION_MIN} after the escrow activation`);
+            ws.terminate();
+            return;
+        }
 
         if (this._registerWebsocketToNodeID(ws)) {
             this._registerWebsocketConnection(ws);
@@ -1034,6 +1042,18 @@ class Network {
               privatePort: config.NODE_PORT_STORAGE_RECEIVER,
               protocol   : 'TCP',
               description: 'millix storage receiver'
+          }).catch(_ => _))
+          .then(() => config.MODE_VPN_EXIT && config.VPN_EXIT_FORWARD !== 'always' && portMapper({
+              publicPort : config.NODE_PORT_VPN,
+              privatePort: config.NODE_PORT_VPN,
+              protocol   : 'TCP',
+              description: 'tangled cloud vpn exit'
+          }).catch(_ => _))
+          .then(() => config.MODE_CLOUD_FORWARD && portMapper({
+              publicPort : config.NODE_PORT_FORWARD,
+              privatePort: config.NODE_PORT_FORWARD,
+              protocol   : 'TCP',
+              description: 'tangled cloud forwarding'
           }).catch(_ => _));
     }
 
@@ -1114,6 +1134,9 @@ class Network {
                                           }) => {
                                        this.nodePrivateKey = privateKey;
                                        this.nodePublicKey  = base58.encode(publicKey.toBuffer());
+                                       // the vpn exit service serves the same node certificate
+                                       this.certificatePem           = certificatePem;
+                                       this.certificatePrivateKeyPem = certificatePrivateKeyPem;
                                        this.nodeID         = walletUtils.getNodeIdFromPublicKey(this.nodePublicKey);
                                        const nodeIDHash160 = objectHash.getSHA1Buffer(this.nodeID);
                                        this._initializeServer(certificatePem, certificatePrivateKeyPem);
