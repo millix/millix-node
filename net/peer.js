@@ -12,6 +12,7 @@ import wallet from '../core/wallet/wallet';
 import cache from '../core/cache';
 import base58 from 'bs58';
 import walletUtils from '../core/wallet/wallet-utils';
+import escrow from '../core/wallet/escrow';
 
 
 class Peer {
@@ -287,7 +288,9 @@ class Peer {
         let data = JSON.stringify(payload);
         network.registeredClients.forEach(ws => {
             try {
-                if (excludeWS !== ws) {
+                // escrow transactions go only to nodes that know the escrow
+                // rules
+                if (excludeWS !== ws && escrow.isNodeVersionAccepted(ws, transaction.transaction_input_list, transaction.transaction_output_list)) {
                     ws.nodeConnectionReady && ws.send(data);
                 }
             }
@@ -314,7 +317,7 @@ class Peer {
 
         let data = JSON.stringify(payload);
         try {
-            ws.nodeConnectionReady && ws.send(data);
+            ws.nodeConnectionReady && escrow.isNodeVersionAccepted(ws, transaction.transaction_input_list, transaction.transaction_output_list) && ws.send(data);
         }
         catch (e) {
             console.log('[WARN]: try to send data over a closed connection.');
