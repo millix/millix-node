@@ -4,6 +4,7 @@ import network from './network';
 import eventBus from '../core/event-bus';
 import config from '../core/config/config';
 import database from '../database/database';
+import wallet from '../core/wallet/wallet';
 import walletUtils from '../core/wallet/wallet-utils';
 import objectHash from '../core/crypto/object-hash';
 import ntp from '../core/ntp';
@@ -19,6 +20,8 @@ export const CLOUD_OFFER_VERSION = 1;
 
 const OFFER_KEY_LIST    = [
     'version',
+    'address_key_identifier',
+    'address_public_key',
     'node_id',
     'node_public_key',
     'service',
@@ -29,7 +32,8 @@ const OFFER_KEY_LIST    = [
     'create_date',
     'end_date',
     'offer_id',
-    'signature'
+    'signature',
+    'address_signature'
 ].sort();
 // optional: escrow, the price of each portion of data for services paid
 // through an escrow (required for vpn_exit); broker, the terms of a broker
@@ -80,6 +84,15 @@ const STORAGE_KEY_LIST           = [
  * change its terms a node publishes a new offer for the same service, which
  * replaces the older one. an offer past its end date stops counting.
  *
+ * the host is named by the key identifier of its wallet
+ * (address_key_identifier, with address_public_key, the key of that key
+ * identifier): an escrow pays that key, receipts, notices and the broker
+ * name it, and it signs the offer (address_signature). the node id and its
+ * public key only say which node serves the endpoint, the identity its tls
+ * certificate carries; the node key signs the offer too (signature), so an
+ * offer cannot name a node that did not publish it. a wallet has one offer
+ * for each service.
+ *
  * a storage_host offer signed before the storage terms existed has no
  * storage key and no service port. it is still verified, stored, listed and
  * sent on, so a network of older and newer nodes keeps working, but it
@@ -99,7 +112,8 @@ class CloudOffer {
     _getOfferBody(offer) {
         return _.omit(offer, [
             'offer_id',
-            'signature'
+            'signature',
+            'address_signature'
         ]);
     }
 
@@ -185,8 +199,8 @@ class CloudOffer {
 
     /**
      * checks that the offer is well formed, that it was signed by the key of
-     * the node it names, that its id matches its content and that it has not
-     * ended.
+     * the wallet key identifier and by the key of the node it names, that
+     * its id matches its content and that it has not ended.
      * @param offer
      * @return {{valid: boolean, reason?: string}}
      */
@@ -273,9 +287,9 @@ class CloudOffer {
         }
 
         // a broker offer carries the broker's terms signed by the broker key
-        // for this node
+        // for this wallet
         if ((offer.broker !== undefined || offer.service === 'broker') &&
-            (offer.service !== 'broker' || !cloudPass.isValidBrokerTerms(offer.broker, offer.node_id))) {
+            (offer.service !== 'broker' || !cloudPass.isValidBrokerTerms(offer.broker, offer.address_key_identifier))) {
             return {
                 valid : false,
                 reason: 'offer_invalid_broker'
@@ -325,6 +339,14 @@ class CloudOffer {
             };
         }
 
+        // the host's wallet: the key of the key identifier signed the offer
+        if (!cloudPass.isValidKeyIdentity(offer.address_key_identifier, offer.address_public_key, body, offer.address_signature)) {
+            return {
+                valid : false,
+                reason: 'offer_invalid_address_signature'
+            };
+        }
+
         // the node id is derived from the public key the node certificate
         // carries, the same check the handshake does for a node identity
         if (!this._isNonEmptyString(offer.signature) || !walletUtils.isValidNodeIdentity(offer.node_id, offer.node_public_key, body, offer.signature)) {
@@ -338,7 +360,8 @@ class CloudOffer {
     }
 
     /**
-     * creates, signs, stores and propagates an offer for this node
+     * creates, signs, stores and propagates an offer for this node and its
+     * wallet
      * @param service
      * @param location {country, city}
      * @param uploadSpeedKbps
@@ -367,8 +390,16 @@ class CloudOffer {
             return Promise.reject('forward_not_running');
         }
 
+        let walletKey;
+        try {
+            walletKey = wallet.getKeyIdentifierKey();
+        }
+        catch (e) {
+            return Promise.reject(e.message || e);
+        }
+
         const cloudOfferRepository = database.getRepository('cloud_offer');
-        return cloudOfferRepository.getOffer(network.nodeID, service)
+        return cloudOfferRepository.getOffer(walletKey.address_key_identifier, service)
                                    .then(previousOffer => {
                                        let createDate = this._now();
                                        // the new offer must be newer than
@@ -384,19 +415,21 @@ class CloudOffer {
                                            node_port_api: config.NODE_PORT_API
                                        };
                                        const body     = {
-                                           version          : CLOUD_OFFER_VERSION,
-                                           node_id          : network.nodeID,
-                                           node_public_key  : network.nodePublicKey,
+                                           version               : CLOUD_OFFER_VERSION,
+                                           address_key_identifier: walletKey.address_key_identifier,
+                                           address_public_key    : walletKey.public_key,
+                                           node_id               : network.nodeID,
+                                           node_public_key       : network.nodePublicKey,
                                            service,
-                                           location         : _.omitBy({
+                                           location              : _.omitBy({
                                                country: location.country,
                                                city   : location.city
                                            }, _.isNil),
-                                           upload_speed_kbps: uploadSpeedKbps,
+                                           upload_speed_kbps     : uploadSpeedKbps,
                                            endpoint,
-                                           broker_list      : brokerList,
-                                           create_date      : createDate,
-                                           end_date         : endDate
+                                           broker_list           : brokerList,
+                                           create_date           : createDate,
+                                           end_date              : endDate
                                        };
                                        if (service === 'vpn_exit') {
                                            endpoint.service_port = config.NODE_PORT_VPN;
@@ -437,8 +470,9 @@ class CloudOffer {
                                        try {
                                            offer = {
                                                ...body,
-                                               offer_id : objectHash.getCHash288(body),
-                                               signature: walletUtils.signMessage(network.nodePrivateKey, body)
+                                               offer_id         : objectHash.getCHash288(body),
+                                               signature        : walletUtils.signMessage(network.nodePrivateKey, body),
+                                               address_signature: cloudPass.signKeyIdentityMessage(body, walletKey.private_key)
                                            };
                                        }
                                        catch (e) {
@@ -467,21 +501,21 @@ class CloudOffer {
     }
 
     /**
-     * publishes this node's offer for a service again with the same terms,
+     * publishes this wallet's offer for a service again with the same terms,
      * for example when the way to reach the node changed
      */
     republishOffer(service) {
-        return database.getRepository('cloud_offer')
-                       .getOffer(network.nodeID, service)
-                       .then(offer => {
-                           if (!offer || offer.end_date <= this._now()) {
-                               return null;
-                           }
-                           return this.publishOffer(service, offer.location, offer.upload_speed_kbps, offer.broker_list, offer.end_date, offer.storage && {
-                               ...offer.storage,
-                               service_port: offer.endpoint.service_port
-                           });
-                       });
+        return Promise.resolve()
+                      .then(() => database.getRepository('cloud_offer').getOffer(wallet.getKeyIdentifierKey().address_key_identifier, service))
+                      .then(offer => {
+                          if (!offer || offer.end_date <= this._now()) {
+                              return null;
+                          }
+                          return this.publishOffer(service, offer.location, offer.upload_speed_kbps, offer.broker_list, offer.end_date, offer.storage && {
+                              ...offer.storage,
+                              service_port: offer.endpoint.service_port
+                          });
+                      });
     }
 
     listOffers(where, orderBy, limit) {
@@ -552,7 +586,7 @@ class CloudOffer {
                                            return cloudOfferRepository.addOffer(offer)
                                                                       .then(stored => {
                                                                           if (stored) {
-                                                                              console.log(`[cloud-offer] new offer ${offer.offer_id} from node ${offer.node_id} for service ${offer.service} received from node ${ws.nodeID}`);
+                                                                              console.log(`[cloud-offer] new offer ${offer.offer_id} from wallet ${offer.address_key_identifier} (node ${offer.node_id}) for service ${offer.service} received from node ${ws.nodeID}`);
                                                                               newOfferList.push(offer);
                                                                               // how long a node has been a host
                                                                               // counts for its notices

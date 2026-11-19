@@ -3,7 +3,9 @@ import {Database} from '../database';
 /**
  * the broker's records: the certificates it issued (passes and trials), the
  * latest receipt of each exit node for each certificate, the exit nodes it
- * pays, its payouts and the exit nodes its trial does not extend to
+ * pays, its payouts and the exit nodes its trial does not extend to. exit
+ * nodes are named by the key identifiers of their wallets
+ * (address_key_identifier).
  */
 export default class CloudBroker {
     constructor(database) {
@@ -88,10 +90,10 @@ export default class CloudBroker {
         ]);
     }
 
-    getReceipt(certificateID, nodeID) {
-        return this._get('SELECT * FROM cloud_broker_receipt WHERE certificate_id = ? AND node_id = ?', [
+    getReceipt(certificateID, addressKeyIdentifier) {
+        return this._get('SELECT * FROM cloud_broker_receipt WHERE certificate_id = ? AND address_key_identifier = ?', [
             certificateID,
-            nodeID
+            addressKeyIdentifier
         ]);
     }
 
@@ -99,23 +101,23 @@ export default class CloudBroker {
      * stores the receipt if it moves the certificate forward at that node
      * @return {Promise<boolean>}
      */
-    upsertReceipt(certificateID, nodeID, receipt, receiptSignature, now) {
-        return this.getReceipt(certificateID, nodeID)
+    upsertReceipt(certificateID, addressKeyIdentifier, receipt, receiptSignature, now) {
+        return this.getReceipt(certificateID, addressKeyIdentifier)
                    .then(stored => {
                        if (stored && (stored.sequence >= receipt.sequence || stored.total_bytes > receipt.total_bytes)) {
                            return false;
                        }
-                       return this._upsertReceipt(certificateID, nodeID, receipt, receiptSignature, now).then(() => true);
+                       return this._upsertReceipt(certificateID, addressKeyIdentifier, receipt, receiptSignature, now).then(() => true);
                    });
     }
 
-    _upsertReceipt(certificateID, nodeID, receipt, receiptSignature, now) {
-        return this._run(`INSERT INTO cloud_broker_receipt (certificate_id, node_id, piece_index, total_bytes, sequence, receipt, receipt_signature, first_receipt_date, update_date)
+    _upsertReceipt(certificateID, addressKeyIdentifier, receipt, receiptSignature, now) {
+        return this._run(`INSERT INTO cloud_broker_receipt (certificate_id, address_key_identifier, piece_index, total_bytes, sequence, receipt, receipt_signature, first_receipt_date, update_date)
                           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
-                          ON CONFLICT (certificate_id, node_id) DO UPDATE SET piece_index = ?3, total_bytes = ?4, sequence = ?5, receipt = ?6, receipt_signature = ?7, update_date = ?8
+                          ON CONFLICT (certificate_id, address_key_identifier) DO UPDATE SET piece_index = ?3, total_bytes = ?4, sequence = ?5, receipt = ?6, receipt_signature = ?7, update_date = ?8
                           WHERE sequence < ?5 AND total_bytes <= ?4`, [
             certificateID,
-            nodeID,
+            addressKeyIdentifier,
             receipt.piece_index,
             receipt.total_bytes,
             receipt.sequence,
@@ -130,12 +132,12 @@ export default class CloudBroker {
      * certificate
      */
     listReceiptWithCertificate() {
-        return this._all(`SELECT cloud_broker_receipt.certificate_id, cloud_broker_receipt.node_id, cloud_broker_receipt.total_bytes,
+        return this._all(`SELECT cloud_broker_receipt.certificate_id, cloud_broker_receipt.address_key_identifier, cloud_broker_receipt.total_bytes,
                                  cloud_broker_receipt.first_receipt_date, cloud_broker_receipt.update_date, cloud_broker_certificate.is_trial,
                                  cloud_broker_certificate.certificate
                           FROM cloud_broker_receipt
                                    INNER JOIN cloud_broker_certificate ON cloud_broker_receipt.certificate_id = cloud_broker_certificate.certificate_id
-                          ORDER BY cloud_broker_receipt.certificate_id, cloud_broker_receipt.first_receipt_date, cloud_broker_receipt.node_id`, [])
+                          ORDER BY cloud_broker_receipt.certificate_id, cloud_broker_receipt.first_receipt_date, cloud_broker_receipt.address_key_identifier`, [])
                    .then(rows => rows.map(row => ({
                        ...row,
                        data_bytes: JSON.parse(row.certificate).data_bytes,
@@ -143,10 +145,10 @@ export default class CloudBroker {
                    })));
     }
 
-    upsertHost(nodeID, payoutAddress, now) {
-        return this._run(`INSERT INTO cloud_broker_host (node_id, payout_address, update_date) VALUES (?1, ?2, ?3)
-                          ON CONFLICT (node_id) DO UPDATE SET payout_address = ?2, update_date = ?3`, [
-            nodeID,
+    upsertHost(addressKeyIdentifier, payoutAddress, now) {
+        return this._run(`INSERT INTO cloud_broker_host (address_key_identifier, payout_address, update_date) VALUES (?1, ?2, ?3)
+                          ON CONFLICT (address_key_identifier) DO UPDATE SET payout_address = ?2, update_date = ?3`, [
+            addressKeyIdentifier,
             payoutAddress,
             now
         ]);
@@ -163,33 +165,33 @@ export default class CloudBroker {
     /**
      * records a payout transaction and what it paid each exit node
      * @param transactionID
-     * @param paymentList [{node_id, amount, amount_trial}]: amount_trial is
-     * the part of amount paid for trial traffic
+     * @param paymentList [{address_key_identifier, amount, amount_trial}]:
+     * amount_trial is the part of amount paid for trial traffic
      */
     addPayout(transactionID, paymentList, now) {
         return paymentList.reduce((pipeline, payment) => pipeline
-            .then(() => this._run('INSERT INTO cloud_broker_payout (transaction_id, node_id, amount, amount_trial, create_date) VALUES (?,?,?,?,?)', [
+            .then(() => this._run('INSERT INTO cloud_broker_payout (transaction_id, address_key_identifier, amount, amount_trial, create_date) VALUES (?,?,?,?,?)', [
                 transactionID,
-                payment.node_id,
+                payment.address_key_identifier,
                 payment.amount,
                 payment.amount_trial || 0,
                 now
             ]))
-            .then(() => this._run('UPDATE cloud_broker_host SET amount_paid = amount_paid + ?, amount_paid_trial = amount_paid_trial + ?, update_date = ? WHERE node_id = ?', [
+            .then(() => this._run('UPDATE cloud_broker_host SET amount_paid = amount_paid + ?, amount_paid_trial = amount_paid_trial + ?, update_date = ? WHERE address_key_identifier = ?', [
                 payment.amount,
                 payment.amount_trial || 0,
                 now,
-                payment.node_id
+                payment.address_key_identifier
             ])), Promise.resolve());
     }
 
     /**
      * what the payouts paid each exit node in total and for trial traffic
      */
-    listPayoutSummaryByNode() {
-        return this._all(`SELECT node_id, SUM(amount) AS amount, SUM(amount_trial) AS amount_trial, COUNT(transaction_id) AS payout_count, MAX(create_date) AS last_payout_date
+    listPayoutSummaryByHost() {
+        return this._all(`SELECT address_key_identifier, SUM(amount) AS amount, SUM(amount_trial) AS amount_trial, COUNT(transaction_id) AS payout_count, MAX(create_date) AS last_payout_date
                           FROM cloud_broker_payout
-                          GROUP BY node_id`, []);
+                          GROUP BY address_key_identifier`, []);
     }
 
     /**
@@ -213,22 +215,22 @@ export default class CloudBroker {
     }
 
     listTrialBlock() {
-        return this._all('SELECT * FROM cloud_broker_trial_block ORDER BY create_date, node_id', []);
+        return this._all('SELECT * FROM cloud_broker_trial_block ORDER BY create_date, address_key_identifier', []);
     }
 
-    isTrialBlocked(nodeID) {
-        return this._get('SELECT node_id FROM cloud_broker_trial_block WHERE node_id = ?', [nodeID]).then(row => !!row);
+    isTrialBlocked(addressKeyIdentifier) {
+        return this._get('SELECT address_key_identifier FROM cloud_broker_trial_block WHERE address_key_identifier = ?', [addressKeyIdentifier]).then(row => !!row);
     }
 
     /**
      * replaces the exit nodes the trial does not extend to. nodes already on
      * the list keep the date they were added.
-     * @param nodeIDList
+     * @param keyIdentifierList
      */
-    setTrialBlockList(nodeIDList, now) {
-        return this._run(`DELETE FROM cloud_broker_trial_block WHERE node_id NOT IN (${nodeIDList.map(() => '?').join(',')})`, nodeIDList)
-                   .then(() => nodeIDList.reduce((pipeline, nodeID) => pipeline.then(() => this._run('INSERT OR IGNORE INTO cloud_broker_trial_block (node_id, create_date) VALUES (?,?)', [
-                       nodeID,
+    setTrialBlockList(keyIdentifierList, now) {
+        return this._run(`DELETE FROM cloud_broker_trial_block WHERE address_key_identifier NOT IN (${keyIdentifierList.map(() => '?').join(',')})`, keyIdentifierList)
+                   .then(() => keyIdentifierList.reduce((pipeline, addressKeyIdentifier) => pipeline.then(() => this._run('INSERT OR IGNORE INTO cloud_broker_trial_block (address_key_identifier, create_date) VALUES (?,?)', [
+                       addressKeyIdentifier,
                        now
                    ])), Promise.resolve()));
     }

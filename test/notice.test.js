@@ -1,16 +1,16 @@
 import {after, before, beforeEach, describe, test} from 'node:test';
 import assert from 'node:assert/strict';
+import _ from 'lodash';
 import config from '../core/config/config';
 import network from '../net/network';
 import wallet from '../core/wallet/wallet';
-import walletUtils from '../core/wallet/wallet-utils';
 import objectHash from '../core/crypto/object-hash';
 import cloudNotice, {CLOUD_NOTICE_VERSION} from '../net/cloud-notice';
 import cloudPass, {CLOUD_PASS_VERSION} from '../net/broker/cloud-pass';
 import vpnExit from '../net/vpn/vpn-exit';
 import CloudNoticeRepository from '../database/repositories/cloud-notice';
 import CloudPassRepository from '../database/repositories/cloud-pass';
-import {fullAddress, newKey, now, openCloudDatabase, stubRepositories, VERSION} from './helper';
+import {fullAddress, newKey, now, openCloudDatabase, stubRepositories, VERSION, walletKey} from './helper';
 
 const brokerKey      = newKey();
 const certificateKey = newKey();
@@ -33,15 +33,17 @@ const certificate = cloudPass.signCertificate({
     end_date              : now() + 7 * DAY
 }, brokerKey.private_key);
 
+// a reporting node is named by its wallet's key identifier: node.address_base
+// is that key identifier and node.private_key the key of it
 function receiptFor(node, signer = holder, certificateValue = certificate) {
     const receipt = {
-        version       : CLOUD_PASS_VERSION,
-        certificate_id: certificateValue.certificate_id,
-        node_id       : node.address_base,
-        piece_index   : 0,
-        total_bytes   : 1000,
-        sequence      : 1,
-        receipt_date  : now()
+        version               : CLOUD_PASS_VERSION,
+        certificate_id        : certificateValue.certificate_id,
+        address_key_identifier: node.address_base,
+        piece_index           : 0,
+        total_bytes           : 1000,
+        sequence              : 1,
+        receipt_date          : now()
     };
     return {
         receipt,
@@ -52,15 +54,16 @@ function receiptFor(node, signer = holder, certificateValue = certificate) {
 let anchorCount = 0;
 
 /**
- * a notice signed by node, as cloudNotice publishes it
+ * a notice signed by the key of node's wallet key identifier, as cloudNotice
+ * publishes it
  */
 function makeNotice(node, fields, {anchorID, createDate = now(), duration = DAY, signer = node} = {}) {
     const body     = {
-        version        : CLOUD_NOTICE_VERSION,
-        node_id        : node.address_base,
-        node_public_key: node.public_key,
-        create_date    : createDate,
-        end_date       : createDate + duration,
+        version               : CLOUD_NOTICE_VERSION,
+        address_key_identifier: node.address_base,
+        address_public_key    : node.public_key,
+        create_date           : createDate,
+        end_date              : createDate + duration,
         ...fields
     };
     const anchored = {
@@ -70,7 +73,7 @@ function makeNotice(node, fields, {anchorID, createDate = now(), duration = DAY,
     };
     return {
         ...anchored,
-        signature: walletUtils.signMessage(signer.node_private_key, anchored)
+        signature: cloudPass.signKeyIdentityMessage(anchored, signer.private_key)
     };
 }
 
@@ -179,8 +182,13 @@ describe('notice format', () => {
     for (const [name, build, reason] of [
         ['changed after signing', () => ({...userNotice(reporterList[0]), pattern: 'private_address_probe'}), 'notice_invalid_id'],
         ['re-anchored after signing', () => ({...domainNotice(reporterList[0]), anchor_transaction_id: 'B'.repeat(50)}), 'notice_invalid_signature'],
-        ['signed by another node in its name', () => domainNotice(reporterList[0], 'malware.example.com', {signer: attacker}), 'notice_invalid_signature'],
-        ['from a node that did not carry the certificate (receipt for another node)', () => userNotice(reporterList[0], receiptFor(reporterList[1])), 'notice_receipt_invalid'],
+        ['signed by another wallet in its name', () => domainNotice(reporterList[0], 'malware.example.com', {signer: attacker}), 'notice_invalid_signature'],
+        ['naming a key identifier that is not its public key\'s', () => domainNotice({...attacker, address_base: reporterList[0].address_base}, 'malware.example.com'), 'notice_invalid_signature'],
+        ['signed by the reporting node\'s node key in the old format', () => {
+            const notice = domainNotice(reporterList[0]);
+            return {..._.omit(notice, ['address_key_identifier', 'address_public_key']), node_id: reporterList[0].address_base, node_public_key: reporterList[0].public_key};
+        }, 'notice_invalid_format'],
+        ['from a node that did not carry the certificate (receipt for another wallet)', () => userNotice(reporterList[0], receiptFor(reporterList[1])), 'notice_receipt_invalid'],
         ['with a receipt not signed by the holder', () => userNotice(reporterList[0], receiptFor(reporterList[0], attacker)), 'notice_receipt_invalid'],
         ['naming a forged certificate', () => userNotice(reporterList[0], {certificate: {...certificate, holder_public_key: attacker.public_key}}), 'notice_certificate_invalid_id'],
         ['past its expiry', () => domainNotice(reporterList[0], 'malware.example.com', {createDate: now() - 2 * DAY}), 'notice_expired'],
@@ -342,8 +350,8 @@ describe('thresholds and host age', () => {
     test('a host is recorded from its offers: first seen date kept, other services ignored', async() => {
         const node = newKey();
         await noticeRepository.recordHost(node.address_base, now() - 10 * DAY);
-        await cloudNotice.recordHost({service: 'vpn_exit', node_id: node.address_base});
-        await cloudNotice.recordHost({service: 'broker', node_id: attacker.address_base});
+        await cloudNotice.recordHost({service: 'vpn_exit', address_key_identifier: node.address_base});
+        await cloudNotice.recordHost({service: 'broker', address_key_identifier: attacker.address_base});
         const notice = domainNotice(node, 'recorded.example.com');
         anchor([notice]);
         await cloudNotice.addNotice(notice);
@@ -381,6 +389,7 @@ describe('publishing notices', () => {
         stubMethod(network, 'nodePublicKey', reporter.public_key, restorePublish);
         stubMethod(network, 'nodePrivateKey', reporter.node_private_key, restorePublish);
         stubMethod(wallet, 'defaultKeyIdentifier', reporter.address_base, restorePublish);
+        stubMethod(wallet, 'getKeyIdentifierKey', () => walletKey(reporter), restorePublish);
     });
     after(() => restorePublish.reverse().forEach(fn => fn()));
 
@@ -392,6 +401,10 @@ describe('publishing notices', () => {
         }, restorePublish);
         const notice = await cloudNotice.publishDomainNotice('phishing.example.com', 'phishing', DAY);
         assert.deepEqual(cloudNotice.verifyNotice(notice), {valid: true});
+        // the notice names this wallet by its key identifier, not the node
+        assert.equal(notice.address_key_identifier, reporter.address_base);
+        assert.equal(notice.address_public_key, reporter.public_key);
+        assert.equal(notice.node_id, undefined);
         assert.equal(notice.anchor_transaction_id, 'C'.repeat(50));
         assert.equal(sentList.length, 1);
         assert.equal(sentList[0].version, VERSION.transaction_signed);
@@ -457,6 +470,7 @@ describe('exit node and notices', () => {
             await cloudNotice.addNotice(domain);
         }
         stubMethod(network, 'nodeID', exitNode.address_base, restoreExit);
+        stubMethod(wallet, 'getKeyIdentifierKey', () => walletKey(exitNode), restoreExit);
     });
     after(() => restoreExit.reverse().forEach(fn => fn()));
 

@@ -20,7 +20,7 @@ const TERMS_KEY_LIST   = [
 const RECEIPT_KEY_LIST = [
     'version',
     'escrow_address_base',
-    'node_id',
+    'address_key_identifier',
     'total_bytes',
     'sequence',
     'receipt_date'
@@ -57,6 +57,8 @@ export const ESCROW_ACTION_CLOSE  = 'close';
  * - refund: signed by the payer key, dated at or after the unlock date.
  * - close: signed by both keys, any outputs.
  *
+ * the payee key is the key of the payee wallet's key identifier, and a
+ * receipt names the payee by that key identifier (address_key_identifier).
  * a receipt states the running total of bytes the payer acknowledges, and
  * earns whole portions of it. for data carried (the vpn) these are the bytes
  * received. for data kept (storage) they are the bytes the payee proved it
@@ -204,7 +206,7 @@ class Escrow {
                    (_.isEqual(_.keys(receipt).sort(), RECEIPT_KEY_LIST) || (this.isStorageReceipt(receipt) && this._isValidStorageReceipt(terms, receipt))) &&
                    receipt.version === config.ESCROW_RECEIPT_VERSION &&
                    receipt.escrow_address_base === addressBase &&
-                   receipt.node_id === this.getAddressFromPublicKey(terms.payee_public_key) &&
+                   receipt.address_key_identifier === this.getAddressFromPublicKey(terms.payee_public_key) &&
                    Number.isInteger(receipt.total_bytes) && receipt.total_bytes >= 0 &&
                    this._isPositiveInteger(receipt.sequence) &&
                    this._isPositiveInteger(receipt.receipt_date) &&

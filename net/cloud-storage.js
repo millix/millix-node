@@ -1,7 +1,7 @@
 import _ from 'lodash';
 import config from '../core/config/config';
 import database from '../database/database';
-import network from './network';
+import wallet from '../core/wallet/wallet';
 import cloudOffer from './cloud-offer';
 import escrow from '../core/wallet/escrow';
 import walletEscrow, {ESCROW_ROLE_PAYEE, ESCROW_ROLE_PAYER} from '../core/wallet/wallet-escrow';
@@ -51,7 +51,9 @@ const COPY_ID_PATTERN = /^[0-9a-f]{32}$/;
  *
  *   version              ESCROW_RECEIPT_VERSION
  *   escrow_address_base  the escrow
- *   node_id              the host: the node id of the terms' payee key
+ *   address_key_identifier
+ *                        the host: the key identifier of its wallet, whose
+ *                        key is the terms' payee key
  *   copy_id              the copy at the host, 32 hex characters
  *   period_start         when the rental began, unix time in seconds
  *   period_end           the date of the latest proof the receipt counts,
@@ -89,7 +91,7 @@ const COPY_ID_PATTERN = /^[0-9a-f]{32}$/;
  *   answer passes without the copy. challenges must not repeat.
  * - a host that claims late. as for the vpn, what is not claimed before the
  *   unlock date can be taken back by the renter, earned or not.
- * - the price. the node checks that the escrow pays this node, is funded
+ * - the price. the node checks that the escrow pays this wallet, is funded
  *   and that its receipts are signed. whether portion_amount is the host's
  *   price for a copy of that size is for the storage service, which knows
  *   the size, to check before it keeps the copy.
@@ -208,7 +210,7 @@ class CloudStorage {
                                return Promise.reject('storage_rent_below_fee');
                            }
 
-                           return walletEscrow.createEscrow(offer.node_public_key, offer.node_id, config.CLOUD_STORAGE_PROOF_BYTES, portionAmount, portionCount, unlockDate)
+                           return walletEscrow.createEscrow(offer.address_public_key, offer.address_key_identifier, config.CLOUD_STORAGE_PROOF_BYTES, portionAmount, portionCount, unlockDate)
                                               .then(escrowData => [
                                                   offer,
                                                   escrowData,
@@ -218,16 +220,16 @@ class CloudStorage {
                        .then(([offer, escrowData, portionCount]) => {
                            const escrowAddress    = escrow.getEscrowAddress(escrowData.terms);
                            const receipt          = {
-                               version            : config.ESCROW_RECEIPT_VERSION,
-                               escrow_address_base: escrowAddress.address_base,
-                               node_id            : offer.node_id,
-                               copy_id            : copyID,
-                               period_start       : periodStart,
-                               period_end         : periodStart,
-                               total_bytes        : 0,
-                               total_amount       : 0,
-                               sequence           : 1,
-                               receipt_date       : periodStart
+                               version               : config.ESCROW_RECEIPT_VERSION,
+                               escrow_address_base   : escrowAddress.address_base,
+                               address_key_identifier: offer.address_key_identifier,
+                               copy_id               : copyID,
+                               period_start          : periodStart,
+                               period_end            : periodStart,
+                               total_bytes           : 0,
+                               total_amount          : 0,
+                               sequence              : 1,
+                               receipt_date          : periodStart
                            };
                            const receiptSignature = escrow.signReceipt(receipt, walletEscrow.getPassPrivateKey(escrowData.terms.nonce));
                            return escrowRepository.updateReceipt(escrowAddress.address_base, receipt, receiptSignature)
@@ -235,7 +237,7 @@ class CloudStorage {
                                                       if (!stored) {
                                                           return Promise.reject('receipt_not_stored');
                                                       }
-                                                      console.log(`[cloud-storage] opened escrow ${escrowAddress.address} for copy ${copyID} at host ${offer.node_id}: ${portionCount} proof intervals at ${escrowData.terms.portion_amount} each`);
+                                                      console.log(`[cloud-storage] opened escrow ${escrowAddress.address} for copy ${copyID} at host ${offer.address_key_identifier}: ${portionCount} proof intervals at ${escrowData.terms.portion_amount} each`);
                                                       return {
                                                           escrow_address        : escrowAddress.address,
                                                           escrow_address_base   : escrowAddress.address_base,
@@ -326,7 +328,7 @@ class CloudStorage {
     }
 
     /**
-     * host: records a funded escrow that pays this node for a copy, from
+     * host: records a funded escrow that pays this wallet for a copy, from
      * its terms and the first receipt the host is given
      */
     _addRental(terms, receipt, fundingTransactionID) {
@@ -351,7 +353,7 @@ class CloudStorage {
                                return walletEscrow.addPayeeEscrow(terms, fundingTransactionID);
                            })
                            .then(escrowRecord => {
-                               console.log(`[cloud-storage] escrow ${escrowRecord.escrow_address} pays this node for copy ${receipt.copy_id}: ${terms.amount} locked until ${terms.unlock_date}`);
+                               console.log(`[cloud-storage] escrow ${escrowRecord.escrow_address} pays this wallet for copy ${receipt.copy_id}: ${terms.amount} locked until ${terms.unlock_date}`);
                                return escrowRecord;
                            });
     }
@@ -372,7 +374,14 @@ class CloudStorage {
         if (!escrow.isValidTerms(terms)) {
             return Promise.reject('escrow_invalid_terms');
         }
-        if (terms.payee_public_key !== network.nodePublicKey) {
+        let walletKey;
+        try {
+            walletKey = wallet.getKeyIdentifierKey();
+        }
+        catch (e) {
+            return Promise.reject(e.message || e);
+        }
+        if (terms.payee_public_key !== walletKey.public_key) {
             return Promise.reject('escrow_not_for_this_node');
         }
 

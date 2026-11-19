@@ -35,14 +35,16 @@ const RECEIPT_HISTORY_MAX = 20;
  * a session is paid either with a broker pass (a prepaid certificate whose
  * pieces are fetched from the broker as the data is used, before the exit
  * node runs out of covered data) or with an escrow. opening a session with
- * an escrow funds an escrow for the exit node,
- * connects to the exit node over tls, checks that its certificate carries
- * the offer's node id, proves the pass key and starts a local proxy on
- * 127.0.0.1. the local proxy carries only CONNECT requests (https), each in
- * its own stream of the one connection to the exit node. every
+ * an escrow funds an escrow that pays the exit node's wallet (the offer's
+ * key identifier and its key), connects to the exit node over tls, checks
+ * that its certificate carries the offer's node id, proves the pass key and
+ * starts a local proxy on 127.0.0.1. the local proxy carries only CONNECT
+ * requests (https), each in its own stream of the one connection to the
+ * exit node. every
  * VPN_RECEIPT_INTERVAL_BYTES received, and when a tunnel closes, the session
  * signs a receipt with the pass key stating the running total and a
- * sequence, and sends it to the exit node.
+ * sequence, and sends it to the exit node. a receipt names the exit node by
+ * its wallet's key identifier.
  */
 class VPNClient {
     constructor() {
@@ -228,24 +230,24 @@ class VPNClient {
         let receipt, receiptSignature;
         if (state.pass_type === 'certificate') {
             receipt          = {
-                version       : CLOUD_PASS_VERSION,
-                certificate_id: state.certificate.certificate_id,
-                node_id       : state.node_id,
-                piece_index   : state.piece.piece_index,
-                total_bytes   : state.bytes_received,
-                sequence      : state.receipt_sequence + 1,
-                receipt_date  : this._now()
+                version               : CLOUD_PASS_VERSION,
+                certificate_id        : state.certificate.certificate_id,
+                address_key_identifier: state.address_key_identifier,
+                piece_index           : state.piece.piece_index,
+                total_bytes           : state.bytes_received,
+                sequence              : state.receipt_sequence + 1,
+                receipt_date          : this._now()
             };
             receiptSignature = cloudPass.signReceipt(receipt, passWallet.getHolderPrivateKey(state.pass_id));
         }
         else {
             receipt          = {
-                version            : config.ESCROW_RECEIPT_VERSION,
-                escrow_address_base: state.escrow_address_base,
-                node_id            : state.node_id,
-                total_bytes        : state.bytes_received,
-                sequence           : state.receipt_sequence + 1,
-                receipt_date       : this._now()
+                version               : config.ESCROW_RECEIPT_VERSION,
+                escrow_address_base   : state.escrow_address_base,
+                address_key_identifier: state.address_key_identifier,
+                total_bytes           : state.bytes_received,
+                sequence              : state.receipt_sequence + 1,
+                receipt_date          : this._now()
             };
             receiptSignature = escrow.signReceipt(receipt, walletEscrow.getPassPrivateKey(state.terms.nonce));
         }
@@ -362,20 +364,21 @@ class VPNClient {
                 return Promise.reject('broker_not_accepted_by_exit_node');
             }
             const state = {
-                session_id         : crypto.randomBytes(8).toString('hex'),
-                pass_type          : 'certificate',
-                offer_id           : offer.offer_id,
-                node_id            : offer.node_id,
-                pass_id            : passID,
-                certificate        : pass.certificate,
-                piece              : _.last(pass.piece_list),
-                bytes_received     : 0,
-                receipt_total_bytes: 0,
-                receipt_sequence   : 0,
-                receipt_list       : [],
-                status             : 'connecting',
-                create_date        : this._now(),
-                closed             : false
+                session_id            : crypto.randomBytes(8).toString('hex'),
+                pass_type             : 'certificate',
+                offer_id              : offer.offer_id,
+                address_key_identifier: offer.address_key_identifier,
+                node_id               : offer.node_id,
+                pass_id               : passID,
+                certificate           : pass.certificate,
+                piece                 : _.last(pass.piece_list),
+                bytes_received        : 0,
+                receipt_total_bytes   : 0,
+                receipt_sequence      : 0,
+                receipt_list          : [],
+                status                : 'connecting',
+                create_date           : this._now(),
+                closed                : false
             };
             return this._startSession(state, offer);
         });
@@ -427,7 +430,7 @@ class VPNClient {
                            if (offer.service !== 'vpn_exit' || !offer.escrow || !offer.endpoint.service_port) {
                                return Promise.reject('offer_not_vpn_exit');
                            }
-                           return walletEscrow.createEscrow(offer.node_public_key, offer.node_id, offer.escrow.portion_bytes, offer.escrow.portion_amount, portionCount, this._now() + unlockAfter)
+                           return walletEscrow.createEscrow(offer.address_public_key, offer.address_key_identifier, offer.escrow.portion_bytes, offer.escrow.portion_amount, portionCount, this._now() + unlockAfter)
                                               .then(escrowData => [
                                                   offer,
                                                   escrowData
@@ -439,6 +442,7 @@ class VPNClient {
                                session_id            : crypto.randomBytes(8).toString('hex'),
                                pass_type             : 'escrow',
                                offer_id              : offer.offer_id,
+                               address_key_identifier: offer.address_key_identifier,
                                node_id               : offer.node_id,
                                terms                 : escrowData.terms,
                                escrow_address        : escrowAddress.address,
@@ -490,6 +494,7 @@ class VPNClient {
                 'route',
                 'pass_id',
                 'offer_id',
+                'address_key_identifier',
                 'node_id',
                 'escrow_address',
                 'funding_transaction_id',

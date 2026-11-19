@@ -4,7 +4,6 @@ import eventBus from '../core/event-bus';
 import config from '../core/config/config';
 import database from '../database/database';
 import wallet from '../core/wallet/wallet';
-import walletUtils from '../core/wallet/wallet-utils';
 import objectHash from '../core/crypto/object-hash';
 import cloudPass from './broker/cloud-pass';
 import ntp from '../core/ntp';
@@ -21,8 +20,8 @@ const NOTICE_STATUS_VALID   = 1;
 const NOTICE_COMMON_KEY_LIST = [
     'version',
     'notice_type',
-    'node_id',
-    'node_public_key',
+    'address_key_identifier',
+    'address_public_key',
     'create_date',
     'end_date',
     'notice_id',
@@ -58,8 +57,9 @@ const COUNT_CACHE_TIME        = 60 * 1000;
  *   the certificate, and an expiry. it never names the sites.
  * - a domain notice names a domain and a threat type.
  *
- * notices are signed by the reporting node's key and anchored by a millix
- * transaction: the reporting node's wallet sends itself a transaction whose
+ * the reporting node is named by the key identifier of its wallet
+ * (address_key_identifier), and its notices are signed by the key of that
+ * key identifier and anchored by a millix transaction: the reporting node's wallet sends itself a transaction whose
  * signed output metadata lists the notice ids, and the date of that
  * transaction is the notice's time. notices spread like offers: a node sends
  * the anchored notices it knows to every new peer and forwards every new
@@ -67,8 +67,8 @@ const COUNT_CACHE_TIME        = 60 * 1000;
  *
  * each node applies its own threshold (CLOUD_NOTICE_THRESHOLD): a
  * certificate or a domain counts as noticed once that many nodes reported
- * it. a notice counts only from a node this node saw offering a host service
- * at least CLOUD_NOTICE_HOST_AGE_MIN before the notice's time; a user notice
+ * it. a notice counts only from a wallet this node saw offering a host
+ * service at least CLOUD_NOTICE_HOST_AGE_MIN before the notice's time; a user notice
  * counts only with the receipt that shows the reporter carried the
  * certificate. an exit node refuses noticed certificates and tunnels to
  * noticed domains.
@@ -101,8 +101,8 @@ class CloudNotice {
     }
 
     /**
-     * checks the notice itself: its format, its signature by the node it
-     * names, its expiry and, for a user notice, the certificate and the
+     * checks the notice itself: its format, its signature by the key of the
+     * wallet key identifier it names, its expiry and, for a user notice, the certificate and the
      * receipt that shows the reporting node carried it. the anchor is checked
      * by checkAnchor.
      * @return {{valid: boolean, reason?: string}}
@@ -162,7 +162,7 @@ class CloudNotice {
                     reason: `notice_${reason}`
                 };
             }
-            if (!cloudPass.isValidReceipt(certificate, notice.receipt, notice.receipt_signature, notice.node_id)) {
+            if (!cloudPass.isValidReceipt(certificate, notice.receipt, notice.receipt_signature, notice.address_key_identifier)) {
                 return {
                     valid : false,
                     reason: 'notice_receipt_invalid'
@@ -190,7 +190,7 @@ class CloudNotice {
             };
         }
 
-        if (typeof notice.signature !== 'string' || !walletUtils.isValidNodeIdentity(notice.node_id, notice.node_public_key, _.omit(notice, ['signature']), notice.signature)) {
+        if (!cloudPass.isValidKeyIdentity(notice.address_key_identifier, notice.address_public_key, _.omit(notice, ['signature']), notice.signature)) {
             return {
                 valid : false,
                 reason: 'notice_invalid_signature'
@@ -264,7 +264,7 @@ class CloudNotice {
                        return database.getRepository('cloud_notice')
                                       .setNoticeAnchored(notice.notice_id, anchorDate)
                                       .then(() => {
-                                          console.log(`[cloud-notice] ${notice.notice_type} notice ${notice.notice_id} from node ${notice.node_id} anchored at ${anchorDate}`);
+                                          console.log(`[cloud-notice] ${notice.notice_type} notice ${notice.notice_id} from wallet ${notice.address_key_identifier} anchored at ${anchorDate}`);
                                           return true;
                                       });
                    });
@@ -296,8 +296,8 @@ class CloudNotice {
     }
 
     /**
-     * how many nodes reported a subject, counting only nodes this node saw
-     * offering a host service at least CLOUD_NOTICE_HOST_AGE_MIN before
+     * how many wallets reported a subject, counting only wallets this node
+     * saw offering a host service at least CLOUD_NOTICE_HOST_AGE_MIN before
      * their notice's time
      */
     countReporters(subject) {
@@ -309,7 +309,7 @@ class CloudNotice {
                        .listNoticeWithHost(subject, this._now())
                        .then(rowList => {
                            const count = _.uniq(_.map(_.filter(rowList, row => row.first_offer_date !== null &&
-                                                                              row.anchor_date - row.first_offer_date >= config.CLOUD_NOTICE_HOST_AGE_MIN), 'node_id')).length;
+                                                                              row.anchor_date - row.first_offer_date >= config.CLOUD_NOTICE_HOST_AGE_MIN), 'address_key_identifier')).length;
                            this._countCache.set(subject, {
                                count,
                                time: Date.now()
@@ -336,24 +336,25 @@ class CloudNotice {
     }
 
     /**
-     * this node records when it sees host offers, to judge how long a node
+     * this node records when it sees host offers, to judge how long a wallet
      * has been a host
      */
     recordHost(offer) {
         if (!['vpn_exit', 'storage_host'].includes(offer.service)) {
             return Promise.resolve();
         }
-        return Promise.resolve().then(() => database.getRepository('cloud_notice').recordHost(offer.node_id, this._now()));
+        return Promise.resolve().then(() => database.getRepository('cloud_notice').recordHost(offer.address_key_identifier, this._now()));
     }
 
     _createNotice(fields, duration) {
-        const now  = this._now();
-        const body = {
-            version        : CLOUD_NOTICE_VERSION,
-            node_id        : network.nodeID,
-            node_public_key: network.nodePublicKey,
-            create_date    : now,
-            end_date       : now + Math.min(duration, config.CLOUD_NOTICE_DURATION_MAX),
+        const now       = this._now();
+        const walletKey = wallet.getKeyIdentifierKey();
+        const body      = {
+            version               : CLOUD_NOTICE_VERSION,
+            address_key_identifier: walletKey.address_key_identifier,
+            address_public_key    : walletKey.public_key,
+            create_date           : now,
+            end_date              : now + Math.min(duration, config.CLOUD_NOTICE_DURATION_MAX),
             ...fields
         };
         return {
@@ -373,22 +374,22 @@ class CloudNotice {
      * @param duration seconds until the notice expires
      */
     publishUserNotice(certificate, pattern, numbers, receipt, receiptSignature, duration = config.CLOUD_NOTICE_DURATION_MAX) {
-        return this._publish(this._createNotice({
+        return Promise.resolve().then(() => this._publish(this._createNotice({
             notice_type      : NOTICE_TYPE_USER,
             certificate,
             pattern,
             numbers,
             receipt,
             receipt_signature: receiptSignature
-        }, duration));
+        }, duration)));
     }
 
     publishDomainNotice(domain, threatType, duration = config.CLOUD_NOTICE_DURATION_MAX) {
-        return this._publish(this._createNotice({
+        return Promise.resolve().then(() => this._publish(this._createNotice({
             notice_type: NOTICE_TYPE_DOMAIN,
             domain     : String(domain).toLowerCase(),
             threat_type: threatType
-        }, duration));
+        }, duration)));
     }
 
     /**
@@ -403,10 +404,10 @@ class CloudNotice {
               } = this.verifyNotice({
             ...noticeBody,
             anchor_transaction_id: '-',
-            signature            : walletUtils.signMessage(network.nodePrivateKey, {
+            signature            : cloudPass.signKeyIdentityMessage({
                 ...noticeBody,
                 anchor_transaction_id: '-'
-            })
+            }, wallet.getKeyIdentifierKey().private_key)
         });
         if (!valid) {
             return Promise.reject(reason);
@@ -441,7 +442,7 @@ class CloudNotice {
                 };
                 return {
                     ...anchored,
-                    signature: walletUtils.signMessage(network.nodePrivateKey, anchored)
+                    signature: cloudPass.signKeyIdentityMessage(anchored, wallet.getKeyIdentifierKey().private_key)
                 };
             });
             console.log(`[cloud-notice] anchored ${noticeList.length} notices in transaction ${transaction.transaction_id}`);

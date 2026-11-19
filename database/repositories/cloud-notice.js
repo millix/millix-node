@@ -2,7 +2,9 @@ import {Database} from '../database';
 
 /**
  * notices between nodes (cloud_notice) and the first and last time this
- * node saw a host offer from each node (cloud_host)
+ * node saw a host offer from each wallet (cloud_host). reporters and hosts
+ * are named by the key identifiers of their wallets
+ * (address_key_identifier).
  */
 export default class CloudNotice {
     constructor(database) {
@@ -42,10 +44,10 @@ export default class CloudNotice {
     }
 
     _insertNotice(notice, subject) {
-        return this._run('INSERT OR IGNORE INTO cloud_notice (notice_id, notice_type, node_id, subject, notice, anchor_transaction_id, end_date) VALUES (?,?,?,?,?,?,?)', [
+        return this._run('INSERT OR IGNORE INTO cloud_notice (notice_id, notice_type, address_key_identifier, subject, notice, anchor_transaction_id, end_date) VALUES (?,?,?,?,?,?,?)', [
             notice.notice_id,
             notice.notice_type,
-            notice.node_id,
+            notice.address_key_identifier,
             subject,
             JSON.stringify(notice),
             notice.anchor_transaction_id,
@@ -77,9 +79,9 @@ export default class CloudNotice {
      * date this node first saw a host offer from each reporter
      */
     listNoticeWithHost(subject, now) {
-        return this._all(`SELECT cloud_notice.notice_id, cloud_notice.node_id, cloud_notice.anchor_date, cloud_host.first_offer_date
+        return this._all(`SELECT cloud_notice.notice_id, cloud_notice.address_key_identifier, cloud_notice.anchor_date, cloud_host.first_offer_date
                           FROM cloud_notice
-                                   LEFT JOIN cloud_host ON cloud_notice.node_id = cloud_host.node_id
+                                   LEFT JOIN cloud_host ON cloud_notice.address_key_identifier = cloud_host.address_key_identifier
                           WHERE cloud_notice.subject = ?
                             AND cloud_notice.status = 1
                             AND cloud_notice.end_date > ?`, [
@@ -96,10 +98,10 @@ export default class CloudNotice {
         return this._run('DELETE FROM cloud_notice WHERE end_date <= ?', [now]);
     }
 
-    recordHost(nodeID, now) {
-        return this._run(`INSERT INTO cloud_host (node_id, first_offer_date, last_offer_date) VALUES (?1, ?2, ?2)
-                          ON CONFLICT (node_id) DO UPDATE SET last_offer_date = MAX(last_offer_date, ?2)`, [
-            nodeID,
+    recordHost(addressKeyIdentifier, now) {
+        return this._run(`INSERT INTO cloud_host (address_key_identifier, first_offer_date, last_offer_date) VALUES (?1, ?2, ?2)
+                          ON CONFLICT (address_key_identifier) DO UPDATE SET last_offer_date = MAX(last_offer_date, ?2)`, [
+            addressKeyIdentifier,
             now
         ]);
     }

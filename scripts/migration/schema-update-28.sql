@@ -12,8 +12,8 @@ ALTER TABLE cloud_broker_payout ADD COLUMN amount_trial BIGINT NOT NULL DEFAULT 
 
 CREATE TABLE IF NOT EXISTS cloud_broker_trial_block
 (
-    node_id     CHAR(34)    NOT NULL PRIMARY KEY CHECK (length(node_id) <= 34),
-    create_date INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    address_key_identifier CHAR(34)    NOT NULL PRIMARY KEY CHECK (length(address_key_identifier) <= 34),
+    create_date            INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
 
 UPDATE schema_information SET value = "28" WHERE key = "version";

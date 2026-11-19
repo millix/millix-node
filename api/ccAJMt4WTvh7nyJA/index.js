@@ -17,24 +17,25 @@ class _ccAJMt4WTvh7nyJA extends Endpoint {
      * receipts earn (paid if they are taken off the list). their pass
      * receipts are paid as before.
      * @param app
-     * @param req (p0: node_id_list<required> (json): the whole list, [] to
-     *     empty it)
+     * @param req (p0: address_key_identifier_list<required> (json): the key
+     *     identifiers of the exit nodes' wallets, the whole list, [] to empty
+     *     it)
      * @param res
      * @returns {*}
      */
     handler(app, req, res) {
-        let nodeIDList;
+        let keyIdentifierList;
         try {
-            nodeIDList = JSON.parse(req.query.p0);
+            keyIdentifierList = JSON.parse(req.query.p0);
         }
         catch (e) {
             return res.status(400).send({
                 api_status : 'fail',
-                api_message: 'p0<node_id_list> must be a json list of node ids'
+                api_message: 'p0<address_key_identifier_list> must be a json list of key identifiers'
             });
         }
 
-        broker.setTrialBlockList(nodeIDList)
+        broker.setTrialBlockList(keyIdentifierList)
               .then(trialBlockList => res.send({
                   api_status      : 'success',
                   trial_block_list: trialBlockList

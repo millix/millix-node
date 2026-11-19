@@ -7,26 +7,27 @@ export default class CloudOffer {
     }
 
     /**
-     * stores a verified offer unless an offer from the same node for the same
-     * service with the same or a newer publish date is already stored. an
-     * older offer from the same node for the same service is replaced.
+     * stores a verified offer unless an offer from the same wallet (key
+     * identifier) for the same service with the same or a newer publish date
+     * is already stored. an older offer from the same wallet for the same
+     * service is replaced.
      * @param offer verified offer
      * @return {Promise<boolean>} true if the offer is stored after the call
      */
     addOffer(offer) {
         return new Promise((resolve, reject) => {
-            this.database.run('INSERT OR REPLACE INTO cloud_offer (offer_id, node_id, service, country, city, publish_date, end_date, offer) ' +
-                              'SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM cloud_offer WHERE node_id = ? AND service = ? AND publish_date >= ?)',
+            this.database.run('INSERT OR REPLACE INTO cloud_offer (offer_id, address_key_identifier, service, country, city, publish_date, end_date, offer) ' +
+                              'SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM cloud_offer WHERE address_key_identifier = ? AND service = ? AND publish_date >= ?)',
                 [
                     offer.offer_id,
-                    offer.node_id,
+                    offer.address_key_identifier,
                     offer.service,
                     offer.location.country,
                     offer.location.city || null,
                     offer.create_date,
                     offer.end_date,
                     JSON.stringify(offer),
-                    offer.node_id,
+                    offer.address_key_identifier,
                     offer.service,
                     offer.create_date
                 ], (err) => {
@@ -60,10 +61,10 @@ export default class CloudOffer {
         });
     }
 
-    getOffer(nodeID, service) {
+    getOffer(addressKeyIdentifier, service) {
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT offer FROM cloud_offer WHERE node_id = ? AND service = ?', [
-                nodeID,
+            this.database.get('SELECT offer FROM cloud_offer WHERE address_key_identifier = ? AND service = ?', [
+                addressKeyIdentifier,
                 service
             ], (err, row) => {
                 if (err) {
@@ -76,7 +77,7 @@ export default class CloudOffer {
 
     /**
      * lists offers whose end date is still in the future.
-     * @param where {service, country, node_id}
+     * @param where {service, country, address_key_identifier}
      * @param orderBy
      * @param limit
      * @return {Promise<Array>} the signed offers

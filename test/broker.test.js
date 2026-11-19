@@ -19,7 +19,7 @@ import * as nodeRequest from '../net/broker/node-request';
 import CloudBrokerRepository from '../database/repositories/cloud-broker';
 import CloudPassRepository from '../database/repositories/cloud-pass';
 import CloudNoticeRepository from '../database/repositories/cloud-notice';
-import {fullAddress, newKey, now, openCloudDatabase, stubRepositories, VERSION} from './helper';
+import {fullAddress, newKey, now, openCloudDatabase, stubRepositories, VERSION, walletKey} from './helper';
 
 const brokerKey  = newKey();
 const brokerNode = newKey();
@@ -63,15 +63,18 @@ function certificateBody(overrides = {}, certificateKey = newKey()) {
     };
 }
 
-function receiptFor(certificate, nodeID, totalBytes, sequence, signer = holder, overrides = {}) {
+// the exit nodes, the broker and the attacker are named by the key
+// identifiers of their wallets: exitNode.address_base is the exit node's key
+// identifier, exitNode.private_key the key of it
+function receiptFor(certificate, addressKeyIdentifier, totalBytes, sequence, signer = holder, overrides = {}) {
     const receipt = {
-        version       : CLOUD_PASS_VERSION,
-        certificate_id: certificate.certificate_id,
-        node_id       : nodeID,
-        piece_index   : 0,
-        total_bytes   : totalBytes,
+        version               : CLOUD_PASS_VERSION,
+        certificate_id        : certificate.certificate_id,
+        address_key_identifier: addressKeyIdentifier,
+        piece_index           : 0,
+        total_bytes           : totalBytes,
         sequence,
-        receipt_date  : now(),
+        receipt_date          : now(),
         ...overrides
     };
     return {
@@ -81,15 +84,15 @@ function receiptFor(certificate, nodeID, totalBytes, sequence, signer = holder, 
     };
 }
 
-function hostReport(node, receiptList, overrides = {}) {
+function hostReport(host, receiptList, overrides = {}) {
     return cloudPass.signHostReport({
-        node_id        : node.address_base,
-        node_public_key: node.public_key,
-        payout_address : fullAddress(exitWallet),
-        report_date    : now(),
-        receipt_list   : receiptList,
+        address_key_identifier: host.address_base,
+        address_public_key    : host.public_key,
+        payout_address        : fullAddress(exitWallet),
+        report_date           : now(),
+        receipt_list          : receiptList,
         ...overrides
-    }, node.node_private_key);
+    }, host.private_key);
 }
 
 let brokerRepository, passRepository;
@@ -171,8 +174,8 @@ function certificateRequest(transactionID, signer = holder) {
         funding_transaction_id: transactionID,
         holder_public_key     : holder.public_key,
         signature             : cloudPass.signHolderMessage({
-            funding_transaction_id: transactionID,
-            broker_node_id        : brokerNode.address_base
+            funding_transaction_id       : transactionID,
+            broker_address_key_identifier: brokerKey.address_base
         }, signer.private_key)
     };
 }
@@ -277,7 +280,9 @@ describe('pass records (cloud-pass)', () => {
         assert.equal(cloudPass.isValidPiece(certificate, {...piece, piece_bytes: GB}), false);
     });
 
-    test('a receipt is valid only from the holder key, for the node it names', () => {
+    test('a receipt is valid only from the holder key, for the exit node wallet it names by key identifier', () => {
+        assert.equal(receiptFor(certificate, exitNode.address_base, 1000, 1).receipt.address_key_identifier, exitNode.address_base);
+        assert.equal(receiptFor(certificate, exitNode.address_base, 1000, 1).receipt.node_id, undefined);
         const {receipt, signature} = receiptFor(certificate, exitNode.address_base, 1000, 1);
         assert.equal(cloudPass.isValidReceipt(certificate, receipt, signature, exitNode.address_base), true);
         assert.equal(cloudPass.isValidReceipt(certificate, receipt, signature, otherExit.address_base), false);
@@ -286,7 +291,7 @@ describe('pass records (cloud-pass)', () => {
         assert.equal(cloudPass.isValidReceipt(certificate, {...receipt, total_bytes: 9999}, signature, exitNode.address_base), false);
     });
 
-    test('broker terms are valid when signed by the broker key for the node that serves them', () => {
+    test('broker terms are valid when signed by the broker key for the wallet whose offer serves them', () => {
         const terms = {
             address         : brokerAddress,
             public_key      : brokerKey.public_key,
@@ -297,24 +302,29 @@ describe('pass records (cloud-pass)', () => {
             pool_rate       : 150000,
             payout_interval : 3600
         };
-        const signed = cloudPass.signBrokerTerms(terms, brokerNode.address_base, brokerKey.private_key);
-        assert.equal(cloudPass.isValidBrokerTerms(signed, brokerNode.address_base), true);
-        // another node cannot serve them, nor another key sign them
+        const signed = cloudPass.signBrokerTerms(terms, brokerKey.address_base, brokerKey.private_key);
+        assert.equal(cloudPass.isValidBrokerTerms(signed, brokerKey.address_base), true);
+        // another wallet cannot serve them, nor another key sign them
         assert.equal(cloudPass.isValidBrokerTerms(signed, attacker.address_base), false);
-        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms(terms, brokerNode.address_base, attacker.private_key), brokerNode.address_base), false);
+        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms(terms, brokerKey.address_base, attacker.private_key), brokerKey.address_base), false);
         // a pass may never pay out more than it costs: 25 GB at 200,001 per GB
-        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms({...terms, pool_rate: 200001}, brokerNode.address_base, brokerKey.private_key), brokerNode.address_base), false);
-        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms({...terms, pool_rate: 200000}, brokerNode.address_base, brokerKey.private_key), brokerNode.address_base), true);
+        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms({...terms, pool_rate: 200001}, brokerKey.address_base, brokerKey.private_key), brokerKey.address_base), false);
+        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms({...terms, pool_rate: 200000}, brokerKey.address_base, brokerKey.private_key), brokerKey.address_base), true);
     });
 
-    test('a host report verifies with the node key of the node it names', () => {
+    test('a host report verifies with the key of the wallet key identifier it names', () => {
         const entry = receiptFor(certificate, exitNode.address_base, 1000, 1);
         assert.deepEqual(cloudPass.verifyHostReport(hostReport(exitNode, [entry])), {valid: true});
         assert.deepEqual(cloudPass.verifyHostReport({...hostReport(exitNode, [entry]), payout_address: fullAddress(attacker)}), {
             valid : false,
             reason: 'report_invalid_signature'
         });
-        assert.deepEqual(cloudPass.verifyHostReport(hostReport(attacker, [entry], {node_id: exitNode.address_base})), {
+        assert.deepEqual(cloudPass.verifyHostReport(hostReport(attacker, [entry], {address_key_identifier: exitNode.address_base})), {
+            valid : false,
+            reason: 'report_invalid_signature'
+        });
+        // the key of another wallet, even with its own signature
+        assert.deepEqual(cloudPass.verifyHostReport(hostReport(attacker, [entry], {address_key_identifier: exitNode.address_base, address_public_key: attacker.public_key})), {
             valid : false,
             reason: 'report_invalid_signature'
         });
@@ -375,6 +385,21 @@ describe('broker: selling certificates', () => {
         await assert.rejects(broker.issueCertificate(certificateRequest(transactionID, attacker)), error => error === 'certificate_request_invalid');
     });
 
+    test('refuses a request that names the broker by another key identifier or by its node id', async() => {
+        const transactionID = newTransactionID();
+        addPayment(transactionID);
+        for (const message of [
+            {funding_transaction_id: transactionID, broker_address_key_identifier: attacker.address_base},
+            {funding_transaction_id: transactionID, broker_node_id: brokerNode.address_base}
+        ]) {
+            await assert.rejects(broker.issueCertificate({
+                funding_transaction_id: transactionID,
+                holder_public_key     : holder.public_key,
+                signature             : cloudPass.signHolderMessage(message, holder.private_key)
+            }), error => error === 'certificate_request_invalid');
+        }
+    });
+
     test('refuses someone else\'s payment: the holder key is named in the signed payment', async() => {
         // the attacker sees the payment and asks for a certificate with its
         // own key
@@ -384,8 +409,8 @@ describe('broker: selling certificates', () => {
             funding_transaction_id: transactionID,
             holder_public_key     : attacker.public_key,
             signature             : cloudPass.signHolderMessage({
-                funding_transaction_id: transactionID,
-                broker_node_id        : brokerNode.address_base
+                funding_transaction_id       : transactionID,
+                broker_address_key_identifier: brokerKey.address_base
             }, attacker.private_key)
         };
         await assert.rejects(broker.issueCertificate(request), error => error === 'payment_not_for_this_pass');
@@ -450,7 +475,7 @@ describe('broker: receipts and payouts', () => {
     });
 
     test('refuses a report in another node\'s name', async() => {
-        await assert.rejects(broker.addReport(hostReport(attacker, [receiptFor(certificateA, exitNode.address_base, 3 * PIECE_BYTES, 9)], {node_id: exitNode.address_base})),
+        await assert.rejects(broker.addReport(hostReport(attacker, [receiptFor(certificateA, exitNode.address_base, 3 * PIECE_BYTES, 9)], {address_key_identifier: exitNode.address_base})),
             error => error === 'report_invalid_signature');
     });
 
@@ -465,7 +490,7 @@ describe('broker: receipts and payouts', () => {
         finally {
             broker._now = brokerNow;
         }
-        const earned = await broker.getEarnedAmountByNode();
+        const earned = await broker.getEarnedAmountByHost();
         const rate   = config.CLOUD_BROKER_POOL_RATE;
         assert.equal(earned[exitNode.address_base], cloudPass.getPayoutAmount(2 * PIECE_BYTES, rate) + cloudPass.getPayoutAmount(PIECE_BYTES / 2, rate));
         assert.equal(earned[otherExit.address_base], cloudPass.getPayoutAmount((PIECE_COUNT - 2) * PIECE_BYTES, rate));
@@ -479,7 +504,7 @@ describe('broker: receipts and payouts', () => {
         });
         stubMethod(broker, 'server', {});
         try {
-            const earned = await broker.getEarnedAmountByNode();
+            const earned = await broker.getEarnedAmountByHost();
             await broker.doPayout();
             assert.equal(sentList.length, 1);
             assert.equal(sentList[0].fee.amount, config.TRANSACTION_FEE_PROXY);
@@ -489,7 +514,7 @@ describe('broker: receipts and payouts', () => {
             await broker.doPayout();
             assert.equal(sentList.length, 1);
             const hostList = await broker.listHost();
-            assert.ok(hostList.every(host => host.amount_owed === 0 && host.amount_paid === earned[host.node_id]));
+            assert.ok(hostList.every(host => host.amount_owed === 0 && host.amount_paid === earned[host.address_key_identifier]));
         }
         finally {
             broker.server = null;
@@ -563,6 +588,7 @@ describe('exit node: broker passes', () => {
         stubMethod(network, 'nodeID', exitNode.address_base, restoreExit);
         stubMethod(network, 'nodePublicKey', exitNode.public_key, restoreExit);
         stubMethod(network, 'nodePrivateKey', exitNode.node_private_key, restoreExit);
+        stubMethod(wallet, 'getKeyIdentifierKey', () => walletKey(exitNode), restoreExit);
         exitOffer = {
             end_date   : now() + 3600,
             broker_list: [
@@ -702,9 +728,10 @@ describe('exit node: broker passes', () => {
         const sentList = [];
         stubMethod(cloudOffer, 'listOffers', () => Promise.resolve([
             {
-                node_id : brokerNode.address_base,
-                endpoint: {node_address: '127.0.0.1', service_port: 1},
-                broker  : {address: brokerAddress}
+                address_key_identifier: brokerKey.address_base,
+                node_id               : brokerNode.address_base,
+                endpoint              : {node_address: '127.0.0.1', service_port: 1},
+                broker                : {address: brokerAddress}
             }
         ]), restoreExit);
         stubMethod(cloudOffer, 'verifyOffer', () => ({valid: true}), restoreExit);
@@ -721,7 +748,8 @@ describe('exit node: broker passes', () => {
         assert.equal(sentList.length, 1);
         assert.equal(sentList[0].nodeID, brokerNode.address_base);
         assert.equal(sentList[0].requestPath, '/broker/report');
-        assert.equal(sentList[0].body.report.node_id, exitNode.address_base);
+        assert.equal(sentList[0].body.report.address_key_identifier, exitNode.address_base);
+        assert.equal(sentList[0].body.report.node_id, undefined);
         assert.deepEqual(await passRepository.listUnreportedVPNCertificate(), []);
         const stored = await brokerRepository.getReceipt(certificate.certificate_id, exitNode.address_base);
         assert.equal(stored.total_bytes, receiptedBytes);
@@ -738,7 +766,10 @@ describe('user side: passes', () => {
         await passRepository.addPass('pass-1', brokerAddress, holder.public_key, 'paid');
         await passRepository.updatePass('pass-1', {funding_transaction_id: transactionID});
         stubMethod(passWallet, 'getHolderPrivateKey', () => holder.private_key, restoreUser);
-        stubMethod(passWallet, 'findBrokerOffer', () => Promise.resolve({node_id: brokerNode.address_base}), restoreUser);
+        stubMethod(passWallet, 'findBrokerOffer', () => Promise.resolve({
+            address_key_identifier: brokerKey.address_base,
+            node_id               : brokerNode.address_base
+        }), restoreUser);
         stubMethod(network, 'nodeID', brokerNode.address_base, restoreUser);
         let requestCount = 0;
         stubMethod(passWallet, '_brokerRequest', (offer, requestPath, body) => {
@@ -767,19 +798,20 @@ describe('user side: passes', () => {
             return Promise.resolve(requestPath === '/vpn/piece' ? {bytes_covered: 2 * PIECE_BYTES} : {});
         }, restoreUser);
         const state = {
-            session_id         : 'client',
-            session            : {},
-            pass_type          : 'certificate',
-            pass_id            : 'pass-1',
-            node_id            : exitNode.address_base,
-            certificate        : pass.certificate,
-            piece              : pass.piece_list[0],
-            bytes_covered      : PIECE_BYTES,
-            bytes_received     : 0,
-            receipt_total_bytes: 0,
-            receipt_sequence   : 0,
-            receipt_list       : [],
-            closed             : false
+            session_id            : 'client',
+            session               : {},
+            pass_type             : 'certificate',
+            pass_id               : 'pass-1',
+            address_key_identifier: exitNode.address_base,
+            node_id               : exitNode.address_base,
+            certificate           : pass.certificate,
+            piece                 : pass.piece_list[0],
+            bytes_covered         : PIECE_BYTES,
+            bytes_received        : 0,
+            receipt_total_bytes   : 0,
+            receipt_sequence      : 0,
+            receipt_list          : [],
+            closed                : false
         };
         vpnClient._countBytesReceived(state, PIECE_BYTES / 2 - 1);
         assert.ok(!sentList.some(entry => entry.requestPath === '/vpn/piece'));
@@ -803,8 +835,8 @@ function trialRequest(trialHolder, signer = trialHolder) {
     return {
         holder_public_key: trialHolder.public_key,
         signature        : cloudPass.signHolderMessage({
-            trial_holder_public_key: trialHolder.public_key,
-            broker_node_id         : brokerNode.address_base
+            trial_holder_public_key      : trialHolder.public_key,
+            broker_address_key_identifier: brokerKey.address_base
         }, signer.private_key)
     };
 }
@@ -919,20 +951,22 @@ describe('broker: free trial', () => {
     test('the terms carry trial_data_bytes only when the trial is offered, and verify either way', () => {
         const terms = broker.getTerms();
         assert.equal(terms.trial_data_bytes, TRIAL_BYTES);
-        assert.equal(cloudPass.isValidBrokerTerms(terms, brokerNode.address_base), true);
+        assert.equal(cloudPass.isValidBrokerTerms(terms, brokerKey.address_base), true);
+        // signed for the broker wallet's key identifier, not the node id
+        assert.equal(cloudPass.isValidBrokerTerms(terms, brokerNode.address_base), false);
         const restoreOff = [];
         stubMethod(config, 'CLOUD_BROKER_TRIAL_ENABLED', false, restoreOff);
         try {
             const termsWithoutTrial = broker.getTerms();
             assert.equal('trial_data_bytes' in termsWithoutTrial, false);
-            assert.equal(cloudPass.isValidBrokerTerms(termsWithoutTrial, brokerNode.address_base), true);
+            assert.equal(cloudPass.isValidBrokerTerms(termsWithoutTrial, brokerKey.address_base), true);
         }
         finally {
             restoreOff.forEach(fn => fn());
         }
         // a trial size that is not whole pieces is refused
         const {signature, ...body} = terms;
-        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms({...body, trial_data_bytes: PIECE_BYTES + 1}, brokerNode.address_base, brokerKey.private_key), brokerNode.address_base), false);
+        assert.equal(cloudPass.isValidBrokerTerms(cloudPass.signBrokerTerms({...body, trial_data_bytes: PIECE_BYTES + 1}, brokerKey.address_base, brokerKey.private_key), brokerKey.address_base), false);
     });
 });
 
@@ -1002,7 +1036,7 @@ describe('broker: trial payouts, the block list and the report', () => {
         await broker.addReport(hostReport(exitB, [receiptFor(passP1, exitB.address_base, PIECE_BYTES, 1)]));
         await addReportLater(10, hostReport(exitB, [receiptFor(trialT1, exitB.address_base, PIECE_BYTES, 1, trialHolderList[0])]));
 
-        const hostList = _.keyBy(await broker.listHost(), 'node_id');
+        const hostList = _.keyBy(await broker.listHost(), 'address_key_identifier');
         assert.equal(hostList[exitA.address_base].amount_owed, 2 * amountOf(TRIAL_BYTES));
         assert.equal(hostList[exitA.address_base].amount_owed_trial, 2 * amountOf(TRIAL_BYTES));
         assert.equal(hostList[exitB.address_base].amount_owed, amountOf(PIECE_BYTES));
@@ -1011,27 +1045,27 @@ describe('broker: trial payouts, the block list and the report', () => {
         await broker.doPayout();
         assert.equal(sentList.length, 1);
         assert.deepEqual(_.sortBy(lastPayout().outputList.map(output => output.amount)), _.sortBy([2 * amountOf(TRIAL_BYTES), amountOf(PIECE_BYTES)]));
-        const payoutList = _.keyBy(await ownRepository.listPayout(), 'node_id');
+        const payoutList = _.keyBy(await ownRepository.listPayout(), 'address_key_identifier');
         assert.equal(payoutList[exitA.address_base].amount, 2 * amountOf(TRIAL_BYTES));
         assert.equal(payoutList[exitA.address_base].amount_trial, 2 * amountOf(TRIAL_BYTES));
         assert.equal(payoutList[exitB.address_base].amount_trial, 0);
         assert.ok((await broker.listHost()).every(host => host.amount_owed === 0));
     });
 
-    test('refuses a block list that is not node ids', async() => {
-        await assert.rejects(broker.setTrialBlockList('x'), error => error === 'node_id_list_invalid');
-        await assert.rejects(broker.setTrialBlockList([exitA.address_base, 'not a node id']), error => error === 'node_id_list_invalid');
+    test('refuses a block list that is not key identifiers', async() => {
+        await assert.rejects(broker.setTrialBlockList('x'), error => error === 'address_key_identifier_list_invalid');
+        await assert.rejects(broker.setTrialBlockList([exitA.address_base, 'not a key identifier']), error => error === 'address_key_identifier_list_invalid');
         assert.deepEqual(await broker.listTrialBlock(), []);
     });
 
     test('holds back the trial receipts of an exit node on the block list, its pass receipts still paid', async() => {
         const trialBlockList = await broker.setTrialBlockList([exitA.address_base, exitA.address_base]);
-        assert.deepEqual(trialBlockList.map(entry => entry.node_id), [exitA.address_base]);
+        assert.deepEqual(trialBlockList.map(entry => entry.address_key_identifier), [exitA.address_base]);
         await broker.addReport(hostReport(exitA, [
             receiptFor(trialT3, exitA.address_base, PIECE_BYTES, 1, trialHolderList[2]),
             receiptFor(passP2, exitA.address_base, PIECE_BYTES, 1)
         ]));
-        const hostA = _.find(await broker.listHost(), {node_id: exitA.address_base});
+        const hostA = _.find(await broker.listHost(), {address_key_identifier: exitA.address_base});
         assert.equal(hostA.is_trial_blocked, true);
         assert.equal(hostA.amount_owed, amountOf(PIECE_BYTES));
         assert.equal(hostA.amount_owed_trial, 0);
@@ -1072,7 +1106,7 @@ describe('broker: trial payouts, the block list and the report', () => {
 
         // the exit node carrying the most trial data comes first
         const [hostA, hostB] = report.host_list;
-        assert.equal(hostA.node_id, exitA.address_base);
+        assert.equal(hostA.address_key_identifier, exitA.address_base);
         assert.equal(hostA.is_trial_blocked, true);
         assert.ok(hostA.trial_block_date > 0);
         assert.equal(hostA.trial.certificate_count, 3);
@@ -1081,7 +1115,7 @@ describe('broker: trial payouts, the block list and the report', () => {
         assert.equal(hostA.trial.amount_withheld, amountOf(PIECE_BYTES));
         assert.equal(hostA.pass.amount_owed, amountOf(PIECE_BYTES));
         assert.equal(hostA.payout_count, 1);
-        assert.equal(hostB.node_id, exitB.address_base);
+        assert.equal(hostB.address_key_identifier, exitB.address_base);
         assert.equal(hostB.is_trial_blocked, false);
         assert.equal(hostB.trial.bytes_receipted, PIECE_BYTES);
         // the trial was used up at exit A first: exit B's trial bytes earn
@@ -1096,7 +1130,7 @@ describe('broker: trial payouts, the block list and the report', () => {
         await broker.doPayout();
         assert.equal(sentList.length, 2);
         assert.deepEqual(lastPayout().outputList.map(output => output.amount), [amountOf(PIECE_BYTES)]);
-        const payoutA = _.filter(await ownRepository.listPayout(), {node_id: exitA.address_base});
+        const payoutA = _.filter(await ownRepository.listPayout(), {address_key_identifier: exitA.address_base});
         assert.deepEqual(_.sortBy(payoutA.map(payout => payout.amount_trial)), [0, 2 * amountOf(TRIAL_BYTES)]);
 
         await broker.setTrialBlockList([]);
@@ -1126,6 +1160,7 @@ describe('exit node: trial certificates', () => {
         stubMethod(network, 'nodeID', exitNode.address_base, restoreExit);
         stubMethod(network, 'nodePublicKey', exitNode.public_key, restoreExit);
         stubMethod(network, 'nodePrivateKey', exitNode.node_private_key, restoreExit);
+        stubMethod(wallet, 'getKeyIdentifierKey', () => walletKey(exitNode), restoreExit);
         exitOffer = {
             end_date   : now() + 3600,
             broker_list: [
@@ -1137,9 +1172,10 @@ describe('exit node: trial certificates', () => {
         };
         stubMethod(cloudOffer, 'listOffers', () => Promise.resolve([
             {
-                node_id : brokerNode.address_base,
-                endpoint: {node_address: '127.0.0.1', service_port: 1},
-                broker  : {address: brokerAddress}
+                address_key_identifier: brokerKey.address_base,
+                node_id               : brokerNode.address_base,
+                endpoint              : {node_address: '127.0.0.1', service_port: 1},
+                broker                : {address: brokerAddress}
             }
         ]), restoreExit);
         stubMethod(cloudOffer, 'verifyOffer', () => ({valid: true}), restoreExit);
@@ -1247,14 +1283,20 @@ describe('exit node: trial certificates', () => {
         vpnExit._closeSession(state, 'test');
     });
 
-    test('the broker answers only a status request signed by the node key, dated now', async() => {
-        const request = cloudPass.signNodeRequest(exitNode.address_base, exitNode.public_key, now(), exitNode.node_private_key);
+    test('the broker answers only a status request signed by the key of the wallet key identifier it names, dated now', async() => {
+        const request = cloudPass.signHostRequest(walletKey(exitNode), now());
+        assert.equal(request.address_key_identifier, exitNode.address_base);
         assert.deepEqual(await broker.getTrialStatus(request), {trial_offered: true, trial_extended: true});
-        await assert.rejects(broker.getTrialStatus(cloudPass.signNodeRequest(exitNode.address_base, exitNode.public_key, now(), attacker.node_private_key)),
+        await asBroker(() => broker.setTrialBlockList([exitNode.address_base]));
+        assert.deepEqual(await broker.getTrialStatus(cloudPass.signHostRequest(walletKey(exitNode), now())), {trial_offered: true, trial_extended: false});
+        await asBroker(() => broker.setTrialBlockList([]));
+        await assert.rejects(broker.getTrialStatus(cloudPass.signHostRequest({...walletKey(exitNode), private_key: attacker.private_key}, now())),
             error => error === 'trial_status_request_invalid');
-        await assert.rejects(broker.getTrialStatus(cloudPass.signNodeRequest(exitNode.address_base, exitNode.public_key, now() - 3600, exitNode.node_private_key)),
+        await assert.rejects(broker.getTrialStatus(cloudPass.signHostRequest({...walletKey(attacker), address_key_identifier: exitNode.address_base}, now())),
             error => error === 'trial_status_request_invalid');
-        await assert.rejects(broker.getTrialStatus({...request, node_id: otherExit.address_base}), error => error === 'trial_status_request_invalid');
+        await assert.rejects(broker.getTrialStatus(cloudPass.signHostRequest(walletKey(exitNode), now() - 3600)),
+            error => error === 'trial_status_request_invalid');
+        await assert.rejects(broker.getTrialStatus({...request, address_key_identifier: otherExit.address_base}), error => error === 'trial_status_request_invalid');
     });
 });
 
@@ -1278,8 +1320,9 @@ describe('user side: trial passes', () => {
     beforeEach(() => {
         requestList = [];
         brokerOffer = {
-            node_id: brokerNode.address_base,
-            broker : broker.getTerms()
+            address_key_identifier: brokerKey.address_base,
+            node_id               : brokerNode.address_base,
+            broker                : broker.getTerms()
         };
     });
 

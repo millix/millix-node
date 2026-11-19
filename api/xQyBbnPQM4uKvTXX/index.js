@@ -12,8 +12,8 @@ class _xQyBbnPQM4uKvTXX extends Endpoint {
     }
 
     /**
-     * signs a notice with the node key, anchors it with a transaction of
-     * this wallet (one transaction fee) and sends it to all peers once the
+     * signs a notice with the key of this wallet's key identifier, anchors
+     * it with a transaction of this wallet (one transaction fee) and sends it to all peers once the
      * anchor is stable. a domain notice names a domain and a threat type. a
      * user notice names a prepaid certificate this exit node carried, a
      * pattern and its numbers, with the certificate's latest receipt at this

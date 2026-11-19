@@ -1,5 +1,6 @@
 import {after, before, describe, test} from 'node:test';
 import assert from 'node:assert/strict';
+import _ from 'lodash';
 import config from '../core/config/config';
 import network from '../net/network';
 import wallet from '../core/wallet/wallet';
@@ -17,7 +18,8 @@ import {
     setEscrowActivationDate,
     stubRepositories,
     VERSION,
-    walletAddress
+    walletAddress,
+    walletKey
 } from './helper';
 
 const payer       = newKey();
@@ -43,12 +45,12 @@ const copyID        = newNonce();
 
 function receipt(totalBytes, signer = payer, overrides = {}) {
     const body = {
-        version            : config.ESCROW_RECEIPT_VERSION,
-        escrow_address_base: escrowAddress.address_base,
-        node_id            : payee.address_base,
-        total_bytes        : totalBytes,
-        sequence           : 3,
-        receipt_date       : startDate,
+        version               : config.ESCROW_RECEIPT_VERSION,
+        escrow_address_base   : escrowAddress.address_base,
+        address_key_identifier: payee.address_base,
+        total_bytes           : totalBytes,
+        sequence              : 3,
+        receipt_date          : startDate,
         ...overrides
     };
     return {
@@ -63,16 +65,16 @@ function receipt(totalBytes, signer = payer, overrides = {}) {
  */
 function storageReceipt(portionCount, overrides = {}, signer = payer) {
     const body = {
-        version            : config.ESCROW_RECEIPT_VERSION,
-        escrow_address_base: escrowAddress.address_base,
-        node_id            : payee.address_base,
-        copy_id            : copyID,
-        period_start       : startDate,
-        period_end         : startDate + portionCount * 300,
-        total_bytes        : portionCount * terms.portion_bytes,
-        total_amount       : portionCount * terms.portion_amount,
-        sequence           : portionCount + 1,
-        receipt_date       : startDate + portionCount * 300,
+        version               : config.ESCROW_RECEIPT_VERSION,
+        escrow_address_base   : escrowAddress.address_base,
+        address_key_identifier: payee.address_base,
+        copy_id               : copyID,
+        period_start          : startDate,
+        period_end            : startDate + portionCount * 300,
+        total_bytes           : portionCount * terms.portion_bytes,
+        total_amount          : portionCount * terms.portion_amount,
+        sequence              : portionCount + 1,
+        receipt_date          : startDate + portionCount * 300,
         ...overrides
     };
     Object.keys(body).forEach(key => body[key] === undefined && delete body[key]);
@@ -212,8 +214,8 @@ describe('escrow spend rules (walletUtils.isValidTransactionObject)', () => {
             () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [payee], entry: {action: 'claim', ...receipt(512000, payee)}})],
         ['claim: receipt for another escrow', false,
             () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [payee], entry: {action: 'claim', ...receipt(512000, payer, {escrow_address_base: other.address_base})}})],
-        ['claim: receipt for another node', false,
-            () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [payee], entry: {action: 'claim', ...receipt(512000, payer, {node_id: other.address_base})}})],
+        ['claim: receipt for another payee wallet (key identifier)', false,
+            () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [payee], entry: {action: 'claim', ...receipt(512000, payer, {address_key_identifier: other.address_base})}})],
         ['claim: no receipt', false,
             () => spend({outputList: [walletOutput(99000), escrowOutput(100000)], signerList: [payee], entry: {action: 'claim'}})],
         ['claim: signed by a third key, not the payee', false,
@@ -320,7 +322,12 @@ describe('storage receipt', () => {
         ['signed by another key', () => storageReceipt(5, {}, other)],
         ['signed by the payee itself', () => storageReceipt(5, {}, payee)],
         ['for another escrow', () => storageReceipt(5, {escrow_address_base: other.address_base})],
-        ['for another node', () => storageReceipt(5, {node_id: other.address_base})],
+        ['for another payee wallet (key identifier)', () => storageReceipt(5, {address_key_identifier: other.address_base})],
+        ['naming the payee by a node id field', () => {
+            const {receipt: body} = storageReceipt(5);
+            const renamed         = {..._.omit(body, ['address_key_identifier']), node_id: payee.address_base};
+            return {receipt: renamed, receipt_signature: escrow.signReceipt(renamed, payer.private_key)};
+        }],
         ['whose amount is more than its total earns', () => storageReceipt(5, {total_amount: 6 * terms.portion_amount})],
         ['whose amount is less than its total earns', () => storageReceipt(5, {total_amount: 4 * terms.portion_amount})],
         ['whose amount is more than the escrow', () => storageReceipt(11)],
@@ -411,9 +418,8 @@ describe('escrow claim and refund (wallet-escrow)', () => {
     }
 
     before(() => {
-        stubMethod(network, 'nodeID', payee.address_base);
-        stubMethod(network, 'nodePublicKey', payee.public_key);
-        stubMethod(network, 'nodePrivateKey', payee.node_private_key);
+        // the payee key is the key of the payee wallet's key identifier
+        stubMethod(wallet, 'getKeyIdentifierKey', () => walletKey(payee));
         stubMethod(wallet, 'defaultKeyIdentifier', payeeWallet.address_base);
         stubMethod(walletEscrow, '_sendEscrowTransaction', (inputList, outputList, signer, escrowEntry) => {
             sent = {inputList, outputList, signer, escrowEntry};
@@ -444,6 +450,7 @@ describe('escrow claim and refund (wallet-escrow)', () => {
             escrowOutput(180000)
         ]);
         assert.equal(sent.signer.public_key, payee.public_key);
+        assert.equal(sent.signer.address_base, payee.address_base);
         assert.equal(sent.escrowEntry.action, 'claim');
 
         // every node accepts the claim it builds
