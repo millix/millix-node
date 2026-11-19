@@ -711,8 +711,10 @@ class WalletUtils {
             signerAddressSet.add(addressSignature.address_base);
         }
 
+        // Escrow inputs are authorized by payer/payee keys in isValidEscrowSpend.
         if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
-            transaction.transaction_input_list.some(input => !signerAddressSet.has(input.address_base))) {
+            transaction.transaction_input_list.some(input => !escrow.isEscrowAddressVersion(input.address_version) &&
+                                                             !signerAddressSet.has(input.address_base))) {
             return false;
         }
 
