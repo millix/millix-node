@@ -621,6 +621,7 @@ class WalletUtils {
     isValidTransactionObject(transaction) {
         if (!transaction ||
             !config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version) ||
+            !Array.isArray(transaction.transaction_signature_list) ||
             transaction.transaction_input_list.length > config.TRANSACTION_INPUT_MAX ||
             transaction.transaction_output_list.length > config.TRANSACTION_OUTPUT_MAX ||
             transaction.transaction_parent_list.length > config.TRANSACTION_PARENT_MAX ||
@@ -687,10 +688,29 @@ class WalletUtils {
             }
         }
 
+        const signerAddressSet = new Set();
         for (let i = 0; i < transaction.transaction_signature_list.length; i++) {
-            if (!this.isValidAddress(transaction.transaction_signature_list[i].address_base)) {
+            const addressSignature = transaction.transaction_signature_list[i];
+            try {
+                if (!addressSignature ||
+                    typeof addressSignature.address_base !== 'string' ||
+                    !this.isValidAddress(addressSignature.address_base) ||
+                    !addressSignature.address_attribute ||
+                    typeof addressSignature.address_attribute.key_public !== 'string' ||
+                    typeof addressSignature.signature !== 'string' ||
+                    this.getAddressFromPublicKey(base58.decode(addressSignature.address_attribute.key_public)) !== addressSignature.address_base) {
+                    return false;
+                }
+            }
+            catch (e) {
                 return false;
             }
+            signerAddressSet.add(addressSignature.address_base);
+        }
+
+        if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
+            transaction.transaction_input_list.some(input => !signerAddressSet.has(input.address_base))) {
+            return false;
         }
 
 
@@ -756,9 +776,13 @@ class WalletUtils {
         }
 
         for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
-            const sign              = addressSignatureList[i];
-            const signatureVerified = this.verify(vTransaction.transaction_signature_list[i].address_attribute.key_public, sign, vTransaction);
-            if (!signatureVerified) {
+            const sign = addressSignatureList[i];
+            try {
+                if (!this.verify(vTransaction.transaction_signature_list[i].address_attribute.key_public, sign, vTransaction)) {
+                    return false;
+                }
+            }
+            catch (e) {
                 return false;
             }
         }
