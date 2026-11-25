@@ -908,8 +908,8 @@ export const CLOUD_STORAGE_ESCROW_UNLOCK_AFTER                 = getConstValue('
 // escrow transactions are valid from this transaction date on. nodes from
 // ESCROW_NODE_VERSION_MIN on know the escrow rules: after activation an
 // escrow transaction is only proxied, validated and propagated through them.
-export const ESCROW_ACTIVATION_DATE_MAIN_NETWORK               = 1798761600; // 2027-01-01 00:00 utc
-export const ESCROW_ACTIVATION_DATE_TEST_NETWORK               = 1796083200; // 2026-12-01 00:00 utc
+export const ESCROW_ACTIVATION_DATE_MAIN_NETWORK               = 1795996800; // 2026-11-30 00:00 utc
+export const ESCROW_ACTIVATION_DATE_TEST_NETWORK               = 1795996800; // 2026-11-30 00:00 utc
 export const ESCROW_ACTIVATION_DATE                            = getConstValue('ESCROW_ACTIVATION_DATE') ?? (MODE_TEST_NETWORK ? ESCROW_ACTIVATION_DATE_TEST_NETWORK : ESCROW_ACTIVATION_DATE_MAIN_NETWORK);
 export const ESCROW_NODE_VERSION_MIN                           = '1.26.0';
 export const ESCROW_TERMS_VERSION                              = 1;
