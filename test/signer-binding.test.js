@@ -189,6 +189,7 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
         test(`${version}: accepts a valid signer`, async () => {
             const transaction = buildTransaction({version});
             assertWellSigned(transaction);
+            assert.equal(walletUtils.isValidTransactionHash(transaction), true);
             assert.equal(isValid(transaction), true);
             assert.deepEqual(await walletUtils.verifyTransaction(_.cloneDeep(transaction)), [true, undefined]);
             if (version === config.BRIDGE_TRANSACTION_VERSION_MINT || version === config.BRIDGE_TRANSACTION_VERSION_BURN) {
@@ -215,6 +216,36 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
         const transaction = buildTransaction({inputKeys: [owner, other]});
         assertWellSigned(transaction);
         assert.equal(isValid(transaction), true);
+    });
+
+    test('checks the payload hash and transaction ID independently', () => {
+        const transaction = buildTransaction();
+        const wrongID     = {...transaction, transaction_id: 'wrong ID'};
+        const wrongHash   = {...transaction, payload_hash: 'wrong hash'};
+        wrongHash.transaction_id = objectHash.getCHash288(signedFields(wrongHash));
+
+        assert.equal(walletUtils.isValidTransactionHash(wrongID), false);
+        assert.equal(walletUtils.isValidTransactionHash(wrongHash), false);
+        assert.equal(isValid(wrongID), false);
+        assert.equal(isValid(wrongHash), false);
+    });
+
+    test('checks hashes with reordered lists without mutating the transaction', () => {
+        const transaction = buildTransaction({inputKeys: [owner, other]});
+        transaction.transaction_input_list.reverse();
+        transaction.transaction_output_list.reverse();
+        transaction.transaction_signature_list.reverse();
+        const original = _.cloneDeep(transaction);
+
+        assert.equal(walletUtils.isValidTransactionHash(transaction), true);
+        assert.deepEqual(transaction, original);
+    });
+
+    test('rejects missing or unhashable transaction data', () => {
+        assert.equal(walletUtils.isValidTransactionHash(null), false);
+        const transaction = buildTransaction();
+        transaction.transaction_output_list[0].amount = null;
+        assert.equal(walletUtils.isValidTransactionHash(transaction), false);
     });
 
     test('accepts repeated input addresses with one signature', () => {
@@ -302,6 +333,7 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
         const transaction = seal(buildTransaction(), [other]);
         assert.equal(transaction.payload_hash, objectHash.getCHash288(signaturePayload(transaction)));
         assert.equal(transaction.transaction_id, objectHash.getCHash288(signedFields(transaction)));
+        assert.equal(walletUtils.isValidTransactionHash(transaction), true);
         assert.equal(isValid(transaction), false);
     });
 
@@ -320,6 +352,7 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
         const genesisID   = genesisConfig.genesis_transaction;
         try {
             genesisConfig.genesis_transaction = transaction.transaction_id;
+            assert.equal(walletUtils.isValidTransactionHash(transaction), true);
             assert.equal(isValid(transaction), true);
         }
         finally {

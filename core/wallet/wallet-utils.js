@@ -645,11 +645,8 @@ class WalletUtils {
             transactionDate = new Date(transaction.transaction_date).getTime() / 1000;
         }
 
-        const addressRepository                   = database.getRepository('address');
-        //sort arrays
-        transaction['transaction_output_list']    = _.sortBy(transaction.transaction_output_list, 'output_position');
-        transaction['transaction_input_list']     = _.sortBy(transaction.transaction_input_list, 'input_position');
-        transaction['transaction_signature_list'] = _.sortBy(transaction.transaction_signature_list, 'address_base');
+        const addressRepository = database.getRepository('address');
+        this._sortTransactionLists(transaction);
         //verify addresses
         if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
             const outputUsedInTransaction = new Set();
@@ -724,71 +721,20 @@ class WalletUtils {
         }
 
 
-        // genesis transaction
-        if (transaction.transaction_id === genesisConfig.genesis_transaction) {
-            transaction['transaction_input_list']  = [
-                {
-                    type          : 'issue',
-                    amount        : config.MILLIX_CIRCULATION,
-                    input_position: 0
-                }
-            ];
-            transaction['transaction_parent_list'] = [];
-        }
+        this._normalizeGenesisTransaction(transaction);
 
-        const omitFields = [
-            'payload_hash',
-            'transaction_id',
-            'transaction_date',
-            'node_id_origin',
-            'node_id_proxy',
-            'shard_id',
-            'version'
-        ];
-
-        const versionType = transaction.version.charAt(1);
-        if (!((versionType === 'a' || versionType === 'b') &&
-              parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3)) {
-            omitFields.push('transaction_output_attribute');
-        }
-        else {
-            // check if bridge transaction and has the bridged network and
-            // address
+        if (this._hasSignedOutputAttribute(transaction.version)) {
             const isBridgeBurn = transaction.version === config.BRIDGE_TRANSACTION_VERSION_BURN;
             const isBridgeMint = transaction.version === config.BRIDGE_TRANSACTION_VERSION_MINT;
-            if (isBridgeMint || isBridgeBurn) {
-                if (!this.isValidBridgeTransaction(transaction, isBridgeMint)) {
-                    return false;
-                }
+            if ((isBridgeMint || isBridgeBurn) && !this.isValidBridgeTransaction(transaction, isBridgeMint)) {
+                return false;
             }
         }
 
-        // verify signature
-        let vTransaction = _.cloneDeep(_.omit(transaction, omitFields));
-
-        const addressSignatureList = [];
-        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
-            let addressSignature = vTransaction.transaction_signature_list[i];
-            addressSignatureList.push(addressSignature['signature']);
-            delete addressSignature['signature'];
-        }
-
-        if (transaction.transaction_id === genesisConfig.genesis_transaction) {
-            delete vTransaction['transaction_parent_list'];
-        }
-        vTransaction['payload_hash']     = objectHash.getCHash288(vTransaction);
-        vTransaction['transaction_date'] = transaction.transaction_date;
-        vTransaction['node_id_origin']   = transaction.node_id_origin;
-        vTransaction['shard_id']         = transaction.shard_id;
-        vTransaction['version']          = transaction.version;
-        if (transaction.node_id_proxy) {
-            vTransaction['node_id_proxy'] = transaction.node_id_proxy;
-        }
-
-        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
-            const sign = addressSignatureList[i];
+        const signingTransaction = this._getTransactionSigningObject(transaction);
+        for (const addressSignature of transaction.transaction_signature_list) {
             try {
-                if (!this.verify(vTransaction.transaction_signature_list[i].address_attribute.key_public, sign, vTransaction)) {
+                if (!this.verify(addressSignature.address_attribute.key_public, addressSignature.signature, signingTransaction)) {
                     return false;
                 }
             }
@@ -802,13 +748,96 @@ class WalletUtils {
             return false;
         }
 
-        for (let i = 0; i < vTransaction.transaction_signature_list.length; i++) {
-            const sign                                              = addressSignatureList[i];
-            vTransaction.transaction_signature_list[i]['signature'] = sign;
+        return this._matchesTransactionHashes(transaction, signingTransaction);
+    }
+
+    /**
+     * Checks the payload hash and transaction ID against a normalized transaction.
+     */
+    isValidTransactionHash(transaction) {
+        if (!transaction || typeof transaction.version !== 'string' ||
+            typeof transaction.payload_hash !== 'string' || typeof transaction.transaction_id !== 'string' ||
+            !Array.isArray(transaction.transaction_input_list) ||
+            !Array.isArray(transaction.transaction_output_list) ||
+            !Array.isArray(transaction.transaction_parent_list) ||
+            !Array.isArray(transaction.transaction_signature_list) ||
+            !transaction.transaction_signature_list.every(entry => typeof entry?.signature === 'string')) {
+            return false;
         }
 
-        vTransaction['transaction_id'] = objectHash.getCHash288(vTransaction);
-        return !(vTransaction['payload_hash'] !== transaction['payload_hash'] || vTransaction['transaction_id'] !== transaction['transaction_id']);
+        try {
+            const hashTransaction = {...transaction};
+            this._sortTransactionLists(hashTransaction);
+            this._normalizeGenesisTransaction(hashTransaction);
+            return this._matchesTransactionHashes(hashTransaction, this._getTransactionSigningObject(hashTransaction));
+        }
+        catch (e) {
+            return false;
+        }
+    }
+
+    _sortTransactionLists(transaction) {
+        transaction.transaction_output_list    = _.sortBy(transaction.transaction_output_list, 'output_position');
+        transaction.transaction_input_list     = _.sortBy(transaction.transaction_input_list, 'input_position');
+        transaction.transaction_signature_list = _.sortBy(transaction.transaction_signature_list, 'address_base');
+    }
+
+    _normalizeGenesisTransaction(transaction) {
+        if (transaction.transaction_id === genesisConfig.genesis_transaction) {
+            transaction['transaction_input_list']  = [
+                {
+                    type          : 'issue',
+                    amount        : config.MILLIX_CIRCULATION,
+                    input_position: 0
+                }
+            ];
+            transaction['transaction_parent_list'] = [];
+        }
+    }
+
+    _hasSignedOutputAttribute(version) {
+        const versionType = version.charAt(1);
+        return (versionType === 'a' || versionType === 'b') &&
+               parseInt(version.substring(2, version.length - 1)) >= 3;
+    }
+
+    _getTransactionSigningObject(transaction) {
+        const omitFields = [
+            'payload_hash',
+            'transaction_id',
+            'transaction_date',
+            'node_id_origin',
+            'node_id_proxy',
+            'shard_id',
+            'version'
+        ];
+
+        if (!this._hasSignedOutputAttribute(transaction.version)) {
+            omitFields.push('transaction_output_attribute');
+        }
+        if (transaction.transaction_id === genesisConfig.genesis_transaction) {
+            omitFields.push('transaction_parent_list');
+        }
+
+        const signingTransaction                      = _.omit(transaction, omitFields);
+        signingTransaction.transaction_signature_list = transaction.transaction_signature_list.map(addressSignature => _.omit(addressSignature, ['signature']));
+        signingTransaction.payload_hash               = objectHash.getCHash288(signingTransaction);
+        signingTransaction.transaction_date           = transaction.transaction_date;
+        signingTransaction.node_id_origin             = transaction.node_id_origin;
+        signingTransaction.shard_id                   = transaction.shard_id;
+        signingTransaction.version                    = transaction.version;
+        if (transaction.node_id_proxy) {
+            signingTransaction.node_id_proxy = transaction.node_id_proxy;
+        }
+        return signingTransaction;
+    }
+
+    _matchesTransactionHashes(transaction, signingTransaction) {
+        return signingTransaction.payload_hash === transaction.payload_hash &&
+               objectHash.getCHash288({
+                   ...signingTransaction,
+                   transaction_signature_list: transaction.transaction_signature_list
+               }) === transaction.transaction_id;
     }
 
     isValidBridgeTransaction(transaction, isBridgeMint = false) {
@@ -1029,9 +1058,7 @@ class WalletUtils {
 
                   let hasSignedOutputAttribute = false;
                   let version                  = hasRefreshTransaction && i === 0 ? config.WALLET_TRANSACTION_REFRESH_VERSION : transactionVersion;
-                  const versionType            = version.charAt(1);
-                  if ((versionType === 'a' || versionType === 'b') &&
-                      parseInt(version.substring(2, version.length - 1)) >= 3) {
+                  if (this._hasSignedOutputAttribute(version)) {
                       // transaction output attribute
                       const transactionFeeList                    = feeOutputList.length > 0 ?
                                                                     _.map(feeOutputList, o => _.pick(o, [
