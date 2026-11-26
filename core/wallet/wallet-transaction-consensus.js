@@ -1193,9 +1193,15 @@ export class WalletTransactionConsensus {
      * back to validation.
      * @param transactionID
      * @return {Promise<Object>} the transaction; rejects with
-     * transaction_not_found when no shard holds it
+     * consensus_not_ready before initialize() ran (the api starts before the
+     * wallet, which initializes the consensus once its sync queues are up),
+     * and with transaction_not_found when no shard holds it
      */
     invalidateTransaction(transactionID) {
+        if (!this._consensusRoundState) {
+            return Promise.reject('consensus_not_ready');
+        }
+
         return database.firstShards(shardID => database.getRepository('transaction', shardID).getTransactionObject(transactionID))
                        .then(transaction => {
                            if (!transaction) {
@@ -1247,7 +1253,7 @@ export class WalletTransactionConsensus {
                                 for (let transactionSpendingOutput of transactionSpendingOutputList) {
                                     if (transactionSpendingOutput.transaction_id !== transaction.transaction_id &&
                                         transactionSpendingOutput.status !== 3 &&
-                                        !this._transactionValidationRejected[transactionSpendingOutput.transaction_id] &&
+                                        !this._transactionValidationRejected.has(transactionSpendingOutput.transaction_id) &&
                                         (transactionSpendingOutput.is_stable === 0 || transactionSpendingOutput.is_double_spend === 0)) {
                                         isDoubleSpend = true;
                                         break;

@@ -65,3 +65,55 @@ test('rejects with transaction_not_found and changes nothing when no shard holds
     assert.equal(consensus.getRejectedTransactionList().has(TRANSACTION_ID), false);
     assert.equal(notify.mock.calls.length, 0);
 });
+
+test('rejects with consensus_not_ready before the consensus is initialized and changes nothing', {timeout: 5000}, async t => {
+    const {calls, notify} = setup(t, {transaction_id: TRANSACTION_ID, transaction_input_list: [], transaction_output_list: []});
+    const consensus       = new WalletTransactionConsensus(); // initialize() has not run: no consensus state
+
+    await assert.rejects(consensus.invalidateTransaction(TRANSACTION_ID), error => error === 'consensus_not_ready');
+
+    assert.deepEqual(calls, []);
+    assert.equal(notify.mock.calls.length, 0);
+});
+
+function setupInputReset(t, otherSpender) {
+    const consensus  = new WalletTransactionConsensus();
+    consensus.clearState();
+    const freed      = [];
+    const repository = {
+        getTransactionOutput         : async() => [{transaction_id: 'parent', output_position: 0, status: 1}],
+        listTransactionSpendingOutput: async() => [
+            {transaction_id: TRANSACTION_ID, status: 3, is_stable: 1, is_double_spend: 0},
+            otherSpender
+        ],
+        resetTransaction             : async transactionID => freed.push(transactionID),
+        updateTransactionOutput      : async transactionID => freed.push(transactionID),
+        clearTransactionObjectCache  : () => {}
+    };
+    t.mock.method(console, 'log', () => {});
+    t.mock.method(database, 'getRepository', () => repository);
+    t.mock.method(database, 'applyShards', async callback => callback('shard_zero'));
+    t.mock.method(database, 'applyShardZeroAndShardRepository', async(name, shardID, callback) => callback(repository));
+    const transaction = {
+        transaction_id        : TRANSACTION_ID,
+        transaction_input_list: [{output_transaction_id: 'parent', output_position: 0, output_shard_id: 'shard_zero'}]
+    };
+    return {consensus, freed, transaction};
+}
+
+test('frees a spent output when the only other spender was rejected by the consensus', {timeout: 5000}, async t => {
+    const {consensus, freed, transaction} = setupInputReset(t, {transaction_id: 'rejected', status: 1, is_stable: 1, is_double_spend: 0});
+    consensus._transactionValidationRejected.add('rejected');
+
+    await consensus.resetInputsSpentByTransaction(transaction);
+
+    assert.deepEqual(freed, ['parent']);
+});
+
+test('keeps a spent output spent while another live transaction spends it', {timeout: 5000}, async t => {
+    const {consensus, freed, transaction} = setupInputReset(t, {transaction_id: 'live', status: 1, is_stable: 1, is_double_spend: 0});
+
+    await consensus.resetInputsSpentByTransaction(transaction);
+
+    assert.deepEqual(freed, []);
+});

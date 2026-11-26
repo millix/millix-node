@@ -39,6 +39,12 @@ class _cTvGSLHcKXJseqso extends Endpoint {
                                               api_message: 'transaction_not_found'
                                           });
                                       }
+                                      if (e === 'consensus_not_ready') {
+                                          return res.status(503).send({
+                                              api_status : 'fail',
+                                              api_message: 'consensus_not_ready'
+                                          });
+                                      }
                                       res.send({
                                           api_status : 'fail',
                                           api_message: `unexpected generic api error: (${e})`
