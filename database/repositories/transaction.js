@@ -718,10 +718,13 @@ export default class Transaction {
                 });
 
                 transaction.transaction_signature_list.forEach((signature, index) => {
+                    const {address_base: signerAddress, signature: signerSignature, ...signerFields} = signature;
+                    const signerData = JSON.stringify(signerFields);
                     const unbound = unboundSigners.has(signature);
                     const signerStatus = unbound ? UNBOUND_SIGNER_STATUS : 1;
                     const cachedSigner = cachedTransaction.transaction_signature_list[index];
                     cachedSigner.status = signerStatus;
+                    cachedSigner.signer_data = signerData;
                     if (unbound) {
                         cachedSigner.address_attribute = {key_public: null};
                     }
@@ -730,7 +733,7 @@ export default class Transaction {
                         let isInputOrOutputAddress = false;
                         _.each(_.keys(addressList), addressKey => {
                             const address = addressList[addressKey];
-                            if (address.address_base === signature.address_base) {
+                            if (address.address_base === signerAddress) {
                                 isInputOrOutputAddress = true;
                                 delete addressList[addressKey];
                                 promise = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier, attributes)
@@ -738,11 +741,11 @@ export default class Transaction {
                             }
                         });
                         if (!isInputOrOutputAddress) {
-                            promise = promise.then(() => this.addressRepository.upsertAddressAttribute(signature.address_base, 'key_public', attributes.key_public)
+                            promise = promise.then(() => this.addressRepository.upsertAddressAttribute(signerAddress, 'key_public', attributes.key_public)
                                                                                   .catch(err => console.log('[transaction-warn] save signer key error', err)));
                         }
                     }
-                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signerStatus)
+                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signerAddress, signerSignature, signerStatus, undefined, signerData)
                                                      .catch(err => {
                                                          console.log('[transaction-warn] add transaction signature error', err);
                                                      }));
@@ -911,7 +914,7 @@ export default class Transaction {
                 });
 
                 transaction.transaction_signature_list.forEach(signature => {
-                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signature.status, signature.create_date));
+                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signature.status, signature.create_date, signature.signer_data));
                 });
 
                 promise.then(() => {
@@ -935,7 +938,7 @@ export default class Transaction {
     }
 
 
-    normalizeTransactionObject(transactionDB) {
+    normalizeTransactionObject(transactionDB, {includeUnboundSigners = false} = {}) {
         if (!transactionDB) {
             console.log('[transaction-normalization] tried to normalise a null object');
             return null;
@@ -972,17 +975,32 @@ export default class Transaction {
             'address_version',
             'address_key_identifier'
         ])), 'input_position');
-        for (const signature of transactionDB.transaction_signature_list) {
-            if (signature.status !== UNBOUND_SIGNER_STATUS && !signature.address_attribute?.key_public) {
-                console.log('[transaction-normalization] key_public not found ', transactionDB);
+        const signatures = [];
+        for (const signer of transactionDB.transaction_signature_list) {
+            const unbound = signer.status === UNBOUND_SIGNER_STATUS;
+            let signerFields;
+            if (unbound && (!includeUnboundSigners || signer.signer_data == null)) {
+                signerFields = {address_attribute: {key_public: null}};
+            }
+            else if (signer.signer_data != null) {
+                try {
+                    signerFields = JSON.parse(signer.signer_data);
+                }
+                catch (error) {
+                    return null;
+                }
+            }
+            else if (signer.address_attribute?.key_public) {
+                signerFields = {address_attribute: signer.address_attribute};
+            }
+
+            if (!_.isPlainObject(signerFields)) {
+                console.log('[transaction-normalization] original signer fields unavailable', transactionDB.transaction_id);
                 return null;
             }
+            signatures.push({...signerFields, address_base: signer.address_base, signature: signer.signature});
         }
-        transaction['transaction_signature_list'] = _.sortBy(transactionDB.transaction_signature_list.map(signer => ({
-            address_base: signer.address_base,
-            signature: signer.signature,
-            address_attribute: signer.status === UNBOUND_SIGNER_STATUS ? {key_public: null} : signer.address_attribute
-        })), 'address_base');
+        transaction['transaction_signature_list'] = _.sortBy(signatures, 'address_base');
 
         transaction['transaction_date'] = [
                                               '0a0',
@@ -1185,27 +1203,6 @@ export default class Transaction {
                    .catch(() => Promise.resolve(null));
     }
 
-    matchesStoredTransaction(transaction, storedTransaction, unboundSignerAddresses) {
-        if (unboundSignerAddresses.size === 0) {
-            return walletUtils.isValidTransactionHash(this.normalizeTransactionObject(storedTransaction));
-        }
-        if (!storedTransaction || storedTransaction.transaction_id !== transaction.transaction_id ||
-            storedTransaction.payload_hash !== transaction.payload_hash ||
-            storedTransaction.transaction_input_list.length !== transaction.transaction_input_list.length ||
-            storedTransaction.transaction_output_list.length !== transaction.transaction_output_list.length ||
-            storedTransaction.transaction_parent_list.length !== transaction.transaction_parent_list.length) {
-            return false;
-        }
-
-        const expectedSigners = transaction.transaction_signature_list.map(signer => ({
-            address_base: signer.address_base,
-            signature   : signer.signature,
-            status      : unboundSignerAddresses.has(signer.address_base) ? UNBOUND_SIGNER_STATUS : 1
-        }));
-        const storedSigners = storedTransaction.transaction_signature_list.map(signer => _.pick(signer, 'address_base', 'signature', 'status'));
-        return _.isEqual(_.sortBy(expectedSigners, 'address_base'), _.sortBy(storedSigners, 'address_base'));
-    }
-
     _verifyTransactionDataConsistency(transaction) {
         // check transaction data
         if (transaction) {
@@ -1259,21 +1256,26 @@ export default class Transaction {
         return transaction;
     }
 
-    addTransactionSignature(transactionID, shardID, addressBase, signature, status, createDate) {
+    addTransactionSignature(transactionID, shardID, addressBase, signature, status, createDate, signerData = null) {
         if (!createDate) {
             createDate = Math.floor(Date.now() / 1000);
         }
         return new Promise((resolve, reject) => {
-            this.database.run(`INSERT INTO transaction_signature (transaction_id, shard_id, address_base, signature, status, create_date)
-                               VALUES (?,?,?,?,?,?)
-                               ON CONFLICT (transaction_id, address_base) DO UPDATE SET status = excluded.status
-                               WHERE excluded.status = ${UNBOUND_SIGNER_STATUS} AND transaction_signature.signature = excluded.signature`, [
+            this.database.run(`INSERT INTO transaction_signature (transaction_id, shard_id, address_base, signature, status, create_date, signer_data)
+                               VALUES (?,?,?,?,?,?,?)
+                               ON CONFLICT (transaction_id, address_base) DO UPDATE SET
+                                   status = CASE WHEN excluded.status = ${UNBOUND_SIGNER_STATUS} THEN excluded.status ELSE transaction_signature.status END,
+                                   signer_data = COALESCE(transaction_signature.signer_data, excluded.signer_data)
+                               WHERE transaction_signature.signature = excluded.signature
+                                 AND ((excluded.status = ${UNBOUND_SIGNER_STATUS} AND transaction_signature.status != ${UNBOUND_SIGNER_STATUS})
+                                      OR (transaction_signature.signer_data IS NULL AND excluded.signer_data IS NOT NULL))`, [
                 transactionID,
                 shardID,
                 addressBase,
                 signature,
                 status !== undefined ? status : 1,
-                createDate
+                createDate,
+                signerData
             ], err => {
                 if (err) {
                     return reject(err);
@@ -2751,9 +2753,14 @@ export default class Transaction {
     }
 
     isSameTransactionObject(transaction, transactionOther) {
-        transaction      = this.normalizeTransactionObject(transaction);
-        transactionOther = this.normalizeTransactionObject(transactionOther);
-        return _.isEqual(transaction, transactionOther);
+        const unboundAddresses = record => _.sortBy(_.filter(record?.transaction_signature_list, {status: UNBOUND_SIGNER_STATUS})
+            .map(signer => signer.address_base));
+        if (!_.isEqual(unboundAddresses(transaction), unboundAddresses(transactionOther))) {
+            return false;
+        }
+        transaction      = this.normalizeTransactionObject(transaction, {includeUnboundSigners: true});
+        transactionOther = this.normalizeTransactionObject(transactionOther, {includeUnboundSigners: true});
+        return !!transaction && _.isEqual(transaction, transactionOther);
     }
 
     deleteTransactions(transactions) {

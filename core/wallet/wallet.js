@@ -1032,9 +1032,7 @@ class Wallet {
                            }
 
                            console.log('New Transaction from network ', transaction.transaction_id);
-                           const unboundSignerAddresses = new Set(transaction.transaction_signature_list
-                               .filter(signer => !walletUtils.isValidTransactionSignerKey(signer)).map(signer => signer.address_base));
-                           if (unboundSignerAddresses.size === 0) {
+                           if (transaction.transaction_signature_list.every(signer => walletUtils.isValidTransactionSignerKey(signer))) {
                                transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
                            }
                            return transactionRepository.addTransactionFromObject(transaction, hasKeyIdentifier)
@@ -1044,7 +1042,8 @@ class Wallet {
                                                            // object
                                                            return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
                                                                                        .then((dbTransaction) => {
-                                                                                           if (!transactionRepository.matchesStoredTransaction(transaction, dbTransaction, unboundSignerAddresses)) {
+                                                                                           const normalizedTransaction = transactionRepository.normalizeTransactionObject(dbTransaction, {includeUnboundSigners: true});
+                                                                                           if (!walletUtils.isValidTransactionHash(normalizedTransaction)) {
                                                                                                throw Error('invalid_transaction_object');
                                                                                            }
                                                                                        })
@@ -1195,9 +1194,8 @@ class Wallet {
                     let ws = network.getWebSocketByID(connectionID);
                     if (ws) {
                         try {
-                            const hasUnboundSigner = walletUtils.hasUnboundTransactionSigner(transaction);
-                            const normalizedTransaction = hasUnboundSigner ? null : transactionRepository.normalizeTransactionObject(transaction);
-                            if (normalizedTransaction) {
+                            const normalizedTransaction = transactionRepository.normalizeTransactionObject(transaction, {includeUnboundSigners: true});
+                            if (walletUtils.isValidTransactionHash(normalizedTransaction)) {
                                 peer.transactionSyncResponse({
                                     transaction            : normalizedTransaction,
                                     depth                  : data.depth,
@@ -1207,7 +1205,7 @@ class Wallet {
                                 console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                                 return;
                             }
-                            else if (!hasUnboundSigner) {
+                            else if (!normalizedTransaction && transaction.status !== 3 && !walletUtils.hasUnboundTransactionSigner(transaction)) {
                                 console.log('[wallet] it is not possible to normalize the transaction', data.transaction_id);
                                 database.applyShards(shardID => {
                                     const transactionRepository = database.getRepository('transaction', shardID);

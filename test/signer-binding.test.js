@@ -14,6 +14,7 @@ import database from '../database/database';
 import Address from '../database/repositories/address';
 import Keychain from '../database/repositories/keychain';
 import Normalization from '../database/repositories/normalization';
+import Schema from '../database/repositories/schema';
 import Transaction from '../database/repositories/transaction';
 import network from '../net/network';
 import peer from '../net/peer';
@@ -419,6 +420,36 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
         assert.deepEqual(writes, [{value: owner.key_public}]);
     });
 
+    test('upgrades main and shard signatures with the legacy shared-key fallback', async t => {
+        const mainDB = await openTransactionDatabase(t, 'initialize-millix-sqlite3.sql');
+        const shardDB = await openTransactionDatabase(t, 'initialize-millix-shard-sqlite3.sql');
+        const addresses = new Address(mainDB);
+        const normalization = new Normalization(mainDB);
+        addresses.setNormalizationRepository(normalization);
+        await normalization.load();
+        await addresses.upsertAddressAttribute(owner.address_base, 'key_public', owner.key_public);
+
+        const transaction = buildTransaction();
+        const [signer] = transaction.transaction_signature_list;
+        for (const [connection, migrationDirectory] of [[mainDB, 'migration'], [shardDB, 'migration/shard']]) {
+            const schema = new Schema(connection);
+            assert.equal(await schema.getVersion(), '29');
+            await runSQL(connection, 'ALTER TABLE transaction_signature DROP COLUMN signer_data');
+            await runSQL(connection, 'UPDATE schema_information SET value = ? WHERE key = ?', ['28', 'version']);
+            await runSQL(connection, 'INSERT INTO transaction_signature (transaction_id, shard_id, address_base, signature) VALUES (?, ?, ?, ?)',
+                [transaction.transaction_id, transaction.shard_id, signer.address_base, signer.signature]);
+
+            await schema.migrate(29, path.join(__dirname, '..', 'scripts', migrationDirectory));
+            assert.equal(await schema.getVersion(), '29');
+            const repository = new Transaction(connection);
+            repository.setAddressRepository(addresses);
+            const [legacySigner] = await repository.getTransactionSignatures(transaction.transaction_id);
+            assert.equal(legacySigner.signer_data, null);
+            assert.equal(legacySigner.signature, signer.signature);
+            assert.equal(legacySigner.address_attribute.key_public, owner.key_public);
+        }
+    });
+
     for (const repairBeforeConsensus of [true, false]) {
         test(`retains an unbound transaction when a legitimate key arrives ${repairBeforeConsensus ? 'before' : 'after'} consensus`, {timeout: 5000}, async t => {
             const mainDB = await openTransactionDatabase(t, 'initialize-millix-sqlite3.sql');
@@ -437,11 +468,11 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
             }
 
             const shardID = genesisConfig.genesis_shard_id;
-            t.mock.method(database, 'getRepository', (name, shard) => {
+            const getRepository = t.mock.method(database, 'getRepository', (name, shard) => {
                 return {address: addresses, normalization, transaction: shard === shardDB.shardID ? shardTransactions : transactions}[name];
             });
-            t.mock.method(database, 'applyShards', callback => Promise.all([callback(shardID), callback(shardDB.shardID)]).then(results => results.flat()));
-            t.mock.method(database, 'firstShardZeroORShardRepository', async (name, shard, callback) => callback(transactions).catch(() => undefined));
+            const applyShards = t.mock.method(database, 'applyShards', callback => Promise.all([callback(shardID), callback(shardDB.shardID)]).then(results => results.flat()));
+            const firstShardZero = t.mock.method(database, 'firstShardZeroORShardRepository', async (name, shard, callback) => callback(transactions).catch(() => undefined));
             t.mock.method(database, 'firstShardORShardZeroRepository', async (name, shard, callback) => callback(transactions));
             t.mock.method(wallet, 'syncShardIfNotExists', async () => {});
             t.mock.method(wallet, '_shouldProcessTransaction', () => true);
@@ -454,10 +485,15 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
             const date = Math.floor(transactionDate);
             const boundStandalone = newKey(5);
             const unboundStandalone = {...recipient, address_base: boundStandalone.address_base};
+            const signerKeys = [{...other, address_base: owner.address_base}, unboundStandalone, other];
             const invalid = buildTransaction({
-                signerKeys: [{...other, address_base: owner.address_base}, unboundStandalone, other],
+                signerKeys,
                 date      : date - (config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN + 1) * 60
             });
+            const submittedSigner = invalid.transaction_signature_list.find(signer => signer.address_base === owner.address_base);
+            submittedSigner.address_attribute.note = 'original signer attribute';
+            submittedSigner.note = 'original signer field';
+            seal(invalid, _.sortBy(signerKeys, 'address_base'));
             const legitimate = buildTransaction({date});
             const spentInput = invalid.transaction_input_list[0];
             const spendCacheKey = `is_spend_${spentInput.output_transaction_id}_${spentInput.output_position}`;
@@ -501,18 +537,25 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
 
             const socket = {node: 'test peer'};
             t.mock.method(network, 'getWebSocketByID', () => socket);
-            const syncResponse = await new Promise(resolve => {
-                t.mock.method(peer, 'transactionSyncResponse', resolve);
+            let sendSyncResponse;
+            t.mock.method(peer, 'transactionSyncResponse', response => sendSyncResponse(response));
+            const requestSync = () => new Promise(resolve => {
+                sendSyncResponse = resolve;
                 wallet._onSyncTransaction({transaction_id: invalid.transaction_id}, socket);
             });
-            assert.equal(syncResponse.transaction_not_found, true);
-            assert.deepEqual(syncResponse.transaction, {transaction_id: invalid.transaction_id});
+            const pendingReply = await requestSync();
+            assert.equal(pendingReply.transaction_not_found, undefined);
+            assert.equal(walletUtils.isValidTransactionHash(pendingReply.transaction), true);
+            assert.deepEqual(pendingReply.transaction, invalid);
 
             await shardTransactions.addTransactionFromShardObject(pending, false);
             shardTransactions.clearTransactionObjectCache(invalid.transaction_id);
             const moved = await shardTransactions.getTransactionObject(invalid.transaction_id);
             assert.equal(walletUtils.hasUnboundTransactionSigner(moved), true);
             assert.equal(transactions.isSameTransactionObject(_.cloneDeep(pending), moved), true);
+            const copyWithoutMarker = _.cloneDeep(moved);
+            copyWithoutMarker.transaction_signature_list.find(signer => signer.address_base === owner.address_base).status = 1;
+            assert.equal(transactions.isSameTransactionObject(_.cloneDeep(pending), copyWithoutMarker), false);
             await runSQL(mainDB, 'UPDATE `transaction` SET create_date = ? WHERE transaction_id = ?', [date - 60, invalid.transaction_id]);
             assert.deepEqual((await transactions.findUnstableTransaction([], false)).map(row => row.transaction_id), [invalid.transaction_id]);
 
@@ -535,6 +578,9 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
             };
             if (repairBeforeConsensus) {
                 await acceptLegitimate();
+                await runSQL(mainDB, 'UPDATE transaction_signature SET signer_data = NULL WHERE transaction_id = ?', [legitimate.transaction_id]);
+                const legacyTransaction = await transactions.getTransactionObjectFromDB(legitimate.transaction_id);
+                assert.equal(walletUtils.isValidTransactionHash(transactions.normalizeTransactionObject(legacyTransaction)), true);
             }
             await assert.rejects(wallet.getConsensus()._startConsensusRound(invalid.transaction_id));
             for (const repository of [transactions, shardTransactions]) {
@@ -554,6 +600,48 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
             assert.equal(invalidDetails.transaction_signature_list.find(signer => signer.address_base === owner.address_base).key_public, null);
             const legitimateDetails = await getDetails(legitimate.transaction_id);
             assert.equal(legitimateDetails.transaction_signature_list[0].key_public, owner.key_public);
+
+            transactions.clearTransactionObjectCache(invalid.transaction_id);
+            const invalidReply = await requestSync();
+            assert.equal(invalidReply.transaction_not_found, undefined);
+            assert.equal(walletUtils.isValidTransactionHash(invalidReply.transaction), true);
+            assert.deepEqual(invalidReply.transaction, invalid);
+
+            if (repairBeforeConsensus) {
+                // A marked legacy row has no original key to send, but remains available to local consensus.
+                await runSQL(mainDB, 'UPDATE transaction_signature SET signer_data = NULL WHERE transaction_id = ? AND address_base = ?',
+                    [invalid.transaction_id, owner.address_base]);
+                transactions.clearTransactionObjectCache(invalid.transaction_id);
+                const unavailable = await requestSync();
+                assert.equal(unavailable.transaction_not_found, true);
+                assert.deepEqual(unavailable.transaction, {transaction_id: invalid.transaction_id});
+                assert.equal((await transactions.getTransaction(invalid.transaction_id)).status, 3);
+
+                const receivingDB = await openTransactionDatabase(t, 'initialize-millix-sqlite3.sql');
+                receivingDB.shardID = 'signer-binding-receiving-node';
+                const receiver = new Transaction(receivingDB);
+                const receiverAddresses = new Address(receivingDB);
+                const receiverNormalization = new Normalization(receivingDB);
+                receiverAddresses.setNormalizationRepository(receiverNormalization);
+                receiver.setAddressRepository(receiverAddresses);
+                receiver.setNormalizationRepository(receiverNormalization);
+                await Promise.all([receiverNormalization.load(), receiverAddresses.loadAddressVersion()]);
+                await receiverAddresses.upsertAddressAttribute(owner.address_base, 'key_public', owner.key_public);
+                t.after(() => receiver.clearTransactionObjectCache(invalid.transaction_id));
+
+                getRepository.mock.mockImplementation(name => ({address: receiverAddresses, normalization: receiverNormalization, transaction: receiver})[name]);
+                applyShards.mock.mockImplementation(async callback => [await callback(shardID)]);
+                firstShardZero.mock.mockImplementation(async (name, shard, callback) => callback(receiver).catch(() => undefined));
+                const ingest = wallet._onNewTransaction.bind(wallet);
+                await new Promise((resolve, reject) => {
+                    t.mock.method(wallet, '_onNewTransaction', (...args) => Promise.resolve().then(() => ingest(...args)).then(resolve, reject));
+                    wallet._onTransactionSyncResponse(invalidReply, socket);
+                });
+                assert.notEqual((await receiver.getTransaction(invalid.transaction_id)).status, 3);
+                await assert.rejects(wallet.getConsensus()._startConsensusRound(invalid.transaction_id));
+                assert.equal((await receiver.getTransaction(invalid.transaction_id)).status, 3);
+                assert.equal(await receiverAddresses.getAddressBaseAttribute(owner.address_base, 'key_public'), owner.key_public);
+            }
         });
     }
 
