@@ -1186,6 +1186,46 @@ export class WalletTransactionConsensus {
         });
     }
 
+    /**
+     * invalidates a transaction the way a consensus that finds it invalid
+     * does: stops its consensus round, marks it invalid in every shard, frees
+     * the outputs it spent and sends the transactions spending its outputs
+     * back to validation.
+     * @param transactionID
+     * @return {Promise<Object>} the transaction; rejects with
+     * transaction_not_found when no shard holds it
+     */
+    invalidateTransaction(transactionID) {
+        return database.firstShards(shardID => database.getRepository('transaction', shardID).getTransactionObject(transactionID))
+                       .then(transaction => {
+                           if (!transaction) {
+                               return Promise.reject('transaction_not_found');
+                           }
+
+                           const consensusData = this._consensusRoundState[transactionID];
+                           if (consensusData) {
+                               consensusData.active = false;
+                               consensusData.resolve?.();
+                           }
+                           cache.removeCacheItem('validation', transactionID);
+                           this._transactionValidationRejected.add(transactionID);
+                           this.deleteTransactionFromCache(transactionID);
+                           console.log('[wallet-transaction-consensus-status] invalidate transaction', transactionID, 'on request');
+
+                           return database.applyShards(shardID => {
+                               const transactionRepository = database.getRepository('transaction', shardID);
+                               return transactionRepository.invalidateTransaction(transactionID)
+                                                           .then(() => transactionRepository.clearTransactionObjectCache(transactionID));
+                           }).then(() => this.resetInputsSpentByTransaction(transaction))
+                                          .then(() => this.resetValidTransactionSpendingFromInvalidTransaction(transaction))
+                                          .then(() => {
+                                              wallet._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list || [], o => o.address_key_identifier)));
+                                              wallet.notifyTransactionChanged([transaction], 'transaction_validation:invalid');
+                                              return transaction;
+                                          });
+                       });
+    }
+
     resetInputsSpentByTransaction(transaction) {
         if (!transaction) {
             return Promise.resolve();

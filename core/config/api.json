@@ -926,6 +926,15 @@
       "version_released": "1.26.0",
       "permission": "{\"require_identity\": true, \"private\": false}",
       "enable": true
+    },
+    {
+      "id": "cTvGSLHcKXJseqso",
+      "name": "invalidate_transaction",
+      "description": "marks the transaction indicated by transaction_id invalid on the node, frees the outputs it spent and sends the transactions spending its outputs back to validation",
+      "method": "POST",
+      "version_released": "1.26.0",
+      "permission": "{\"require_identity\": true, \"private\": true}",
+      "enable": true
     }
   ]
 }
