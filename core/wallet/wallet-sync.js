@@ -420,6 +420,15 @@ export class WalletSync {
         delete this.pendingTransactions[transactionID];
     }
 
+    clearUnresolvedTransactionSync(transactionID) {
+        return new Promise((resolve, reject) => {
+            if (!this.unresolvedTransactionQueue) {
+                return resolve();
+            }
+            this.unresolvedTransactionQueue.cancel('transaction_' + transactionID, error => error ? reject(error) : resolve());
+        });
+    }
+
     removeTransactionSync(transactionID, data) {
         this.removeSchedule(transactionID);
         this.clearTransactionSync(transactionID);

@@ -20,6 +20,7 @@ export default class Transaction {
     constructor(database) {
         this.database                = database;
         this.normalizationRepository = null;
+        this._missingSignatureRecoveries = new Map();
     }
 
     setNormalizationRepository(repository) {
@@ -588,10 +589,11 @@ export default class Transaction {
 
     addTransactionFromObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
-            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
+            mutex.lock(this._getTransactionLockKeys(), (unlock) => {
                 const cachedTransaction = _.cloneDeep(transaction);
                 const unboundSigners = new Set(transaction.transaction_signature_list.filter(signer => !walletUtils.isValidTransactionSignerKey(signer)));
                 const hasInvalidSignerKey = unboundSigners.size > 0;
+                let insertedTransaction = false;
 
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
@@ -656,6 +658,9 @@ export default class Transaction {
                         }).then(dates => resolve(_.min(dates)));
                     });
                 }).then(parentDate => this.addTransaction(transaction.transaction_id, transaction.shard_id, transaction.payload_hash, transactionDate, transaction.node_id_origin, transaction.node_id_proxy, transaction.version, parentDate, undefined, undefined, status)
+                                          .then(() => {
+                                              insertedTransaction = true;
+                                          })
                                           .catch(err => {
                                               console.log('[transaction-warn] add transaction error', err);
                                           }));
@@ -747,7 +752,8 @@ export default class Transaction {
                     }
                     promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signerAddress, signerSignature, signerStatus, undefined, signerData)
                                                      .catch(err => {
-                                                         console.log('[transaction-warn] add transaction signature error', err);
+                                                         console.log('[transaction-warn] add transaction signature error', transaction.transaction_id, err);
+                                                         throw err;
                                                      }));
                 });
 
@@ -756,7 +762,12 @@ export default class Transaction {
                     promise     = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier));
                 });
 
-                promise.then(() => {
+                promise.catch(async error => {
+                    if (insertedTransaction) {
+                        await this.deleteTransaction(transaction.transaction_id).catch(cleanupError => console.error(cleanupError));
+                    }
+                    throw error;
+                }).then(() => {
                     eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
                     cachedTransaction.is_stable        = 0;
                     cachedTransaction.transaction_date = new Date(cachedTransaction.transaction_date);
@@ -770,7 +781,6 @@ export default class Transaction {
                     resolve(transaction);
                     unlock();
                 }).catch((err) => {
-                    console.error(err);
                     reject(err);
                     unlock();
                 });
@@ -781,7 +791,7 @@ export default class Transaction {
 
     addTransactionFromShardObject(transaction, isWalletTransaction) {
         return new Promise((resolve, reject) => {
-            mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
+            mutex.lock(this._getTransactionLockKeys(), (unlock) => {
                 const cachedTransaction = transaction;
                 transaction             = _.cloneDeep(cachedTransaction);
                 const hasInvalidSignerKey = walletUtils.hasUnboundTransactionSigner(transaction);
@@ -1031,9 +1041,14 @@ export default class Transaction {
         return 'transaction_' + (this.database.shardID || 'shard_zero');
     }
 
+    _getTransactionLockKeys() {
+        return [this.database.shardID ? `transaction_${this.database.shardID}` : 'transaction'];
+    }
+
     clearTransactionObjectCache(transactionID) {
         const store = this._getCacheStoreName();
         cache.removeCacheItem(store, 'transaction_object_' + transactionID);
+        cache.removeCacheItem(store, 'transaction_exists_' + transactionID);
         for (const part of ['transaction', 'input', 'output', 'signature', 'output_attribute', 'parent']) {
             cache.removeCacheItem(store, `transaction_object_${part}_${transactionID}`);
         }
@@ -1043,10 +1058,70 @@ export default class Transaction {
         cache.setCacheItem(this._getCacheStoreName(), 'transaction_object_' + transaction.transaction_id, _.cloneDeep(transaction));
     }
 
-    getTransactionObject(transactionID) {
+    _handleMissingSignatures(transaction, {onMissingSignatures, scheduleRecovery = true}) {
+        if (transaction.transaction_id === genesisConfig.genesis_transaction || transaction.transaction_signature_list?.length) {
+            return false;
+        }
+
+        const recovery = scheduleRecovery ? this._scheduleMissingSignatureRecovery(transaction.transaction_id) : undefined;
+        onMissingSignatures?.(recovery);
+        return true;
+    }
+
+    _handleTransactionReadError(error, {onReadError}) {
+        if (error !== 'transaction_not_found' && error !== 'transaction_missing_signatures') {
+            onReadError?.(error);
+        }
+        return null;
+    }
+
+    _handleMissingTransactionHeader(transactionID, {onMissingSignatures}) {
+        const recovery = this._missingSignatureRecoveries.get(transactionID);
+        if (recovery) {
+            onMissingSignatures?.(recovery);
+        }
+        return Promise.reject('transaction_not_found');
+    }
+
+    _scheduleMissingSignatureRecovery(transactionID) {
+        if (!this._missingSignatureRecoveries.has(transactionID)) {
+            const recovery = this._deleteTransactionWithoutSignatures(transactionID)
+                .then(deleted => deleted ? wallet.resyncTransactionWithMissingSignatures(transactionID) : undefined)
+                .catch(error => console.log('[transaction-object] missing signature recovery failed', transactionID, error))
+                .finally(() => this._missingSignatureRecoveries.delete(transactionID));
+            this._missingSignatureRecoveries.set(transactionID, recovery);
+        }
+        return this._missingSignatureRecoveries.get(transactionID);
+    }
+
+    _deleteTransactionWithoutSignatures(transactionID) {
+        return new Promise((resolve, reject) => {
+            mutex.lock(this._getTransactionLockKeys(), unlock => {
+                const incomplete = new Promise((resolveQuery, rejectQuery) => {
+                    this.database.get(`SELECT t.transaction_id FROM \`transaction\` t WHERE t.transaction_id = ?
+                                       AND NOT EXISTS (SELECT 1 FROM transaction_signature s WHERE s.transaction_id = t.transaction_id)`,
+                        [transactionID], (error, row) => error ? rejectQuery(error) : resolveQuery(row));
+                });
+                incomplete.then(async row => {
+                    if (!row) {
+                        this.clearTransactionObjectCache(transactionID);
+                        return false;
+                    }
+                    await this.deleteTransaction(transactionID, {strict: true});
+                    console.log('[transaction-object] deleted transaction with missing signatures', transactionID, this.database.shardID);
+                    return true;
+                }).finally(unlock).then(resolve, reject);
+            });
+        });
+    }
+
+    getTransactionObject(transactionID, options = {}) {
         return new Promise(resolve => {
             const cachedTransaction = cache.getCacheItem(this._getCacheStoreName(), 'transaction_object_' + transactionID);
             if (cachedTransaction) {
+                if (this._handleMissingSignatures(cachedTransaction, options)) {
+                    return resolve(null);
+                }
                 cache.refreshCacheTime(this._getCacheStoreName(), 'transaction_object_' + transactionID);
                 return resolve(_.cloneDeep(cachedTransaction));
             }
@@ -1055,7 +1130,7 @@ export default class Transaction {
                  .then(transaction => {
 
                      if (!transaction) {
-                         return Promise.reject('transaction_not_found');
+                         return this._handleMissingTransactionHeader(transactionID, options);
                      }
 
                      return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_object_output_' + transactionID, () => this.getTransactionOutputs(transactionID))
@@ -1075,6 +1150,9 @@ export default class Transaction {
                      return cache.getCachedIfPresent(this._getCacheStoreName(), 'transaction_object_signature_' + transactionID, () => this.getTransactionSignatures(transactionID))
                                  .then(signatures => {
                                      transaction.transaction_signature_list = signatures;
+                                     if (this._handleMissingSignatures(transaction, options)) {
+                                         return Promise.reject('transaction_missing_signatures');
+                                     }
                                      return transaction;
                                  });
                  })
@@ -1111,7 +1189,6 @@ export default class Transaction {
                                      if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
                                          (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
                                           !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
-                                          !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0 ||
                                           !transaction.transaction_parent_list || transaction.transaction_parent_list.length === 0)) {
                                          console.log('[transaction-object] invalid transaction from database with id', transaction);
                                          return Promise.reject('transaction_not_found');
@@ -1123,18 +1200,18 @@ export default class Transaction {
                  })
                  .then(transaction => this._verifyTransactionDataConsistency(transaction))
                  .then(transaction => resolve(_.cloneDeep(transaction))) /*TODO: addTransactionFromObject is deleting address from output and input object. that is changing the cachedItem. we should not change the object. now we are creating a clone (refactor)*/
-                 .catch(() => {
-                     resolve(null);
+                 .catch(error => {
+                     resolve(this._handleTransactionReadError(error, options));
                  });
         });
     }
 
-    getTransactionObjectFromDB(transactionID) {
+    getTransactionObjectFromDB(transactionID, options = {}) {
         return this.getTransaction(transactionID)
                    .then(transaction => {
 
                        if (!transaction) {
-                           return Promise.reject('transaction_not_found');
+                           return this._handleMissingTransactionHeader(transactionID, options);
                        }
 
                        return this.getTransactionOutputs(transactionID)
@@ -1154,6 +1231,9 @@ export default class Transaction {
                        return this.getTransactionSignatures(transactionID)
                                   .then(signatures => {
                                       transaction.transaction_signature_list = signatures;
+                                      if (this._handleMissingSignatures(transaction, options)) {
+                                          return Promise.reject('transaction_missing_signatures');
+                                      }
                                       return transaction;
                                   });
                    })
@@ -1190,7 +1270,6 @@ export default class Transaction {
                                       if (transaction.transaction_id !== genesisConfig.genesis_transaction &&
                                           (!transaction.transaction_output_list || transaction.transaction_output_list.length === 0 ||
                                            !transaction.transaction_input_list || transaction.transaction_input_list.length === 0 ||
-                                           !transaction.transaction_signature_list || transaction.transaction_signature_list.length === 0 ||
                                            !transaction.transaction_parent_list || transaction.transaction_parent_list.length === 0)) {
                                           console.log('[transaction-object] invalid transaction from database with id', transaction);
                                           return Promise.reject('transaction_not_found');
@@ -1200,7 +1279,7 @@ export default class Transaction {
                                   });
                    })
                    .then(transaction => this._verifyTransactionDataConsistency(transaction))
-                   .catch(() => Promise.resolve(null));
+                   .catch(error => this._handleTransactionReadError(error, options));
     }
 
     _verifyTransactionDataConsistency(transaction) {
@@ -2716,10 +2795,13 @@ export default class Transaction {
                         if (data.shard_id === 'AyAC3kjLtjM4vktAJ5Xq6mbXKjzEqXoSsmGhhgjnkXUvjtF2M') { /* do not prune this special shard id. TODO: refactor and activate shard */
                             return callback();
                         }
-                        this.getTransactionObject(data.transaction_id)
+                        let preserveTransaction = false;
+                        const deferDeletion = () => preserveTransaction = true;
+                        const readOptions = {onMissingSignatures: deferDeletion, onReadError: deferDeletion};
+                        this.getTransactionObject(data.transaction_id, readOptions)
                             .then(transaction => {
                                 if (!transaction) {
-                                    return this.deleteTransaction(data.transaction_id);
+                                    return preserveTransaction ? undefined : this.deleteTransaction(data.transaction_id);
                                 }
 
                                 if (database.getShard(transaction.shard_id)) {
@@ -2727,8 +2809,11 @@ export default class Transaction {
                                     // shard
                                     const transactionRepository = database.getRepository('transaction', transaction.shard_id);
                                     return transactionRepository.addTransactionFromShardObject(transaction, wallet.transactionHasKeyIdentifier(transaction, keyIdentifierSet))
-                                                                .then(() => transactionRepository.getTransactionObject(transaction.transaction_id))
+                                                                .then(() => transactionRepository.getTransactionObject(transaction.transaction_id, readOptions))
                                                                 .then((transactionCopy) => {
+                                                                    if (preserveTransaction) {
+                                                                        return;
+                                                                    }
                                                                     if (!transactionCopy || !this.isSameTransactionObject(transaction, transactionCopy)) {
                                                                         return transactionRepository.deleteTransaction(transaction.transaction_id)
                                                                                                     .then(() => Promise.reject());
@@ -2797,31 +2882,35 @@ export default class Transaction {
         });
     }
 
-    deleteTransaction(transactionID) {
-        return new Promise((resolve) => {
+    async deleteTransaction(transactionID, {strict = false} = {}) {
+        const rowsByTable = [
+            ['transaction_input', 'transaction_id'],
+            ['transaction_output', 'transaction_id'],
+            ['transaction_output_attribute', 'transaction_id'],
+            ['transaction_signature', 'transaction_id'],
+            ['transaction_parent', 'transaction_id_child'],
+            ['`transaction`', 'transaction_id']
+        ];
+
+        this.clearTransactionObjectCache(transactionID);
+        try {
+            for (const [table, column] of rowsByTable) {
+                await new Promise((resolve, reject) => {
+                    this.database.run(`DELETE FROM ${table} WHERE ${column} = ?`, [transactionID], error => {
+                        if (error && strict) {
+                            return reject(error);
+                        }
+                        if (error) {
+                            console.log('[Database] failed deleting transaction rows', transactionID, table, error);
+                        }
+                        resolve();
+                    });
+                });
+            }
+        }
+        finally {
             this.clearTransactionObjectCache(transactionID);
-            this.database.serialize(() => {
-                this.database.run('DELETE FROM transaction_input WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning inputs. [message] ', err);
-                });
-                this.database.run('DELETE FROM transaction_output WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning outputs. [message] ', err);
-                });
-                this.database.run('DELETE FROM `transaction_output_attribute` WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning transactions. [message] ', err);
-                });
-                this.database.run('DELETE FROM transaction_signature WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning signatures. [message] ', err);
-                });
-                this.database.run('DELETE FROM transaction_parent WHERE transaction_id_child = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning parents. [message] ', err);
-                });
-                this.database.run('DELETE FROM `transaction` WHERE transaction_id = ?', [transactionID], (err) => {
-                    err && console.log('[Database] Failed pruning transactions. [message] ', err);
-                    resolve();
-                });
-            });
-        });
+        }
     }
 
     timeoutTransaction(transactionID) {

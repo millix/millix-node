@@ -52,7 +52,9 @@ class _XVygz9vHv8cHTFf4 extends Endpoint {
                 }
                 newProcessedTransactionSet.add(mTransaction.transaction_id);
                 this.lastMinuteProcessedTransactionTimeList.push(Date.now());
-                this.transactionRepository.getTransactionObjectFromDB(mTransaction.transaction_id)
+                let preserveTransaction = false;
+                const deferDeletion = () => preserveTransaction = true;
+                this.transactionRepository.getTransactionObjectFromDB(mTransaction.transaction_id, {onMissingSignatures: deferDeletion, onReadError: deferDeletion})
                     .then(transaction => this.transactionRepository.normalizeTransactionObject(transaction))
                     .then(transaction => {
                         if (walletUtils.isValidTransactionObject(transaction)) {
@@ -61,6 +63,9 @@ class _XVygz9vHv8cHTFf4 extends Endpoint {
 
                         this.state.transaction_data_invalid_count++;
                         this.state.transaction_data_invalid_list.push(mTransaction.transaction_id);
+                        if (preserveTransaction) {
+                            return;
+                        }
                         // invalid transaction
                         return this.transactionRepository.deleteTransaction(mTransaction.transaction_id)
                                    .then(() => peer.transactionSyncRequest(mTransaction.transaction_id));

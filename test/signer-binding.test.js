@@ -9,6 +9,7 @@ import sqlite3 from 'sqlite3';
 import transactionDetails from '../api/IBHgAmydZbmTUAe8/index';
 import cache from '../core/cache';
 import config from '../core/config/config';
+import eventBus from '../core/event-bus';
 import genesisConfig from '../core/genesis/genesis-config';
 import database from '../database/database';
 import Address from '../database/repositories/address';
@@ -185,6 +186,52 @@ async function openTransactionDatabase(t, schemaFile) {
 
 function runSQL(connection, sql, parameters = []) {
     return new Promise((resolve, reject) => connection.run(sql, parameters, error => error ? reject(error) : resolve()));
+}
+
+async function setupMissingSignatureRecovery(t, withShardCopy = false) {
+    const mainDB = await openTransactionDatabase(t, 'initialize-millix-sqlite3.sql');
+    mainDB.shardID = `main-${t.name}`;
+    const addresses = new Address(mainDB);
+    const normalization = new Normalization(mainDB);
+    addresses.setNormalizationRepository(normalization);
+    await Promise.all([normalization.load(), addresses.loadAddressVersion()]);
+
+    const repositories = new Map();
+    const makeRepository = connection => {
+        const repository = new Transaction(connection);
+        repository.setAddressRepository(addresses);
+        repository.setNormalizationRepository(normalization);
+        repositories.set(connection.shardID, repository);
+        return repository;
+    };
+    const main = makeRepository(mainDB);
+    let shard;
+    if (withShardCopy) {
+        const shardDB = await openTransactionDatabase(t, 'initialize-millix-shard-sqlite3.sql');
+        shardDB.shardID = `shard-${t.name}`;
+        shard = makeRepository(shardDB);
+    }
+
+    t.mock.method(database, 'getRepository', (name, shardID) => ({address: addresses, transaction: repositories.get(shardID) || main})[name]);
+    t.mock.method(database, 'applyShards', callback => Promise.all([...repositories.keys()].map(callback)).then(results => results.flat()));
+    t.mock.method(database, 'firstShards', async callback => {
+        for (const shardID of repositories.keys()) {
+            const result = await Promise.resolve().then(() => callback(shardID)).catch(() => undefined);
+            if (result) {
+                return result;
+            }
+        }
+    });
+    t.mock.method(database, 'firstShardZeroORShardRepository', async (name, shardID, callback) => callback(main).catch(() => undefined));
+    t.mock.method(walletSync, 'hasPendingTransaction', () => false);
+    const syncRequest = t.mock.method(peer, 'transactionSyncRequest', async () => {});
+    return {main, shard, syncRequest};
+}
+
+function transactionForDatabase(transaction) {
+    const copy = _.cloneDeep(transaction);
+    copy.transaction_date = new Date(copy.transaction_date * 1000).toISOString();
+    return copy;
 }
 
 const originalGetRepository = database.getRepository;
@@ -450,6 +497,174 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
         }
     });
 
+    test('deletes a signature-less record once and restores it from peer sync', {timeout: 5000}, async t => {
+        const {main, syncRequest} = await setupMissingSignatureRecovery(t);
+        const transaction = buildTransaction({date: Math.floor(transactionDate)});
+        const transactionID = transaction.transaction_id;
+        await main.addTransactionFromObject(transactionForDatabase(transaction), true);
+        const cached = await main.getTransactionObject(transactionID);
+        await runSQL(main.database, 'DELETE FROM transaction_signature WHERE transaction_id = ?', [transactionID]);
+        main.clearTransactionObjectCache(transactionID);
+        main.updateTransactionObjectCache({...cached, transaction_signature_list: []});
+        assert.equal(await main.hasTransaction(transactionID), true);
+
+        const originalUnresolvedQueue = walletSync.unresolvedTransactionQueue;
+        const unresolvedTransaction = `transaction_${transactionID}`;
+        const unresolvedEntries = new Set([unresolvedTransaction]);
+        let signalCancellation;
+        let finishCancellation;
+        const cancellationStarted = new Promise(resolve => signalCancellation = resolve);
+        const allowCancellation = new Promise(resolve => finishCancellation = resolve);
+        let requestsBeforeCancellation;
+        const cancelUnresolved = t.mock.fn(async (id, callback) => {
+            signalCancellation();
+            await allowCancellation;
+            requestsBeforeCancellation = syncRequest.mock.callCount();
+            unresolvedEntries.delete(id);
+            callback();
+        });
+        walletSync.unresolvedTransactionQueue = {cancel: cancelUnresolved};
+        t.after(() => walletSync.unresolvedTransactionQueue = originalUnresolvedQueue);
+
+        const deletions = t.mock.method(main, 'deleteTransaction');
+        const recoveries = [];
+        const options = {onMissingSignatures: recovery => recoveries.push(recovery)};
+        assert.deepEqual(await Promise.all([
+            main.getTransactionObject(transactionID, options),
+            main.getTransactionObjectFromDB(transactionID, options)
+        ]), [null, null]);
+        assert.equal(new Set(recoveries).size, 1);
+        try {
+            await cancellationStarted;
+            assert.equal(await main.getTransactionObject(transactionID, options), null);
+            assert.equal(await main.getTransactionObjectFromDB(transactionID, options), null);
+            assert.equal(recoveries.length, 4);
+            assert.equal(new Set(recoveries).size, 1);
+            await assert.rejects(wallet.getConsensus()._startConsensusRound(transactionID));
+        }
+        finally {
+            finishCancellation();
+            await Promise.all(recoveries);
+        }
+        assert.equal(deletions.mock.callCount(), 1);
+        assert.equal(await main.hasTransaction(transactionID), false);
+        assert.deepEqual(await main.getTransactionInputs(transactionID), []);
+        assert.deepEqual(await main.getTransactionOutputs(transactionID), []);
+        assert.deepEqual(await main.getTransactionOutputAttributes(transactionID), []);
+        assert.deepEqual(await main.getTransactionSignatures(transactionID), []);
+        assert.deepEqual(await main.getTransactionParents(transactionID), []);
+        assert.equal(requestsBeforeCancellation, 0);
+        assert.equal(unresolvedEntries.size, 0);
+        assert.equal(cancelUnresolved.mock.callCount(), 1);
+        assert.deepEqual(syncRequest.mock.calls.map(call => call.arguments), [[transactionID, {priority: 1, dispatch_request: true}]]);
+
+        t.mock.method(wallet, 'syncShardIfNotExists', async () => {});
+        t.mock.method(wallet, '_shouldProcessTransaction', () => true);
+        t.mock.method(wallet, 'transactionHasKeyIdentifier', () => false);
+        t.mock.method(wallet, '_checkIfWalletUpdate', () => {});
+        t.mock.method(wallet, 'notifyTransactionChanged', () => {});
+        t.mock.method(walletSync, 'clearTransactionSync', () => {});
+        t.mock.method(walletSync, 'syncTransactionSpendingOutputs', () => {});
+        t.after(() => cache.removeCacheItem('wallet', `is_spend_${transaction.transaction_input_list[0].output_transaction_id}_0`));
+        const ingest = wallet._onNewTransaction.bind(wallet);
+        await new Promise((resolve, reject) => {
+            t.mock.method(wallet, '_onNewTransaction', (...args) => Promise.resolve().then(() => ingest(...args)).then(resolve, reject));
+            wallet._onTransactionSyncResponse({transaction}, {node: 'test peer'});
+        });
+        const restored = await main.getTransactionObjectFromDB(transactionID);
+        assert.deepEqual(main.normalizeTransactionObject(restored), transaction);
+        assert.equal(syncRequest.mock.callCount(), 1);
+    });
+
+    test('removes only the signature-less shard copy and keeps the complete copy', async t => {
+        const {main, shard, syncRequest} = await setupMissingSignatureRecovery(t, true);
+        const transaction = buildTransaction({date: Math.floor(transactionDate) - (config.TRANSACTION_PRUNE_AGE_MIN + 1) * 60});
+        const transactionID = transaction.transaction_id;
+        await main.addTransactionFromObject(transactionForDatabase(transaction), true);
+        await shard.addTransactionFromShardObject(await main.getTransactionObjectFromDB(transactionID), true);
+        await runSQL(main.database, 'DELETE FROM transaction_signature WHERE transaction_id = ?', [transactionID]);
+        main.clearTransactionObjectCache(transactionID);
+
+        const deletions = t.mock.method(main, 'deleteTransaction');
+        let recovery;
+        assert.equal(await main.getTransactionObject(transactionID, {onMissingSignatures: pending => recovery = pending}), null);
+        await main.pruneShardZero(new Set());
+        await recovery;
+        assert.equal(deletions.mock.callCount(), 1);
+        assert.equal(await main.hasTransaction(transactionID), false);
+        assert.deepEqual(shard.normalizeTransactionObject(await shard.getTransactionObjectFromDB(transactionID)), transaction);
+        assert.equal(syncRequest.mock.callCount(), 0);
+    });
+
+    test('rechecks missing signatures after an in-progress write finishes', {timeout: 5000}, async t => {
+        const {main, syncRequest} = await setupMissingSignatureRecovery(t);
+        const transaction = buildTransaction({date: Math.floor(transactionDate)});
+        const transactionID = transaction.transaction_id;
+        let signalInsert;
+        let resumeInsert;
+        const insertStarted = new Promise(resolve => signalInsert = resolve);
+        const pauseInsert = new Promise(resolve => resumeInsert = resolve);
+        const insert = main.addTransactionSignature.bind(main);
+        t.mock.method(main, 'addTransactionSignature', async (...args) => {
+            signalInsert();
+            await pauseInsert;
+            return insert(...args);
+        });
+        const deletions = t.mock.method(main, 'deleteTransaction');
+        const write = main.addTransactionFromObject(transactionForDatabase(transaction), true);
+        const recoveries = [];
+        try {
+            await insertStarted;
+            const options = {onMissingSignatures: recovery => recoveries.push(recovery)};
+            assert.equal(await main.getTransactionObject(transactionID, options), null);
+            await assert.rejects(wallet.getConsensus()._startConsensusRound(transactionID));
+            assert.equal(await main.getTransactionObjectFromDB(transactionID, options), null);
+            assert.equal(recoveries.length, 2);
+            assert.equal(recoveries[0], recoveries[1]);
+            assert.equal(deletions.mock.callCount(), 0);
+        }
+        finally {
+            resumeInsert();
+            await write;
+            await Promise.all(recoveries);
+        }
+        assert.deepEqual(main.normalizeTransactionObject(await main.getTransactionObject(transactionID)), transaction);
+        assert.equal(deletions.mock.callCount(), 0);
+        assert.equal(syncRequest.mock.callCount(), 0);
+    });
+
+    test('leaves genesis and existing signer rows alone, including after a failed signature read', async t => {
+        const {main, syncRequest} = await setupMissingSignatureRecovery(t);
+        const date = Math.floor(transactionDate);
+        const legacy = buildTransaction({date});
+        const unbound = buildTransaction({date, signerKeys: [{...other, address_base: owner.address_base}]});
+        const genesisID = genesisConfig.genesis_transaction;
+        await main.addTransactionFromObject(transactionForDatabase(legacy), true);
+        await main.addTransactionFromObject(transactionForDatabase(unbound), true);
+        await runSQL(main.database, 'UPDATE transaction_signature SET signer_data = NULL WHERE transaction_id = ?', [legacy.transaction_id]);
+        await main.addTransaction(genesisID, legacy.shard_id, 'genesis fixture', date, owner.address_base, owner.address_base, legacy.version);
+        await main.addTransactionOutput(genesisID, legacy.shard_id, 0, owner.address_base + addressVersion + master.address_base, master.address_base, 1000);
+
+        const deletions = t.mock.method(main, 'deleteTransaction');
+        const onMissingSignatures = t.mock.fn();
+        for (const transactionID of [genesisID, legacy.transaction_id, unbound.transaction_id]) {
+            main.clearTransactionObjectCache(transactionID);
+            assert.ok(await main.getTransactionObject(transactionID, {onMissingSignatures}));
+            assert.ok(await main.getTransactionObjectFromDB(transactionID, {onMissingSignatures}));
+        }
+        main.clearTransactionObjectCache(legacy.transaction_id);
+        const readError = new Error('signature query failed');
+        t.mock.method(main, 'getTransactionSignatures', async () => { throw readError; });
+        const onReadError = t.mock.fn();
+        assert.equal(await main.getTransactionObjectFromDB(legacy.transaction_id, {onMissingSignatures, onReadError}), null);
+        assert.deepEqual(onReadError.mock.calls[0].arguments, [readError]);
+        await assert.rejects(wallet.getConsensus()._startConsensusRound(legacy.transaction_id));
+        assert.ok(await main.getTransaction(legacy.transaction_id));
+        assert.equal(onMissingSignatures.mock.callCount(), 0);
+        assert.equal(deletions.mock.callCount(), 0);
+        assert.equal(syncRequest.mock.callCount(), 0);
+    });
+
     for (const repairBeforeConsensus of [true, false]) {
         test(`retains an unbound transaction when a legitimate key arrives ${repairBeforeConsensus ? 'before' : 'after'} consensus`, {timeout: 5000}, async t => {
             const mainDB = await openTransactionDatabase(t, 'initialize-millix-sqlite3.sql');
@@ -513,6 +728,42 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
 
             assertWellSigned(invalid);
             assert.equal(walletUtils.isValidTransactionHash(invalid), true);
+
+            if (repairBeforeConsensus) {
+                const announcement = `transaction_new:${invalid.transaction_id}`;
+                let announced = false;
+                const onAnnouncement = () => announced = true;
+                eventBus.on(announcement, onAnnouncement);
+                t.after(() => eventBus.removeListener(announcement, onAnnouncement));
+
+                await runSQL(mainDB, `CREATE TRIGGER fail_signature_insert BEFORE INSERT ON transaction_signature
+                                      BEGIN SELECT RAISE(FAIL, 'signature write failed'); END`);
+                const dbTransaction = _.cloneDeep(invalid);
+                dbTransaction.transaction_date = new Date(invalid.transaction_date * 1000).toISOString();
+                await assert.rejects(transactions.addTransactionFromObject(dbTransaction, false), /signature write failed/);
+                assert.equal(announced, false);
+                assert.equal(await transactions.hasTransaction(invalid.transaction_id), false);
+                assert.deepEqual(await transactions.getTransactionInputs(invalid.transaction_id), []);
+                assert.deepEqual(await transactions.getTransactionOutputs(invalid.transaction_id), []);
+                await runSQL(mainDB, 'DROP TRIGGER fail_signature_insert');
+
+                await transactions.addTransaction(invalid.transaction_id, shardID, invalid.payload_hash, invalid.transaction_date,
+                    invalid.node_id_origin, invalid.node_id_proxy, invalid.version, undefined, undefined, undefined, 2);
+                for (const input of invalid.transaction_input_list) {
+                    await transactions.addTransactionInput(invalid.transaction_id, shardID, input.input_position,
+                        input.address_base + input.address_version + input.address_key_identifier, input.address_key_identifier,
+                        input.output_transaction_id, input.output_position, input.output_transaction_date, input.output_shard_id, undefined, 2);
+                }
+                for (const output of invalid.transaction_output_list) {
+                    await transactions.addTransactionOutput(invalid.transaction_id, shardID, output.output_position,
+                        output.address_base + output.address_version + output.address_key_identifier, output.address_key_identifier,
+                        output.amount, undefined, undefined, undefined, 2);
+                }
+                await transactions.addTransactionParent(invalid.transaction_id, parentID, shardID);
+                assert.equal(await transactions.hasTransaction(invalid.transaction_id), true);
+                assert.deepEqual(await transactions.getTransactionSignatures(invalid.transaction_id), []);
+            }
+
             await wallet._onNewTransaction({transaction: invalid}, {node: 'test peer'});
             const cached = await transactions.getTransactionObject(invalid.transaction_id);
             assert.equal(cached.transaction_signature_list.find(signer => signer.address_base === owner.address_base).address_attribute.key_public, null);

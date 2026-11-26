@@ -178,12 +178,15 @@ export class WalletTransactionConsensus {
             transaction   = null;
         }
         return new Promise((resolve, reject) => {
+            let deferRecovery = false;
+            const onUnavailableRead = () => deferRecovery = true;
+            const readOptions = {onMissingSignatures: onUnavailableRead, onReadError: onUnavailableRead};
             (() => transaction ? Promise.resolve(transaction) :
                    this._transactionObjectCache[transactionID] ? Promise.resolve(this._transactionObjectCache[transactionID]) :
                    database.firstShards((shardID) => {
                        return new Promise((resolve, reject) => {
                            const transactionRepository = database.getRepository('transaction', shardID);
-                           transactionRepository.getTransactionObject(transactionID)
+                           transactionRepository.getTransactionObject(transactionID, readOptions)
                                                 .then(transaction => transaction ? resolve(transaction) : reject());
                        });
                    }))().then((transaction) => {
@@ -230,7 +233,7 @@ export class WalletTransactionConsensus {
 
                 if (transaction && transaction.is_stable !== undefined) { // transaction object needs to be normalized
                     transaction = database.getRepository('transaction').normalizeTransactionObject(transaction);
-                    if (!transaction) {
+                    if (!transaction && !deferRecovery) {
                         database.applyShards(shardID => {
                             const transactionRepository = database.getRepository('transaction', shardID);
                             return transactionRepository.deleteTransaction(transactionID);
@@ -242,7 +245,7 @@ export class WalletTransactionConsensus {
                 }
 
                 if (!transaction) {
-                    if (config.MODE_NODE_SYNC_FULL) {
+                    if (!deferRecovery && config.MODE_NODE_SYNC_FULL) {
                         wallet.requestTransactionFromNetwork(transactionID, {
                             priority        : 1,
                             dispatch_request: true
@@ -269,9 +272,11 @@ export class WalletTransactionConsensus {
                                        });
                                    }
 
-                                   database.applyShards(shardID => {
-                                       return database.getRepository('transaction', shardID).deleteTransaction(transaction.transaction_id);
-                                   }).then(_ => _);
+                                   if (!deferRecovery) {
+                                       database.applyShards(shardID => {
+                                           return database.getRepository('transaction', shardID).deleteTransaction(transaction.transaction_id);
+                                       }).then(_ => _);
+                                   }
                                    return reject({
                                        cause              : 'transaction_not_found',
                                        transaction_id_fail: transaction.transaction_id,
@@ -597,10 +602,13 @@ export class WalletTransactionConsensus {
     }
 
     _startConsensusRound(transactionID) {
+        let deferRecovery = false;
+        const onUnavailableRead = () => deferRecovery = true;
+        const readOptions = {onMissingSignatures: onUnavailableRead, onReadError: onUnavailableRead};
         return database.firstShards((shardID) => {
             return new Promise((resolve, reject) => {
                 const transactionRepository = database.getRepository('transaction', shardID);
-                transactionRepository.getTransactionObject(transactionID)
+                transactionRepository.getTransactionObject(transactionID, readOptions)
                                      .then(transaction => transaction ? resolve(transaction) : reject());
             });
         }).then(dbTransaction => {
@@ -618,6 +626,9 @@ export class WalletTransactionConsensus {
             }
         }).then(({transaction, hasUnboundSigner}) => {
             if (!transaction) { // transaction data not found
+                if (deferRecovery) {
+                    return Promise.reject();
+                }
                 console.log('[wallet-transaction-consensus-validation] transaction not found. unexpected behaviour.');
                 this._transactionValidationRejected.add(transactionID);
                 this._transactionRetryValidation[transactionID] = Date.now() + 5 * 60 * 1000; // allow retry in 5min
@@ -646,6 +657,9 @@ export class WalletTransactionConsensus {
                                           }).then(() => Promise.reject());
                                       }
 
+                                      if (deferRecovery) {
+                                          return Promise.reject();
+                                      }
                                       return database.applyShards(shardID => {
                                           return database.getRepository('transaction', shardID).deleteTransaction(transaction.transaction_id);
                                       }).then(() => Promise.reject());

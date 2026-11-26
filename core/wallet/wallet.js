@@ -43,6 +43,7 @@ class Wallet {
         this._transactionReceivedFromNetwork = {};
         this._transactionOnRoute             = {};
         this._transactionRequested           = {};
+        this._missingSignatureResyncs        = new Map();
         this._transactionFundingActiveWallet = {};
         this.defaultKeyIdentifier            = undefined;
         this.walletSyncTimeoutHandler        = undefined;
@@ -746,9 +747,30 @@ class Wallet {
         if (isTransactionFundingWallet) {
             this._transactionFundingActiveWallet[transactionID] = Date.now();
         }
-        peer.transactionSyncRequest(transactionID, options)
+        return peer.transactionSyncRequest(transactionID, options)
             .then(() => this._transactionRequested[transactionID] = Date.now())
             .catch(_ => _);
+    }
+
+    resyncTransactionWithMissingSignatures(transactionID) {
+        if (!this._missingSignatureResyncs.has(transactionID)) {
+            const resync = database.firstShards(async shardID => {
+                const repository = database.getRepository('transaction', shardID);
+                const transaction = await repository.getTransactionObjectFromDB(transactionID, {scheduleRecovery: false});
+                if (transaction && walletUtils.isValidTransactionHash(repository.normalizeTransactionObject(transaction, {includeUnboundSigners: true}))) {
+                    return true;
+                }
+            }).then(async hasCompleteCopy => {
+                if (!hasCompleteCopy) {
+                    await walletSync.clearUnresolvedTransactionSync(transactionID);
+                    if (!walletSync.hasPendingTransaction(transactionID)) {
+                        await this.requestTransactionFromNetwork(transactionID, {priority: 1, dispatch_request: true});
+                    }
+                }
+            }).finally(() => this._missingSignatureResyncs.delete(transactionID));
+            this._missingSignatureResyncs.set(transactionID, resync);
+        }
+        return this._missingSignatureResyncs.get(transactionID);
     }
 
     transactionHasKeyIdentifier(transaction, keyIdentifierSet = new Set()) {
@@ -874,7 +896,7 @@ class Wallet {
         if (data && data.transaction) {
             eventBus.emit('transaction_sync_response:' + data.transaction.transaction_id, {transaction_not_found: data.transaction_not_found});
             if (!data.transaction_not_found) {
-                setTimeout(() => this._onNewTransaction(data, ws, true), 0);
+                setTimeout(() => this._onNewTransaction(data, ws), 0);
             }
         }
     }
@@ -882,7 +904,7 @@ class Wallet {
     _onSyncOutputSpendTransactionResponse(data, ws) {
         eventBus.emit(`transaction_output_spend_response:${data.transaction_id}_${data.output_position}`, data);
         if (data.transaction_list) {
-            data.transaction_list.forEach(transaction => setTimeout(() => this._onNewTransaction({transaction}, ws, true), 0));
+            data.transaction_list.forEach(transaction => setTimeout(() => this._onNewTransaction({transaction}, ws), 0));
         }
     }
 
@@ -925,7 +947,7 @@ class Wallet {
         }
     }
 
-    _onNewTransaction(data, ws, isRequestedBySync) {
+    _onNewTransaction(data, ws) {
 
         let node        = ws.node;
         let transaction = _.cloneDeep(data.transaction);
@@ -967,20 +989,17 @@ class Wallet {
         }
 
         this._transactionReceivedFromNetwork[transaction.transaction_id] = true;
+        let incompleteRepository;
         return this.syncShardIfNotExists(transaction, ws)
                    .then(() => {
-                       // check if the transaction is in the shard zero
-                       return database.firstShardZeroORShardRepository('transaction', transaction.shard_id, transactionRepository => {
-                           return transactionRepository.hasTransaction(transaction.transaction_id)
-                                                       .then(hasTransaction => hasTransaction ? Promise.resolve(true) : Promise.reject());
-                       }).then(hasTransaction => {
-                           if (hasTransaction && isRequestedBySync) {
-                               return database.firstShardZeroORShardRepository('transaction', transaction.shard_id, transactionRepository => {
-                                   return transactionRepository.getTransactionObject(transaction.transaction_id)
-                                                               .then(transactionObject => !!transactionObject ? Promise.resolve(true) : Promise.reject());
-                               });
+                       return database.firstShardZeroORShardRepository('transaction', transaction.shard_id, async transactionRepository => {
+                           if (await transactionRepository.hasTransaction(transaction.transaction_id)) {
+                               incompleteRepository ??= transactionRepository;
+                               const storedTransaction = await transactionRepository.getTransactionObject(transaction.transaction_id, {scheduleRecovery: false});
+                               if (storedTransaction && walletUtils.isValidTransactionHash(transactionRepository.normalizeTransactionObject(storedTransaction, {includeUnboundSigners: true}))) {
+                                   return true;
+                               }
                            }
-                           return hasTransaction;
                        }).then(hasTransaction => {
 
                            if (hasTransaction) {
@@ -1031,6 +1050,7 @@ class Wallet {
                                }
                            }
 
+                           transactionRepository = incompleteRepository || transactionRepository;
                            console.log('New Transaction from network ', transaction.transaction_id);
                            if (transaction.transaction_signature_list.every(signer => walletUtils.isValidTransactionSignerKey(signer))) {
                                transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
@@ -1040,7 +1060,7 @@ class Wallet {
                                                            // check stored
                                                            // transaction
                                                            // object
-                                                           return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
+                                                           return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id, {scheduleRecovery: false})
                                                                                        .then((dbTransaction) => {
                                                                                            const normalizedTransaction = transactionRepository.normalizeTransactionObject(dbTransaction, {includeUnboundSigners: true});
                                                                                            if (!walletUtils.isValidTransactionHash(normalizedTransaction)) {
@@ -1173,6 +1193,7 @@ class Wallet {
         }
 
         mutex.lock(['transaction-sync-request'], (unlockTransactionSync) => {
+            let missingSignatures = false;
             eventBus.emit('wallet_event_log', {
                 type   : 'transaction_sync',
                 content: data,
@@ -1181,7 +1202,7 @@ class Wallet {
             database.firstShards((shardID) => {
                 return new Promise((resolve, reject) => {
                     const transactionRepository = database.getRepository('transaction', shardID);
-                    transactionRepository.getTransactionObject(data.transaction_id)
+                    transactionRepository.getTransactionObject(data.transaction_id, {onMissingSignatures: () => missingSignatures = true})
                                          .then(transaction => transaction ? resolve([
                                              transaction,
                                              transactionRepository
@@ -1205,7 +1226,7 @@ class Wallet {
                                 console.log(`[wallet] sending transaction ${data.transaction_id} to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                                 return;
                             }
-                            else if (!normalizedTransaction && transaction.status !== 3 && !walletUtils.hasUnboundTransactionSigner(transaction)) {
+                            else if (!normalizedTransaction && !missingSignatures && transaction.status !== 3 && !walletUtils.hasUnboundTransactionSigner(transaction)) {
                                 console.log('[wallet] it is not possible to normalize the transaction', data.transaction_id);
                                 database.applyShards(shardID => {
                                     const transactionRepository = database.getRepository('transaction', shardID);
@@ -1228,7 +1249,7 @@ class Wallet {
                         }, ws);
                     }
                 }
-                else if (config.MODE_NODE_SYNC_FULL) {
+                else if (missingSignatures || config.MODE_NODE_SYNC_FULL) {
                     console.log(`[wallet] sending transaction ${data.transaction_id} not found to node ${ws.nodeID} (response time: ${Date.now() - startTimestamp}ms)`);
                     peer.transactionSyncResponse({
                         transaction            : {transaction_id: data.transaction_id},
@@ -1238,6 +1259,9 @@ class Wallet {
                         routing_request_node_id: data.routing_request_node_id
                     }, ws);
 
+                    if (missingSignatures) {
+                        return;
+                    }
                     walletSync.getTransactionSyncData(data.transaction_id)
                               .then(transactionSyncData => {
                                   if (transactionSyncData && transactionSyncData.attempt >= 2 * config.TRANSACTION_RETRY_SYNC_MAX) {
@@ -1712,7 +1736,7 @@ class Wallet {
             pipeline = pipeline.then(() => {
                 console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' was validated and proxied');
                 let ws = network.getWebSocketByID(connectionID);
-                return this._onNewTransaction(transaction, ws, true);
+                return this._onNewTransaction(transaction, ws);
             }).then(() => {
                 walletTransactionConsensus.removeFromRejectedTransactions(transaction.transaction_id);
                 console.log('[wallet][proxy] transaction ', transaction.transaction_id, ' stored');
@@ -1971,7 +1995,7 @@ class Wallet {
                         pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, this.transactionHasKeyIdentifier(dbTransaction)))
                                                                  .then(() => {
                                                                      // check stored transaction object
-                                                                     return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
+                                                                     return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id, {scheduleRecovery: false})
                                                                                                  .then((mDBTransaction) => {
                                                                                                      if (!walletUtils.isValidTransactionObject(transactionRepository.normalizeTransactionObject(mDBTransaction))) {
                                                                                                          throw Error('invalid_transaction_object');

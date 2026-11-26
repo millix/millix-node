@@ -108,7 +108,7 @@ class _VnJIBrrM0KY3uQ9X extends Endpoint {
                                    pipeline                       = pipeline.then(() => transactionRepository.addTransactionFromObject(dbTransaction, wallet.transactionHasKeyIdentifier(dbTransaction)))
                                                                             .then(() => {
                                                                                 // check stored transaction object
-                                                                                return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
+                                                                                return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id, {scheduleRecovery: false})
                                                                                                             .then((mDBTransaction) => {
                                                                                                                 if (!walletUtils.isValidTransactionObject(transactionRepository.normalizeTransactionObject(mDBTransaction))) {
                                                                                                                     throw Error('invalid_transaction_object');
