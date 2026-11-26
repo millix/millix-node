@@ -10,6 +10,11 @@ import moment from 'moment';
 import console from '../../core/console';
 import cache from '../../core/cache';
 import wallet from '../../core/wallet/wallet';
+import walletUtils, {UNBOUND_SIGNER_STATUS} from '../../core/wallet/wallet-utils';
+
+function hasUnboundSignerSQL(transactionIDColumn) {
+    return `EXISTS (SELECT 1 FROM transaction_signature s WHERE s.transaction_id = ${transactionIDColumn} AND s.status = ${UNBOUND_SIGNER_STATUS})`;
+}
 
 export default class Transaction {
     constructor(database) {
@@ -408,7 +413,7 @@ export default class Transaction {
                 'SELECT DISTINCT node_id_origin, address_key_identifier, value FROM `transaction` AS t \
                  INNER JOIN transaction_input AS ti ON t.transaction_id = ti.transaction_id \
                  INNER JOIN address_attribute AS a ON a.address_base = ti.address_key_identifier \
-                 WHERE a.address_attribute_type_id = "9MgxVxyXsM2EozHVUZgw" AND node_id_origin != ? ORDER BY transaction_date LIMIT ' + n,
+                 WHERE a.address_attribute_type_id = "9MgxVxyXsM2EozHVUZgw" AND a.status != 3 AND node_id_origin != ? ORDER BY transaction_date LIMIT ' + n,
                 [excludeNodeID],
                 (err, rows) => {
                     if (err) {
@@ -585,6 +590,8 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
                 const cachedTransaction = _.cloneDeep(transaction);
+                const unboundSigners = new Set(transaction.transaction_signature_list.filter(signer => !walletUtils.isValidTransactionSignerKey(signer)));
+                const hasInvalidSignerKey = unboundSigners.size > 0;
 
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
@@ -603,21 +610,23 @@ export default class Transaction {
                     status = 1;
                 }
 
-                transaction.transaction_parent_list.forEach(parentTransaction => {
-                    promise = promise.then(() => {
-                        return database.firstShards((shardID) => {
-                            return new Promise((resolve, reject) => {
-                                const transactionRepository = database.getRepository('transaction', shardID);
-                                transactionRepository.getTransaction(parentTransaction)
-                                                     .then(foundParentTransaction => foundParentTransaction ? resolve(transactionRepository) : reject());
+                if (!hasInvalidSignerKey) {
+                    transaction.transaction_parent_list.forEach(parentTransaction => {
+                        promise = promise.then(() => {
+                            return database.firstShards((shardID) => {
+                                return new Promise((resolve, reject) => {
+                                    const transactionRepository = database.getRepository('transaction', shardID);
+                                    transactionRepository.getTransaction(parentTransaction)
+                                                         .then(foundParentTransaction => foundParentTransaction ? resolve(transactionRepository) : reject());
+                                });
+                            }).then(parentRepository => {
+                                if (parentRepository) {
+                                    return parentRepository.updateTransactionParentDate(parentTransaction, transactionDate);
+                                }
                             });
-                        }).then(parentRepository => {
-                            if (parentRepository) {
-                                return parentRepository.updateTransactionParentDate(parentTransaction, Math.floor(new Date(transaction.transaction_date).getTime() / 1000));
-                            }
                         });
                     });
-                });
+                }
 
                 transaction.transaction_input_list.forEach((input, idx) => {
                     input.address                                         = input.address_base + input.address_version + input.address_key_identifier;
@@ -629,12 +638,14 @@ export default class Transaction {
                         'address_version',
                         'address_key_identifier'
                     ]);
-                    promise                    = promise.then(() => {
-                        return database.applyShards((shardID) => {
-                            const transactionRepository = database.getRepository('transaction', shardID);
-                            return transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now());
+                    if (!hasInvalidSignerKey) {
+                        promise = promise.then(() => {
+                            return database.applyShards((shardID) => {
+                                const transactionRepository = database.getRepository('transaction', shardID);
+                                return transactionRepository.updateTransactionOutput(input.output_transaction_id, input.output_position, ntp.now());
+                            });
                         });
-                    });
+                    }
                 });
 
                 promise = promise.then(() => {
@@ -706,25 +717,32 @@ export default class Transaction {
                     });
                 });
 
-                transaction.transaction_signature_list.forEach(signature => {
-                    let isInputOrOutputAddress = false;
-                    _.each(_.keys(addressList), addressKey => {
-                        if (addressKey.startsWith(signature.address_base)) {
-                            isInputOrOutputAddress = true;
-                            let address            = addressList[addressKey];
-                            delete addressList[addressKey];
-                            promise = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier, signature.address_attribute));
-                        }
-                    });
-                    // a signer that is not an input or output address (the
-                    // escrow keys, see escrow.js) still needs its public key
-                    // to normalize the transaction later
-                    if (!isInputOrOutputAddress && signature.address_attribute) {
-                        _.each(_.toPairs(signature.address_attribute), ([attributeName, attributeValue]) => {
-                            promise = promise.then(() => this.addressRepository.upsertAddressAttribute(signature.address_base, attributeName, attributeValue).catch(_ => _));
-                        });
+                transaction.transaction_signature_list.forEach((signature, index) => {
+                    const unbound = unboundSigners.has(signature);
+                    const signerStatus = unbound ? UNBOUND_SIGNER_STATUS : 1;
+                    const cachedSigner = cachedTransaction.transaction_signature_list[index];
+                    cachedSigner.status = signerStatus;
+                    if (unbound) {
+                        cachedSigner.address_attribute = {key_public: null};
                     }
-                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature)
+                    else {
+                        const attributes = {key_public: signature.address_attribute.key_public};
+                        let isInputOrOutputAddress = false;
+                        _.each(_.keys(addressList), addressKey => {
+                            const address = addressList[addressKey];
+                            if (address.address_base === signature.address_base) {
+                                isInputOrOutputAddress = true;
+                                delete addressList[addressKey];
+                                promise = promise.then(() => this.addressRepository.addAddress(address.address, address.address_base, address.address_version, address.address_key_identifier, attributes)
+                                                                                  .catch(err => console.log('[transaction-warn] save signer key error', err)));
+                            }
+                        });
+                        if (!isInputOrOutputAddress) {
+                            promise = promise.then(() => this.addressRepository.upsertAddressAttribute(signature.address_base, 'key_public', attributes.key_public)
+                                                                                  .catch(err => console.log('[transaction-warn] save signer key error', err)));
+                        }
+                    }
+                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signerStatus)
                                                      .catch(err => {
                                                          console.log('[transaction-warn] add transaction signature error', err);
                                                      }));
@@ -763,6 +781,7 @@ export default class Transaction {
             mutex.lock(['transaction' + (this.database.shardID ? '_' + this.database.shardID : '')], (unlock) => {
                 const cachedTransaction = transaction;
                 transaction             = _.cloneDeep(cachedTransaction);
+                const hasInvalidSignerKey = walletUtils.hasUnboundTransactionSigner(transaction);
 
                 let runPipeline       = null;
                 let promise           = new Promise(r => {
@@ -785,6 +804,9 @@ export default class Transaction {
                 }
 
                 transaction.transaction_parent_list.forEach(parentTransaction => {
+                    if (hasInvalidSignerKey) {
+                        return;
+                    }
                     promise = promise.then(() => {
                         return new Promise((resolve, reject) => {
                             database.firstShards((shardID) => {
@@ -808,6 +830,9 @@ export default class Transaction {
                 });
 
                 transaction.transaction_input_list.forEach(input => {
+                    if (hasInvalidSignerKey) {
+                        return;
+                    }
                     promise = promise.then(() => database.getRepository('transaction').updateTransactionOutput(input.output_transaction_id, input.output_position, transaction.transaction_date)) // shard zero
                                      .then(() => {
                                          const transactionOutputRepository = database.getRepository('transaction', input.output_shard_id);
@@ -886,7 +911,7 @@ export default class Transaction {
                 });
 
                 transaction.transaction_signature_list.forEach(signature => {
-                    promise = promise.then(() => new Promise(resolve => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signature.status, signature.create_date).then(resolve).catch(resolve)));
+                    promise = promise.then(() => this.addTransactionSignature(transaction.transaction_id, transaction.shard_id, signature.address_base, signature.signature, signature.status, signature.create_date));
                 });
 
                 promise.then(() => {
@@ -947,18 +972,17 @@ export default class Transaction {
             'address_version',
             'address_key_identifier'
         ])), 'input_position');
-        transaction['transaction_signature_list'] = _.sortBy(transactionDB.transaction_signature_list.map(a => _.pick(a, [
-            'address_base',
-            'address_attribute',
-            'signature'
-        ])), 'address_base');
-
-        for (let signature of transaction['transaction_signature_list']) {
-            if (!signature.address_attribute.key_public) {
+        for (const signature of transactionDB.transaction_signature_list) {
+            if (signature.status !== UNBOUND_SIGNER_STATUS && !signature.address_attribute?.key_public) {
                 console.log('[transaction-normalization] key_public not found ', transactionDB);
                 return null;
             }
         }
+        transaction['transaction_signature_list'] = _.sortBy(transactionDB.transaction_signature_list.map(signer => ({
+            address_base: signer.address_base,
+            signature: signer.signature,
+            address_attribute: signer.status === UNBOUND_SIGNER_STATUS ? {key_public: null} : signer.address_attribute
+        })), 'address_base');
 
         transaction['transaction_date'] = [
                                               '0a0',
@@ -990,7 +1014,11 @@ export default class Transaction {
     }
 
     clearTransactionObjectCache(transactionID) {
-        cache.removeCacheItem(this._getCacheStoreName(), 'transaction_object_' + transactionID);
+        const store = this._getCacheStoreName();
+        cache.removeCacheItem(store, 'transaction_object_' + transactionID);
+        for (const part of ['transaction', 'input', 'output', 'signature', 'output_attribute', 'parent']) {
+            cache.removeCacheItem(store, `transaction_object_${part}_${transactionID}`);
+        }
     }
 
     updateTransactionObjectCache(transaction) {
@@ -1157,6 +1185,27 @@ export default class Transaction {
                    .catch(() => Promise.resolve(null));
     }
 
+    matchesStoredTransaction(transaction, storedTransaction, unboundSignerAddresses) {
+        if (unboundSignerAddresses.size === 0) {
+            return walletUtils.isValidTransactionHash(this.normalizeTransactionObject(storedTransaction));
+        }
+        if (!storedTransaction || storedTransaction.transaction_id !== transaction.transaction_id ||
+            storedTransaction.payload_hash !== transaction.payload_hash ||
+            storedTransaction.transaction_input_list.length !== transaction.transaction_input_list.length ||
+            storedTransaction.transaction_output_list.length !== transaction.transaction_output_list.length ||
+            storedTransaction.transaction_parent_list.length !== transaction.transaction_parent_list.length) {
+            return false;
+        }
+
+        const expectedSigners = transaction.transaction_signature_list.map(signer => ({
+            address_base: signer.address_base,
+            signature   : signer.signature,
+            status      : unboundSignerAddresses.has(signer.address_base) ? UNBOUND_SIGNER_STATUS : 1
+        }));
+        const storedSigners = storedTransaction.transaction_signature_list.map(signer => _.pick(signer, 'address_base', 'signature', 'status'));
+        return _.isEqual(_.sortBy(expectedSigners, 'address_base'), _.sortBy(storedSigners, 'address_base'));
+    }
+
     _verifyTransactionDataConsistency(transaction) {
         // check transaction data
         if (transaction) {
@@ -1214,15 +1263,21 @@ export default class Transaction {
         if (!createDate) {
             createDate = Math.floor(Date.now() / 1000);
         }
-        return new Promise((resolve) => {
-            this.database.run('INSERT INTO transaction_signature (transaction_id, shard_id, address_base, signature, status, create_date) VALUES (?,?,?,?,?,?)', [
+        return new Promise((resolve, reject) => {
+            this.database.run(`INSERT INTO transaction_signature (transaction_id, shard_id, address_base, signature, status, create_date)
+                               VALUES (?,?,?,?,?,?)
+                               ON CONFLICT (transaction_id, address_base) DO UPDATE SET status = excluded.status
+                               WHERE excluded.status = ${UNBOUND_SIGNER_STATUS} AND transaction_signature.signature = excluded.signature`, [
                 transactionID,
                 shardID,
                 addressBase,
                 signature,
                 status !== undefined ? status : 1,
                 createDate
-            ], _ => {
+            ], err => {
+                if (err) {
+                    return reject(err);
+                }
                 resolve();
             });
         });
@@ -1715,15 +1770,11 @@ export default class Transaction {
                         return reject(err);
                     }
 
-                    let authors = [];
-                    async.eachSeries(rows, (signature, callback) => {
-                        this.addressRepository
-                            .getAddressBaseAttribute(signature.address_base, 'key_public')
-                            .then(addressAttribute => {
-                                authors.push({address_attribute: {key_public: addressAttribute}, ...signature});
-                                callback();
-                            });
-                    }, () => resolve(authors));
+                    Promise.all(rows.map(async signer => {
+                        const keyPublic = signer.status === UNBOUND_SIGNER_STATUS ? null :
+                                          await this.addressRepository.getAddressBaseAttribute(signer.address_base, 'key_public');
+                        return {...signer, address_attribute: {key_public: keyPublic}};
+                    })).then(resolve, reject);
                 });
         });
     }
@@ -1856,7 +1907,7 @@ export default class Transaction {
             unstableDateStart     = Math.floor(unstableDateStart / 1000);
             let sql, params;
             if (!returnHibernatedTransactions) {
-                sql    = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE `transaction`.transaction_date > ? AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
+                sql    = 'SELECT DISTINCT `transaction`.* FROM `transaction` INNER JOIN  transaction_output ON `transaction`.transaction_id = transaction_output.transaction_id WHERE (`transaction`.transaction_date > ? OR ' + hasUnboundSignerSQL('`transaction`.transaction_id') + ') AND `transaction`.create_date < ? AND `transaction`.is_stable = 0 ' + (excludeTransactionIDList && excludeTransactionIDList.length > 0 ? 'AND `transaction`.transaction_id NOT IN (' + excludeTransactionIDList.map(() => '?').join(',') + ')' : '') + ' AND `transaction`.status != 3 ORDER BY transaction_date DESC LIMIT ' + config.CONSENSUS_VALIDATION_PARALLEL_PROCESS_MAX;
                 params = [
                     unstableDateStart,
                     insertDate
@@ -1985,7 +2036,7 @@ export default class Transaction {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT transaction_input.*, `transaction`.transaction_date FROM transaction_input INNER JOIN `transaction` on `transaction`.transaction_id = transaction_input.transaction_id \
                                INNER JOIN transaction_output on transaction_output.transaction_id = `transaction`.transaction_id \
-                               WHERE transaction_input.output_transaction_id = ? AND transaction_input.output_position = ? AND transaction_input.transaction_id != ? AND transaction_output.is_double_spend = 0 AND `transaction`.status != 3',
+                               WHERE transaction_input.output_transaction_id = ? AND transaction_input.output_position = ? AND transaction_input.transaction_id != ? AND transaction_output.is_double_spend = 0 AND `transaction`.status != 3 AND NOT ' + hasUnboundSignerSQL('`transaction`.transaction_id'),
                 [
                     input.output_transaction_id,
                     input.output_position,
@@ -2003,7 +2054,7 @@ export default class Transaction {
     listTransactionSpendingOutput(transactionID, outputPosition) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT t.*, o.is_double_spend, o.is_spent FROM `transaction` t INNER JOIN transaction_input i ON t.transaction_id = i.transaction_id INNER JOIN transaction_output o ON o.transaction_id = t.transaction_id ' +
-                              'WHERE i.output_transaction_id = ? AND i.output_position = ?',
+                              'WHERE i.output_transaction_id = ? AND i.output_position = ? AND NOT ' + hasUnboundSignerSQL('t.transaction_id'),
                 [
                     transactionID,
                     outputPosition
@@ -2019,7 +2070,8 @@ export default class Transaction {
 
     getSpendTransactions(transactionID) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT transaction_id FROM transaction_input WHERE output_transaction_id = ?',
+            this.database.all('SELECT i.transaction_id FROM transaction_input i INNER JOIN `transaction` t ON i.transaction_id = t.transaction_id ' +
+                              'WHERE i.output_transaction_id = ? AND NOT ' + hasUnboundSignerSQL('t.transaction_id'),
                 [transactionID], (err, rows) => {
                     if (err) {
                         console.log(err);
@@ -2036,7 +2088,7 @@ export default class Transaction {
                                 inner join transaction_input i on i.transaction_id = t.transaction_id \
                                 inner join transaction_output o on i.transaction_id = o.transaction_id \
                                 where i.output_transaction_id = ? and i.output_position = ? \
-                                and o.status != 3 and o.is_double_spend = 0',
+                                and o.status != 3 and o.is_double_spend = 0 and NOT ' + hasUnboundSignerSQL('t.transaction_id'),
                 [
                     transactionID,
                     outputPosition
@@ -2484,7 +2536,7 @@ export default class Transaction {
     getTransactionParentDate(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.get('SELECT transaction_date FROM transaction_parent INNER JOIN `transaction` on transaction_parent.transaction_id_child = `transaction`.transaction_id ' +
-                              'WHERE transaction_id_parent = ?',
+                              'WHERE transaction_id_parent = ? AND NOT ' + hasUnboundSignerSQL('`transaction`.transaction_id'),
                 [transactionID], (err, row) => {
                     if (err) {
                         console.log(err);

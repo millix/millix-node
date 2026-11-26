@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import config from '../config/config';
 import fs from 'fs';
 import base58 from 'bs58';
+import secp256k1 from 'secp256k1';
 import {ASN1HEX, KEYUTIL, KJUR, X509} from 'jsrsasign';
 import async from 'async';
 import _ from 'lodash';
@@ -17,6 +18,8 @@ import {v4 as uuidv4} from 'uuid';
 import ntp from '../ntp';
 import escrow from './escrow';
 
+const MAX_BASE58_PUBLIC_KEY_LENGTH = 89; // A secp256k1 public key is at most 65 bytes.
+export const UNBOUND_SIGNER_STATUS = 3;
 
 class WalletUtils {
     constructor() {
@@ -621,6 +624,29 @@ class WalletUtils {
         });
     }
 
+    isValidAddressPublicKey(addressBase, publicKey) {
+        if (typeof addressBase !== 'string' || typeof publicKey !== 'string' || publicKey.length > MAX_BASE58_PUBLIC_KEY_LENGTH) {
+            return false;
+        }
+
+        try {
+            const decodedKey = base58.decode(publicKey);
+            return secp256k1.publicKeyVerify(decodedKey) && this.getAddressFromPublicKey(decodedKey) === addressBase;
+        }
+        catch (e) {
+            return false;
+        }
+    }
+
+    isValidTransactionSignerKey(signer) {
+        return this.isValidAddressPublicKey(signer?.address_base, signer?.address_attribute?.key_public);
+    }
+
+    hasUnboundTransactionSigner(transaction) {
+        const signers = transaction?.transaction_signature_list;
+        return Array.isArray(signers) && signers.some(signer => signer?.status === UNBOUND_SIGNER_STATUS);
+    }
+
     isValidTransactionObject(transaction) {
         if (!this._hasSupportedVersionAndListSizes(transaction)) {
             return false;
@@ -683,20 +709,8 @@ class WalletUtils {
         }
 
         const signerAddressSet = new Set();
-        for (let i = 0; i < transaction.transaction_signature_list.length; i++) {
-            const addressSignature = transaction.transaction_signature_list[i];
-            try {
-                if (!addressSignature ||
-                    typeof addressSignature.address_base !== 'string' ||
-                    !this.isValidAddress(addressSignature.address_base) ||
-                    !addressSignature.address_attribute ||
-                    typeof addressSignature.address_attribute.key_public !== 'string' ||
-                    typeof addressSignature.signature !== 'string' ||
-                    this.getAddressFromPublicKey(base58.decode(addressSignature.address_attribute.key_public)) !== addressSignature.address_base) {
-                    return false;
-                }
-            }
-            catch (e) {
+        for (const addressSignature of transaction.transaction_signature_list) {
+            if (typeof addressSignature?.signature !== 'string' || !this.isValidTransactionSignerKey(addressSignature)) {
                 return false;
             }
             signerAddressSet.add(addressSignature.address_base);

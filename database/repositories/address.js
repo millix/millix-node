@@ -2,6 +2,29 @@ import _ from 'lodash';
 import config from '../../core/config/config';
 import {Database} from '../database';
 import console from '../../core/console';
+import walletUtils from '../../core/wallet/wallet-utils';
+
+export async function saveVerifiedAddressPublicKey(database, attributeTypeID, addressBase, publicKey) {
+    if (!walletUtils.isValidAddressPublicKey(addressBase, publicKey)) {
+        return;
+    }
+
+    const addressAttribute = [addressBase, attributeTypeID];
+    const existing = await new Promise((resolve, reject) => {
+        database.get('SELECT value, status FROM address_attribute WHERE address_base = ? AND address_attribute_type_id = ?',
+            addressAttribute, (error, row) => error ? reject(error) : resolve(row));
+    });
+    const replace = existing && (existing.status === 3 || !walletUtils.isValidAddressPublicKey(addressBase, existing.value));
+
+    // Update only the row inspected above so a concurrent repair wins.
+    return new Promise((resolve, reject) => {
+        database.run(`INSERT INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?, ?, ?)
+                      ON CONFLICT (address_base, address_attribute_type_id) DO UPDATE SET value = excluded.value, status = 1
+                      WHERE address_attribute.value = ? AND address_attribute.status = ?`,
+            [...addressAttribute, publicKey, replace ? existing.value : null, replace ? existing.status : null],
+            error => error ? reject(error) : resolve());
+    });
+}
 
 export default class Address {
     constructor(database) {
@@ -138,39 +161,20 @@ export default class Address {
         throw new Error('address version not supported ' + addressFull);
     }
 
-    addAddress(address, addressBase, addressVersion, addressKeyIdentifier, addressAttribute) {
-        return new Promise((resolve) => {
-            this.database.serialize(() => {
-                this.database.run('INSERT INTO address (address, address_base, address_version, address_key_identifier) VALUES (?,?,?,?)', [
-                    address,
-                    addressBase,
-                    addressVersion,
-                    addressKeyIdentifier
-                ], !addressAttribute ? () => resolve() : () => {
-                });
-
-                if (!addressAttribute) {
-                    return;
-                }
-
-                const attributeEntries = Object.entries(addressAttribute);
-                for (let i = 0; i < attributeEntries.length; i++) {
-                    let [attributeName, attributeValue] = attributeEntries[i];
-                    let attributeTypeID                 = this.normalizationRepository.get(attributeName);
-                    this.database.run('INSERT INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?,?,?)', [
-                        addressBase,
-                        attributeTypeID,
-                        attributeValue
-                    ], (i === attributeEntries.length - 1) ? () => resolve() : () => {
-                    });
-                }
-            });
+    async addAddress(address, addressBase, addressVersion, addressKeyIdentifier, addressAttribute) {
+        await new Promise(resolve => {
+            this.database.run('INSERT INTO address (address, address_base, address_version, address_key_identifier) VALUES (?,?,?,?)',
+                [address, addressBase, addressVersion, addressKeyIdentifier], () => resolve());
         });
+        await Promise.all(Object.entries(addressAttribute || {}).map(([name, value]) => this.upsertAddressAttribute(addressBase, name, value)));
     }
 
     upsertAddressAttribute(addressBase, attributeName, attributeValue) {
+        const attributeTypeID = this.normalizationRepository.get(attributeName);
+        if (attributeName === 'key_public') {
+            return saveVerifiedAddressPublicKey(this.database, attributeTypeID, addressBase, attributeValue);
+        }
         return new Promise((resolve, reject) => {
-            let attributeTypeID = this.normalizationRepository.get(attributeName);
             this.database.run('INSERT OR IGNORE INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?,?,?)', [
                 addressBase,
                 attributeTypeID,
@@ -191,7 +195,7 @@ export default class Address {
         }
 
         return new Promise((resolve, reject) => {
-            this.database.get('SELECT value FROM address_attribute WHERE address_base = ? AND address_attribute_type_id = ?', [
+            this.database.get('SELECT value, status FROM address_attribute WHERE address_base = ? AND address_attribute_type_id = ?', [
                     addressBase,
                     attributeTypeID
                 ],
@@ -199,7 +203,7 @@ export default class Address {
                     if (err) {
                         return reject(err);
                     }
-                    resolve(row ? row.value : null);
+                    resolve(row && (attributeName !== 'key_public' || row.status !== 3) ? row.value : null);
                 });
         });
     }
@@ -225,7 +229,7 @@ export default class Address {
             let {
                     sql,
                     parameters
-                } = Database.buildQuery('SELECT address.*, atp.attribute_type, at.value as attribute_value FROM address  \
+                } = Database.buildQuery('SELECT address.*, atp.attribute_type, at.value as attribute_value, at.status as attribute_status FROM address  \
                 LEFT JOIN address_attribute AS at ON at.address_base = address.address_base \
                 LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id', where, orderBy, limit);
             this.database.all(
@@ -244,7 +248,7 @@ export default class Address {
                             addresses[row.address] = address;
                         }
 
-                        if (row.attribute_type) {
+                        if (row.attribute_type && (row.attribute_type !== 'key_public' || row.attribute_status !== 3)) {
                             if (!address.address_attribute) {
                                 address['address_attribute'] = {};
                             }

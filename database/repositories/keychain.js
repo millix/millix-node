@@ -1,6 +1,7 @@
 import console from '../../core/console';
 import {Database} from '../database';
 import _ from 'lodash';
+import {saveVerifiedAddressPublicKey} from './address';
 
 export default class Keychain {
     constructor(database) {
@@ -17,8 +18,7 @@ export default class Keychain {
 
         return new Promise((resolve, reject) => {
             this.database.serialize(() => {
-                let errKeychain, errKeychainAddress;
-                this.database.run( // IGNORE in case the address was already generated
+                const keychain = new Promise(resolveWrite => this.database.run(
                     'INSERT INTO keychain (wallet_id, is_change, address_position, address_base, status) VALUES (?,?,?,?,?)',
                     [
                         walletID,
@@ -27,9 +27,9 @@ export default class Keychain {
                         addressBase,
                         status
                     ],
-                    err => errKeychain = err);
+                    resolveWrite));
 
-                this.database.run('INSERT INTO keychain_address(address, address_base, address_version, address_key_identifier, status) VALUES(?,?,?,?,?)',
+                const keychainAddress = new Promise(resolveWrite => this.database.run('INSERT INTO keychain_address(address, address_base, address_version, address_key_identifier, status) VALUES(?,?,?,?,?)',
                     [
                         address,
                         addressBase,
@@ -37,38 +37,36 @@ export default class Keychain {
                         addressKeyIdentifier,
                         status
                     ],
-                    err => errKeychainAddress = err);
+                    resolveWrite));
 
-                const attributeEntries = Object.entries(addressAttribute);
-                for (let i = 0; i < attributeEntries.length; i++) {
-                    let [attributeName, attributeValue] = attributeEntries[i];
-                    let attributeTypeID                 = this.normalizationRepository.get(attributeName);
+                const attributes = Object.entries(addressAttribute).map(([attributeName, attributeValue]) => {
+                    const attributeTypeID = this.normalizationRepository.get(attributeName);
                     if (!attributeTypeID) {
-                        return reject('[keychain] attribute type id not found');
+                        return Promise.reject('[keychain] attribute type id not found');
                     }
-                    let callback = (i === attributeEntries.length - 1) ? () => {
-                        if (errKeychain && errKeychainAddress) {
-                            console.log(errKeychain.message + ' ' + errKeychainAddress.message);
-                            return reject(errKeychainAddress);
-                        }
-                        resolve({
-                            address,
-                            wallet_id             : walletID,
-                            address_base          : addressBase,
-                            address_version       : addressVersion,
-                            address_key_identifier: addressKeyIdentifier,
-                            is_change             : isChange,
-                            address_position      : addressPosition,
-                            address_attribute     : addressAttribute
-                        });
-                    } : () => {
-                    };
-                    this.database.run('INSERT INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?,?,?)', [
-                        addressBase,
-                        attributeTypeID,
-                        attributeValue
-                    ], callback);
-                }
+                    if (attributeName === 'key_public') {
+                        return saveVerifiedAddressPublicKey(this.database, attributeTypeID, addressBase, attributeValue);
+                    }
+                    return new Promise(resolveAttribute => this.database.run(
+                        'INSERT INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?,?,?)',
+                        [addressBase, attributeTypeID, attributeValue], () => resolveAttribute()));
+                });
+                Promise.all([keychain, keychainAddress, ...attributes]).then(([errKeychain, errKeychainAddress]) => {
+                    if (errKeychain && errKeychainAddress) {
+                        console.log(errKeychain.message + ' ' + errKeychainAddress.message);
+                        return reject(errKeychainAddress);
+                    }
+                    resolve({
+                        address,
+                        wallet_id             : walletID,
+                        address_base          : addressBase,
+                        address_version       : addressVersion,
+                        address_key_identifier: addressKeyIdentifier,
+                        is_change             : isChange,
+                        address_position      : addressPosition,
+                        address_attribute     : addressAttribute
+                    });
+                }, reject);
             });
         });
     }
@@ -97,7 +95,7 @@ export default class Keychain {
                 addresses[row.address] = address;
             }
 
-            if (row.attribute_type) {
+            if (row.attribute_type && (row.attribute_type !== 'key_public' || row.attribute_status !== 3)) {
                 if (!address.address_attribute) {
                     address['address_attribute'] = {};
                 }
@@ -130,7 +128,7 @@ export default class Keychain {
     getAddresses(addresses) {
         return new Promise((resolve, reject) => {
             this.database.all(
-                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.create_date, atp.attribute_type, at.value as attribute_value \
+                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.create_date, atp.attribute_type, at.value as attribute_value, at.status as attribute_status \
                  FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
                  LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
                  LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id \
@@ -150,7 +148,7 @@ export default class Keychain {
     getAddressesByAddressBase(addressBaseList) {
         return new Promise((resolve, reject) => {
             this.database.all(
-                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.create_date, atp.attribute_type, at.value as attribute_value \
+                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.create_date, atp.attribute_type, at.value as attribute_value, at.status as attribute_status \
                  FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
                  LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
                  LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id \
@@ -170,7 +168,7 @@ export default class Keychain {
     getAddress(address) {
         return new Promise((resolve, reject) => {
             this.database.all(
-                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value \
+                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value, at.status as attribute_status \
                  FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
                  LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
                  LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id \
@@ -189,7 +187,7 @@ export default class Keychain {
 
     activateAndGetNextAddress(walletId) {
         return new Promise((resolve, reject) => {
-            this.database.all('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value \
+            this.database.all('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value, at.status as attribute_status \
             FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
             LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
             LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id \
@@ -246,7 +244,7 @@ export default class Keychain {
     getWalletAddresses(walletID) {
         return new Promise((resolve, reject) => {
             this.database.all(
-                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, k.create_date, atp.attribute_type, at.value as attribute_value \
+                'SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, k.create_date, atp.attribute_type, at.value as attribute_value, at.status as attribute_status \
                  FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
                  LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
                  LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id \
@@ -268,7 +266,7 @@ export default class Keychain {
             const {
                       sql,
                       parameters
-                  } = Database.buildQuery('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value \
+                  } = Database.buildQuery('SELECT ka.address, ka.address_base, ka.address_version, ka.address_key_identifier, k.wallet_id, k.address_position, k.is_change, ka.status, ka.create_date, atp.attribute_type, at.value as attribute_value, at.status as attribute_status \
                  FROM keychain as k INNER JOIN keychain_address as ka ON k.address_base = ka.address_base \
                  LEFT JOIN address_attribute AS at ON at.address_base = k.address_base \
                  LEFT JOIN address_attribute_type as atp ON atp.address_attribute_type_id = at.address_attribute_type_id', where, 'ka.' + orderBy, limit);

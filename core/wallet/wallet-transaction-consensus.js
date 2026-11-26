@@ -188,11 +188,12 @@ export class WalletTransactionConsensus {
                        });
                    }))().then((transaction) => {
 
-                if (transaction && transaction.status !== 3 && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
+                const hasUnboundSigner = transaction?.is_stable !== undefined && walletUtils.hasUnboundTransactionSigner(transaction);
+                if (transaction && transaction.status !== 3 && !hasUnboundSigner && transaction.is_stable && _.every(transaction.transaction_output_list, output => output.is_stable && !output.is_double_spend)) {
                     console.log('[wallet-transaction-consensus-oracle] validated in consensus round after find a validated transaction at depth ', depth, '. after:', Date.now() - startTime, 'ms');
                     return resolve();
                 }
-                else if (transaction && transaction.status === 3) {
+                else if (transaction && (transaction.status === 3 || hasUnboundSigner)) {
                     console.log('[wallet-transaction-consensus-oracle] found invalid transaction ', transaction.transaction_id);
                     return reject({
                         cause              : 'transaction_invalid',
@@ -603,8 +604,19 @@ export class WalletTransactionConsensus {
                                      .then(transaction => transaction ? resolve(transaction) : reject());
             });
         }).then(dbTransaction => {
-            return database.getRepository('transaction').normalizeTransactionObject(dbTransaction);
-        }).then(transaction => {
+            const hasUnboundSigner = walletUtils.hasUnboundTransactionSigner(dbTransaction);
+            const transactionRepository = database.getRepository('transaction');
+            try {
+                const transaction = transactionRepository.normalizeTransactionObject(dbTransaction);
+                return {transaction: transaction || (hasUnboundSigner ? dbTransaction : null), hasUnboundSigner};
+            }
+            catch (error) {
+                if (!hasUnboundSigner) {
+                    throw error;
+                }
+                return {transaction: dbTransaction, hasUnboundSigner};
+            }
+        }).then(({transaction, hasUnboundSigner}) => {
             if (!transaction) { // transaction data not found
                 console.log('[wallet-transaction-consensus-validation] transaction not found. unexpected behaviour.');
                 this._transactionValidationRejected.add(transactionID);
@@ -618,7 +630,8 @@ export class WalletTransactionConsensus {
                 })).then(() => Promise.reject());
             }
 
-            return walletUtils.verifyTransaction(transaction)
+            const verification = hasUnboundSigner ? Promise.resolve([false, 'transaction_object_invalid']) : walletUtils.verifyTransaction(transaction);
+            return verification
                               .then(([isValid, invalidTransactionError]) => {
                                   if (!isValid) {
 

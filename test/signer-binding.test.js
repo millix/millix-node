@@ -1,16 +1,28 @@
 import {after, before, describe, test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import path from 'node:path';
 import _ from 'lodash';
 import base58 from 'bs58';
 import secp256k1 from 'secp256k1';
+import sqlite3 from 'sqlite3';
+import transactionDetails from '../api/IBHgAmydZbmTUAe8/index';
+import cache from '../core/cache';
 import config from '../core/config/config';
 import genesisConfig from '../core/genesis/genesis-config';
 import database from '../database/database';
+import Address from '../database/repositories/address';
+import Keychain from '../database/repositories/keychain';
+import Normalization from '../database/repositories/normalization';
+import Transaction from '../database/repositories/transaction';
 import network from '../net/network';
+import peer from '../net/peer';
 import ntp from '../core/ntp';
 import objectHash from '../core/crypto/object-hash';
 import signature from '../core/crypto/signature';
-import walletUtils from '../core/wallet/wallet-utils';
+import wallet from '../core/wallet/wallet';
+import walletSync from '../core/wallet/wallet-sync';
+import walletUtils, {UNBOUND_SIGNER_STATUS} from '../core/wallet/wallet-utils';
 
 const transactionDate = ntp.now().getTime() / 1000;
 const addressVersion  = config.MODE_TEST_NETWORK ? 'lal' : '0a0';
@@ -160,6 +172,18 @@ function assertWellSigned(transaction) {
     for (const entry of transaction.transaction_signature_list) {
         assert.equal(signature.verify(hash, entry.signature, entry.address_attribute.key_public), true);
     }
+}
+
+async function openTransactionDatabase(t, schemaFile) {
+    const schema = await readFile(path.join(__dirname, '..', 'scripts', schemaFile), 'utf8');
+    const connection = new sqlite3.Database(':memory:');
+    t.after(() => new Promise((resolve, reject) => connection.close(error => error ? reject(error) : resolve())));
+    await new Promise((resolve, reject) => connection.exec(schema, error => error ? reject(error) : resolve()));
+    return connection;
+}
+
+function runSQL(connection, sql, parameters = []) {
+    return new Promise((resolve, reject) => connection.run(sql, parameters, error => error ? reject(error) : resolve()));
 }
 
 const originalGetRepository = database.getRepository;
@@ -362,6 +386,176 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
         assert.equal(walletUtils.isValidTransactionHash(transaction), true);
         assert.equal(isValid(transaction), false);
     });
+
+    test('preserves the verified shared key when two writers race to repair a legacy row', async t => {
+        const connection = await openTransactionDatabase(t, 'initialize-millix-sqlite3.sql');
+        const normalization = new Normalization(connection);
+        await normalization.load();
+        const addresses = new Address(connection);
+        addresses.setNormalizationRepository(normalization);
+        const keychain = new Keychain(connection);
+        keychain.setNormalizationRepository(normalization);
+        const typeID = normalization.get('key_public');
+        await runSQL(connection, 'INSERT INTO address_attribute (address_base, address_attribute_type_id, value) VALUES (?, ?, ?)',
+            [owner.address_base, typeID, other.key_public]);
+        await runSQL(connection, 'CREATE TABLE key_updates (value TEXT)');
+        await runSQL(connection, `CREATE TRIGGER count_key_updates AFTER UPDATE OF value ON address_attribute
+                                  BEGIN INSERT INTO key_updates VALUES (new.value); END`);
+
+        const originalRun = connection.run.bind(connection);
+        const race = t.mock.method(connection, 'run', (sql, parameters, callback) => {
+            if (!sql.includes('ON CONFLICT (address_base, address_attribute_type_id)')) {
+                return originalRun(sql, parameters, callback);
+            }
+            return originalRun('UPDATE address_attribute SET value = ? WHERE address_base = ? AND address_attribute_type_id = ?',
+                [owner.key_public, owner.address_base, typeID], error => error ? callback(error) : originalRun(sql, parameters, callback));
+        });
+        await keychain.addAddress('test-wallet', 0, 0, owner.address_base, addressVersion, master.address_base, {key_public: owner.key_public});
+        race.mock.restore();
+        await addresses.upsertAddressAttribute(owner.address_base, 'key_public', other.key_public);
+
+        assert.equal(await addresses.getAddressBaseAttribute(owner.address_base, 'key_public'), owner.key_public);
+        const writes = await new Promise((resolve, reject) => connection.all('SELECT value FROM key_updates', (error, rows) => error ? reject(error) : resolve(rows)));
+        assert.deepEqual(writes, [{value: owner.key_public}]);
+    });
+
+    for (const repairBeforeConsensus of [true, false]) {
+        test(`retains an unbound transaction when a legitimate key arrives ${repairBeforeConsensus ? 'before' : 'after'} consensus`, {timeout: 5000}, async t => {
+            const mainDB = await openTransactionDatabase(t, 'initialize-millix-sqlite3.sql');
+            const shardDB = await openTransactionDatabase(t, 'initialize-millix-shard-sqlite3.sql');
+            shardDB.shardID = 'signer-binding-test-shard';
+            const normalization = new Normalization(mainDB);
+            const addresses = new Address(mainDB);
+            addresses.setNormalizationRepository(normalization);
+            await Promise.all([normalization.load(), addresses.loadAddressVersion()]);
+
+            const transactions = new Transaction(mainDB);
+            const shardTransactions = new Transaction(shardDB);
+            for (const repository of [transactions, shardTransactions]) {
+                repository.setAddressRepository(addresses);
+                repository.setNormalizationRepository(normalization);
+            }
+
+            const shardID = genesisConfig.genesis_shard_id;
+            t.mock.method(database, 'getRepository', (name, shard) => {
+                return {address: addresses, normalization, transaction: shard === shardDB.shardID ? shardTransactions : transactions}[name];
+            });
+            t.mock.method(database, 'applyShards', callback => Promise.all([callback(shardID), callback(shardDB.shardID)]).then(results => results.flat()));
+            t.mock.method(database, 'firstShardZeroORShardRepository', async (name, shard, callback) => callback(transactions).catch(() => undefined));
+            t.mock.method(database, 'firstShardORShardZeroRepository', async (name, shard, callback) => callback(transactions));
+            t.mock.method(wallet, 'syncShardIfNotExists', async () => {});
+            t.mock.method(wallet, '_shouldProcessTransaction', () => true);
+            t.mock.method(wallet, 'transactionHasKeyIdentifier', () => false);
+            t.mock.method(wallet, '_checkIfWalletUpdate', () => {});
+            const notification = t.mock.method(wallet, 'notifyTransactionChanged', () => {});
+            t.mock.method(walletSync, 'clearTransactionSync', () => {});
+            t.mock.method(walletSync, 'syncTransactionSpendingOutputs', () => {});
+
+            const date = Math.floor(transactionDate);
+            const boundStandalone = newKey(5);
+            const unboundStandalone = {...recipient, address_base: boundStandalone.address_base};
+            const invalid = buildTransaction({
+                signerKeys: [{...other, address_base: owner.address_base}, unboundStandalone, other],
+                date      : date - (config.TRANSACTION_OUTPUT_EXPIRE_OLDER_THAN + 1) * 60
+            });
+            const legitimate = buildTransaction({date});
+            const spentInput = invalid.transaction_input_list[0];
+            const spendCacheKey = `is_spend_${spentInput.output_transaction_id}_${spentInput.output_position}`;
+            t.after(() => {
+                cache.removeCacheItem('wallet', spendCacheKey);
+                transactions.clearTransactionObjectCache(invalid.transaction_id);
+                transactions.clearTransactionObjectCache(legitimate.transaction_id);
+                shardTransactions.clearTransactionObjectCache(invalid.transaction_id);
+            });
+
+            for (const transactionID of [parentID, spentInput.output_transaction_id]) {
+                await transactions.addTransaction(transactionID, shardID, 'fixture', spentInput.output_transaction_date, owner.address_base, owner.address_base, invalid.version);
+            }
+            await transactions.addTransactionOutput(spentInput.output_transaction_id, shardID, spentInput.output_position,
+                owner.address_base + addressVersion + master.address_base, master.address_base, 3000);
+            await addresses.upsertAddressAttribute(boundStandalone.address_base, 'key_public', boundStandalone.key_public);
+
+            assertWellSigned(invalid);
+            assert.equal(walletUtils.isValidTransactionHash(invalid), true);
+            await wallet._onNewTransaction({transaction: invalid}, {node: 'test peer'});
+            const cached = await transactions.getTransactionObject(invalid.transaction_id);
+            assert.equal(cached.transaction_signature_list.find(signer => signer.address_base === owner.address_base).address_attribute.key_public, null);
+            transactions.clearTransactionObjectCache(invalid.transaction_id);
+            const pending = await transactions.getTransactionObject(invalid.transaction_id);
+            assert.equal(pending.is_stable, 0);
+            assert.notEqual(pending.status, 3);
+            assert.deepEqual(new Set(pending.transaction_signature_list.filter(signer => signer.status === UNBOUND_SIGNER_STATUS).map(signer => signer.address_base)),
+                new Set([owner.address_base, unboundStandalone.address_base]));
+            assert.deepEqual(await walletUtils.verifyTransaction(transactions.normalizeTransactionObject(_.cloneDeep(pending))), [false, 'transaction_object_invalid']);
+
+            assert.equal(await addresses.getAddressBaseAttribute(owner.address_base, 'key_public'), null);
+            assert.equal(await addresses.getAddressBaseAttribute(unboundStandalone.address_base, 'key_public'), boundStandalone.key_public);
+            assert.equal(await addresses.getAddressBaseAttribute(other.address_base, 'key_public'), other.key_public);
+            assert.equal(cache.getCacheItem('wallet', spendCacheKey), null);
+            assert.equal((await transactions.getTransactionOutputs(spentInput.output_transaction_id))[0].is_spent, 0);
+            assert.equal((await transactions.getTransaction(parentID)).is_parent, 0);
+            assert.equal(await transactions.getTransactionParentDate(parentID), null);
+            assert.equal(await transactions.getOutputSpendDate(spentInput.output_transaction_id, spentInput.output_position), null);
+            assert.deepEqual(await transactions.getInputDoubleSpend(spentInput, legitimate.transaction_id), []);
+            assert.deepEqual(await transactions.getSpendTransactions(spentInput.output_transaction_id), []);
+
+            const socket = {node: 'test peer'};
+            t.mock.method(network, 'getWebSocketByID', () => socket);
+            const syncResponse = await new Promise(resolve => {
+                t.mock.method(peer, 'transactionSyncResponse', resolve);
+                wallet._onSyncTransaction({transaction_id: invalid.transaction_id}, socket);
+            });
+            assert.equal(syncResponse.transaction_not_found, true);
+            assert.deepEqual(syncResponse.transaction, {transaction_id: invalid.transaction_id});
+
+            await shardTransactions.addTransactionFromShardObject(pending, false);
+            shardTransactions.clearTransactionObjectCache(invalid.transaction_id);
+            const moved = await shardTransactions.getTransactionObject(invalid.transaction_id);
+            assert.equal(walletUtils.hasUnboundTransactionSigner(moved), true);
+            assert.equal(transactions.isSameTransactionObject(_.cloneDeep(pending), moved), true);
+            await runSQL(mainDB, 'UPDATE `transaction` SET create_date = ? WHERE transaction_id = ?', [date - 60, invalid.transaction_id]);
+            assert.deepEqual((await transactions.findUnstableTransaction([], false)).map(row => row.transaction_id), [invalid.transaction_id]);
+
+            const acceptLegitimate = async () => {
+                const status = repairBeforeConsensus ? 3 : 1;
+                await runSQL(mainDB, 'INSERT INTO address_attribute (address_base, address_attribute_type_id, value, status) VALUES (?, ?, ?, ?)',
+                    [owner.address_base, normalization.get('key_public'), other.key_public, status]);
+                assert.equal(await addresses.getAddressBaseAttribute(owner.address_base, 'key_public'), status === 3 ? null : other.key_public);
+                await wallet._onNewTransaction({transaction: legitimate}, {node: 'test peer'});
+                const [key] = await addresses.listAddressAttribute({address_base: owner.address_base});
+                assert.equal(key.value, owner.key_public);
+                assert.equal(key.status, 1);
+                const storedValid = await transactions.getTransactionObjectFromDB(legitimate.transaction_id);
+                assert.deepEqual(await walletUtils.verifyTransaction(transactions.normalizeTransactionObject(storedValid)), [true, undefined]);
+
+                transactions.clearTransactionObjectCache(invalid.transaction_id);
+                const storedInvalid = await transactions.getTransactionObject(invalid.transaction_id);
+                assert.equal(storedInvalid.transaction_signature_list.find(signer => signer.address_base === owner.address_base).address_attribute.key_public, null);
+                assert.deepEqual(await walletUtils.verifyTransaction(transactions.normalizeTransactionObject(storedInvalid)), [false, 'transaction_object_invalid']);
+            };
+            if (repairBeforeConsensus) {
+                await acceptLegitimate();
+            }
+            await assert.rejects(wallet.getConsensus()._startConsensusRound(invalid.transaction_id));
+            for (const repository of [transactions, shardTransactions]) {
+                const stored = await repository.getTransactionObject(invalid.transaction_id);
+                assert.equal(stored.status, 3);
+                assert.ok(stored.transaction_input_list.every(input => input.status === 3));
+                assert.ok(stored.transaction_output_list.every(output => output.status === 3));
+            }
+            assert.equal(notification.mock.calls.at(-1).arguments[1], 'transaction_validation:invalid');
+
+            if (!repairBeforeConsensus) {
+                await acceptLegitimate();
+            }
+            const getDetails = transactionID => new Promise(resolve => transactionDetails.handler(null, {query: {p0: transactionID, p1: shardID}}, {send: resolve}));
+            const invalidDetails = await getDetails(invalid.transaction_id);
+            assert.equal(invalidDetails.status, 3);
+            assert.equal(invalidDetails.transaction_signature_list.find(signer => signer.address_base === owner.address_base).key_public, null);
+            const legitimateDetails = await getDetails(legitimate.transaction_id);
+            assert.equal(legitimateDetails.transaction_signature_list[0].key_public, owner.key_public);
+        });
+    }
 
     test('rejects unsigned input addresses before the historical expiry exemption', async () => {
         const transaction = buildTransaction({inputKeys: [owner, other], signerKeys: [owner], date: 1590000000});
