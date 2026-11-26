@@ -66,19 +66,35 @@ test('rejects with transaction_not_found and changes nothing when no shard holds
     assert.equal(notify.mock.calls.length, 0);
 });
 
-test('rejects with consensus_not_ready before the consensus is initialized and changes nothing', {timeout: 5000}, async t => {
-    const {calls, notify} = setup(t, {transaction_id: TRANSACTION_ID, transaction_input_list: [], transaction_output_list: []});
-    const consensus       = new WalletTransactionConsensus(); // initialize() has not run: no consensus state
+test('invalidates the transaction in the database before the consensus is initialized', {timeout: 5000}, async t => {
+    const stored                         = {
+        transaction_id         : TRANSACTION_ID,
+        transaction_input_list : [],
+        transaction_output_list: [{address_key_identifier: 'key'}]
+    };
+    const {calls, walletUpdate, notify} = setup(t, stored);
+    const consensus                     = new WalletTransactionConsensus(); // initialize() has not run: no consensus state
+    t.mock.method(consensus, 'resetInputsSpentByTransaction', async transaction => calls.push(['reset_inputs', transaction.transaction_id]));
+    t.mock.method(consensus, 'resetValidTransactionSpendingFromInvalidTransaction', async transaction => calls.push(['reset_spending', transaction.transaction_id]));
 
-    await assert.rejects(consensus.invalidateTransaction(TRANSACTION_ID), error => error === 'consensus_not_ready');
+    const result = await consensus.invalidateTransaction(TRANSACTION_ID);
 
-    assert.deepEqual(calls, []);
-    assert.equal(notify.mock.calls.length, 0);
+    assert.equal(result, stored);
+    assert.deepEqual(calls, [
+        ['invalidate', TRANSACTION_ID],
+        ['clear_cache', TRANSACTION_ID],
+        ['reset_inputs', TRANSACTION_ID],
+        ['reset_spending', TRANSACTION_ID]
+    ]);
+    assert.equal(walletUpdate.mock.calls.length, 0); // it would start a validation without consensus state
+    assert.deepEqual(notify.mock.calls[0].arguments, [[stored], 'transaction_validation:invalid']);
 });
 
-function setupInputReset(t, otherSpender) {
+function setupInputReset(t, otherSpender, initialized = true) {
     const consensus  = new WalletTransactionConsensus();
-    consensus.clearState();
+    if (initialized) {
+        consensus.clearState();
+    }
     const freed      = [];
     const repository = {
         getTransactionOutput         : async() => [{transaction_id: 'parent', output_position: 0, status: 1}],
@@ -116,4 +132,12 @@ test('keeps a spent output spent while another live transaction spends it', {tim
     await consensus.resetInputsSpentByTransaction(transaction);
 
     assert.deepEqual(freed, []);
+});
+
+test('frees a spent output before the consensus is initialized', {timeout: 5000}, async t => {
+    const {consensus, freed, transaction} = setupInputReset(t, {transaction_id: 'other', status: 3, is_stable: 1, is_double_spend: 0}, false);
+
+    await consensus.resetInputsSpentByTransaction(transaction);
+
+    assert.deepEqual(freed, ['parent']);
 });
