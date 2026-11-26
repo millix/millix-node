@@ -248,6 +248,32 @@ describe(`signer binding (${config.MODE_TEST_NETWORK ? 'test network' : 'main ne
         assert.equal(walletUtils.isValidTransactionHash(transaction), false);
     });
 
+    test('rejects an unsupported version even when both hashes match', () => {
+        const transaction = buildTransaction({version: '0a90'});
+        assertWellSigned(transaction);
+        assert.equal(walletUtils.isValidTransactionHash(transaction), false);
+    });
+
+    for (const [list, limit, makeEntry] of [
+        ['transaction_input_list', config.TRANSACTION_INPUT_MAX, position => input(owner, position)],
+        ['transaction_output_list', config.TRANSACTION_OUTPUT_MAX, position => ({...walletAddress(recipient), amount: 1000, output_position: position})],
+        ['transaction_parent_list', config.TRANSACTION_PARENT_MAX, position => objectHash.getCHash288({position})],
+        ['transaction_signature_list', config.TRANSACTION_SIGNATURE_MAX, () => ({
+            address_base     : owner.address_base,
+            address_attribute: {key_public: owner.key_public}
+        })]
+    ]) {
+        test(`enforces the ${list} limit even when both hashes match`, () => {
+            for (const count of [limit, limit + 1]) {
+                const transaction = buildTransaction();
+                transaction[list] = Array.from({length: count}, (_, position) => makeEntry(position));
+                seal(transaction, Array(transaction.transaction_signature_list.length).fill(owner));
+                assertWellSigned(transaction);
+                assert.equal(walletUtils.isValidTransactionHash(transaction), count === limit);
+            }
+        });
+    }
+
     test('accepts repeated input addresses with one signature', () => {
         const transaction = buildTransaction({inputKeys: [owner, owner], signerKeys: [owner]});
         assertWellSigned(transaction);

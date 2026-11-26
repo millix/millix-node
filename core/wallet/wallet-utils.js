@@ -622,13 +622,7 @@ class WalletUtils {
     }
 
     isValidTransactionObject(transaction) {
-        if (!transaction ||
-            !config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version) ||
-            !Array.isArray(transaction.transaction_signature_list) ||
-            transaction.transaction_input_list.length > config.TRANSACTION_INPUT_MAX ||
-            transaction.transaction_output_list.length > config.TRANSACTION_OUTPUT_MAX ||
-            transaction.transaction_parent_list.length > config.TRANSACTION_PARENT_MAX ||
-            transaction.transaction_signature_list.length > config.TRANSACTION_SIGNATURE_MAX) {
+        if (!this._hasSupportedVersionAndListSizes(transaction)) {
             return false;
         }
 
@@ -752,15 +746,11 @@ class WalletUtils {
     }
 
     /**
-     * Checks the payload hash and transaction ID against a normalized transaction.
+     * Checks the supported version and list sizes before verifying the payload hash and transaction ID.
      */
     isValidTransactionHash(transaction) {
-        if (!transaction || typeof transaction.version !== 'string' ||
+        if (!this._hasSupportedVersionAndListSizes(transaction) ||
             typeof transaction.payload_hash !== 'string' || typeof transaction.transaction_id !== 'string' ||
-            !Array.isArray(transaction.transaction_input_list) ||
-            !Array.isArray(transaction.transaction_output_list) ||
-            !Array.isArray(transaction.transaction_parent_list) ||
-            !Array.isArray(transaction.transaction_signature_list) ||
             !transaction.transaction_signature_list.every(entry => typeof entry?.signature === 'string')) {
             return false;
         }
@@ -774,6 +764,15 @@ class WalletUtils {
         catch (e) {
             return false;
         }
+    }
+
+    _hasSupportedVersionAndListSizes(transaction) {
+        return !!transaction &&
+               config.WALLET_TRANSACTION_SUPPORTED_VERSION.includes(transaction.version) &&
+               Array.isArray(transaction.transaction_input_list) && transaction.transaction_input_list.length <= config.TRANSACTION_INPUT_MAX &&
+               Array.isArray(transaction.transaction_output_list) && transaction.transaction_output_list.length <= config.TRANSACTION_OUTPUT_MAX &&
+               Array.isArray(transaction.transaction_parent_list) && transaction.transaction_parent_list.length <= config.TRANSACTION_PARENT_MAX &&
+               Array.isArray(transaction.transaction_signature_list) && transaction.transaction_signature_list.length <= config.TRANSACTION_SIGNATURE_MAX;
     }
 
     _sortTransactionLists(transaction) {
