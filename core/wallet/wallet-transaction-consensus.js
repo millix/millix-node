@@ -872,7 +872,7 @@ export class WalletTransactionConsensus {
             consensusData.consensus_round_response[consensusData.consensus_round_count] = {};
             consensusData.timestamp                                                     = Date.now();
             consensusData.requestPeerValidation && consensusData.requestPeerValidation();
-            console.log('[wallet-transaction-consensus-status] move to next consensus number', consensusData.consensus_round_count, ' on transaction', transactionID);
+            console.log('[wallet-transaction-consensus-status] move to next consensus number', consensusData.consensus_round_count, 'on transaction', transactionID);
         }
     }
 
@@ -945,7 +945,7 @@ export class WalletTransactionConsensus {
                     delete consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID];
                     consensusData.consensus_round_node_discard.add(ws.nodeID);
                     consensusData.requestPeerValidation && consensusData.requestPeerValidation();
-                    console.log('[wallet-transaction-consensus-status] consensus status ', counter, ' event:', response.cause);
+                    console.log('[wallet-transaction-consensus-status] consensus status ', counter, 'event:', response.cause);
                     return;
                 }
 
@@ -975,9 +975,8 @@ export class WalletTransactionConsensus {
         // check consensus result
         // const responseCount = _.keys(consensusResponseData).length;
 
-        console.log('[wallet-transaction-consensus-status] consensus status ', counter);
+        console.log('[wallet-transaction-consensus-status] consensus status ', counter, 'tx:', transactionID);
         if (responseCount < config.CONSENSUS_ROUND_NODE_COUNT) {
-            console.log('[wallet-transaction-consensus-status] current number of response is', responseCount, '. still waiting for more responses');
             return;
         }
 
@@ -998,7 +997,7 @@ export class WalletTransactionConsensus {
             let isInvalid     = (counter.invalid + counter.double_spend) >= 2 / 3 * responseCount;
             if (isDoubleSpend) {
                 consensusData.consensus_round_double_spend_count++;
-                console.log('[wallet-transaction-consensus-status] increase number of double spend rounds to', consensusData.consensus_round_double_spend_count);
+                console.log('[wallet-transaction-consensus-status] increase number of double spend rounds to', consensusData.consensus_round_double_spend_count, 'tx:', transactionID);
                 if (consensusData.consensus_round_double_spend_count >= config.CONSENSUS_ROUND_DOUBLE_SPEND_MAX) {
                     cache.removeCacheItem('validation', transactionID);
                     consensusData.active = false;
@@ -1026,7 +1025,7 @@ export class WalletTransactionConsensus {
             }
             else if (isNotFound) {
                 consensusData.consensus_round_not_found_count++;
-                console.log('[wallet-transaction-consensus-status] increase number of not found rounds to', consensusData.consensus_round_not_found_count);
+                console.log('[wallet-transaction-consensus-status] increase number of not found rounds to', consensusData.consensus_round_not_found_count, 'tx:', transactionID);
                 if (consensusData.consensus_round_not_found_count >= config.CONSENSUS_ROUND_NOT_FOUND_MAX) {
                     cache.removeCacheItem('validation', transactionID);
                     consensusData.active = false;
@@ -1044,7 +1043,7 @@ export class WalletTransactionConsensus {
             }
             else if (isInvalid) {
                 consensusData.consensus_round_invalid_count++;
-                console.log('[wallet-transaction-consensus-status] increase number of invalid rounds to', consensusData.consensus_round_invalid_count);
+                console.log('[wallet-transaction-consensus-status] increase number of invalid rounds to', consensusData.consensus_round_invalid_count, 'tx:', transactionID);
                 if (consensusData.consensus_round_invalid_count >= config.CONSENSUS_ROUND_DOUBLE_SPEND_MAX) {
                     cache.removeCacheItem('validation', transactionID);
                     consensusData.active = false;
@@ -1077,7 +1076,7 @@ export class WalletTransactionConsensus {
         }
         else {
             consensusData.consensus_round_validation_count++;
-            console.log('[wallet-transaction-consensus-status] increase number of valid rounds to', consensusData.consensus_round_validation_count);
+            console.log('[wallet-transaction-consensus-status] increase number of valid rounds to', consensusData.consensus_round_validation_count, 'tx:', transactionID);
             if (consensusData.consensus_round_validation_count >= config.CONSENSUS_ROUND_VALIDATION_REQUIRED) {
                 console.log('[wallet-transaction-consensus-status] transaction', transactionID, 'validated during consensus round number', consensusData.consensus_round_count);
                 cache.removeCacheItem('validation', transactionID);
