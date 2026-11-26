@@ -260,7 +260,7 @@ export class WalletTransactionConsensus {
                                if (!valid) {
                                    console.log('[wallet-transaction-consensus-oracle] transaction data was is not valid ', transaction.transaction_id);
 
-                                   if (invalidTransactionError === 'transaction_consume_expired_output') {
+                                   if (['transaction_consume_expired_output', 'transaction_object_invalid', 'transaction_date_invalid', 'transaction_refresh_invalid'].includes(invalidTransactionError)) {
                                        return reject({
                                            cause              : 'transaction_invalid',
                                            transaction_id_fail: transaction.transaction_id,
@@ -622,7 +622,7 @@ export class WalletTransactionConsensus {
                               .then(([isValid, invalidTransactionError]) => {
                                   if (!isValid) {
 
-                                      if (invalidTransactionError === 'transaction_consume_expired_output') {
+                                      if (['transaction_consume_expired_output', 'transaction_object_invalid', 'transaction_date_invalid', 'transaction_refresh_invalid'].includes(invalidTransactionError)) {
                                           return database.applyShards((shardID) => {
                                               const transactionRepository = database.getRepository('transaction', shardID);
                                               return transactionRepository.invalidateTransaction(transactionID)
