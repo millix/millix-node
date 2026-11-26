@@ -990,153 +990,151 @@ class Wallet {
                                return eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
                            }
 
-                           return walletUtils.verifyTransaction(transaction)
-                                             .then(([validTransaction, invalidTransactionError]) => {
+                           const validTransaction = walletUtils.isValidTransactionHash(transaction);
+                           if (!validTransaction) {
+                               console.log('[wallet] invalid transaction received from network');
+                               delete this._transactionReceivedFromNetwork[transaction.transaction_id];
+                               delete this._transactionRequested[transaction.transaction_id];
+                               delete this._transactionFundingActiveWallet[transaction.transaction_id];
+                               walletSync.removeTransactionSync(transaction.transaction_id);
+                               return null;
+                           }
 
-                                                 if (!validTransaction && invalidTransactionError !== 'transaction_consume_expired_output') {
-                                                     console.log('[wallet] invalid transaction received from network');
-                                                     delete this._transactionReceivedFromNetwork[transaction.transaction_id];
-                                                     delete this._transactionRequested[transaction.transaction_id];
-                                                     delete this._transactionFundingActiveWallet[transaction.transaction_id];
-                                                     walletSync.removeTransactionSync(transaction.transaction_id);
-                                                     return null;
-                                                 }
+                           const isFundingWallet = !!this._transactionFundingActiveWallet[transaction.transaction_id];
+                           const syncPriority    = isFundingWallet ? 1 : this.getTransactionSyncPriority(transaction);
+                           delete this._transactionFundingActiveWallet[transaction.transaction_id];
 
-                                                 const isFundingWallet = !!this._transactionFundingActiveWallet[transaction.transaction_id];
-                                                 const syncPriority    = isFundingWallet ? 1 : this.getTransactionSyncPriority(transaction);
-                                                 delete this._transactionFundingActiveWallet[transaction.transaction_id];
+                           if (syncPriority === 1) {
+                               console.log(`[wallet] wallet-key-identifier >> transaction found ${transaction.transaction_id}`);
+                           }
 
-                                                 if (syncPriority === 1) {
-                                                     console.log(`[wallet] wallet-key-identifier >> transaction found ${transaction.transaction_id}`);
-                                                 }
+                           let transactionRepository = database.getRepository('transaction');
 
-                                                 let transactionRepository = database.getRepository('transaction');
+                           if (![
+                               '0a0',
+                               '0b0',
+                               'la0l',
+                               'lb0l'
+                           ].includes(transaction.version)) {
+                               transaction.transaction_date = new Date(transaction.transaction_date * 1000).toISOString();
+                           }
 
-                                                 if (![
-                                                     '0a0',
-                                                     '0b0',
-                                                     'la0l',
-                                                     'lb0l'
-                                                 ].includes(transaction.version)) {
-                                                     transaction.transaction_date = new Date(transaction.transaction_date * 1000).toISOString();
-                                                 }
+                           if (new Date(transaction.transaction_date).getTime() <= (Date.now() - config.TRANSACTION_PRUNE_AGE_MIN * 60000)) {
+                               let shardTransactionRepository = database.getRepository('transaction', transaction.shard_id);
+                               if (shardTransactionRepository || hasKeyIdentifier || transaction.shard_id === this.INACTIVE_SHARD_ID) {
+                                   transactionRepository = shardTransactionRepository || transactionRepository;
+                               }
+                               else {
+                                   delete this._transactionReceivedFromNetwork[transaction.transaction_id];
+                                   delete this._transactionRequested[transaction.transaction_id];
+                                   return Promise.resolve();
+                               }
+                           }
 
-                                                 if (new Date(transaction.transaction_date).getTime() <= (Date.now() - config.TRANSACTION_PRUNE_AGE_MIN * 60000)) {
-                                                     let shardTransactionRepository = database.getRepository('transaction', transaction.shard_id);
-                                                     if (shardTransactionRepository || hasKeyIdentifier || transaction.shard_id === this.INACTIVE_SHARD_ID) {
-                                                         transactionRepository = shardTransactionRepository || transactionRepository;
-                                                     }
-                                                     else {
-                                                         delete this._transactionReceivedFromNetwork[transaction.transaction_id];
-                                                         delete this._transactionRequested[transaction.transaction_id];
-                                                         return Promise.resolve();
-                                                     }
-                                                 }
+                           console.log('New Transaction from network ', transaction.transaction_id);
+                           transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
+                           return transactionRepository.addTransactionFromObject(transaction, hasKeyIdentifier)
+                                                       .then(() => {
+                                                           // check stored
+                                                           // transaction
+                                                           // object
+                                                           return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
+                                                                                       .then((dbTransaction) => {
+                                                                                           if (!walletUtils.isValidTransactionHash(transactionRepository.normalizeTransactionObject(dbTransaction))) {
+                                                                                               throw Error('invalid_transaction_object');
+                                                                                           }
+                                                                                       })
+                                                                                       .catch((e) => {
+                                                                                           return transactionRepository.deleteTransaction(transaction.transaction_id)
+                                                                                                                       .then(() => Promise.reject(e));
+                                                                                       });
+                                                       })
+                                                       .then(() => {
+                                                           console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
+                                                           eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
+                                                           this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
+                                                           this.notifyTransactionChanged([transaction], 'transaction_new');
 
-                                                 console.log('New Transaction from network ', transaction.transaction_id);
-                                                 transaction.transaction_input_list.forEach(input => cache.setCacheItem('wallet', `is_spend_${input.output_transaction_id}_${input.output_position}`, true, 660000));
-                                                 return transactionRepository.addTransactionFromObject(transaction, hasKeyIdentifier)
-                                                                             .then(() => {
-                                                                                 // check stored transaction object
-                                                                                 return transactionRepository.getTransactionObjectFromDB(transaction.transaction_id)
-                                                                                                             .then((dbTransaction) => {
-                                                                                                                 if (!walletUtils.isValidTransactionObject(transactionRepository.normalizeTransactionObject(dbTransaction))) {
-                                                                                                                     throw Error('invalid_transaction_object');
-                                                                                                                 }
-                                                                                                             })
-                                                                                                             .catch((e) => {
-                                                                                                                 return transactionRepository.deleteTransaction(transaction.transaction_id)
-                                                                                                                                             .then(() => Promise.reject(e));
-                                                                                                             });
-                                                                             })
-                                                                             .then(() => {
-                                                                                 console.log('[Wallet] Removing ', transaction.transaction_id, ' from network transaction cache');
-                                                                                 eventBus.emit('transaction_new:' + transaction.transaction_id, transaction);
-                                                                                 this._checkIfWalletUpdate(new Set(_.map(transaction.transaction_output_list, o => o.address_key_identifier)));
-                                                                                 this.notifyTransactionChanged([transaction], 'transaction_new');
+                                                           eventBus.emit('wallet_event_log', {
+                                                               type   : 'transaction_new',
+                                                               content: data,
+                                                               from   : node
+                                                           });
 
-                                                                                 eventBus.emit('wallet_event_log', {
-                                                                                     type   : 'transaction_new',
-                                                                                     content: data,
-                                                                                     from   : node
-                                                                                 });
+                                                           walletSync.clearTransactionSync(transaction.transaction_id);
 
-                                                                                 walletSync.clearTransactionSync(transaction.transaction_id);
+                                                           walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
+                                                           if (config.MODE_NODE_SYNC_FULL || hasKeyIdentifier) {
+                                                               if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
+                                                                   _.each(transaction.transaction_input_list, inputTransaction => {
+                                                                       if (!this._transactionReceivedFromNetwork[inputTransaction.output_transaction_id]) {
+                                                                           database.firstShards((shardID) => {
+                                                                               const transactionRepository = database.getRepository('transaction', shardID);
+                                                                               return new Promise((resolve, reject) => transactionRepository.hasTransaction(inputTransaction.output_transaction_id)
+                                                                                                                                            .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
+                                                                           }).then(hasTransaction => {
+                                                                               if (!hasTransaction) {
+                                                                                   console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
+                                                                                   let options = {};
+                                                                                   // only flag transactions that don't have the key identifier and are from a wallet funding lineage, or transactions that are not from a funding lineage and have the key identifier
+                                                                                   if (isFundingWallet || hasKeyIdentifier) {
+                                                                                       this._transactionFundingActiveWallet[inputTransaction.output_transaction_id] = Date.now();
 
-                                                                                 walletSync.syncTransactionSpendingOutputs(transaction, config.MODE_NODE_SYNC_FULL);
-                                                                                 if (config.MODE_NODE_SYNC_FULL || hasKeyIdentifier) {
-                                                                                     if (transaction.transaction_id !== genesisConfig.genesis_transaction) {
-                                                                                         _.each(transaction.transaction_input_list, inputTransaction => {
-                                                                                             if (!this._transactionReceivedFromNetwork[inputTransaction.output_transaction_id]) {
-                                                                                                 database.firstShards((shardID) => {
-                                                                                                     const transactionRepository = database.getRepository('transaction', shardID);
-                                                                                                     return new Promise((resolve, reject) => transactionRepository.hasTransaction(inputTransaction.output_transaction_id)
-                                                                                                                                                                  .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
-                                                                                                 }).then(hasTransaction => {
-                                                                                                     if (!hasTransaction) {
-                                                                                                         console.log('[Wallet] request sync input transaction ', inputTransaction.output_transaction_id);
-                                                                                                         let options = {};
-                                                                                                         // only flag transactions that don't have the key identifier and are from a wallet funding lineage, or transactions that are not from a funding lineage and have the key identifier
-                                                                                                         if (isFundingWallet || hasKeyIdentifier) {
-                                                                                                             this._transactionFundingActiveWallet[inputTransaction.output_transaction_id] = Date.now();
+                                                                                       options = {
+                                                                                           dispatch_request  : true,
+                                                                                           force_request_sync: true
+                                                                                       };
+                                                                                   }
+                                                                                   this._transactionRequested[inputTransaction.output_transaction_id] = Date.now();
+                                                                                   peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority, ...options})
+                                                                                       .catch(_ => _);
+                                                                               }
+                                                                           });
+                                                                       }
+                                                                   });
+                                                               }
+                                                           }
 
-                                                                                                             options = {
-                                                                                                                 dispatch_request  : true,
-                                                                                                                 force_request_sync: true
-                                                                                                             };
-                                                                                                         }
-                                                                                                         this._transactionRequested[inputTransaction.output_transaction_id] = Date.now();
-                                                                                                         peer.transactionSyncRequest(inputTransaction.output_transaction_id, {priority: syncPriority, ...options})
-                                                                                                             .catch(_ => _);
-                                                                                                     }
-                                                                                                 });
-                                                                                             }
-                                                                                         });
-                                                                                     }
-                                                                                 }
+                                                           if (config.MODE_NODE_SYNC_FULL) {
+                                                               this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
+                                                               _.each(transaction.transaction_parent_list, parentTransactionID => {
+                                                                   if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
+                                                                       database.firstShards((shardID) => {
+                                                                           const transactionRepository = database.getRepository('transaction', shardID);
+                                                                           return new Promise((resolve, reject) => transactionRepository.hasTransaction(parentTransactionID)
+                                                                                                                                        .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
+                                                                       }).then(hasTransaction => {
+                                                                           if (!hasTransaction) {
+                                                                               console.log('[Wallet] request sync parent transaction ', parentTransactionID);
+                                                                               this._transactionRequested[parentTransactionID] = Date.now();
+                                                                               peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
+                                                                                   .catch(_ => _);
+                                                                           }
+                                                                       });
+                                                                   }
+                                                               });
+                                                           }
 
-                                                                                 if (config.MODE_NODE_SYNC_FULL) {
-                                                                                     this.transactionSpendRequest(transaction.transaction_id, syncPriority).then(_ => _).catch(_ => _);
-                                                                                     _.each(transaction.transaction_parent_list, parentTransactionID => {
-                                                                                         if (!this._transactionReceivedFromNetwork[parentTransactionID]) {
-                                                                                             database.firstShards((shardID) => {
-                                                                                                 const transactionRepository = database.getRepository('transaction', shardID);
-                                                                                                 return new Promise((resolve, reject) => transactionRepository.hasTransaction(parentTransactionID)
-                                                                                                                                                              .then(hasTransaction => hasTransaction ? resolve(hasTransaction) : reject()));
-                                                                                             }).then(hasTransaction => {
-                                                                                                 if (!hasTransaction) {
-                                                                                                     console.log('[Wallet] request sync parent transaction ', parentTransactionID);
-                                                                                                     this._transactionRequested[parentTransactionID] = Date.now();
-                                                                                                     peer.transactionSyncRequest(parentTransactionID, {priority: syncPriority})
-                                                                                                         .catch(_ => _);
-                                                                                                 }
-                                                                                             });
-                                                                                         }
-                                                                                     });
-                                                                                 }
-
-                                                                                 if (hasKeyIdentifier) {
-                                                                                     setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 0);
-                                                                                 }
+                                                           if (hasKeyIdentifier) {
+                                                               setTimeout(() => walletTransactionConsensus.doValidateTransaction(), 0);
+                                                           }
 
 
-                                                                                 const versionType = transaction.version.charAt(1);
-                                                                                 if ((config.MODE_STORAGE_SYNC_FULL || fileSync.hasPendingSync(transaction.transaction_id) || (config.MODE_STORAGE_SYNC && hasKeyIdentifier)) &&
-                                                                                     (versionType === 'a' || versionType === 'b') &&
-                                                                                     parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3 &&
-                                                                                     transaction.transaction_output_attribute.transaction_output_metadata?.file_list?.length > 0) {
-                                                                                     fileExchange.addTransactionToSyncQueue(transaction, fileSync.getPendingSyncOptions(transaction.transaction_id));
-                                                                                 }
+                                                           const versionType = transaction.version.charAt(1);
+                                                           if ((config.MODE_STORAGE_SYNC_FULL || fileSync.hasPendingSync(transaction.transaction_id) || (config.MODE_STORAGE_SYNC && hasKeyIdentifier)) &&
+                                                               (versionType === 'a' || versionType === 'b') &&
+                                                               parseInt(transaction.version.substring(2, transaction.version.length - 1)) >= 3 &&
+                                                               transaction.transaction_output_attribute.transaction_output_metadata?.file_list?.length > 0) {
+                                                               fileExchange.addTransactionToSyncQueue(transaction, fileSync.getPendingSyncOptions(transaction.transaction_id));
+                                                           }
 
-                                                                                 delete this._transactionReceivedFromNetwork[transaction.transaction_id];
-                                                                                 delete this._transactionRequested[transaction.transaction_id];
-                                                                                 const cachedValidation = cache.getCacheItem('validation', transaction.transaction_id);
-                                                                                 if (cachedValidation && cachedValidation.cause === 'transaction_not_found') {
-                                                                                     cache.removeCacheItem('validation', transaction.transaction_id);
-                                                                                 }
-                                                                             });
-                                             });
-
+                                                           delete this._transactionReceivedFromNetwork[transaction.transaction_id];
+                                                           delete this._transactionRequested[transaction.transaction_id];
+                                                           const cachedValidation = cache.getCacheItem('validation', transaction.transaction_id);
+                                                           if (cachedValidation && cachedValidation.cause === 'transaction_not_found') {
+                                                               cache.removeCacheItem('validation', transaction.transaction_id);
+                                                           }
+                                                       });
                        });
                    })
                    .catch((err) => {
@@ -1919,7 +1917,7 @@ class Wallet {
         ];
         // escrow transactions go only through nodes that know the escrow
         // rules
-        const minNodeVersion        = new NodeVersion(1, 22, 1);
+        const minNodeVersion = new NodeVersion(1, 22, 1);
         return transactionRepository.getPeersAsProxyCandidate(_.uniq(_.map(_.filter(network.registeredClients, ws => escrow.isNodeVersionAccepted(ws, srcInputs, dstOutputs, minNodeVersion)), ws => ws.nodeID)))
                                     .then(proxyCandidates => {
                                         return new Promise((resolve, reject) => {
