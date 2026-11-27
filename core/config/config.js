@@ -1,8 +1,8 @@
 const const_value_default = {
     'MODE_DEBUG'                : false,
     'MODE_TEST_NETWORK'         : false,
-    'NODE_MILLIX_BUILD_DATE'    : 1769118031,
-    'NODE_MILLIX_VERSION'       : '1.26.0',
+    'NODE_MILLIX_BUILD_DATE'    : 1795744285,
+    'NODE_MILLIX_VERSION'       : '1.26.1',
     'DATA_BASE_DIR_MAIN_NETWORK': './millix',
     'DATA_BASE_DIR_TEST_NETWORK': './millix-testnet',
     'DEBUG_LOG_FILTER'          : [],
@@ -16,6 +16,7 @@ const const_value_default = {
 
     'EXTERNAL_API_NOTIFICATION': null,
 
+    'CONSENSUS_WHITELIST'                : [],
     'CONSENSUS_ROUND_NODE_COUNT'         : 12,
     'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
     'CONSENSUS_ROUND_VALIDATION_MAX'     : 3,
@@ -852,6 +853,7 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
+export const CONSENSUS_WHITELIST                               = getConstValue('CONSENSUS_WHITELIST');
 export const CONSENSUS_ROUND_NODE_COUNT                        = getConstValue('CONSENSUS_ROUND_NODE_COUNT');
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = getConstValue('CONSENSUS_ROUND_VALIDATION_REQUIRED');
 export const CONSENSUS_ROUND_VALIDATION_MAX                    = getConstValue('CONSENSUS_ROUND_VALIDATION_MAX');
@@ -908,8 +910,8 @@ export const CLOUD_STORAGE_ESCROW_UNLOCK_AFTER                 = getConstValue('
 // escrow transactions are valid from this transaction date on. nodes from
 // ESCROW_NODE_VERSION_MIN on know the escrow rules: after activation an
 // escrow transaction is only proxied, validated and propagated through them.
-export const ESCROW_ACTIVATION_DATE_MAIN_NETWORK               = 1798761600; // 2027-01-01 00:00 utc
-export const ESCROW_ACTIVATION_DATE_TEST_NETWORK               = 1796083200; // 2026-12-01 00:00 utc
+export const ESCROW_ACTIVATION_DATE_MAIN_NETWORK               = 1795996800; // 2026-11-30 00:00 utc
+export const ESCROW_ACTIVATION_DATE_TEST_NETWORK               = 1795996800; // 2026-11-30 00:00 utc
 export const ESCROW_ACTIVATION_DATE                            = getConstValue('ESCROW_ACTIVATION_DATE') ?? (MODE_TEST_NETWORK ? ESCROW_ACTIVATION_DATE_TEST_NETWORK : ESCROW_ACTIVATION_DATE_MAIN_NETWORK);
 export const ESCROW_NODE_VERSION_MIN                           = '1.26.0';
 export const ESCROW_TERMS_VERSION                              = 1;
@@ -1104,7 +1106,7 @@ if (DATABASE_ENGINE === 'sqlite') {
     DATABASE_CONNECTION.SCRIPT_INIT_MILLIX_JOB_ENGINE           = './scripts/initialize-millix-job-engine-sqlite3.sql';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_DIR                    = './scripts/migration';
     DATABASE_CONNECTION.SCRIPT_MIGRATION_SHARD_DIR              = './scripts/migration/shard';
-    DATABASE_CONNECTION.SCHEMA_VERSION                          = '28';
+    DATABASE_CONNECTION.SCHEMA_VERSION                          = '29';
 }
 
 STORAGE_CONNECTION.FOLDER                 = DATA_BASE_DIR + '/storage/';
@@ -1160,6 +1162,7 @@ export default {
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
     EXTERNAL_API_NOTIFICATION,
+    CONSENSUS_WHITELIST,
     CONSENSUS_VALIDATION_DEPTH_MAX,
     BRIDGE_TRANSACTION_VERSION_MINT,
     BRIDGE_TRANSACTION_VERSION_BURN,

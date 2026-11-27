@@ -28,15 +28,18 @@ class _K9wxNE4Ved38xhJm extends Endpoint {
             });
         }
         const transactionId = req.query.p0;
+        let missingSignatures = false;
         database.firstShardORShardZeroRepository('transaction', req.query.p1, transactionRepository => {
-            return transactionRepository.getTransactionObjectFromDB(transactionId)
+            return transactionRepository.getTransactionObjectFromDB(transactionId, {onMissingSignatures: () => missingSignatures = true})
                                         .then(transaction => ([
                                             transactionRepository.normalizeTransactionObject(transaction),
                                             transactionRepository
                                         ]));
         }).then(([transaction, transactionRepository]) => {
             if (!transaction) {
-                peer.transactionSyncRequest(transactionId).catch(_ => _);
+                if (!missingSignatures) {
+                    peer.transactionSyncRequest(transactionId).catch(_ => _);
+                }
                 return res.status(404).send();
             }
 

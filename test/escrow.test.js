@@ -274,6 +274,40 @@ describe('escrow spend rules (walletUtils.isValidTransactionObject)', () => {
         test(`${expected ? 'accepts' : 'refuses'} ${name}`, () => assert.equal(isValidTransaction(build()), expected));
     }
 
+    for (const [name, expected, signerList] of [
+        ['signed by the payee and the wallet input owner', true, [payee, other]],
+        ['without the wallet input owner signature', false, [payee]],
+        ['without the payee signature', false, [other]],
+        ['with an unrelated key labeled as the wallet input owner', false, [payee, {...payer, address_base: other.address_base}]]
+    ]) {
+        test(`${expected ? 'accepts' : 'refuses'} a mixed escrow and wallet claim ${name}`, () => {
+            const transaction = spend({
+                inputList: [
+                    escrowInput(escrowAddress, 200000, startDate - 60, 0),
+                    escrowInput(walletAddress(other), 10000, startDate - 60, 1)
+                ],
+                outputList: [walletOutput(109000), escrowOutput(100000)],
+                signerList,
+                entry: {action: 'claim', ...receipt(512000)}
+            });
+
+            // These authorization cases have valid hashes and real signatures.
+            const signingTransaction = JSON.parse(JSON.stringify(transaction));
+            delete signingTransaction.transaction_id;
+            assert.equal(objectHash.getCHash288(signingTransaction), transaction.transaction_id);
+            const signatures = signingTransaction.transaction_signature_list.map(entry => entry.signature);
+            signingTransaction.transaction_signature_list.forEach(entry => delete entry.signature);
+            signingTransaction.transaction_signature_list.forEach((entry, index) => {
+                assert.equal(walletUtils.verify(entry.address_attribute.key_public, signatures[index], signingTransaction), true);
+            });
+            const payload = {...signingTransaction};
+            ['payload_hash', 'transaction_date', 'node_id_origin', 'node_id_proxy', 'shard_id', 'version'].forEach(field => delete payload[field]);
+            assert.equal(objectHash.getCHash288(payload), transaction.payload_hash);
+
+            assert.equal(isValidTransaction(transaction), expected);
+        });
+    }
+
     test('a transaction without escrow inputs is not affected', () => {
         const key         = newKey();
         const transaction = buildTransaction({

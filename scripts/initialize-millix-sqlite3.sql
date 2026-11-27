@@ -128,6 +128,7 @@ CREATE TABLE transaction_signature
     signature      CHAR(88) NOT NULL CHECK (length(signature) <= 88),
     status         TINYINT  NOT NULL DEFAULT 1 CHECK (length(status) <= 3 AND TYPEOF(status) = 'integer'),
     create_date    INT      NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    signer_data    TEXT,
     PRIMARY KEY (transaction_id, address_base),
     FOREIGN KEY (transaction_id) REFERENCES `transaction` (transaction_id),
     FOREIGN KEY (address_base) REFERENCES address (address_base)
@@ -498,7 +499,7 @@ CREATE TABLE normalization
 );
 CREATE INDEX idx_normalization_create_date ON normalization (create_date);
 
-INSERT INTO schema_information (key, value) VALUES ("version", "28");
+INSERT INTO schema_information (key, value) VALUES ("version", "29");
 
 INSERT INTO address_version(version, is_main_network, is_default, regex_pattern)
 VALUES ("0a0", 1, 1, "(?<address>.*)(?<version>0a0)(?<identifier>.*)"),

@@ -130,6 +130,7 @@ export function escrowInput(escrowAddress, amount, outputTransactionDate = now()
  * @param metadata transaction_output_metadata
  * @param version
  * @param transactionDate
+ * @param shardID
  */
 export function buildTransaction({
                                      inputList,
@@ -137,7 +138,8 @@ export function buildTransaction({
                                      signerList,
                                      metadata = {note: 'no escrow entry'},
                                      version = VERSION.transaction_signed,
-                                     transactionDate = now()
+                                     transactionDate = now(),
+                                     shardID = SHARD_ID
                                  }) {
     const proxy       = signerList[0].address_base;
     const transaction = {
@@ -181,7 +183,7 @@ export function buildTransaction({
     transaction.transaction_date = transactionDate;
     transaction.node_id_origin   = proxy;
     transaction.node_id_proxy    = proxy;
-    transaction.shard_id         = SHARD_ID;
+    transaction.shard_id         = shardID;
     transaction.version          = version;
     const hash                   = objectHash.getHashBuffer(signedPart());
     transaction.transaction_signature_list.forEach(transactionSignature => {

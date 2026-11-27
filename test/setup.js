@@ -10,6 +10,24 @@ require('@babel/register');
 
 const path   = require('path');
 const Module = require('module');
+const root   = path.join(__dirname, '..');
+
+// The optional environment.js need not exist. Intercept its load only while
+// evaluating config so both network profiles work without creating that file.
+const configPath = path.join(root, 'core', 'config', 'config.js');
+const load       = Module._load;
+Module._load = function(request, parent, isMain) {
+    if (request === './environment' && parent && parent.filename === configPath) {
+        return {default: process.env.TEST_MODE_TEST_NETWORK === '1' ? {MODE_TEST_NETWORK: true} : {}};
+    }
+    return load.apply(this, arguments);
+};
+try {
+    require(configPath);
+}
+finally {
+    Module._load = load;
+}
 
 function setModule(modulePath, exports) {
     const module          = new Module(modulePath, null);
@@ -19,12 +37,7 @@ function setModule(modulePath, exports) {
     require.cache[modulePath] = module;
 }
 
-setModule(path.join(__dirname, '..', 'core', 'config', 'environment.js'), {
-    __esModule: true,
-    default   : process.env.TEST_MODE_TEST_NETWORK === '1' ? {MODE_TEST_NETWORK: true} : {}
-});
-
-setModule(path.join(__dirname, '..', 'core', 'ntp.js'), {
+setModule(path.join(root, 'core', 'ntp.js'), {
     __esModule: true,
     default   : {
         offset     : 0,

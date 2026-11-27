@@ -4,6 +4,7 @@ import Endpoint from '../endpoint';
 import _ from 'lodash';
 import walletSync from '../../core/wallet/wallet-sync';
 import transactionDataUtils from '../../core/utils/transaction-data-utils';
+import {UNBOUND_SIGNER_STATUS} from '../../core/wallet/wallet-utils';
 
 
 /**
@@ -62,22 +63,38 @@ class _IBHgAmydZbmTUAe8 extends Endpoint {
                 return data;
             }
 
-            // get public key information
-            const publicKeySet = {};
-            _.each(data, row => publicKeySet[row.address_base] = null);
-            const parentTransactionListID = Object.keys(publicKeySet);
+            const publicKeySet = Object.create(null);
+            for (const row of data) {
+                if (row.signature_status !== UNBOUND_SIGNER_STATUS) {
+                    publicKeySet[row.address_base] = null;
+                }
+                else {
+                    row.address_key_public = null;
+                }
+            }
+
+            const legacySignerAddresses = Object.keys(publicKeySet);
+            if (legacySignerAddresses.length === 0) {
+                return data;
+            }
+
             const addressRepository       = database.getRepository('address');
             const normalizationRepository = addressRepository.normalizationRepository;
             return addressRepository.listAddressAttribute({
-                'address_base_in'          : parentTransactionListID,
-                'address_attribute_type_id': normalizationRepository.get('key_public')
+                'address_base_in'          : legacySignerAddresses,
+                'address_attribute_type_id': normalizationRepository.get('key_public'),
+                'status!'                  : 3
             }).then(addressPublicKeyList => {
                 _.each(addressPublicKeyList, addressPublicKey => {
                     if (!publicKeySet[addressPublicKey.address_base]) {
                         publicKeySet[addressPublicKey.address_base] = addressPublicKey.value;
                     }
                 });
-                _.each(data, transaction => transaction.address_key_public = publicKeySet[transaction.address_base] || null);
+                for (const row of data) {
+                    if (row.signature_status !== UNBOUND_SIGNER_STATUS) {
+                        row.address_key_public = publicKeySet[row.address_base];
+                    }
+                }
                 return data;
             });
         }).then(data => {

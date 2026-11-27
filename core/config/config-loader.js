@@ -20,6 +20,7 @@ class _ConfigLoader {
             'DEBUG_LOG_FILTER',
             'FORCE_QUEUE_UPDATE',
             'MODE_NODE_VALIDATION_FULL',
+            'CONSENSUS_WHITELIST',
             'NETWORK_LONG_TIME_WAIT_MAX',
             'NETWORK_SHORT_TIME_WAIT_MAX',
             'TRANSACTION_TIME_LIMIT_PROXY',
