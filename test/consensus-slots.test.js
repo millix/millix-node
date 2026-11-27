@@ -77,6 +77,63 @@ async function select(read, transactionID) {
     await flush();
 }
 
+test('consensus whitelist filters eligible peers by node ID across connection directions', t => {
+    const consensus = new WalletTransactionConsensus();
+    const nodeRegistry = network._nodeRegistry;
+    const whitelist = config.CONSENSUS_WHITELIST;
+    t.after(() => {
+        network._nodeRegistry = nodeRegistry;
+        config.CONSENSUS_WHITELIST = whitelist;
+    });
+
+    const ready = {nodeConnectionReady: true, features: {version: config.NODE_MILLIX_VERSION}};
+    const inbound = {...ready, nodeID: 'inbound', inBound: true};
+    const outbound = {...ready, nodeID: 'outbound', outBound: true};
+    const bidirectional = {...ready, nodeID: 'bidirectional', inBound: true, bidirectional: true};
+    const unlisted = {...ready, nodeID: 'unlisted', inBound: true};
+    const unready = {...ready, nodeID: 'unready', outBound: true, nodeConnectionReady: false};
+    const old = {...ready, nodeID: 'old', outBound: true, features: {version: '1.21.0'}};
+    network._nodeRegistry = {
+        inbound      : [inbound],
+        outbound     : [outbound],
+        bidirectional: [bidirectional],
+        unlisted     : [unlisted],
+        unready      : [unready],
+        old          : [old]
+    };
+
+    assert.deepEqual(whitelist, []);
+    assert.deepEqual(new Set(consensus._selectNodesForConsensusRound(6)), new Set([inbound, outbound, bidirectional, unlisted]));
+
+    config.CONSENSUS_WHITELIST = ['inbound', 'outbound', 'bidirectional', 'unready', 'old'];
+    assert.deepEqual(new Set(consensus._selectNodesForConsensusRound(6)), new Set([inbound, outbound, bidirectional]));
+    assert.deepEqual(consensus._selectNodesForConsensusRound(6, new Set(['inbound', 'outbound', 'bidirectional'])), []);
+});
+
+test('consensus whitelist accepts votes only from listed ready peers', t => {
+    const whitelist = config.CONSENSUS_WHITELIST;
+    config.CONSENSUS_WHITELIST = ['inbound', 'outbound'];
+    t.after(() => config.CONSENSUS_WHITELIST = whitelist);
+
+    const consensus = new WalletTransactionConsensus();
+    consensus.clearState();
+    const replies = {};
+    consensus._consensusRoundState.pending = {
+        active                  : true,
+        consensus_round_count   : 0,
+        consensus_round_response: [replies]
+    };
+    const vote = {transaction_id: 'pending', valid: true};
+
+    consensus.processTransactionValidationResponse(vote, {nodeID: 'unlisted', outBound: true, nodeConnectionReady: true});
+    consensus.processTransactionValidationResponse(vote, {nodeID: 'inbound', inBound: true, nodeConnectionReady: false});
+    assert.deepEqual(replies, {});
+
+    consensus.processTransactionValidationResponse(vote, {nodeID: 'inbound', inBound: true, bidirectional: true, nodeConnectionReady: true});
+    consensus.processTransactionValidationResponse(vote, {nodeID: 'outbound', outBound: true, nodeConnectionReady: true});
+    assert.deepEqual(replies, {inbound: {response: vote}, outbound: {response: vote}});
+});
+
 test('concurrent calls keep their reservations when an active round finishes during selection', {timeout: 5000}, async t => {
     const {consensus, reads, rounds, log} = setup(t);
 

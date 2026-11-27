@@ -583,13 +583,19 @@ export class WalletTransactionConsensus {
 
     }
 
+    _isConsensusPeerAllowed(ws) {
+        const whitelist = config.CONSENSUS_WHITELIST;
+        return Array.isArray(whitelist) && (whitelist.length === 0 || (ws.nodeConnectionReady && whitelist.includes(ws.nodeID)));
+    }
+
     _selectNodesForConsensusRound(numberOfNodes = config.CONSENSUS_ROUND_NODE_COUNT, excludeNodeSet = new Set(), transaction = null) {
         // escrow transactions are validated only by nodes that know the
         // escrow rules
         const minSupportedNodeVersion = new NodeVersion(1, 22, 1);
         return _.sampleSize(_.filter(network.registeredClients, ws => {
             const nodeVersion = NodeVersion.fromString(ws.features.version);
-            return ws.nodeConnectionReady && !excludeNodeSet.has(ws.nodeID) && nodeVersion && nodeVersion.compareTo(minSupportedNodeVersion) >= 0 &&
+            return ws.nodeConnectionReady && this._isConsensusPeerAllowed(ws) && !excludeNodeSet.has(ws.nodeID) &&
+                   nodeVersion && nodeVersion.compareTo(minSupportedNodeVersion) >= 0 &&
                    (!transaction || escrow.isNodeVersionAccepted(ws, transaction.transaction_input_list, transaction.transaction_output_list));
         }), numberOfNodes);
     }
@@ -877,6 +883,10 @@ export class WalletTransactionConsensus {
     }
 
     processTransactionValidationResponse(data, ws) {
+        if (!ws || !this._isConsensusPeerAllowed(ws)) {
+            return;
+        }
+
         const transactionID      = data.transaction_id;
         const consensusData      = this._consensusRoundState[transactionID];
         ws.consensusTimeoutCount = 0;
@@ -885,7 +895,7 @@ export class WalletTransactionConsensus {
             consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] = {timestamp: Date.now()};
             console.log('[wallet-transaction-consensus-validation] response reused in active consensus round ', data);
         }
-        else if (!ws || !consensusData || !consensusData.consensus_round_response || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] || !consensusData.active) {
+        else if (!consensusData || !consensusData.consensus_round_response || !consensusData.consensus_round_response[consensusData.consensus_round_count][ws.nodeID] || !consensusData.active) {
             console.log('[wallet-transaction-consensus-validation] response discarded ', data);
             return;
         }

@@ -16,6 +16,7 @@ const const_value_default = {
 
     'EXTERNAL_API_NOTIFICATION': null,
 
+    'CONSENSUS_WHITELIST'                : [],
     'CONSENSUS_ROUND_NODE_COUNT'         : 12,
     'CONSENSUS_ROUND_VALIDATION_REQUIRED': 3,
     'CONSENSUS_ROUND_VALIDATION_MAX'     : 3,
@@ -852,6 +853,7 @@ export const NODE_CONNECTION_INBOUND_WHITELIST                 = [];
 export const NODE_CONNECTION_OUTBOUND_WHITELIST                = [];
 export const NODE_CONNECTION_STATIC                            = [];
 export const NODE_INITIAL_LIST                                 = MODE_TEST_NETWORK ? NODE_INITIAL_LIST_TEST_NETWORK : NODE_INITIAL_LIST_MAIN_NETWORK;
+export const CONSENSUS_WHITELIST                               = getConstValue('CONSENSUS_WHITELIST');
 export const CONSENSUS_ROUND_NODE_COUNT                        = getConstValue('CONSENSUS_ROUND_NODE_COUNT');
 export const CONSENSUS_ROUND_VALIDATION_REQUIRED               = getConstValue('CONSENSUS_ROUND_VALIDATION_REQUIRED');
 export const CONSENSUS_ROUND_VALIDATION_MAX                    = getConstValue('CONSENSUS_ROUND_VALIDATION_MAX');
@@ -1160,6 +1162,7 @@ export default {
     WALLET_KEY_PATH,
     MILLIX_CIRCULATION,
     EXTERNAL_API_NOTIFICATION,
+    CONSENSUS_WHITELIST,
     CONSENSUS_VALIDATION_DEPTH_MAX,
     BRIDGE_TRANSACTION_VERSION_MINT,
     BRIDGE_TRANSACTION_VERSION_BURN,
