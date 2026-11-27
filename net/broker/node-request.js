@@ -27,6 +27,12 @@ export function requestNodeService(endpoint, nodeID, method, path, body, timeout
             method,
             path,
             timeout,
+            // a connection of its own: the node id is checked on
+            // secureConnect, which a socket reused from the agent's pool
+            // never emits, so a pooled socket would skip the check (node
+            // versions whose https agent pools sockets with a per-request
+            // checkServerIdentity, e.g. 26.5.0)
+            agent             : false,
             rejectUnauthorized: false,
             checkServerIdentity: () => undefined,
             headers           : data ? {
