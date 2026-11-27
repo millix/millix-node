@@ -9,9 +9,14 @@ import CloudOfferRepository from '../database/repositories/cloud-offer';
 import walletUtils from '../core/wallet/wallet-utils';
 import objectHash from '../core/crypto/object-hash';
 import escrow from '../core/wallet/escrow';
-import {fullAddress, newKey, newNonce, now, openCloudDatabase, stubRepositories} from './helper';
+import wallet from '../core/wallet/wallet';
+import cloudPass, {GB} from '../net/broker/cloud-pass';
+import {fullAddress, newKey, newNonce, now, openCloudDatabase, stubRepositories, walletKey} from './helper';
 
+// the host is named by its wallet's key identifier (nodeWallet); the node key
+// only says which node serves the endpoint
 const node       = newKey();
+const nodeWallet = newKey();
 const attacker   = newKey();
 const broker     = newKey();
 const hostWallet = newKey();
@@ -19,42 +24,62 @@ const hostWallet = newKey();
 const STORAGE_PORT = 15601;
 
 /**
- * signs an offer body the way publishOffer does
+ * signs an offer body the way publishOffer does: with the node key and with
+ * the key of the wallet's key identifier
  */
-function signOffer(body, key = node) {
+function signOffer(body, key = node, walletSigner = nodeWallet) {
     return {
         ...body,
-        offer_id : objectHash.getCHash288(body),
-        signature: walletUtils.signMessage(key.node_private_key, body)
+        offer_id         : objectHash.getCHash288(body),
+        signature        : walletUtils.signMessage(key.node_private_key, body),
+        address_signature: cloudPass.signKeyIdentityMessage(body, walletSigner.private_key)
     };
+}
+
+/**
+ * the fields that name a host whose node key and wallet key are key
+ */
+function hostOf(key) {
+    return {
+        address_key_identifier: key.address_base,
+        address_public_key    : key.public_key,
+        node_id               : key.address_base,
+        node_public_key       : key.public_key
+    };
+}
+
+function offerIdOf(offer) {
+    return objectHash.getCHash288(Object.fromEntries(Object.entries(offer).filter(([key]) => !['offer_id', 'signature', 'address_signature'].includes(key))));
 }
 
 function offerBody(overrides = {}) {
     const createDate = now();
     return {
-        version          : CLOUD_OFFER_VERSION,
-        node_id          : node.address_base,
-        node_public_key  : node.public_key,
-        service          : 'storage_host',
-        location         : {
+        version               : CLOUD_OFFER_VERSION,
+        address_key_identifier: nodeWallet.address_base,
+        address_public_key    : nodeWallet.public_key,
+        node_id               : node.address_base,
+        node_public_key       : node.public_key,
+        service               : 'storage_host',
+        location              : {
             country: 'US',
             city   : 'Boston'
         },
-        upload_speed_kbps: 50000,
-        endpoint         : {
+        upload_speed_kbps     : 50000,
+        endpoint              : {
             node_prefix  : 'wss://',
             node_address : '203.0.113.7',
             node_port    : config.NODE_PORT,
             node_port_api: config.NODE_PORT_API
         },
-        broker_list      : [
+        broker_list           : [
             {
                 address   : fullAddress(broker),
                 public_key: broker.public_key
             }
         ],
-        create_date      : createDate,
-        end_date         : createDate + 24 * 3600,
+        create_date           : createDate,
+        end_date              : createDate + 24 * 3600,
         ...overrides
     };
 }
@@ -150,6 +175,7 @@ describe('cloud offer signing (publishOffer)', () => {
         stubMethod(network, 'nodeID', node.address_base);
         stubMethod(network, 'nodePublicKey', node.public_key);
         stubMethod(network, 'nodePrivateKey', node.node_private_key);
+        stubMethod(wallet, 'getKeyIdentifierKey', () => walletKey(nodeWallet));
         stubMethod(network, 'nodePublicIp', '203.0.113.7');
         stubMethod(vpnExit, 'isRunning', () => vpnRunning);
         // publishing must not reach any peer
@@ -170,12 +196,17 @@ describe('cloud offer signing (publishOffer)', () => {
         ...storageTerms(overrides)
     });
 
-    test('signs an offer with the node key that every node can verify', async() => {
+    test('signs an offer with the wallet key and the node key that every node can verify', async() => {
         const offer = await cloudOffer.publishOffer('storage_host', {country: 'DE'}, 1000, brokerList(), now() + 3600, storage());
         assert.deepEqual(verify(offer), {valid: true});
+        // the host is named by its wallet's key identifier
+        assert.equal(offer.address_key_identifier, nodeWallet.address_base);
+        assert.equal(offer.address_public_key, nodeWallet.public_key);
+        assert.equal(offer.address_key_identifier, escrow.getAddressFromPublicKey(offer.address_public_key));
+        // the node only serves the endpoint
         assert.equal(offer.node_id, node.address_base);
         assert.equal(offer.node_id, walletUtils.getNodeIdFromPublicKey(offer.node_public_key));
-        assert.equal(offer.offer_id, objectHash.getCHash288(Object.fromEntries(Object.entries(offer).filter(([key]) => !['offer_id', 'signature'].includes(key)))));
+        assert.equal(offer.offer_id, offerIdOf(offer));
         assert.equal(storedList.at(-1), offer);
     });
 
@@ -306,12 +337,29 @@ describe('cloud offer verification', () => {
         test('refuses an offer changed after signing with its id recomputed', () => {
             const offer    = signOffer(offerBody());
             offer.location = {country: 'CH'};
-            offer.offer_id = objectHash.getCHash288(Object.fromEntries(Object.entries(offer).filter(([key]) => !['offer_id', 'signature'].includes(key))));
-            assertRefused(offer, 'offer_invalid_signature');
+            offer.offer_id = offerIdOf(offer);
+            assertRefused(offer, 'offer_invalid_address_signature');
         });
 
         test('refuses an offer in another node\'s name signed by a different key', () => {
             assertRefused(signOffer(offerBody(), attacker), 'offer_invalid_signature');
+        });
+
+        test('refuses an offer in another wallet\'s name signed by a different key', () => {
+            assertRefused(signOffer(offerBody(), node, attacker), 'offer_invalid_address_signature');
+        });
+
+        test('refuses an offer that keeps another wallet\'s key identifier with the signer\'s own public key', () => {
+            assertRefused(signOffer(offerBody({address_public_key: attacker.public_key}), node, attacker), 'offer_invalid_address_signature');
+        });
+
+        test('refuses an offer with the address signature removed, or without the wallet it names', () => {
+            const offer             = signOffer(offerBody());
+            offer.address_signature = '';
+            assertRefused(offer, 'offer_invalid_address_signature');
+            const withoutWallet = signOffer(offerBody());
+            delete withoutWallet.address_key_identifier;
+            assertRefused(withoutWallet, 'offer_invalid_format');
         });
 
         test('refuses an offer that keeps another node\'s id with the signer\'s own public key', () => {
@@ -548,15 +596,12 @@ describe('cloud offers received from a peer (_onOfferList)', () => {
 
     test('stores and lists the offer of an older node as node only, and sends it on', async() => {
         const older       = newKey();
-        const offer       = signOffer(offerBody({
-            node_id        : older.address_base,
-            node_public_key: older.public_key
-        }), older);
+        const offer       = signOffer(offerBody(hostOf(older)), older, older);
         const {offerList} = await receive([offer]);
         assert.deepEqual(offerList, [offer]);
 
         const listed    = await cloudOffer.listOffers({service: 'storage_host'}, 'create_date desc', 1000);
-        const olderList = listed.filter(listedOffer => listedOffer.node_id === older.address_base);
+        const olderList = listed.filter(listedOffer => listedOffer.address_key_identifier === older.address_base);
         assert.deepEqual(olderList, [offer]);
         assert.equal(cloudOffer.isNodeOnly(olderList[0]), true);
         assert.equal(listed.filter(listedOffer => !cloudOffer.isNodeOnly(listedOffer)).length, 1);
@@ -565,23 +610,17 @@ describe('cloud offers received from a peer (_onOfferList)', () => {
     test('drops an offer with malformed storage terms and keeps the others of the same message', async() => {
         const bad         = newKey();
         const good        = newKey();
-        const badOffer    = signOffer(storageOfferBody({price_gb_hour: 0}, {
-            node_id        : bad.address_base,
-            node_public_key: bad.public_key
-        }), bad);
-        const goodOffer   = signOffer(storageOfferBody({price_gb_hour: 90}, {
-            node_id        : good.address_base,
-            node_public_key: good.public_key
-        }), good);
+        const badOffer    = signOffer(storageOfferBody({price_gb_hour: 0}, hostOf(bad)), bad, bad);
+        const goodOffer   = signOffer(storageOfferBody({price_gb_hour: 90}, hostOf(good)), good, good);
         const {offerList} = await receive([badOffer, goodOffer]);
         assert.deepEqual(offerList, [goodOffer]);
 
         const listed = await cloudOffer.listOffers({service: 'storage_host'}, 'create_date desc', 1000);
-        assert.equal(listed.some(offer => offer.node_id === bad.address_base), false);
-        assert.equal(listed.find(offer => offer.node_id === good.address_base).storage.price_gb_hour, 90);
+        assert.equal(listed.some(offer => offer.address_key_identifier === bad.address_base), false);
+        assert.equal(listed.find(offer => offer.address_key_identifier === good.address_base).storage.price_gb_hour, 90);
     });
 
-    test('a newer offer with changed terms replaces the node\'s older one', async() => {
+    test('a newer offer with changed terms replaces the wallet\'s older one', async() => {
         const createDate  = now() + 5;
         const offer       = signOffer(storageOfferBody({price_gb_hour: 150, free_gb: 40}, {
             create_date: createDate,
@@ -590,7 +629,58 @@ describe('cloud offers received from a peer (_onOfferList)', () => {
         const {offerList} = await receive([offer]);
         assert.deepEqual(offerList, [offer]);
 
-        const listed = (await cloudOffer.listOffers({service: 'storage_host'}, 'create_date desc', 1000)).filter(listedOffer => listedOffer.node_id === node.address_base);
+        const listed = (await cloudOffer.listOffers({service: 'storage_host'}, 'create_date desc', 1000)).filter(listedOffer => listedOffer.address_key_identifier === nodeWallet.address_base);
         assert.deepEqual(listed, [offer]);
+    });
+
+    test('the wallet\'s newer offer replaces its older one even when served by another node', async() => {
+        const otherNode   = newKey();
+        const createDate  = now() + 10;
+        const offer       = signOffer(storageOfferBody({price_gb_hour: 160}, {
+            node_id        : otherNode.address_base,
+            node_public_key: otherNode.public_key,
+            create_date    : createDate,
+            end_date       : createDate + 3600
+        }), otherNode);
+        const {offerList} = await receive([offer]);
+        assert.deepEqual(offerList, [offer]);
+
+        const listed = await cloudOffer.listOffers({service: 'storage_host'}, 'create_date desc', 1000);
+        assert.deepEqual(listed.filter(listedOffer => listedOffer.address_key_identifier === nodeWallet.address_base), [offer]);
+        assert.equal(listed.some(listedOffer => listedOffer.node_id === node.address_base && listedOffer.address_key_identifier === nodeWallet.address_base), false);
+    });
+});
+
+describe('broker offers', () => {
+    const terms = {
+        address         : fullAddress(broker),
+        public_key      : broker.public_key,
+        pass_price      : 5000000,
+        pass_data_bytes : 25 * GB,
+        pass_piece_bytes: GB,
+        pass_duration   : 7 * 24 * 3600,
+        pool_rate       : 150000,
+        payout_interval : 3600
+    };
+
+    function brokerOfferBody(addressKeyIdentifier) {
+        const body = offerBody({
+            service: 'broker',
+            broker : cloudPass.signBrokerTerms(terms, addressKeyIdentifier, broker.private_key)
+        });
+        body.endpoint = {
+            ...body.endpoint,
+            service_port: config.NODE_PORT_BROKER
+        };
+        return body;
+    }
+
+    test('accepts broker terms signed for the wallet key identifier of the offer', () => {
+        assert.deepEqual(verify(signOffer(brokerOfferBody(nodeWallet.address_base))), {valid: true});
+    });
+
+    test('refuses broker terms signed for the node id of the offer or for another wallet', () => {
+        assertRefused(signOffer(brokerOfferBody(node.address_base)), 'offer_invalid_broker');
+        assertRefused(signOffer(brokerOfferBody(attacker.address_base)), 'offer_invalid_broker');
     });
 });

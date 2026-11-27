@@ -44,10 +44,12 @@ const TLS_HANDSHAKE_RECORD = 0x16;
  * that the certificate's node id is the one in the offer). one http/2
  * connection carries the whole session:
  *
- * - GET /vpn/challenge returns a random challenge.
+ * - GET /vpn/challenge returns a random challenge and the node id of the tls
+ *   certificate, which the challenge signature covers.
  * - POST /vpn/session {pass: {terms, funding_transaction_id},
  *   challenge_signature} proves the client holds the pass key of an escrow
- *   that pays this node. or, with a broker pass, POST /vpn/session {pass:
+ *   that pays this wallet (its payee key is the key of this wallet's key
+ *   identifier). or, with a broker pass, POST /vpn/session {pass:
  *   {certificate, piece}, challenge_signature}: a prepaid certificate of a
  *   broker this node's offer accepts, one of its pieces, and the challenge
  *   signed by the holder key.
@@ -65,8 +67,10 @@ const TLS_HANDSHAKE_RECORD = 0x16;
  * is used up or after VPN_SESSION_IDLE_TIME_MAX without traffic.
  *
  * the latest receipt of each certificate is sent to its broker every
- * CLOUD_BROKER_REPORT_INTERVAL, in a report signed by the node key naming
- * this wallet's address for the payout.
+ * CLOUD_BROKER_REPORT_INTERVAL, in a report signed by the key of this
+ * wallet's key identifier naming this wallet's address for the payout.
+ * receipts, reports and the broker name this exit node by its wallet's key
+ * identifier.
  *
  * a trial certificate is refused when its broker says its trial does not
  * extend to this node (the broker would not pay its trial receipts). the
@@ -242,7 +246,7 @@ class VPNExit {
         if (!escrow.isActive(now)) {
             return Promise.reject('escrow_not_active');
         }
-        if (terms.payee_public_key !== network.nodePublicKey) {
+        if (terms.payee_public_key !== wallet.getKeyIdentifierKey().public_key) {
             return Promise.reject('pass_not_for_this_node');
         }
         if (terms.portion_bytes !== config.VPN_ESCROW_PORTION_BYTES || terms.portion_amount < config.VPN_ESCROW_PORTION_AMOUNT ||
@@ -347,7 +351,7 @@ class VPNExit {
 
         const cloudPassRepository = database.getRepository('cloud_pass');
         return database.getRepository('cloud_offer')
-                       .getOffer(network.nodeID, 'vpn_exit')
+                       .getOffer(wallet.getKeyIdentifierKey().address_key_identifier, 'vpn_exit')
                        .then(offer => {
                            // this node accepts the brokers its offer lists
                            if (!offer || offer.end_date <= now || !_.some(offer.broker_list, {
@@ -431,7 +435,7 @@ class VPNExit {
             return Promise.reject('receipt_total_invalid');
         }
         if (receipt.sequence <= state.receipt_sequence || receipt.total_bytes < state.receipt_total_bytes ||
-            !cloudPass.isValidReceipt(state.certificate, receipt, body.signature, network.nodeID)) {
+            !cloudPass.isValidReceipt(state.certificate, receipt, body.signature, wallet.getKeyIdentifierKey().address_key_identifier)) {
             return Promise.reject('receipt_not_accepted');
         }
 
@@ -458,7 +462,7 @@ class VPNExit {
 
     /**
      * whether a broker's trial extends to this node, as the broker answers a
-     * request signed by the node key
+     * request signed by the key of this wallet's key identifier
      */
     _isTrialExtended(brokerAddress) {
         const now    = this._now();
@@ -468,7 +472,7 @@ class VPNExit {
         }
         return this._findBrokerOffer(brokerAddress)
                    .then(offer => requestNodeService(offer.endpoint, offer.node_id, 'POST', '/broker/trial/status',
-                       cloudPass.signNodeRequest(network.nodeID, network.nodePublicKey, now, network.nodePrivateKey)))
+                       cloudPass.signHostRequest(wallet.getKeyIdentifierKey(), now)))
                    .then(({trial_extended: isExtended}) => {
                        isExtended = isExtended !== false;
                        this.trialStatusMap.set(brokerAddress, {
@@ -498,17 +502,18 @@ class VPNExit {
                                   .then(recordList => Promise.all(_.map(_.groupBy(recordList, 'broker_address'), (brokerRecordList, brokerAddress) =>
                                       this._findBrokerOffer(brokerAddress)
                                           .then(offer => _.chunk(brokerRecordList, config.CLOUD_BROKER_REPORT_RECEIPT_MAX).reduce((pipeline, chunk) => pipeline.then(() => {
-                                              const report = cloudPass.signHostReport({
-                                                  node_id        : network.nodeID,
-                                                  node_public_key: network.nodePublicKey,
-                                                  payout_address : this._getPayoutAddress(),
-                                                  report_date    : this._now(),
-                                                  receipt_list   : chunk.map(record => ({
+                                              const walletKey = wallet.getKeyIdentifierKey();
+                                              const report    = cloudPass.signHostReport({
+                                                  address_key_identifier: walletKey.address_key_identifier,
+                                                  address_public_key    : walletKey.public_key,
+                                                  payout_address        : this._getPayoutAddress(),
+                                                  report_date           : this._now(),
+                                                  receipt_list          : chunk.map(record => ({
                                                       certificate_id: record.certificate_id,
                                                       receipt       : record.receipt,
                                                       signature     : record.receipt_signature
                                                   }))
-                                              }, network.nodePrivateKey);
+                                              }, walletKey.private_key);
                                               return requestNodeService(offer.endpoint, offer.node_id, 'POST', '/broker/report', {report})
                                                   .then(({receipt_list: resultList}) => Promise.all(_.filter(resultList, result => ['accepted', 'receipt_not_newer'].includes(result.status))
                                                                                                    .map(result => cloudPassRepository.updateVPNCertificateReported(result.certificate_id, result.sequence))));

@@ -41,7 +41,7 @@ const PIECE_KEY_LIST       = [
 const RECEIPT_KEY_LIST     = [
     'version',
     'certificate_id',
-    'node_id',
+    'address_key_identifier',
     'piece_index',
     'total_bytes',
     'sequence',
@@ -64,15 +64,15 @@ const BROKER_TERMS_TRIAL_KEY_LIST = [
     ...BROKER_TERMS_KEY_LIST,
     'trial_data_bytes'
 ].sort();
-const NODE_REQUEST_KEY_LIST = [
-    'node_id',
-    'node_public_key',
+const HOST_REQUEST_KEY_LIST = [
+    'address_key_identifier',
+    'address_public_key',
     'request_date',
     'signature'
 ].sort();
 const HOST_REPORT_KEY_LIST  = [
-    'node_id',
-    'node_public_key',
+    'address_key_identifier',
+    'address_public_key',
     'payout_address',
     'report_date',
     'receipt_list',
@@ -97,10 +97,16 @@ export const GB = 1024 * 1024 * 1024;
  *   certificate key. the broker issues the pieces one at a time, in order, so
  *   an exit node can see how much data the user has fetched without asking
  *   the broker.
- * - the holder signs receipts for each exit node: the running total of bytes
- *   received there and a sequence.
+ * - the holder signs receipts for each exit node, which a receipt names by
+ *   the key identifier of the exit node's wallet: the running total of
+ *   bytes received there and a sequence.
  * - an exit node sends the latest receipts to the broker in a report signed
- *   by its node key, naming the address the broker pays.
+ *   by the key of its wallet's key identifier, naming the address the broker
+ *   pays.
+ *
+ * the parties are named by the key identifiers of their wallets
+ * (address_key_identifier), never by node ids: a node id only says where a
+ * service is reached.
  *
  * the broker pays each exit node for the receipted bytes at its pool rate,
  * never more than a certificate's data in total across exit nodes.
@@ -200,20 +206,45 @@ class CloudPass {
     }
 
     /**
-     * the broker's terms, as its broker offer carries them, signed by the
-     * broker key together with the node id that serves them
+     * a message of a wallet, signed by the key of its key identifier
+     * @param message
+     * @param privateKey the key of the key identifier, a 32 byte buffer
      */
-    signBrokerTerms(terms, nodeID, brokerPrivateKey) {
+    signKeyIdentityMessage(message, privateKey) {
+        return this._sign(message, privateKey);
+    }
+
+    /**
+     * true if publicKey is the key of the key identifier and signed the
+     * message
+     */
+    isValidKeyIdentity(addressKeyIdentifier, publicKey, message, messageSignature) {
+        try {
+            return typeof addressKeyIdentifier === 'string' && this._isPublicKey(publicKey) &&
+                   this.getAddressBaseFromPublicKey(publicKey) === addressKeyIdentifier &&
+                   this._verify(message, messageSignature, publicKey);
+        }
+        catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * the broker's terms, as its broker offer carries them, signed by the
+     * broker key together with the key identifier of the wallet whose offer
+     * serves them
+     */
+    signBrokerTerms(terms, addressKeyIdentifier, brokerPrivateKey) {
         return {
             ...terms,
             signature: this._sign({
                 ...terms,
-                node_id: nodeID
+                address_key_identifier: addressKeyIdentifier
             }, brokerPrivateKey)
         };
     }
 
-    isValidBrokerTerms(terms, nodeID) {
+    isValidBrokerTerms(terms, addressKeyIdentifier) {
         return _.isPlainObject(terms) &&
                (_.isEqual(_.keys(terms).sort(), BROKER_TERMS_KEY_LIST) ||
                 _.isEqual(_.keys(terms).sort(), BROKER_TERMS_TRIAL_KEY_LIST) && this.isValidTrialSize(terms.trial_data_bytes, terms.pass_piece_bytes)) &&
@@ -232,7 +263,7 @@ class CloudPass {
                this._isPositiveInteger(terms.payout_interval) &&
                this._verify({
                    ..._.omit(terms, ['signature']),
-                   node_id: nodeID
+                   address_key_identifier: addressKeyIdentifier
                }, terms.signature, terms.public_key);
     }
 
@@ -359,12 +390,16 @@ class CloudPass {
         return this._sign(receipt, holderPrivateKey);
     }
 
-    isValidReceipt(certificate, receipt, receiptSignature, nodeID) {
+    /**
+     * @param addressKeyIdentifier the key identifier of the wallet of the
+     * exit node the receipt is for
+     */
+    isValidReceipt(certificate, receipt, receiptSignature, addressKeyIdentifier) {
         return _.isPlainObject(receipt) &&
                _.isEqual(_.keys(receipt).sort(), RECEIPT_KEY_LIST) &&
                receipt.version === CLOUD_PASS_VERSION &&
                receipt.certificate_id === certificate.certificate_id &&
-               receipt.node_id === nodeID &&
+               receipt.address_key_identifier === addressKeyIdentifier &&
                Number.isInteger(receipt.piece_index) && receipt.piece_index >= 0 && receipt.piece_index < certificate.piece_count &&
                Number.isInteger(receipt.total_bytes) && receipt.total_bytes >= 0 &&
                this._isPositiveInteger(receipt.sequence) &&
@@ -385,12 +420,15 @@ class CloudPass {
     }
 
     /**
-     * an exit node's report of its latest receipts, signed by its node key
+     * an exit node's report of its latest receipts, signed by the key of its
+     * wallet's key identifier
+     * @param body {address_key_identifier, address_public_key, payout_address, report_date, receipt_list}
+     * @param privateKey the key of the key identifier, a 32 byte buffer
      */
-    signHostReport(body, nodePrivateKey) {
+    signHostReport(body, privateKey) {
         return {
             ...body,
-            signature: walletUtils.signMessage(nodePrivateKey, body)
+            signature: this.signKeyIdentityMessage(body, privateKey)
         };
     }
 
@@ -420,7 +458,7 @@ class CloudPass {
             };
         }
 
-        if (typeof report.signature !== 'string' || !walletUtils.isValidNodeIdentity(report.node_id, report.node_public_key, _.omit(report, ['signature']), report.signature)) {
+        if (!this.isValidKeyIdentity(report.address_key_identifier, report.address_public_key, _.omit(report, ['signature']), report.signature)) {
             return {
                 valid : false,
                 reason: 'report_invalid_signature'
@@ -432,17 +470,19 @@ class CloudPass {
 
     /**
      * an exit node's request to a broker about itself (whether the broker's
-     * trial extends to it), signed by its node key
+     * trial extends to it), signed by the key of its wallet's key identifier
+     * @param walletKey {address_key_identifier, public_key, private_key}
+     * @param requestDate
      */
-    signNodeRequest(nodeID, nodePublicKey, requestDate, nodePrivateKey) {
+    signHostRequest(walletKey, requestDate) {
         const body = {
-            node_id        : nodeID,
-            node_public_key: nodePublicKey,
-            request_date   : requestDate
+            address_key_identifier: walletKey.address_key_identifier,
+            address_public_key    : walletKey.public_key,
+            request_date          : requestDate
         };
         return {
             ...body,
-            signature: walletUtils.signMessage(nodePrivateKey, body)
+            signature: this.signKeyIdentityMessage(body, walletKey.private_key)
         };
     }
 
@@ -451,11 +491,10 @@ class CloudPass {
      * @param now unix time in seconds: the request must be dated within
      * CLOUD_OFFER_CLOCK_SKEW_TOLERANCE of it
      */
-    isValidNodeRequest(request, now) {
-        return _.isPlainObject(request) && _.isEqual(_.keys(request).sort(), NODE_REQUEST_KEY_LIST) &&
+    isValidHostRequest(request, now) {
+        return _.isPlainObject(request) && _.isEqual(_.keys(request).sort(), HOST_REQUEST_KEY_LIST) &&
                this._isPositiveInteger(request.request_date) && Math.abs(request.request_date - now) <= config.CLOUD_OFFER_CLOCK_SKEW_TOLERANCE &&
-               typeof request.signature === 'string' &&
-               walletUtils.isValidNodeIdentity(request.node_id, request.node_public_key, _.omit(request, ['signature']), request.signature);
+               this.isValidKeyIdentity(request.address_key_identifier, request.address_public_key, _.omit(request, ['signature']), request.signature);
     }
 }
 

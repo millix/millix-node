@@ -9,6 +9,7 @@ import escrow from '../core/wallet/escrow';
 import walletEscrow from '../core/wallet/wallet-escrow';
 import cloudStorage from '../net/cloud-storage';
 import {CLOUD_OFFER_VERSION} from '../net/cloud-offer';
+import cloudPass from '../net/broker/cloud-pass';
 import EscrowRepository from '../database/repositories/escrow';
 import {
     buildTransaction,
@@ -21,9 +22,12 @@ import {
     openCloudDatabase,
     setEscrowActivationDate,
     stubRepositories,
-    walletAddress
+    walletAddress,
+    walletKey
 } from './helper';
 
+// the host node serves the endpoint; the host is named by its wallet's key
+// identifier (hostWallet), whose key is the payee key
 const host         = newKey();
 const hostWallet   = newKey();
 const renterPass   = newKey();
@@ -41,11 +45,12 @@ const PORTION   = 1000;
 const PERIOD    = 3600;
 const startDate = now();
 
-function signOffer(body, key = host) {
+function signOffer(body, key = host, walletSigner = hostWallet) {
     return {
         ...body,
-        offer_id : objectHash.getCHash288(body),
-        signature: walletUtils.signMessage(key.node_private_key, body)
+        offer_id         : objectHash.getCHash288(body),
+        signature        : walletUtils.signMessage(key.node_private_key, body),
+        address_signature: cloudPass.signKeyIdentityMessage(body, walletSigner.private_key)
     };
 }
 
@@ -55,26 +60,28 @@ function signOffer(body, key = host) {
  */
 function storageOffer(storage = {}, overrides = {}) {
     const body = {
-        version          : CLOUD_OFFER_VERSION,
-        node_id          : host.address_base,
-        node_public_key  : host.public_key,
-        service          : 'storage_host',
-        location         : {country: 'US'},
-        upload_speed_kbps: 50000,
-        endpoint         : {
+        version               : CLOUD_OFFER_VERSION,
+        address_key_identifier: hostWallet.address_base,
+        address_public_key    : hostWallet.public_key,
+        node_id               : host.address_base,
+        node_public_key       : host.public_key,
+        service               : 'storage_host',
+        location              : {country: 'US'},
+        upload_speed_kbps     : 50000,
+        endpoint              : {
             node_prefix  : 'wss://',
             node_address : '203.0.113.7',
             node_port    : config.NODE_PORT,
             node_port_api: config.NODE_PORT_API
         },
-        broker_list      : [
+        broker_list           : [
             {
                 address   : fullAddress(broker),
                 public_key: broker.public_key
             }
         ],
-        create_date      : startDate,
-        end_date         : startDate + 24 * 3600,
+        create_date           : startDate,
+        end_date              : startDate + 24 * 3600,
         ...overrides
     };
     if (storage) {
@@ -124,11 +131,13 @@ let sent;
 function asRenter() {
     escrowRepository            = renterRepository;
     wallet.defaultKeyIdentifier = renterWallet.address_base;
+    wallet.getKeyIdentifierKey  = () => walletKey(renterWallet);
 }
 
 function asHost() {
     escrowRepository            = hostRepository;
     wallet.defaultKeyIdentifier = hostWallet.address_base;
+    wallet.getKeyIdentifierKey  = () => walletKey(hostWallet);
 }
 
 function addOffer(offer) {
@@ -152,6 +161,7 @@ before(async() => {
     stubMethod(network, 'nodePublicKey', host.public_key);
     stubMethod(network, 'nodePrivateKey', host.node_private_key);
     stubMethod(wallet, 'defaultKeyIdentifier', renterWallet.address_base);
+    stubMethod(wallet, 'getKeyIdentifierKey', () => walletKey(renterWallet));
     // the renter's pass key, which the node derives from its wallet key
     stubMethod(walletEscrow, 'getPassPrivateKey', () => renterPass.private_key);
     // no transaction leaves the test: funding an escrow records what was
@@ -280,7 +290,9 @@ describe('opening a rental (renter)', () => {
 
         // the escrow the vpn uses, with a proof interval as its portion
         assert.equal(escrow.isValidTerms(rental.terms), true);
-        assert.equal(rental.terms.payee_public_key, host.public_key);
+        // the payee key is the key of the host wallet's key identifier,
+        // not the host node's key
+        assert.equal(rental.terms.payee_public_key, hostWallet.public_key);
         assert.equal(rental.terms.payer_public_key, renterPass.public_key);
         assert.equal(rental.terms.portion_bytes, config.CLOUD_STORAGE_PROOF_BYTES);
         assert.equal(rental.terms.portion_amount, PORTION);
@@ -304,22 +316,22 @@ describe('opening a rental (renter)', () => {
         assert.equal(rental.funding_transaction_id, 'F'.repeat(50));
 
         assert.deepEqual(rental.receipt, {
-            version            : config.ESCROW_RECEIPT_VERSION,
-            escrow_address_base: escrowAddress.address_base,
-            node_id            : host.address_base,
-            copy_id            : copyID,
-            period_start       : startDate,
-            period_end         : startDate,
-            total_bytes        : 0,
-            total_amount       : 0,
-            sequence           : 1,
-            receipt_date       : startDate
+            version               : config.ESCROW_RECEIPT_VERSION,
+            escrow_address_base   : escrowAddress.address_base,
+            address_key_identifier: hostWallet.address_base,
+            copy_id               : copyID,
+            period_start          : startDate,
+            period_end            : startDate,
+            total_bytes           : 0,
+            total_amount          : 0,
+            sequence              : 1,
+            receipt_date          : startDate
         });
         assert.equal(escrow.isValidReceipt(rental.terms, rental.receipt, rental.receipt_signature, escrowAddress.address_base), true);
 
         const escrowRecord = await renterRepository.getEscrow(escrowAddress.address_base);
         assert.equal(escrowRecord.role, 'payer');
-        assert.equal(escrowRecord.node_id, host.address_base);
+        assert.equal(escrowRecord.payee_key_identifier, hostWallet.address_base);
         assert.deepEqual(escrowRecord.receipt, rental.receipt);
         assert.equal(escrowRecord.funding_transaction_id, 'F'.repeat(50));
     });
@@ -477,7 +489,8 @@ describe('a rental paid by its proofs', () => {
             walletOutput(5 * PORTION - FEE),
             escrowOutput(rental.terms, 7 * PORTION)
         ]);
-        assert.equal(sent.signer.public_key, host.public_key);
+        assert.equal(sent.signer.public_key, hostWallet.public_key);
+        assert.equal(sent.signer.address_base, hostWallet.address_base);
         assert.equal(sent.escrowEntry.action, 'claim');
         assert.deepEqual(sent.escrowEntry.receipt, latest);
 
@@ -542,7 +555,7 @@ describe('a rental paid by its proofs', () => {
         const claim = portionCount => buildTransaction({
             inputList : [escrowInput(escrow.getEscrowAddress(rental.terms), 12 * PORTION)],
             outputList: [walletOutput(portionCount * PORTION - FEE), escrowOutput(rental.terms, (12 - portionCount) * PORTION)],
-            signerList: [host],
+            signerList: [hostWallet],
             metadata  : {
                 escrow: [
                     {
@@ -682,7 +695,7 @@ describe('signing receipts (renter)', () => {
     test('an escrow opened for data carried signs no storage receipt', async() => {
         asRenter();
         clock              = startDate;
-        const {terms}      = await walletEscrow.createEscrow(host.public_key, host.address_base, config.VPN_ESCROW_PORTION_BYTES, config.VPN_ESCROW_PORTION_AMOUNT, 20, startDate + PERIOD);
+        const {terms}      = await walletEscrow.createEscrow(hostWallet.public_key, hostWallet.address_base, config.VPN_ESCROW_PORTION_BYTES, config.VPN_ESCROW_PORTION_AMOUNT, 20, startDate + PERIOD);
         clock              = startDate + INTERVAL;
         await assert.rejects(cloudStorage.signReceipt(escrow.getEscrowAddress(terms).address_base, true), error => error === 'escrow_not_storage');
     });
@@ -814,7 +827,7 @@ describe('escrows the host does not record', () => {
         const terms         = {
             version         : config.ESCROW_TERMS_VERSION,
             payer_public_key: renterPass.public_key,
-            payee_public_key: host.public_key,
+            payee_public_key: hostWallet.public_key,
             amount          : 12 * PORTION,
             portion_bytes   : config.CLOUD_STORAGE_PROOF_BYTES,
             portion_amount  : PORTION,
@@ -825,16 +838,16 @@ describe('escrows the host does not record', () => {
         const escrowAddress = escrow.getEscrowAddress(terms);
         lockedMap.set(escrowAddress.address_base, terms.amount);
         const {receipt, signature} = signedReceipt({
-            version            : config.ESCROW_RECEIPT_VERSION,
-            escrow_address_base: escrowAddress.address_base,
-            node_id            : escrow.getAddressFromPublicKey(terms.payee_public_key),
-            copy_id            : newCopyID(),
-            period_start       : startDate,
-            period_end         : startDate,
-            total_bytes        : 0,
-            total_amount       : 0,
-            sequence           : 1,
-            receipt_date       : startDate
+            version               : config.ESCROW_RECEIPT_VERSION,
+            escrow_address_base   : escrowAddress.address_base,
+            address_key_identifier: escrow.getAddressFromPublicKey(terms.payee_public_key),
+            copy_id               : newCopyID(),
+            period_start          : startDate,
+            period_end            : startDate,
+            total_bytes           : 0,
+            total_amount          : 0,
+            sequence              : 1,
+            receipt_date          : startDate
         });
         return {
             terms,
@@ -865,8 +878,14 @@ describe('escrows the host does not record', () => {
         assert.equal((await hostRepository.getEscrow(addressBase)).role, 'payee');
     });
 
-    test('an escrow that pays another node', async() => {
+    test('an escrow that pays another wallet', async() => {
         const rental = handmade({payee_public_key: other.public_key});
+        await assert.rejects(add(rental), error => error === 'escrow_not_for_this_node');
+        assert.equal(await hostRepository.getEscrow(rental.escrow_address_base), undefined);
+    });
+
+    test('an escrow that pays the host node\'s key rather than its wallet\'s key identifier', async() => {
+        const rental = handmade({payee_public_key: host.public_key});
         await assert.rejects(add(rental), error => error === 'escrow_not_for_this_node');
         assert.equal(await hostRepository.getEscrow(rental.escrow_address_base), undefined);
     });

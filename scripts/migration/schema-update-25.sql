@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS escrow
     escrow_address         CHAR(72)    NOT NULL PRIMARY KEY CHECK (length(escrow_address) <= 72),
     address_base           CHAR(34)    NOT NULL CHECK (length(address_base) <= 34),
     role                   CHAR(5)     NOT NULL CHECK (role IN ('payer', 'payee')),
-    node_id                CHAR(34)    NOT NULL CHECK (length(node_id) <= 34),
+    payee_key_identifier   CHAR(34)    NOT NULL CHECK (length(payee_key_identifier) <= 34),
     terms                  TEXT        NOT NULL,
     funding_transaction_id CHAR(50)    NULL CHECK (length(funding_transaction_id) <= 50),
     receipt                TEXT        NULL,

@@ -15,6 +15,7 @@ import vpnExit from '../net/vpn/vpn-exit';
 import vpnClient from '../net/vpn/vpn-client';
 import * as forward from '../net/vpn/forward';
 import objectHash from '../core/crypto/object-hash';
+import cloudPass from '../net/broker/cloud-pass';
 import {fullAddress, newKey, now, stubRepositories} from './helper';
 
 const {
@@ -293,8 +294,9 @@ describe('simultaneous connect', () => {
 });
 
 describe('offers of hosts behind routers', () => {
-    const node   = newKey();
-    const broker = newKey();
+    const node       = newKey();
+    const nodeWallet = newKey();
+    const broker     = newKey();
     let restoreRepositories;
     before(() => restoreRepositories = stubRepositories());
     after(() => restoreRepositories());
@@ -302,13 +304,15 @@ describe('offers of hosts behind routers', () => {
     function vpnOffer(forwardValue) {
         const createDate = now();
         const body       = {
-            version          : CLOUD_OFFER_VERSION,
-            node_id          : node.address_base,
-            node_public_key  : node.public_key,
-            service          : 'vpn_exit',
-            location         : {country: 'US'},
-            upload_speed_kbps: 1000,
-            endpoint         : {
+            version               : CLOUD_OFFER_VERSION,
+            address_key_identifier: nodeWallet.address_base,
+            address_public_key    : nodeWallet.public_key,
+            node_id               : node.address_base,
+            node_public_key       : node.public_key,
+            service               : 'vpn_exit',
+            location              : {country: 'US'},
+            upload_speed_kbps     : 1000,
+            endpoint              : {
                 node_prefix  : 'wss://',
                 node_address : '203.0.113.7',
                 node_port    : config.NODE_PORT,
@@ -316,18 +320,19 @@ describe('offers of hosts behind routers', () => {
                 service_port : config.NODE_PORT_VPN,
                 ...(forwardValue ? {forward: forwardValue} : {})
             },
-            escrow           : {
+            escrow                : {
                 portion_bytes : config.VPN_ESCROW_PORTION_BYTES,
                 portion_amount: config.VPN_ESCROW_PORTION_AMOUNT
             },
-            broker_list      : [{address: fullAddress(broker), public_key: broker.public_key}],
-            create_date      : createDate,
-            end_date         : createDate + 3600
+            broker_list           : [{address: fullAddress(broker), public_key: broker.public_key}],
+            create_date           : createDate,
+            end_date              : createDate + 3600
         };
         return {
             ...body,
-            offer_id : objectHash.getCHash288(body),
-            signature: walletUtils.signMessage(node.node_private_key, body)
+            offer_id         : objectHash.getCHash288(body),
+            signature        : walletUtils.signMessage(node.node_private_key, body),
+            address_signature: cloudPass.signKeyIdentityMessage(body, nodeWallet.private_key)
         };
     }
 

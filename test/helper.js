@@ -51,6 +51,18 @@ export function newKey() {
     };
 }
 
+/**
+ * a key as wallet.getKeyIdentifierKey returns it: the key of a wallet's key
+ * identifier, which names the wallet in the tangled cloud records
+ */
+export function walletKey(key) {
+    return {
+        private_key           : key.private_key,
+        public_key            : key.public_key,
+        address_key_identifier: key.address_base
+    };
+}
+
 export function walletAddress(key) {
     return {
         address_base          : key.address_base,

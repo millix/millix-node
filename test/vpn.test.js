@@ -13,17 +13,20 @@ import escrow from '../core/wallet/escrow';
 import walletEscrow from '../core/wallet/wallet-escrow';
 import objectHash from '../core/crypto/object-hash';
 import signature from '../core/crypto/signature';
-import {escrowInput, newKey, newNonce, now, setEscrowActivationDate, stubRepositories} from './helper';
+import {escrowInput, newKey, newNonce, now, setEscrowActivationDate, stubRepositories, walletKey} from './helper';
 
-const exitNode = newKey();
-const pass     = newKey();
-const other    = newKey();
+// the exit node serves the tls session; it is paid as its wallet's key
+// identifier (exitWallet), whose key is the payee key
+const exitNode   = newKey();
+const exitWallet = newKey();
+const pass       = newKey();
+const other      = newKey();
 
 function vpnTerms(overrides = {}) {
     return {
         version         : config.ESCROW_TERMS_VERSION,
         payer_public_key: pass.public_key,
-        payee_public_key: exitNode.public_key,
+        payee_public_key: exitWallet.public_key,
         amount          : config.VPN_ESCROW_PORTION_AMOUNT * 20,
         portion_bytes   : config.VPN_ESCROW_PORTION_BYTES,
         portion_amount  : config.VPN_ESCROW_PORTION_AMOUNT,
@@ -44,6 +47,7 @@ function stubMethod(object, name, value, restoreList = restore) {
 before(() => {
     stubMethod(network, 'nodeID', exitNode.address_base);
     stubMethod(network, 'nodePublicKey', exitNode.public_key);
+    stubMethod(wallet, 'getKeyIdentifierKey', () => walletKey(exitWallet));
     restore.push(setEscrowActivationDate(0));
 });
 after(() => restore.reverse().forEach(fn => fn()));
@@ -276,8 +280,10 @@ describe('pass challenge (exit node)', () => {
         await assert.rejects(authenticate(state, vpnTerms()), error => error === 'session_already_authenticated');
     });
 
-    test('refuses an escrow that pays another node', async() => {
+    test('refuses an escrow that pays another wallet, or the node key', async() => {
         await assert.rejects(authenticate(newState(), vpnTerms({payee_public_key: other.public_key})), error => error === 'pass_not_for_this_node');
+        // the payee key is the wallet's, not the node's
+        await assert.rejects(authenticate(newState(), vpnTerms({payee_public_key: exitNode.public_key})), error => error === 'pass_not_for_this_node');
     });
 
     test('refuses malformed terms', async() => {
@@ -368,10 +374,10 @@ describe('receipts and the unreceipted gap (exit node)', () => {
 
     function signedReceipt(totalBytes, sequence, key = pass, overrides = {}) {
         const receipt = {
-            version            : config.ESCROW_RECEIPT_VERSION,
-            escrow_address_base: escrowAddress.address_base,
-            node_id            : exitNode.address_base,
-            total_bytes        : totalBytes,
+            version               : config.ESCROW_RECEIPT_VERSION,
+            escrow_address_base   : escrowAddress.address_base,
+            address_key_identifier: exitWallet.address_base,
+            total_bytes           : totalBytes,
             sequence,
             receipt_date       : now(),
             ...overrides
@@ -384,6 +390,9 @@ describe('receipts and the unreceipted gap (exit node)', () => {
 
     test('a receipt is valid only for its escrow, its exit node and the pass key', () => {
         const {receipt, signature: receiptSignature} = signedReceipt(1000, 1);
+        // the exit node is named by its wallet's key identifier, not its node id
+        const byNodeID = signedReceipt(1000, 1, pass, {address_key_identifier: exitNode.address_base});
+        assert.equal(escrow.isValidReceipt(terms, byNodeID.receipt, byNodeID.signature, escrowAddress.address_base), false);
         assert.equal(escrow.isValidReceipt(terms, receipt, receiptSignature, escrowAddress.address_base), true);
         assert.equal(escrow.isValidReceipt(terms, receipt, receiptSignature, other.address_base), false);
         assert.equal(escrow.isValidReceipt(terms, {...receipt, total_bytes: 2000}, receiptSignature, escrowAddress.address_base), false);
@@ -483,13 +492,14 @@ describe('receipts (user side)', () => {
         const clientState = {
             session            : {},
             terms,
-            node_id            : exitNode.address_base,
-            escrow_address_base: escrowAddress.address_base,
-            bytes_received     : 0,
-            receipt_total_bytes: 0,
-            receipt_sequence   : 0,
-            receipt_list       : [],
-            closed             : false
+            address_key_identifier: exitWallet.address_base,
+            node_id               : exitNode.address_base,
+            escrow_address_base   : escrowAddress.address_base,
+            bytes_received        : 0,
+            receipt_total_bytes   : 0,
+            receipt_sequence      : 0,
+            receipt_list          : [],
+            closed                : false
         };
         const interval      = config.VPN_RECEIPT_INTERVAL_BYTES;
         vpnClient._countBytesReceived(clientState, interval - 1);
@@ -540,6 +550,26 @@ describe('receipts (user side)', () => {
         finally {
             state.local_proxy.close();
         }
+    });
+});
+
+describe('wallet key identifier key', () => {
+    test('is the first key of the wallet: its address is the key identifier, and it signs for it', () => {
+        const extendedKey = walletUtils.generateNodeKey();
+        stubMethod(wallet, 'getDefaultActiveWallet', () => 'test-wallet');
+        stubMethod(wallet, 'getActiveWalletKey', () => extendedKey);
+        // the real method, not the stub the exit node tests use
+        const key = Object.getPrototypeOf(wallet).getKeyIdentifierKey.call(wallet);
+        assert.equal(key.address_key_identifier, walletUtils.deriveAddressFromKey(extendedKey, 0, 0).address);
+        assert.equal(key.address_key_identifier, escrow.getAddressFromPublicKey(key.public_key));
+        assert.deepEqual(key.private_key, walletUtils.derivePrivateKey(extendedKey, 0, 0));
+        const message = objectHash.getHashBuffer({a: 1});
+        assert.equal(signature.verify(message, signature.sign(message, key.private_key), key.public_key), true);
+    });
+
+    test('is not available without an active wallet', () => {
+        stubMethod(wallet, 'getActiveWalletKey', () => undefined);
+        assert.throws(() => Object.getPrototypeOf(wallet).getKeyIdentifierKey.call(wallet), /wallet_not_active/);
     });
 });
 

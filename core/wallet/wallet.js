@@ -208,6 +208,28 @@ class Wallet {
         return this.defaultKeyIdentifier;
     }
 
+    /**
+     * the key of this wallet's key identifier (its first key). the tangled
+     * cloud records name a wallet by its key identifier and are signed by
+     * this key.
+     * @return {{private_key: Buffer, public_key: string, address_key_identifier: string}}
+     */
+    getKeyIdentifierKey() {
+        const extendedPrivateKey = this.getActiveWalletKey(this.getDefaultActiveWallet());
+        if (!extendedPrivateKey) {
+            throw Error('wallet_not_active');
+        }
+        const {
+                  address,
+                  address_attribute: addressAttribute
+              } = walletUtils.deriveAddressFromKey(extendedPrivateKey, 0, 0);
+        return {
+            private_key           : walletUtils.derivePrivateKey(extendedPrivateKey, 0, 0),
+            public_key            : addressAttribute.key_public,
+            address_key_identifier: address
+        };
+    }
+
     deriveAndSaveAddress(walletID, isChange, addressPosition, addressKeyIdentifier, status = 1) {
         const keychain = database.getRepository('keychain');
         let {

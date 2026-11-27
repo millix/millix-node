@@ -4,7 +4,6 @@ import base58 from 'bs58';
 import secp256k1 from 'secp256k1';
 import config from '../config/config';
 import database from '../../database/database';
-import network from '../../net/network';
 import wallet from './wallet';
 import walletUtils from './wallet-utils';
 import escrow, {ESCROW_ACTION_CLAIM, ESCROW_ACTION_REFUND} from './escrow';
@@ -22,7 +21,7 @@ const ESCROW_STATUS_DONE   = 2;
 
 
 /**
- * builds and sends the transactions of the escrow flow for this node:
+ * builds and sends the transactions of the escrow flow for this wallet:
  * funding an escrow (payer), claiming the receipted portions (payee) and
  * the refund after the unlock date (payer). the rules every node checks are
  * in escrow.js.
@@ -107,16 +106,16 @@ class WalletEscrow {
 
     /**
      * payer: locks amount millix in a new escrow for the payee
-     * @param payeePublicKey the payee node public key
-     * @param payeeNodeID
+     * @param payeePublicKey the key of the payee wallet's key identifier
+     * @param payeeKeyIdentifier the payee wallet's key identifier
      * @param portionBytes
      * @param portionAmount
      * @param portionCount
      * @param unlockDate unix time in seconds
      * @return {Promise<{terms, escrow_address, pass_public_key, transaction}>}
      */
-    createEscrow(payeePublicKey, payeeNodeID, portionBytes, portionAmount, portionCount, unlockDate) {
-        if (escrow.getAddressFromPublicKey(payeePublicKey) !== payeeNodeID) {
+    createEscrow(payeePublicKey, payeeKeyIdentifier, portionBytes, portionAmount, portionCount, unlockDate) {
+        if (escrow.getAddressFromPublicKey(payeePublicKey) !== payeeKeyIdentifier) {
             return Promise.reject('escrow_invalid_payee');
         }
         if (!escrow.isActive(this._now())) {
@@ -150,7 +149,7 @@ class WalletEscrow {
 
         const escrowRepository = database.getRepository('escrow');
         this._watchEscrowAddress(escrowAddress.address_base);
-        return escrowRepository.addEscrow(escrowAddress.address, escrowAddress.address_base, ESCROW_ROLE_PAYER, payeeNodeID, terms)
+        return escrowRepository.addEscrow(escrowAddress.address, escrowAddress.address_base, ESCROW_ROLE_PAYER, payeeKeyIdentifier, terms)
                                .then(() => wallet.addTransaction([
                                    {
                                        ..._.pick(escrowAddress, [
@@ -184,13 +183,13 @@ class WalletEscrow {
     }
 
     /**
-     * payee: records a funded escrow that pays this node
+     * payee: records a funded escrow that pays this wallet
      */
     addPayeeEscrow(terms, fundingTransactionID) {
         const escrowAddress = escrow.getEscrowAddress(terms);
         this._watchEscrowAddress(escrowAddress.address_base);
         return database.getRepository('escrow')
-                       .addEscrow(escrowAddress.address, escrowAddress.address_base, ESCROW_ROLE_PAYEE, network.nodeID, terms, fundingTransactionID)
+                       .addEscrow(escrowAddress.address, escrowAddress.address_base, ESCROW_ROLE_PAYEE, escrow.getAddressFromPublicKey(terms.payee_public_key), terms, fundingTransactionID)
                        .then(() => database.getRepository('escrow').getEscrow(escrowAddress.address_base));
     }
 
@@ -259,10 +258,13 @@ class WalletEscrow {
                                         });
                                     }
 
+                                    // the payee key: the key of this
+                                    // wallet's key identifier
+                                    const walletKey = wallet.getKeyIdentifierKey();
                                     return this._sendEscrowTransaction(inputList, outputList, {
-                                        address_base: network.nodeID,
-                                        public_key  : network.nodePublicKey,
-                                        private_key : network.nodePrivateKey.toBuffer()
+                                        address_base: walletKey.address_key_identifier,
+                                        public_key  : walletKey.public_key,
+                                        private_key : walletKey.private_key
                                     }, {
                                         address_base     : addressBase,
                                         action           : ESCROW_ACTION_CLAIM,

@@ -16,14 +16,17 @@ export default class Escrow {
         };
     }
 
-    addEscrow(escrowAddress, addressBase, role, nodeID, terms, fundingTransactionID) {
+    /**
+     * @param payeeKeyIdentifier the key identifier of the payee's wallet
+     */
+    addEscrow(escrowAddress, addressBase, role, payeeKeyIdentifier, terms, fundingTransactionID) {
         return new Promise((resolve, reject) => {
-            this.database.run('INSERT OR IGNORE INTO escrow (escrow_address, address_base, role, node_id, terms, funding_transaction_id, unlock_date) VALUES (?,?,?,?,?,?,?)',
+            this.database.run('INSERT OR IGNORE INTO escrow (escrow_address, address_base, role, payee_key_identifier, terms, funding_transaction_id, unlock_date) VALUES (?,?,?,?,?,?,?)',
                 [
                     escrowAddress,
                     addressBase,
                     role,
-                    nodeID,
+                    payeeKeyIdentifier,
                     JSON.stringify(terms),
                     fundingTransactionID || null,
                     terms.unlock_date

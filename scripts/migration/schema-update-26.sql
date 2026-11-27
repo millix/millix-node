@@ -16,37 +16,37 @@ CREATE INDEX IF NOT EXISTS idx_cloud_broker_certificate_create_date ON cloud_bro
 
 CREATE TABLE IF NOT EXISTS cloud_broker_receipt
 (
-    certificate_id     CHAR(50)    NOT NULL CHECK (length(certificate_id) <= 50),
-    node_id            CHAR(34)    NOT NULL CHECK (length(node_id) <= 34),
-    piece_index        INT         NOT NULL CHECK (TYPEOF(piece_index) = 'integer'),
-    total_bytes        INT         NOT NULL CHECK (TYPEOF(total_bytes) = 'integer'),
-    sequence           INT         NOT NULL CHECK (TYPEOF(sequence) = 'integer'),
-    receipt            TEXT        NOT NULL,
-    receipt_signature  TEXT        NOT NULL,
-    first_receipt_date INT         NOT NULL CHECK (length(first_receipt_date) <= 10 AND TYPEOF(first_receipt_date) = 'integer'),
-    update_date        INT         NOT NULL CHECK (length(update_date) <= 10 AND TYPEOF(update_date) = 'integer'),
-    PRIMARY KEY (certificate_id, node_id)
+    certificate_id         CHAR(50)    NOT NULL CHECK (length(certificate_id) <= 50),
+    address_key_identifier CHAR(34)    NOT NULL CHECK (length(address_key_identifier) <= 34),
+    piece_index            INT         NOT NULL CHECK (TYPEOF(piece_index) = 'integer'),
+    total_bytes            INT         NOT NULL CHECK (TYPEOF(total_bytes) = 'integer'),
+    sequence               INT         NOT NULL CHECK (TYPEOF(sequence) = 'integer'),
+    receipt                TEXT        NOT NULL,
+    receipt_signature      TEXT        NOT NULL,
+    first_receipt_date     INT         NOT NULL CHECK (length(first_receipt_date) <= 10 AND TYPEOF(first_receipt_date) = 'integer'),
+    update_date            INT         NOT NULL CHECK (length(update_date) <= 10 AND TYPEOF(update_date) = 'integer'),
+    PRIMARY KEY (certificate_id, address_key_identifier)
 );
-CREATE INDEX IF NOT EXISTS idx_cloud_broker_receipt_node_id ON cloud_broker_receipt (node_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_broker_receipt_address_key_identifier ON cloud_broker_receipt (address_key_identifier);
 
 CREATE TABLE IF NOT EXISTS cloud_broker_host
 (
-    node_id        CHAR(34)    NOT NULL PRIMARY KEY CHECK (length(node_id) <= 34),
-    payout_address CHAR(72)    NOT NULL CHECK (length(payout_address) <= 72),
-    amount_paid    BIGINT      NOT NULL DEFAULT 0 CHECK (TYPEOF(amount_paid) = 'integer'),
-    update_date    INT         NOT NULL CHECK (length(update_date) <= 10 AND TYPEOF(update_date) = 'integer'),
-    create_date    INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
+    address_key_identifier CHAR(34)    NOT NULL PRIMARY KEY CHECK (length(address_key_identifier) <= 34),
+    payout_address         CHAR(72)    NOT NULL CHECK (length(payout_address) <= 72),
+    amount_paid            BIGINT      NOT NULL DEFAULT 0 CHECK (TYPEOF(amount_paid) = 'integer'),
+    update_date            INT         NOT NULL CHECK (length(update_date) <= 10 AND TYPEOF(update_date) = 'integer'),
+    create_date            INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer')
 );
 
 CREATE TABLE IF NOT EXISTS cloud_broker_payout
 (
-    transaction_id CHAR(50)    NOT NULL CHECK (length(transaction_id) <= 50),
-    node_id        CHAR(34)    NOT NULL CHECK (length(node_id) <= 34),
-    amount         BIGINT      NOT NULL CHECK (TYPEOF(amount) = 'integer'),
-    create_date    INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
-    PRIMARY KEY (transaction_id, node_id)
+    transaction_id         CHAR(50)    NOT NULL CHECK (length(transaction_id) <= 50),
+    address_key_identifier CHAR(34)    NOT NULL CHECK (length(address_key_identifier) <= 34),
+    amount                 BIGINT      NOT NULL CHECK (TYPEOF(amount) = 'integer'),
+    create_date            INT         NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)) CHECK(length(create_date) <= 10 AND TYPEOF(create_date) = 'integer'),
+    PRIMARY KEY (transaction_id, address_key_identifier)
 );
-CREATE INDEX IF NOT EXISTS idx_cloud_broker_payout_node_id ON cloud_broker_payout (node_id);
+CREATE INDEX IF NOT EXISTS idx_cloud_broker_payout_address_key_identifier ON cloud_broker_payout (address_key_identifier);
 
 CREATE TABLE IF NOT EXISTS cloud_pass
 (

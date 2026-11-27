@@ -161,8 +161,8 @@ class PassWallet {
                                          return this._brokerRequest(offer, '/broker/trial', {
                                              holder_public_key: holderPublicKey,
                                              signature        : cloudPass.signHolderMessage({
-                                                 trial_holder_public_key: holderPublicKey,
-                                                 broker_node_id         : offer.node_id
+                                                 trial_holder_public_key      : holderPublicKey,
+                                                 broker_address_key_identifier: offer.address_key_identifier
                                              }, holderPrivateKey)
                                          });
                                      })
@@ -224,8 +224,8 @@ class PassWallet {
                                                                         funding_transaction_id: pass.funding_transaction_id,
                                                                         holder_public_key     : pass.holder_public_key,
                                                                         signature             : cloudPass.signHolderMessage({
-                                                                            funding_transaction_id: pass.funding_transaction_id,
-                                                                            broker_node_id        : offer.node_id
+                                                                            funding_transaction_id       : pass.funding_transaction_id,
+                                                                            broker_address_key_identifier: offer.address_key_identifier
                                                                         }, holderPrivateKey)
                                                                     }))
                                                                     .catch(error => {
