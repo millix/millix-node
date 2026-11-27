@@ -1,11 +1,36 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import sqlite3 from 'sqlite3';
 import console from '../core/console';
 import {WalletTransactionConsensus} from '../core/wallet/wallet-transaction-consensus';
 import wallet from '../core/wallet/wallet';
 import database from '../database/database';
+import Transaction from '../database/repositories/transaction';
 
 const TRANSACTION_ID = 'dry5ncfKaBVDH6JjbtunS1hFM2MfHm6XdBBoM7b3NUdrrdmKF';
+
+test('finds invalid funding transactions and exact invalid outputs in SQLite', async t => {
+    const connection = new sqlite3.Database(':memory:');
+    t.after(() => new Promise((resolve, reject) => connection.close(error => error ? reject(error) : resolve())));
+    await new Promise((resolve, reject) => connection.exec(`
+        CREATE TABLE "transaction" (transaction_id TEXT PRIMARY KEY, status INTEGER);
+        CREATE TABLE transaction_output (transaction_id TEXT, output_position INTEGER, status INTEGER,
+                                         PRIMARY KEY (transaction_id, output_position));
+        INSERT INTO "transaction" VALUES ('funding-invalid', 3), ('output-invalid', 1);
+        INSERT INTO transaction_output VALUES ('output-invalid', 0, 1), ('output-invalid', 1, 3);
+    `, error => error ? reject(error) : resolve()));
+    const repository = new Transaction(connection);
+    const missing = {output_transaction_id: 'missing', output_position: 0};
+    const healthy = {output_transaction_id: 'output-invalid', output_position: 0};
+    const invalidOutput = {output_transaction_id: 'output-invalid', output_position: 1};
+    const invalidFunding = {output_transaction_id: 'funding-invalid', output_position: 0};
+
+    assert.equal(await repository.findInvalidInputSource([]), undefined);
+    assert.equal(await repository.findInvalidInputSource([missing, healthy]), undefined);
+    assert.deepEqual(await repository.findInvalidInputSource([missing, healthy, invalidOutput]), invalidOutput);
+    assert.deepEqual(await repository.findInvalidInputSource([invalidFunding]), invalidFunding);
+    assert.deepEqual(await repository.findInvalidInputSource([healthy], true), healthy);
+});
 
 function setup(t, storedTransaction) {
     const consensus  = new WalletTransactionConsensus();
@@ -97,7 +122,7 @@ function setupInputReset(t, otherSpender, initialized = true) {
     }
     const freed      = [];
     const repository = {
-        getTransactionOutput         : async() => [{transaction_id: 'parent', output_position: 0, status: 1}],
+        findInvalidInputSource      : async() => undefined,
         listTransactionSpendingOutput: async() => [
             {transaction_id: TRANSACTION_ID, status: 3, is_stable: 1, is_double_spend: 0},
             otherSpender
@@ -114,7 +139,7 @@ function setupInputReset(t, otherSpender, initialized = true) {
         transaction_id        : TRANSACTION_ID,
         transaction_input_list: [{output_transaction_id: 'parent', output_position: 0, output_shard_id: 'shard_zero'}]
     };
-    return {consensus, freed, transaction};
+    return {consensus, freed, repository, transaction};
 }
 
 test('frees a spent output when the only other spender was rejected by the consensus', {timeout: 5000}, async t => {
@@ -140,4 +165,15 @@ test('frees a spent output before the consensus is initialized', {timeout: 5000}
     await consensus.resetInputsSpentByTransaction(transaction);
 
     assert.deepEqual(freed, ['parent']);
+});
+
+test('leaves a funding transaction alone when resetting it would restore an invalid output', {timeout: 5000}, async t => {
+    const {consensus, freed, repository, transaction} = setupInputReset(t, {transaction_id: 'other', status: 3, is_stable: 1});
+    const lookup = t.mock.method(repository, 'findInvalidInputSource', async([input], includeSiblingOutputs) =>
+        includeSiblingOutputs ? input : undefined);
+
+    await consensus.resetInputsSpentByTransaction(transaction);
+
+    assert.equal(lookup.mock.callCount(), 1);
+    assert.deepEqual(freed, []);
 });

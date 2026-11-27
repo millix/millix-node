@@ -1593,6 +1593,28 @@ export default class Transaction {
         });
     }
 
+    findInvalidInputSource(inputs, includeSiblingOutputs = false) {
+        if (inputs.length === 0) {
+            return Promise.resolve();
+        }
+
+        const references = inputs.map(() => '(?, ?)').join(', ');
+        const parameters = inputs.flatMap(input => [input.output_transaction_id, input.output_position]);
+        const outputPositionMatch = includeSiblingOutputs ? '' : 'AND o.output_position = source.output_position';
+        return new Promise((resolve, reject) => {
+            this.database.get(`
+                WITH source(output_transaction_id, output_position) AS (VALUES ${references})
+                SELECT source.output_transaction_id, source.output_position
+                FROM source
+                WHERE EXISTS (SELECT 1 FROM \`transaction\` t
+                              WHERE t.transaction_id = source.output_transaction_id AND t.status = 3)
+                   OR EXISTS (SELECT 1 FROM transaction_output o
+                              WHERE o.transaction_id = source.output_transaction_id AND o.status = 3 ${outputPositionMatch})
+                LIMIT 1`,
+                parameters, (error, row) => error ? reject(error) : resolve(row));
+        });
+    }
+
     getTransactionOutputs(transactionID) {
         return new Promise((resolve, reject) => {
             this.database.all('SELECT * FROM transaction_output WHERE transaction_id = ?',

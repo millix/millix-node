@@ -26,6 +26,7 @@ function transaction(transactionID) {
         transaction_date       : now - 60,
         create_date            : now - 60,
         version                : '0c0',
+        transaction_input_list : [],
         transaction_output_list: []
     };
 }
@@ -53,7 +54,7 @@ function setup(t) {
     };
     const log = t.mock.method(console, 'log', () => {});
     t.mock.method(database, 'getRepository', () => repository);
-    t.mock.method(database, 'applyShards', async callback => callback());
+    t.mock.method(database, 'applyShards', async callback => callback('shard_zero'));
     t.mock.method(network, 'hasOutboundConnectionsSlotAvailable', () => true);
     t.mock.method(wallet, '_checkIfWalletUpdate', () => {});
     const startRound = t.mock.method(consensus, '_startConsensusRound', transactionID => {
@@ -121,7 +122,8 @@ test('consensus whitelist accepts votes only from listed ready peers', t => {
     consensus._consensusRoundState.pending = {
         active                  : true,
         consensus_round_count   : 0,
-        consensus_round_response: [replies]
+        consensus_round_response: [replies],
+        requestPeerValidation   : () => {}
     };
     const vote = {transaction_id: 'pending', valid: true};
 
@@ -259,22 +261,32 @@ test('late round cleanup after a reset preserves the replacement for the same tr
     assertSlots(consensus, 0, 0);
 });
 
-test('a peer request completing after reset only belongs to its original round', {timeout: 5000}, async t => {
-    const {consensus, reads, repository, startRound} = setup(t);
+function setupPeerConsensus(t, inputs = []) {
+    const fixture = setup(t);
+    const {consensus, repository, startRound} = fixture;
     startRound.mock.restore();
-    repository.getTransactionObject = async transactionID => transaction(transactionID);
+    repository.getTransactionObject = async transactionID => ({
+        ...transaction(transactionID),
+        transaction_input_list: inputs
+    });
     repository.normalizeTransactionObject = value => value;
-    t.mock.method(database, 'firstShards', async callback => callback());
+    repository.findInvalidInputSource = async() => undefined;
+    t.mock.method(database, 'firstShards', async callback => callback('shard_zero'));
     t.mock.method(walletUtils, 'verifyTransaction', async() => [true]);
     const socket = {nodeID: 'peer'};
     t.mock.method(consensus, '_selectNodesForConsensusRound', () => [socket]);
-    t.mock.method(global, 'setTimeout', () => {});
+    const timers = t.mock.method(global, 'setTimeout', () => {});
     const requests = [];
-    t.mock.method(peer, 'transactionValidationRequest', () => {
+    t.mock.method(peer, 'transactionValidationRequest', ({transaction_id}) => {
         const request = deferred();
-        requests.push(request);
+        requests.push({...request, transactionID: transaction_id});
         return request.promise;
     });
+    return {...fixture, timers, requests};
+}
+
+test('a peer request completing after reset only belongs to its original round', {timeout: 5000}, async t => {
+    const {consensus, reads, requests} = setupPeerConsensus(t);
 
     const original = consensus.doValidateTransaction();
     await select(reads[0], 'same');
@@ -292,13 +304,125 @@ test('a peer request completing after reset only belongs to its original round',
     requests[0].resolve({type: 'node_not_available'});
     await flush();
     assert.equal(replacementRound.consensus_round_response[0].peer, pendingResponse);
-    assert.equal(replacementRound.consensus_round_node_discard.has(socket.nodeID), false);
+    assert.equal(replacementRound.consensus_round_node_discard.has('peer'), false);
     assert.equal(requests.length, 2);
 
     consensus.clearState();
     await replacement;
     requests[1].resolve({type: 'validation_start'});
     await flush();
+});
+
+const invalidInput = {output_transaction_id: 'invalid-source', output_position: 1, output_shard_id: 'shard_zero'};
+const healthyInput = {output_transaction_id: 'healthy-source', output_position: 0, output_shard_id: 'shard_zero'};
+
+for (const writeFails of [false, true]) {
+    const name = writeFails ? 'advances after an invalidation write fails' : 'invalidates a target with an invalid input and advances';
+    test(name, {timeout: 5000}, async t => {
+        const {consensus, reads, repository, requests, timers} = setupPeerConsensus(t, [healthyInput, invalidInput]);
+        const fetch = t.mock.method(repository, 'getTransactionObject');
+        repository.findInvalidInputSource = async inputs => inputs.find(input => input === invalidInput);
+        const storedStatus = new Map();
+        repository.invalidateTransaction = async transactionID => {
+            if (writeFails) {
+                throw new Error('invalidation write failed');
+            }
+            storedStatus.set(transactionID, 3);
+        };
+        const clearedCache = t.mock.method(repository, 'clearTransactionObjectCache');
+        repository.listTransactionSpendingOutput = async() => [];
+        repository.listTransactionInput = async() => [];
+        repository.resetTransaction = async() => {};
+        const resetSource = t.mock.method(repository, 'resetTransaction');
+        t.mock.method(database, 'applyShardZeroAndShardRepository', async(name, shardID, callback) => callback(repository));
+        const notify = t.mock.method(wallet, 'notifyTransactionChanged', () => {});
+        const logError = t.mock.method(console, 'error', () => {});
+
+        const validation = consensus.doValidateTransaction();
+        await select(reads[0], 'target');
+        assert.deepEqual(requests, []);
+        await validation;
+        assertSlots(consensus, 0, 0);
+        assert.equal(consensus.getRejectedTransactionList().has('target'), true);
+        assert.ok(consensus.getRetryTransactionList().target > Date.now());
+        assert.equal(fetch.mock.callCount(), 1, 'reuse the transaction already read by this round');
+        assert.equal(clearedCache.mock.calls[0].arguments[0], 'target');
+
+        if (writeFails) {
+            assert.equal(storedStatus.has('target'), false);
+            assert.equal(resetSource.mock.callCount(), 0);
+            assert.equal(notify.mock.callCount(), 0);
+            assert.match(logError.mock.calls[0].arguments[2].message, /shard_zero/);
+            assert.ok(timers.mock.calls.some(call => call.arguments[1] > 0));
+        }
+        else {
+            assert.equal(storedStatus.get('target'), 3);
+            assert.deepEqual(resetSource.mock.calls.map(call => call.arguments[0]), ['healthy-source']);
+            assert.equal(notify.mock.calls[0].arguments[1], 'transaction_validation:invalid');
+            assert.equal(logError.mock.callCount(), 0);
+        }
+
+        repository.findInvalidInputSource = async() => undefined;
+        const nextCalls = timers.mock.calls.filter(call => call.arguments[1] === 0);
+        assert.equal(nextCalls.length, 1);
+        const [runNext] = nextCalls[0].arguments;
+        runNext();
+        await select(reads[1], 'next-target');
+        assert.deepEqual(requests.map(request => request.transactionID), ['next-target']);
+
+        if (writeFails) {
+            const [endBackoff] = timers.mock.calls.find(call => call.arguments[1] > 0).arguments;
+            endBackoff();
+            assert.equal(consensus.getRejectedTransactionList().has('target'), false);
+        }
+        consensus.clearState();
+        await flush();
+    });
+}
+
+test('a local input read error lets the round proceed to peers', {timeout: 5000}, async t => {
+    const {consensus, reads, repository, requests} = setupPeerConsensus(t, [healthyInput]);
+    repository.findInvalidInputSource = async() => {
+        throw new Error('local input read failed');
+    };
+    const validation = consensus.doValidateTransaction();
+
+    await select(reads[0], 'target');
+    assert.deepEqual(requests.map(request => request.transactionID), ['target']);
+
+    consensus.clearState();
+    await validation;
+});
+
+test('a pending input lookup blocks early votes and cannot invalidate a replacement round', {timeout: 5000}, async t => {
+    const {consensus, reads, repository, requests} = setupPeerConsensus(t, [invalidInput]);
+    const lookup = deferred();
+    const findInvalid = t.mock.method(repository, 'findInvalidInputSource');
+    findInvalid.mock.mockImplementationOnce(() => lookup.promise);
+    repository.invalidateTransaction = t.mock.fn();
+
+    const original = consensus.doValidateTransaction();
+    await select(reads[0], 'target');
+    const originalRound = consensus._consensusRoundState.target;
+    assert.equal(findInvalid.mock.callCount(), 1);
+    assert.deepEqual(requests, []);
+    consensus.processTransactionValidationResponse({transaction_id: 'target', valid: true}, {nodeID: 'early'});
+    assert.deepEqual(originalRound.consensus_round_response, [{}]);
+
+    consensus.clearState();
+    const replacement = consensus.doValidateTransaction();
+    await select(reads[1], 'target');
+    const replacementRound = consensus._consensusRoundState.target;
+    assert.deepEqual(requests.map(request => request.transactionID), ['target']);
+
+    lookup.resolve(invalidInput);
+    await original;
+    assert.equal(repository.invalidateTransaction.mock.callCount(), 0);
+    assert.equal(consensus._consensusRoundState.target, replacementRound);
+    assertSlots(consensus, 1, 0);
+
+    consensus.clearState();
+    await replacement;
 });
 
 test('watchdog restarts the network during selection', {timeout: 5000}, async t => {
@@ -357,6 +481,7 @@ test('failed not-found notification settles the round and releases its state', {
     const round = consensus._consensusRoundState['missing-input'];
     round.transaction = transaction('missing-input');
     round.resolve = rounds[0].resolve;
+    round.requestPeerValidation = () => {};
     round.consensus_round_not_found_count = config.CONSENSUS_ROUND_NOT_FOUND_MAX - 1;
     const response = {
         transaction_id     : 'missing-input',
